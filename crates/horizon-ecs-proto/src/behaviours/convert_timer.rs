@@ -12,9 +12,11 @@ pub struct Params {
     pub into: &'static str,
     /// Ticks in the unsafe place before the conversion.
     pub after: u64,
+    /// The carried items fall first (`Piglin.finishConversion`): the admired off-hand item, then the inventory.
+    pub drop_carried: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { into: "", after: 300 };
+    pub const DEFAULT: Self = Self { into: "", after: 300, drop_carried: false };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Convert(pub &'static Params);
@@ -67,6 +69,23 @@ fn convert_now(w: &mut World, e: Entity) {
     let (Some(c), Some(cv)) = (w.get::<Converting>(e).copied(), w.get::<Convert>(e).copied()) else { return };
     if is_over(now_of(w, e), c.until) {
         w.entity_mut(e).remove::<Converting>();
+        if cv.0.drop_carried {
+            drop_carried(w, e);
+        }
         crate::conversion::convert_or_ask(w, e, cv.0.into, crate::conversion::ConvertKeep::ALL);
     }
+}
+/// `Piglin.finishConversion`: `cancelAdmiring` drops the admired off-hand item, then `removeAllItems` drops the inventory, at the feet.
+fn drop_carried(w: &mut World, e: Entity) {
+    let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };
+    let at = [p.x, p.y, p.z];
+    if w.get::<crate::behaviours::admire::Admiring>(e).is_some() {
+        let id = crate::goals::equipped(w, e, crate::goals::Slot::Off);
+        if let Some(name) = crate::items::item_name(id) {
+            crate::equipment::take_slot(w, e, crate::goals::Slot::Off);
+            crate::behaviours::shear::drop_stacks(w, vec![horizon_client_lib::items::ItemStack::new(name, 1)], at);
+        }
+    }
+    let stacks = crate::item_store::death_stacks(w, e);
+    crate::behaviours::shear::drop_stacks(w, stacks, at);
 }

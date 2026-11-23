@@ -35,7 +35,7 @@ pub struct SleepDue(pub u64);
 /// The goal runs: the fox sleeps.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
-pub struct Sleeping;
+pub struct FoxSleeping;
 
 pub static MODULE: Module = Module {
     name: "fox_sleep",
@@ -70,7 +70,7 @@ fn countdown(w: &mut World, e: Entity, slot: u8, asks: i32) {
 }
 /// A deadline of the countdown or of a retry: while the goal runs there is nothing to ask.
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
-    w.get::<Sleeping>(e).is_none()
+    w.get::<FoxSleeping>(e).is_none()
 }
 fn still(w: &World, e: Entity) -> bool {
     w.get::<Drive>(e).is_some_and(|d| d.zza == 0.0 && d.xxa == 0.0)
@@ -154,11 +154,11 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     fs::set(w, e, SLEEPING, true);
     stop_nav(w, e);
     occupy(w, e, OCC_SLEEPING);
-    w.entity_mut(e).insert(Sleeping);
+    w.entity_mut(e).insert((FoxSleeping, crate::goals::KeepsStateWithoutAi));
 }
 /// `stop`: a new countdown is drawn, the states are cleared.
 fn stop(w: &mut World, e: Entity, inst: Inst) {
-    w.entity_mut(e).remove::<Sleeping>();
+    w.entity_mut(e).remove::<(FoxSleeping, crate::goals::KeepsStateWithoutAi)>();
     release(w, e, OCC_SLEEPING);
     fs::retry_done(w, e);
     fs::set(w, e, 0xFF, false);
@@ -172,7 +172,7 @@ fn tick(w: &mut World) {
     sleep_run(w);
 }
 /// The day came or went: the foxes waiting for their countdown look at the conditions again.
-fn wake_on_day(day: Res<Daylight>, q: Query<(Entity, &SleepDef), Without<Sleeping>>, mut reqs: ResMut<Requests>) {
+fn wake_on_day(day: Res<Daylight>, q: Query<(Entity, &SleepDef), Without<FoxSleeping>>, mut reqs: ResMut<Requests>) {
     if day.is_changed() {
         for (e, d) in &q {
             reqs.0.push(Req::Start(e, d.slot));
@@ -181,10 +181,13 @@ fn wake_on_day(day: Res<Daylight>, q: Query<(Entity, &SleepDef), Without<Sleepin
 }
 /// A sleeping fox, on its selector ticks: it ends when it can no longer sleep (day gone, shelter gone, someone near).
 fn sleep_run(w: &mut World) {
-    let list = crate::goals::entities::<With<Sleeping>>(w);
+    let list = crate::goals::entities::<With<FoxSleeping>>(w);
     for e in list {
         let Some(slot) = w.get::<SleepDef>(e).map(|d| d.slot) else { continue };
-        if fs::selector_tick(w, e) && !can_sleep(w, e) {
+        // `Fox.tick`: under AI a sleeper in water wakes, on every tick (not on its selector ticks).
+        if crate::bridge::host_read::in_water(w, e) && w.get::<crate::dragon::flight::NoAi>(e).is_none() {
+            end_goal(w, e, slot);
+        } else if fs::selector_tick(w, e) && !can_sleep(w, e) {
             end_goal(w, e, slot);
         }
     }

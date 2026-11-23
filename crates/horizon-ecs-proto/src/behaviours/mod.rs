@@ -122,6 +122,10 @@ pub enum Cap {
     IgnoresTriggers,
     /// `SweetBerryBushBlock.entityInside` skips it (the fox and the bee): `inside_effects::IgnoresBerryBush`, put at creation.
     IgnoresBerryBush,
+    /// `Entity.makeStuckInBlock` is empty (the wither): no block sticks it, its fall is not reset (`inside_effects::NeverStuck`, put at creation).
+    NeverStuck,
+    /// `Spider.makeStuckInBlock` skips the cobweb only (the spider, the cave spider): `inside_effects::NeverStuck` on the web kinds, put at creation.
+    NoWebStick,
     /// `Entity.getPistonPushReaction` is `IGNORE_ENTITY` (marker, interaction, displays, effect cloud, ominous spawner): a piston never moves it (`world_push::PistonIgnored`, put at creation).
     PistonIgnored,
     /// `canBeCollidedWith` holds while it lives (the shulker): other entities stop at its box (`world_push::Collidable`, put at creation).
@@ -132,10 +136,14 @@ pub enum Cap {
     FireImmune,
     /// `WitherBoss`/`WitherSkeleton.canBeAffected`: the wither effect is refused (`Immune` bit `IMMUNE_WITHER`).
     WitherImmune,
+    /// `EntityType.is(FREEZE_IMMUNE)` or `canFreeze` false (`Skeleton`): the powder snow never counts the freezing (`IMMUNE_FREEZE`).
+    FreezeImmune,
     /// `Spider`, `AbstractNautilus` `.canBeAffected`: the poison effect is refused (`IMMUNE_POISON`).
     PoisonImmune,
     /// `Parched.canBeAffected`: the weakness effect is refused (`IMMUNE_WEAKNESS`).
     WeaknessImmune,
+    /// `Mob.canAttack` refuses it (`EntityType.GHAST`): no mob hunts it nor answers its hit (`targeting::RefusedByMobs`, put at creation).
+    RefusedByMobs,
 }
 /// The damage an entity just took (the reactions step fills and sends it).
 pub struct Damaged {
@@ -312,6 +320,7 @@ pub mod leave_block;
 pub mod freeze_when_looked_at;
 pub mod strider_go_to_lava;
 pub mod ghast_look;
+pub mod glow_particles;
 pub mod move_emission;
 pub mod move_towards_target;
 pub mod ranged_attack;
@@ -331,6 +340,7 @@ pub mod village_walk;
 pub mod run_around_like_crazy;
 pub mod owner_target;
 pub mod sit_when_ordered;
+pub mod shake_off_water;
 pub mod neutral_anger;
 pub mod reset_universal_anger;
 pub mod panda_sit;
@@ -362,8 +372,11 @@ pub mod play_with_items;
 pub mod charge_attack;
 pub mod swim_to_treasure;
 pub mod item_pickup;
+pub mod piglin_eat;
+pub mod growl_in_fight;
 pub mod cube_attack;
 pub mod contact_damage;
+pub mod crack_sound;
 pub mod move_towards_restriction;
 pub mod fox_stroll_village;
 pub mod try_find_water;
@@ -391,15 +404,19 @@ pub mod heal_weather;
 pub mod square_or_face;
 pub mod equip_decision;
 pub mod equip_source;
+pub mod follow_mommy;
+pub mod swim_sound;
 
 /// The registration: one line per module; the order is the order of its systems (all run before `arbitrate`).
 pub static TABLE: &[&Module] = &[
+    &follow_mommy::MODULE,
     &admire::MODULE,
     &admire_seen::MODULE,
     &crate::dragon::flight::MODULE,
     &vibration_listen::MODULE,
     &event_listen::MODULE,
     &move_emission::MODULE,
+    &glow_particles::MODULE,
     &block_breaker::MODULE,
     &boss_bar::MODULE,
     &bounce_drag::MODULE,
@@ -561,6 +578,8 @@ pub static TABLE: &[&Module] = &[
     &charge_attack::MODULE,
     &swim_to_treasure::MODULE,
     &item_pickup::MODULE,
+    &piglin_eat::MODULE,
+    &growl_in_fight::MODULE,
     &cube_attack::MODULE,
     &contact_damage::MODULE,
     &move_towards_restriction::MODULE,

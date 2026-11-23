@@ -113,7 +113,7 @@ fn a_villager_with_excess_food_throws_the_surplus_to_a_hungry_partner_awake() {
     let other = spawn_species(&mut h.world, &sp, 2.5, 0.5, 2);
     h.world.get_mut::<ActiveUntil>(other).unwrap().0 = u64::MAX;
     h.world.resource_mut::<horizon_ecs_proto::goals::Entered>().0.push(other);
-    super::villager_misc_vs_mob::insert_trade_data(&mut h);
+    crate::common::insert_trade_data(&mut h);
     insert(&mut h.world, e, "minecraft:bread", 30);
     for _ in 0..30 {
         h.tick();
@@ -154,7 +154,7 @@ fn left_after_trade(mine: P, theirs: P, item: &str, n: u8) -> u32 {
     let other = spawn_species(&mut h.world, &sp, 2.5, 0.5, 2);
     h.world.get_mut::<ActiveUntil>(other).unwrap().0 = u64::MAX;
     h.world.resource_mut::<horizon_ecs_proto::goals::Entered>().0.push(other);
-    super::villager_misc_vs_mob::insert_trade_data(&mut h);
+    crate::common::insert_trade_data(&mut h);
     // With no experience and no job site the brain resets the profession (`ResetProfession`): both have some.
     for (x, p) in [(e, mine), (other, theirs)] {
         let mut m = Merchant::new(false, p.get(), 0);
@@ -195,7 +195,7 @@ fn a_villager_throws_the_wares_its_partners_profession_requests_awake() {
     let (a, b, item) = {
         let mut h = Herd::with_slab_awake(60, true, false);
         let _ = villager(&mut h);
-        super::villager_misc_vs_mob::insert_trade_data(&mut h);
+        crate::common::insert_trade_data(&mut h);
         let td = h.world.resource::<horizon_ecs_proto::behaviours::trade_offers::TradeData>();
         let mut found = None;
         for a in 0..30usize {
@@ -236,7 +236,7 @@ fn the_shown_trades_cycle_every_forty_ticks_awake() {
         return;
     }
     let mut h = Herd::with_slab_awake(60, true, false);
-    let (items, enchantments, trades) = crate::trade_vs_mob::registries();
+    let (items, enchantments, trades) = crate::common::registries();
     h.world.insert_resource(horizon_ecs_proto::behaviours::trade_offers::TradeData { trades, items, enchantments, seed: 0x5EED, sequences: Default::default() });
     let e = villager(&mut h);
     let farmer = horizon_client_lib::mobs::villager::profession_index("farmer").unwrap();

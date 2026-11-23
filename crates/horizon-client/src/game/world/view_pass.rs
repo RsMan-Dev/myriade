@@ -123,7 +123,7 @@ pub(in crate::game) mod tests {
         root: &std::path::Path,
         home: &std::path::Path,
     ) -> Game<'a> {
-        use crate::game::{Audio, Options, Progress, Settings, load_resources};
+        use crate::game::{Options, Progress, Settings, load_resources};
         let settings = Settings::default();
         let loaded = load_resources(
             horizon_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -132,7 +132,7 @@ pub(in crate::game) mod tests {
             root,
             &settings,
             Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -140,14 +140,12 @@ pub(in crate::game) mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.to_path_buf();
         options.game_dir = Some(home.to_path_buf());
-        options.player_name = Some("Viewer".into());
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -193,7 +191,6 @@ pub(in crate::game) mod tests {
             allow_flight: false,
             seed: 0,
             max_players: 2,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         };
@@ -732,7 +729,7 @@ pub(in crate::game) mod tests {
         assert!(all.sounds.is_empty());
         // A mod's handle needs the world's epoch, which this test world never began.
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(mod_api::Authority::DedicatedServer);
         let nether = game.level(Dim::Nether.id()).unwrap();
         let blocks = mod_api::SoundSource::Blocks;
         let at = [648.5, 70.0, 650.25];

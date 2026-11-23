@@ -576,7 +576,7 @@ impl Game<'_> {
     /// The mod running, if it is one and a server world is open: who a runtime level request
     /// belongs to.
     fn runtime_caller(&self) -> Result<&'static str, RuntimeLevelError> {
-        if !self.is_logical_server() || self.native_lifecycle.epoch().is_none() {
+        if self.native_lifecycle.epoch().is_none() {
             return Err(RuntimeLevelError::Unavailable);
         }
         mod_api::content::crash::current_native_mod().ok_or(RuntimeLevelError::Unavailable)
@@ -732,7 +732,6 @@ impl Game<'_> {
             .as_ref()
             .is_some_and(|host| host.hub.guests.as_slice().iter().any(|g| g.dimension == id))
             || !self.arrival_chunks(dim).is_empty()
-            || (self.options.dedicated.is_none() && self.player.is_some() && self.dim == dim)
     }
 
     /// Whether `level` names the level now open under its id: the world open it was made in, and

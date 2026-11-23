@@ -12,7 +12,6 @@ use std::{
 #[non_exhaustive]
 pub enum DataLoadOrigin {
     ServerDataLoad,
-    ClientPreload,
 }
 
 /// Immutable metadata captured with the loaded item data. Later data loads
@@ -237,7 +236,6 @@ impl LoadContext {
 #[non_exhaustive]
 pub enum LoopSide {
     Server,
-    Client,
 }
 
 /// Registries, settings and the side for hooks fired inside a menu, recipe or
@@ -835,14 +833,14 @@ mod tests {
         ));
         let inputs = Arc::new(LoadInputs::new(BTreeMap::new(), root.clone()));
         let initial = LoadContext::from_settings_snapshot(
-            DataLoadOrigin::ClientPreload,
+            DataLoadOrigin::ServerDataLoad,
             inputs.clone(),
             ["reader", "inactive"],
             settings.clone(),
         );
         assert!(Arc::ptr_eq(&settings, &initial.snapshot.settings));
         let admitted = LoadContext::from_settings_snapshot(
-            DataLoadOrigin::ClientPreload,
+            DataLoadOrigin::ServerDataLoad,
             inputs,
             ["reader"],
             settings.clone(),
@@ -854,7 +852,7 @@ mod tests {
         ));
         fs::write(root.join("reader/mode"), "after").unwrap();
         fs::write(root.join("reader/late"), "later key").unwrap();
-        let loop_context = admitted.captured_loop_context(LoopSide::Client);
+        let loop_context = admitted.captured_loop_context(LoopSide::Server);
         let worldgen = loop_context.worldgen_context();
         assert!(Arc::ptr_eq(
             &admitted.snapshot.settings,
@@ -865,7 +863,7 @@ mod tests {
             Some("before")
         );
         assert_eq!(worldgen.setting("reader", "late"), None);
-        let next = admitted.for_load(DataLoadOrigin::ClientPreload, ["reader"]);
+        let next = admitted.for_load(DataLoadOrigin::ServerDataLoad,["reader"]);
         assert_eq!(next.setting("reader", "mode").as_deref(), Some("after"));
         assert_eq!(next.setting("reader", "late").as_deref(), Some("later key"));
         assert_eq!(
@@ -1120,7 +1118,7 @@ mod tests {
         assert_eq!(before.setting("inactive", "mode"), None);
         assert_eq!(read_setting(&active, "mode").as_deref(), Some("after"));
 
-        let after = LoadContext::new(DataLoadOrigin::ClientPreload, inputs.clone(), ["active"]);
+        let after = LoadContext::new(DataLoadOrigin::ServerDataLoad, inputs.clone(), ["active"]);
         assert_eq!(after.setting("active", "mode").as_deref(), Some("after"));
         assert_eq!(after.setting("active", "late").as_deref(), Some("new key"));
         fs::remove_dir_all(&root).unwrap();
@@ -1143,20 +1141,19 @@ mod tests {
         fs::write(mod_dir.join("mode"), "one").unwrap();
         let registries = BTreeMap::from([("item".to_owned(), vec!["a:b".to_owned()])]);
         let inputs = Arc::new(LoadInputs::new(registries, root.clone()));
-        let load = LoadContext::new(DataLoadOrigin::ClientPreload, inputs, ["active"]);
+        let load = LoadContext::new(DataLoadOrigin::ServerDataLoad, inputs, ["active"]);
 
-        let client = load.loop_context(LoopSide::Client, ["active"]);
+        let early = load.loop_context(LoopSide::Server, ["active"]);
         fs::write(mod_dir.join("mode"), "two").unwrap();
         let server = load.loop_context(LoopSide::Server, ["active"]);
 
-        assert_eq!(client.side(), LoopSide::Client);
         assert_eq!(server.side(), LoopSide::Server);
         assert_eq!(
-            client.registry("item").as_deref(),
+            early.registry("item").as_deref(),
             Some(&["a:b".to_owned()][..])
         );
-        assert_eq!(server.registry("item"), client.registry("item"));
-        assert_eq!(client.setting("active", "mode").as_deref(), Some("one"));
+        assert_eq!(server.registry("item"), early.registry("item"));
+        assert_eq!(early.setting("active", "mode").as_deref(), Some("one"));
         assert_eq!(server.setting("active", "mode").as_deref(), Some("two"));
         assert_eq!(load.setting("active", "mode").as_deref(), Some("one"));
         fs::remove_dir_all(&root).unwrap();

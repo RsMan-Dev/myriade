@@ -8,7 +8,7 @@ use crate::left_handed;
 use crate::no_gravity;
 use crate::pose_state;
 use crate::stuck;
-use bevy_ecs::entity::Entity;
+use bevy_ecs::{entity::Entity, world::World};
 
 impl EcsWorld {
     /// `EntityType.canSerialize` of the entity's type (`NameTagItem` names no other: the leash knot, the lightning bolt, the bobber).
@@ -27,7 +27,7 @@ impl EcsWorld {
         custom_name::set(self.world_mut(), e, None);
     }
     pub fn name_visible(&self, e: Entity) -> bool {
-        self.world().get::<NameVisible>(e).is_some()
+        name_visible(self.world(), e)
     }
     pub fn set_name_visible(&mut self, e: Entity, on: bool) {
         custom_name::set_visible(self.world_mut(), e, on);
@@ -70,7 +70,7 @@ impl EcsWorld {
     }
     /// `LivingEntity.getNoActionTime`: the ticks since the count started (`despawn::idle_for`); 0 for a creature without a rule.
     pub fn no_action_time(&self, e: Entity) -> i32 {
-        despawn::idle_for(self.world(), e).unwrap_or(0)
+        no_action_time(self.world(), e)
     }
     /// `LivingEntity.setNoActionTime`: the count is set to `ticks`. False, nothing done, for a creature without a rule.
     pub fn set_no_action_time(&mut self, e: Entity, ticks: i32) -> bool {
@@ -80,4 +80,16 @@ impl EcsWorld {
         despawn::set_idle(self.world_mut(), e, ticks);
         true
     }
+}
+
+// The reads of the step view, over the world itself: `EcsWorld`'s methods above delegate to these.
+
+/// Whether `e` shows its name tag (`NameVisible`).
+pub fn name_visible(w: &World, e: Entity) -> bool {
+    w.get::<NameVisible>(e).is_some()
+}
+
+/// `LivingEntity.getNoActionTime`: see `EcsWorld::no_action_time`.
+pub fn no_action_time(w: &World, e: Entity) -> i32 {
+    despawn::idle_for(w, e).unwrap_or(0)
 }

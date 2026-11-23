@@ -88,7 +88,7 @@ def main():
         cp=os.pathsep.join(map(str,[jars['server'],*libraries]))
         expected.unlink(missing_ok=True)
         with tempfile.TemporaryDirectory(prefix='horizon-arrow-java-') as scratch:
-            homes={k:Path(scratch)/k for k in ('HORIZON_HOME','HORIZON_LAUNCHER_HOME','XDG_DATA_HOME','XDG_CONFIG_HOME')}
+            homes={k:Path(scratch)/k for k in ('HORIZON_HOME','XDG_DATA_HOME','XDG_CONFIG_HOME')}
             env=lab.game_env(os.environ,**homes)
             env.pop('JAVA_TOOL_OPTIONS',None)
             run(['javac','--release',lock['minecraft']['java_major'],'-proc:none','-cp',cp,'-d',classes,source,source.parent/'ParityData.java'],'compile-java',env,cwd=scratch,timeout=180)
@@ -107,7 +107,7 @@ def main():
     assert reference['reference_sha256']==sha(expected.read_bytes()), 'pinned output changed'
     # Override every location even if the parent process has a real home set.
     with tempfile.TemporaryDirectory(prefix='horizon-arrow-methods-') as scratch:
-        homes={k:Path(scratch)/k for k in ('HORIZON_HOME','HORIZON_LAUNCHER_HOME','XDG_DATA_HOME','XDG_CONFIG_HOME')}
+        homes={k:Path(scratch)/k for k in ('HORIZON_HOME','XDG_DATA_HOME','XDG_CONFIG_HOME')}
         env=lab.game_env(os.environ,**homes,HORIZON_TEST_RESOURCES=a.resources.resolve(),
                          HORIZON_POTION_INPUT=inputs,HORIZON_POTION_EXPECTED=expected,
                          HORIZON_POTION_OUTPUT=build/'fixed.json',CARGO_BUILD_JOBS='2',RUST_TEST_THREADS='2')

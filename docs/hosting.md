@@ -8,9 +8,7 @@ plan are in [server.md](server.md).
 ## Before you start
 
 - **Online mode checks accounts** (release v2026.10.17.07 and newer). With `online_mode = true`, the
-  default, every player joins with their own account, as on a vanilla server: vanilla players signed in with
-  the official Minecraft launcher, Horizon players with the Microsoft account they signed in with in Horizon's
-  launcher ([microsoft-account.md](microsoft-account.md)).
+  default, every player joins with their own account, as on a vanilla server: vanilla players signed in.
 - **Names you add are accounts** (release v2026.10.17.14 and newer). `init --player`, `horizon-server
   whitelist add` and `op`, and the console's `whitelist add`, `op` and `ban` look a name up the way vanilla
   does: players already seen (kept in `usercache.json`), then Mojang's profile service. In online mode a name
@@ -62,33 +60,30 @@ for Windows includes it), else against the SHA-256 GitHub publishes, and never a
 - `horizon-server` and `horizon-prepare` in `~/.local/bin` (Windows: added to your PATH);
 - a `game-files` folder for the files you prepare, kept across updates.
 
-Options: `--version vX.Y.Z`, `--dir FOLDER`, `--bin FOLDER` (Windows: `-Version`, `-Dir`). Other systems,
-such as Linux on ARM, build from source: `cargo build --release -p horizon-game --bin horizon-client -p
-horizon-server` and keep both programs in one folder.
+Options: `--version vX.Y.Z`, `--dir FOLDER`, `--bin FOLDER` (Windows: `-Version`, `-Dir`). Other systems, such as Linux on ARM, build from source and keep both programs in one folder.
 
 On Nix and NixOS, the repository's flake builds `horizon-server` from source and has a
 `services.horizon-server` module: [nix.md](nix.md).
 
-The Horizon launcher also installs releases. Every release folder holds `horizon-server`, so you can run it
+Every release folder holds `horizon-server`, so you can run it
 from there too.
 
 ## 2. Prepare the game files
 
 Horizon reads Minecraft's data from your own copy of the game. You need Minecraft Java Edition 26.3, played
-once from the official launcher on this computer, a Java 25 runtime, and the 26.3 `server.jar`: it's the
-`downloads.server.url` in your launcher's `versions/26.3/26.3.json`. Then:
+once on this computer, a Java 25 runtime, and the 26.3 `server.jar`: it's the
+`downloads.server.url` in `versions/26.3/26.3.json`. Then:
 
 ```sh
 horizon-prepare --prepare --server-jar /path/to/server.jar
 ```
 
-Add `--minecraft-dir PATH` if your launcher keeps the game elsewhere. The prepared files go to
+Add `--minecraft-dir PATH` if the game is elsewhere. The prepared files go to
 `game-files`, which updates keep.
 
-**On a headless machine** (a VPS, a home server), prepare on your own computer instead, with the launcher or
-`horizon-prepare`, and copy the prepared `26.3` folder to the server with `horizon-server import-resources DIR` (it checks the
+**On a headless machine** (a VPS, a home server), prepare on your own computer instead, with `horizon-prepare`, and copy the prepared `26.3` folder to the server with `horizon-server import-resources DIR` (it checks the
 folder and its version first), or by hand: into
-`~/.local/share/horizon/game-files/horizon-client/26.3`, or into `resources/` in the server folder, or anywhere
+`~/.local/share/horizon/game-files/26.3`, or into `resources/` in the server folder, or anywhere
 `[engine] resources` in `server.toml` names. A folder copied this way needs release v2026.10.17.07 or
 newer: older ones don't keep `registries.json` and `commands.json` with the prepared files, and the
 server then stops with "registries.json not found next to the resources". Prepare again with a newer release.
@@ -231,8 +226,7 @@ server sends anything it would misread. 26.3 clients are served exactly as befor
 ### Seeing further: `max_view_distance`
 
 Off by default (0), a Horizon setting with no vanilla equivalent. Past `view_distance`, up to
-`max_view_distance` (at most 32), each player is also sent the chunks the world has already saved, as far
-as their own render distance goes. Those chunks are only read and sent: the server never generates them,
+`max_view_distance` (at most 32), each player is also sent the chunks the world has already saved. Those chunks are only read and sent: the server never generates them,
 keeps them loaded or ticks them, so what lies out there stands still (no mobs, no growing crops, no
 redstone) until a player comes within `view_distance`. A chunk the world hasn't saved yet stays empty on
 the player's screen. To fill the ring, generate the world ahead of the players with `/pregen`
@@ -286,14 +280,13 @@ keep vanilla's names and formats, so going back to vanilla works too.
 ## Native server export
 
 A native-mods build exports a standalone engine
-(`horizon-launcher native-build FOLDER --server-output DIR --version TAG --trust-native-code`;
-see [Native mods](modding/src/how-to/native-mods/12-standalone-server-export.md)). Point the server at it:
+(see [Native mods](modding/src/how-to/native-mods/12-standalone-server-export.md)). Point the server at it:
 
     horizon-server --dir SERVER config set engine.path=/absolute/export/horizon-engine
     horizon-server --dir SERVER restart
 
 Use the absolute engine path printed by the build. Build on the same OS and architecture as the server
-(no cross compilation), using a prepared installed launcher release. Updates do not rebuild a pinned `engine.path`: build a new
+(no cross compilation). Updates do not rebuild a pinned `engine.path`: build a new
 export folder, set `engine.path` to it, restart, and keep the old folder for manual rollback. The supervisor does
 not auto-update or rebuild a pinned engine path, and there is no compatibility handshake yet (follow-up #6304).
 Native mods run unsandboxed: only build code you have read and trust.
@@ -382,22 +375,9 @@ their clients complete them, as they do the [mute commands](chat-filter.md#mutin
 To generate the world around spawn ahead of the players, Horizon has its own `pregen` command, off until
 `server.toml` has `horizon-pregen = true` under `[properties]`: `horizon-server cmd pregen start 2500`
 ([pregeneration](pregeneration.md)).
-To let only the Horizon client join, set `horizon-clients-only = true` under `[properties]` (off by default).
-Other clients are turned away while they connect with "This server is for the Horizon client:
-playhorizon.dev", and the console says which client it was. The check reads the brand a client names itself
-by (`minecraft:brand`), which any client can fake: it keeps out players who didn't install Horizon, not
-cheaters. The server's own checks (reach, movement) are what protect it.
 
-Horizon clients can get their far terrain (Video Settings → LOD Distance) from the server: set
-`horizon-lod-distance` under `[properties]` to how far, in chunks (1024 at most), and the server samples the
-tiles each player's client asks for out to there. It is off (0) by default: far tiles show the world's terrain
-far past the view distance, which helps players find the seed. A player's own LOD Distance applies when it is
-shorter. Each player may have 8 tiles waiting and ask for 64 a second on average, and one background thread
-samples them for everyone in turn, behind the ticks, so far terrain never slows the server down; a tile past the
-distance or over a player's limits is refused, and a client that keeps breaking the limits is disconnected.
-A tile is the same for every player in its level, so the server keeps the tiles it sampled in memory (up to
-32 MiB, about 4,000 tiles; the least recently asked for go first) and answers the next player who asks for one
-with it: players looking at the same land cost one sample. Vanilla clients never hear of it.
+
+
 
 `horizon-server report` records the running server for 60 seconds (`report 300` for five minutes, up to 600) into
 `reports/profile-<time>Z.hzperf`, a capture the performance tools read ([perf-platform.md](perf-platform.md)), and
@@ -431,7 +411,7 @@ thread's timed steps to `reports/profile-<time>Z.hzperf`, one row per thread. `h
 capture, or until they pass 256 MiB; the capture then says when they stopped. `HORIZON_TRACE=FILE` in the server's
 environment writes such a capture to FILE from the first tick. It holds step names and times only.
 
-To profile your server from a game, join it as an operator of level 4 and run `horizon-ctl profile server start` (or `profile start`, which captures your game and the server in one file). Another operator level is refused and nothing is written. One server capture runs at a time. The server writes its copy to its own `reports/`, logs who started it and when, and sends the file to your game in the background, at most 256 KiB a second and after gameplay packets; the game says where it saved it. Open a capture with `horizon-perf` ([perf-platform.md](perf-platform.md)), which you build from this repository (`cargo build --release -p horizon-perf`).
+One server capture runs at a time. The server writes its copy to its own `reports/`, logs who started it and when, and sends the file to your game in the background, at most 256 KiB a second and after gameplay packets; the game says where it saved it. Open a capture with `horizon-perf` ([perf-platform.md](perf-platform.md)), which you build from this repository (`cargo build --release -p horizon-perf`).
 
 Between reports, the server keeps its last 256 slow ticks in memory, each with its eight largest steps. A tick
 counts as slow from 250 ms (`HORIZON_SPIKES=MS` in the engine's environment sets another threshold), and every
@@ -710,7 +690,7 @@ to `server.toml` and restart:
 allow = true   # false, the default: don't start
 ```
 
-Started as `horizon-client --dedicated` directly, `--allowMissingMods` does the same for one start. With either one,
+`--allowMissingMods` does the same for one start. With either one,
 the server logs the same list as a warning and opens the world. A mod whose `mod_mismatch` listener marks a missing
 mod resolved (a migration) takes it off the list.
 
@@ -762,7 +742,7 @@ docker build -f packaging/server/Dockerfile -t horizon-server .
 
 docker run -d --name horizon -p 25565:25565 --stop-timeout 180 \
   -v horizon-data:/data \
-  -v /path/to/26.3:/opt/horizon/.local/horizon-client/26.3:ro \
+  -v /path/to/26.3:/opt/horizon/.local/26.3:ro \
   -e HORIZON_EULA=true -e HORIZON_WHITELIST=true -e HORIZON_PLAYERS=Alex,Steve -e HORIZON_OP=Alex \
   horizon-server
 ```
@@ -816,7 +796,7 @@ the game with huge pages off. Measured on a 4-core EPYC VPS with 20 bots playing
 | Start | 2.1 s | 2.2 s |
 
 Turn it on when memory is what you're short of, for example on a small VPS. It applies at the next start.
-A game started without `horizon-server` (`horizon-client --dedicated`, a container of your own) gets the same
+A game started without `horizon-server` (a container of your own) gets the same
 effect from the environment variable `MIMALLOC_ALLOW_THP=0`. On macOS and Windows it changes nothing.
 
 ### Parallel tick: `parallel_tick`

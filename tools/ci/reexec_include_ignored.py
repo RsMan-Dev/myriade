@@ -63,7 +63,7 @@ def fix(lines):
 
 
 def sources():
-    listing = subprocess.run(["git", "ls-files", "-z", "--", "*.rs", ":!launcher"], cwd=ROOT, capture_output=True,
+    listing = subprocess.run(["git", "ls-files", "-z", "--", "*.rs"], cwd=ROOT, capture_output=True,
                              text=True, check=True)
     return [ROOT / path for path in filter(None, listing.stdout.split("\0"))]
 

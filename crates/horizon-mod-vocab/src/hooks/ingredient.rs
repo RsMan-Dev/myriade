@@ -19,8 +19,8 @@ pub trait Hooks {
     /// occurrence of the kind (nested inside a compound, intersection or
     /// difference too, and under any slot a recipe reads an ingredient from) in
     /// each load, before the load's tables parse the recipes, with the
-    /// `DataLoadContext` of that owning load: the client's own recipe load has
-    /// `origin()` `ClientPreload`, the server's has `ServerDataLoad`. A server
+    /// `DataLoadContext` of that owning load: the server's recipe load has
+    /// `origin()` `ServerDataLoad`. A server
     /// loads its recipes once, however many tables and copies read them (its
     /// recipe tables, the stations and the copy synchronised to guests, on a
     /// dedicated server too), and a `/reload` asks again once; a client that

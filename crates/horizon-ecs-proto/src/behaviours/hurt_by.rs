@@ -5,6 +5,19 @@ use super::*;
 use crate::targeting::{self, FollowRange, Target, Who};
 use crate::{cow::*, goals::*, hostile::HurtBy};
 
+/// `IronGolem.isPlayerCreated` (NBT `PlayerCreated`): `canAttack` refuses a player, so the golem never answers one.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PlayerCreated;
+
+/// `IronGolem.setPlayerCreated`: the marker is posed by a golem built from blocks, and taken off the others.
+pub fn set_player_created(w: &mut World, e: Entity, on: bool) {
+    if on {
+        w.entity_mut(e).insert(PlayerCreated);
+    } else {
+        w.entity_mut(e).remove::<PlayerCreated>();
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
     /// `setAlertOthers`: the creatures around take the same target.
@@ -105,6 +118,12 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if g.p.spare_owner && w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0 == Some(who)) {
         return false;
     }
+    // `Mob.canAttack` refuses the attacker (the ghast): no retaliation.
+    if let Who::Entity(o) = who
+        && w.get::<crate::targeting::RefusedByMobs>(o).is_some()
+    {
+        return false;
+    }
     if let Who::Entity(o) = who
         && w.get::<SpeciesId>(o).is_some_and(|s| g.ignore.contains(s.0))
     {
@@ -113,6 +132,13 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if let Who::Entity(o) = who
         && g.p.attacker_when.is_some_and(|f| f(w, o))
     {
+        return false;
+    }
+    // `HurtByTargetGoal.canUse`: a player's hit is left to the anger goals under the universal anger rule.
+    if matches!(who, Who::Player(_)) && w.get_resource::<Level>().is_some_and(|l| l.mw.0.universal_anger) {
+        return false;
+    }
+    if matches!(who, Who::Player(_)) && w.get::<PlayerCreated>(e).is_some() {
         return false;
     }
     match targeting::info(w, who) {

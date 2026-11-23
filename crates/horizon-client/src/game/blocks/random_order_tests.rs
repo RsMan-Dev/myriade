@@ -16,10 +16,8 @@ fn game_loading<'a>(
 ) -> Game<'a> {
     let mut game = server_game(resources);
     game.settings.simulation_distance = 5;
-    game.settings.render_distance = 8;
-    game.player = Some(
-        horizon_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap(),
-    );
+    game.settings.view_distance = 8;
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     game.world.chunks.clear();
     for &(x, z) in order {
         let mut chunk = Chunk::empty(x, z);

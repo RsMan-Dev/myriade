@@ -18,7 +18,6 @@ fn biome_key_world_install_reload_and_unavailable_sides() {
         crate::game::native_entity_refs::tests::with_game(|game| {
             let root = tempfile::tempdir().unwrap();
             game.world_root = root.path().to_owned();
-            game.options.dedicated = Some(Vec::new());
             assert_eq!(game.biome_key("minecraft:plains"), None);
             let pack = root.path().join("datapacks/biomes");
             let file = pack.join("data/neoforge/data_maps/worldgen/biome/villager_types.json");
@@ -68,13 +67,7 @@ fn biome_key_world_install_reload_and_unavailable_sides() {
                 previous = Some(plains);
             }
             let key = previous.unwrap();
-            game.options.dedicated = None;
-            assert_eq!(game.biome_key("minecraft:plains"), None);
-            assert_eq!(
-                key.data(game, &VillagerTypes),
-                Err(DataMapError::Unavailable)
-            );
-            game.options.dedicated = Some(Vec::new());
+            // TODO(phase 2): joueur local retiré — à faire agir par un joueur connecté (as_guest).
             game.world_tables = None;
             assert_eq!(
                 key.data(game, &VillagerTypes),

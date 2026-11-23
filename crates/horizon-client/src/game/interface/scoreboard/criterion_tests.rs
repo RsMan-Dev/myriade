@@ -4,7 +4,7 @@ use horizon_core::geometry::Vec3;
 #[test]
 #[ignore = "daily"]
 fn selectors_reject_criteria_absent_from_the_selected_definition() {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Game, Options, Progress, Settings, load_resources};
     use horizon_client::motion::PlayerMotion;
     let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
@@ -15,19 +15,18 @@ fn selectors_reject_criteria_absent_from_the_selected_definition() {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(
@@ -40,6 +39,7 @@ fn selectors_reject_criteria_absent_from_the_selected_definition() {
     ));
     std::fs::create_dir_all(&scratch).unwrap();
     game.world_root = scratch.clone();
+    // TODO(phase 2): assertion sur l'hôte : le sélecteur @a[advancements] (Target::Player) s'appuie sur le joueur hôte posé ici (criterion_tests.rs:42)
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, 0.5)).unwrap());
 
     const ROOT: &str = "minecraft:story/root";

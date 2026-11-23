@@ -3,11 +3,7 @@
 //! `sendSuccess(..., true)` (broadcast) while `tickQuery` passes `false`.
 use super::*;
 use crate::game::Dim;
-use horizon_client::{
-    lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-    motion::PlayerMotion,
-};
-use horizon_core::geometry::Vec3;
+use horizon_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 use horizon_protocol::packets::{configuration::ClientInformation, play::Clientbound};
 use serde_json::json;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
@@ -61,7 +57,6 @@ fn lan_game() -> (Game<'static>, mpsc::Receiver<horizon_client::lan::Out>) {
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 66.0, 0.5)).unwrap());
     game.lan_host(
         crate::game::lan::LanSettings {
             port: 0,
@@ -83,7 +78,6 @@ fn lan_game() -> (Game<'static>, mpsc::Receiver<horizon_client::lan::Out>) {
             allow_flight: false,
             seed: 0,
             max_players: 4,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         },

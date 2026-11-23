@@ -347,14 +347,12 @@ impl Game<'_> {
 #[cfg(test)]
 mod durability_tests {
     use super::*;
-    use horizon_client::motion::PlayerMotion;
     use horizon_core::geometry::Vec3;
 
     #[test]
     #[ignore = "daily"]
     fn shield_break_clears_the_active_use() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+        crate::game::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
             let mut shield = ItemStack::new("minecraft:shield", 1);
             shield.damage = game.items().get(&shield.item).unwrap().max_damage - 1;
             game.offhand = Some(shield);
@@ -390,9 +388,8 @@ mod durability_tests {
     #[test]
     #[ignore = "daily"]
     fn a_damage_item_part_changes_the_wear_of_a_blocking_shield() {
-        use crate::game::damage_item_tests::{Rule, with_wear_part};
-        with_wear_part("minecraft:shield", Rule::Halve, |game, wear| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+        use crate::game::damage_item_tests::{Rule, with_wear_part_acting_guest};
+        with_wear_part_acting_guest("minecraft:shield", Rule::Halve, Vec3::ZERO, |game, wear| {
             let block = |game: &mut Game<'_>| {
                 game.offhand = Some(ItemStack::new("minecraft:shield", 1));
                 game.using = Some((OFFHAND_SLOT, 20));

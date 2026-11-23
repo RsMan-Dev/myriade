@@ -1620,9 +1620,6 @@ impl Game<'_> {
                     if let Some(host) = self.lan.as_ref() {
                         host.hub.system_message(component_nbt(&text.component()));
                     }
-                    if self.serving.is_none() && self.options.dedicated.is_none() {
-                        self.system_message(text);
-                    }
                 }
             }
         }
@@ -1630,11 +1627,7 @@ impl Game<'_> {
 
     fn test_console_output(&mut self, text: Text, broadcast: bool) {
         let plain = text.plain();
-        if self.options.dedicated.is_some() {
-            super::dedicated::log("INFO", &plain);
-        } else {
-            log::info!("{plain}");
-        }
+        super::dedicated::log("INFO", &plain);
         if broadcast {
             // CommandSourceStack.broadcastToAdmins as the server.
             self.console_broadcast = Some(true);
@@ -1778,25 +1771,24 @@ pub(in crate::game) mod tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            execution_role::ExecutionRole::IntegratedServer,
+            execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = execution_role::ExecutionRole::DedicatedServer;
         let res = resources.insert(loaded.resources);
         let mut game = Game::new(
             res,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.reset_entity_residency();
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(mod_api::Authority::DedicatedServer);
         // Match the server fixture this replaces: commands can force this
         // resident column without starting terrain generation.
         game.world.chunks.insert(
@@ -1952,6 +1944,7 @@ mod completed_test_coordinate_feedback_tests {
     #[test]
     #[ignore = "daily"]
     fn actual_completed_test_retains_player_source_for_coordinate_feedback() {
+        // TODO(phase 2): assertion sur l'hôte : level.player_uuid = [0,0,0,77] désigne le joueur hôte (game_tests.rs:1947)
         let mut resources = None;
         let mut game = tests::server_game(&mut resources);
         game.build_registries();
@@ -2119,7 +2112,6 @@ mod registered_game_test_tests {
     #[ignore = "daily"]
     fn registered_game_tests_report_pass_failure_and_unknown_in_real_level() {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));

@@ -69,7 +69,6 @@ fn loot_stack_edits_leave_custom_drop_age_attached() {
         (Edit::Reorder, vec!["minecraft:dirt", "minecraft:stone"]),
     ] {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.build_registries();
             // The fixture stops before world entry, which loads the death loot snapshot.
             game.load_server_loot();

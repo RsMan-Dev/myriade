@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exact item-aware empty decoration saved patches through actual integrated Game commands."""
+"""Exact item-aware empty decoration saved patches through actual server commands run by a bot."""
 import argparse
 from pathlib import Path
 import subprocess

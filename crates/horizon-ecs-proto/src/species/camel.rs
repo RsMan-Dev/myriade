@@ -1,13 +1,15 @@
 //! `Camel` (`horizon-client/src/mobs/camel.rs:26-45`): the goals of the camel in the `Mob`'s order. The posture is a rule
 //! (priority 255, no flag, never asked). The sitting camel refuses to move: `is_sitting` (the occupation the posture takes)
-//! stands for `refuseToMove` (the stand-up included). Camel food by tag (`#camel_food`): `cactus` is the repli (DOUTE).
+//! stands for `refuseToMove` (the stand-up included). Camel food is the tag `#camel_food` (the jar: `minecraft:cactus` alone).
 use super::Def;
+use crate::behaviours::spawn_draw::{Draw, Draws, Store, When};
+use crate::rules::spawn_draw::Roll;
 use crate::mount::{RideParams, RIDE};
 use crate::rules::RuleEntry;
 use crate::behaviours::{animal_panic, breed, follow_parent, float, look_at_player, posture, random_look, random_sitting, stroll, tempt, walk_to_look, Cap, Cond, Entry};
 
 static NOT_SITTING: Cond = Cond::Not(&Cond::Is("horizon:is_sitting"));
-const FOOD: &[&str] = &["minecraft:cactus"];
+const FOOD: &[&str] = &["#minecraft:camel_food"];
 
 pub static DEF: Def = Def {
     name: "minecraft:camel",
@@ -25,6 +27,13 @@ pub static DEF: Def = Def {
         Entry::new(&posture::MODULE, 255, &posture::Params::DEFAULT),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion, Cap::Rideable]),
-    rules: &[RuleEntry::new(&RIDE, &RideParams::CAMEL), RuleEntry::new(&crate::mount_jump::JUMP_SOUND, &crate::mount_jump::JumpSound { sound: "entity.camel.dash", volume: 1.0 }),RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::SADDLE)],
+    rules: &[crate::rules::RuleEntry::new(&crate::rules::pushable::UNPUSHABLE, &()), crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&RIDE, &RideParams::CAMEL),RuleEntry::new(&crate::mount_jump::JUMP_SOUND, &crate::mount_jump::JumpSound { sound: "entity.camel.dash", volume: 1.0 }),RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT), RuleEntry::new(&crate::leash::QUAD_LEASHEE, &crate::leash::QuadParams { front: 0.02, front_back: 0.48, left_right: 0.25, up: 0.82 }), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::SADDLE)],
+    draws: Some(&DRAWS),
     ..Def::EMPTY
+};
+
+/// `Camel.finalizeSpawn`: the camel stands at its birth (`resetLastPoseChangeTickToFullStand`), no draw.
+static DRAWS: Draws = Draws {
+    group: None,
+    list: &[Draw { when: When::Before, kind: crate::behaviours::spawn_draw::Kind::Plain(Roll::Const(0)), store: Store::Call(crate::behaviours::posture::spawn_full_stand) }],
 };

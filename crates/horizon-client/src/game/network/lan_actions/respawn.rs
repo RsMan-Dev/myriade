@@ -50,23 +50,10 @@ impl Game<'_> {
         // point's level: the Overworld, where the world spawn and beds are,
         // or another one's anchor or forced point, which its block resolves
         // once the level has loaded around it.
-        let server = self.options.dedicated.is_some();
-        let own = host.hub.guests[i]
+        let elsewhere = host.hub.guests[i]
             .respawn_elsewhere
             .as_ref()
             .map(RespawnConfig::from_saved);
-        let elsewhere = own.filter(|_| server);
-        // In the window's world a guest has no level of its own to wait in:
-        // its bed is resolved at once when its chunk is there, else it
-        // comes back on the bed.
-        let in_frame_bed = own.filter(|c| !server && c.dim == crate::game::Dim::Overworld);
-        let spawn = in_frame_bed.map_or(spawn, |c| {
-            [
-                f64::from(c.pos[0]) + 0.5,
-                f64::from(c.pos[1]) + 0.6,
-                f64::from(c.pos[2]) + 0.5,
-            ]
-        });
         let level = elsewhere.map_or(crate::game::Dim::Overworld, |c| c.dim);
         let spawn = elsewhere.map_or(spawn, |c| {
             [
@@ -404,30 +391,17 @@ impl Game<'_> {
                 host.hub.system_message_to(message.clone(), |other| {
                     horizon_client::scoreboard::death_message_reaches(board, &name, other)
                 });
-                if self.is_dedicated_server() {
-                    crate::game::dedicated::events::record(
-                        "death",
-                        &name,
-                        uuid,
-                        serde_json::json!({ "message": text.plain() }),
-                    );
-                    // Only a message for everyone is logged (`broadcastSystemMessage`).
-                    if board.players_team(&name).is_none_or(|t| {
-                        t.death_message_visibility == horizon_client::scoreboard::Visibility::Always
-                    }) {
-                        crate::game::dedicated::log(
-                            "INFO",
-                            &format!("System chat: {}", text.plain()),
-                        );
-                    }
-                } else if self.player.is_some()
-                    && horizon_client::scoreboard::death_message_reaches(
-                        board,
-                        &name,
-                        crate::game::command_text::PLAYER_NAME,
-                    )
-                {
-                    self.system_message(text);
+                crate::game::dedicated::events::record(
+                    "death",
+                    &name,
+                    uuid,
+                    serde_json::json!({ "message": text.plain() }),
+                );
+                // Only a message for everyone is logged (`broadcastSystemMessage`).
+                if board.players_team(&name).is_none_or(|t| {
+                    t.death_message_visibility == horizon_client::scoreboard::Visibility::Always
+                }) {
+                    crate::game::dedicated::log("INFO", &format!("System chat: {}", text.plain()));
                 }
                 message
             } else {
@@ -537,20 +511,11 @@ impl Game<'_> {
             self.resolve_player_credit(credit)
         } else {
             combat.and_then(|c| c.kill_credit(now)).and_then(|id| {
-                if self.lan_acting.is_none()
-                    && self
-                        .player
-                        .as_ref()
-                        .is_some_and(|p| p.entity_id as u32 == id)
-                {
-                    Some(None)
-                } else {
-                    host.hub
-                        .guests
-                        .iter()
-                        .find(|g| g.entity_id as u32 == id)
-                        .map(|g| Some(g.conn))
-                }
+                host.hub
+                    .guests
+                    .iter()
+                    .find(|g| g.entity_id as u32 == id)
+                    .map(|g| Some(g.conn))
             })
         };
         let Some(who) = who else { return };
@@ -577,27 +542,18 @@ impl Game<'_> {
         // The damage's causing entity: the player in place, another guest, or
         // a mob (`DamageSource.getEntity`).
         let source = attacker.and_then(|id| {
-            if self.lan_acting.is_none()
-                && self
-                    .player
-                    .as_ref()
-                    .is_some_and(|p| p.entity_id as u32 == id)
-            {
-                Some(self.player_entity_for_any(&["minecraft:kill_mob_near_sculk_catalyst"]))
-            } else {
-                host.hub
-                    .guests
-                    .iter()
-                    .find(|g| g.entity_id as u32 == id)
-                    .map(|g| horizon_client::advancements::EntityView {
-                        kind: "minecraft:player".into(),
-                        position: g.position,
-                        sneaking: g.sneaking,
-                        input_sneak: g.input & 32 != 0,
-                        ..Default::default()
-                    })
-                    .or_else(|| self.ecs_view(id).map(|_| self.ecs_predicate_view(id)))
-            }
+            host.hub
+                .guests
+                .iter()
+                .find(|g| g.entity_id as u32 == id)
+                .map(|g| horizon_client::advancements::EntityView {
+                    kind: "minecraft:player".into(),
+                    position: g.position,
+                    sneaking: g.sneaking,
+                    input_sneak: g.input & 32 != 0,
+                    ..Default::default()
+                })
+                .or_else(|| self.ecs_view(id).map(|_| self.ecs_predicate_view(id)))
         });
         let projectile = match damage.as_str() {
             "minecraft:arrow" => Some("minecraft:arrow"),
@@ -657,18 +613,17 @@ impl Game<'_> {
         else {
             return;
         };
-        let Some(killer) = self.guest_entity_view(id, TRIGGER) else {
+        let Some(killer) = self.guest_entity_view(id) else {
             return;
         };
-        let blow = self.guest_killing_blow(blow, at, TRIGGER);
+        let blow = self.guest_killing_blow(blow, at);
         self.as_guest(conn, |g| {
             g.trigger_killed_as(TRIGGER, &killer, blow.as_ref());
         });
     }
 
     /// The type of the entity a dying guest's combat record credits with the
-    /// kill (`LivingEntity.getKillCredit`): a player (the one in place or a
-    /// guest), a mob (one gone already credits nobody, as vanilla's reference
+    /// kill (`LivingEntity.getKillCredit`): a player (a guest), a mob (one gone already credits nobody, as vanilla's reference
     /// no longer resolves), a mob whose own blast this tick killed the guest,
     /// or the ender dragon.
     fn guest_kill_credit_type(&self, conn: u32) -> Option<String> {
@@ -676,16 +631,10 @@ impl Game<'_> {
             .guest_combat
             .get(&conn)?
             .kill_credit(self.world.game_time)?;
-        let in_place = self.lan_acting.is_none()
-            && self
-                .player
-                .as_ref()
-                .is_some_and(|p| p.entity_id as u32 == id);
-        if in_place
-            || self
-                .lan
-                .as_ref()
-                .is_some_and(|host| host.hub.guests.iter().any(|g| g.entity_id as u32 == id))
+        if self
+            .lan
+            .as_ref()
+            .is_some_and(|host| host.hub.guests.iter().any(|g| g.entity_id as u32 == id))
         {
             return Some("minecraft:player".into());
         }
@@ -707,34 +656,21 @@ impl Game<'_> {
         &self,
         blow: Option<(String, Option<u32>)>,
         at: [f64; 3],
-        trigger: &str,
     ) -> Option<horizon_client::advancements::DamageView> {
         let (damage, attacker) = blow?;
-        // The damage's causing entity: the player in place, another guest, or
-        // a mob (`DamageSource.getEntity`).
-        let source = attacker.and_then(|id| self.guest_entity_view(id, trigger));
+        // The damage's causing entity: another guest or a mob (`DamageSource.getEntity`).
+        let source = attacker.and_then(|id| self.guest_entity_view(id));
         Some(horizon_client::advancements::recorded_blow(
             damage, source, at,
         ))
     }
 
-    /// The entity behind a combat record's id, as `trigger`'s predicates see
-    /// it: the player in place, a guest, or a mob.
+    /// The entity behind a combat record's id, as the predicates see it: a
+    /// guest or a mob.
     pub(super) fn guest_entity_view(
         &self,
         id: u32,
-        trigger: &str,
     ) -> Option<horizon_client::advancements::EntityView> {
-        if self.lan_acting.is_none()
-            && self
-                .player
-                .as_ref()
-                .is_some_and(|p| p.entity_id as u32 == id)
-        {
-            // `player_entity_for` takes `&mut self` (the compound for `nbt`);
-            // this view of the killer has the player's records without it.
-            return Some(self.player_entity_for_any(&[trigger]));
-        }
         self.lan
             .as_ref()?
             .hub

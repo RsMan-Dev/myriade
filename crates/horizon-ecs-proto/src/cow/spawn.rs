@@ -52,7 +52,7 @@ pub fn solid_bundle(sp: &Species, x: f64, z: f64) -> impl Bundle {
 /// `Body`: the physics of a body that falls, lands, floats and is pushed by the water and the blocks (`travel`).
 pub fn body_bundle(sp: &Species) -> impl Bundle {
     (
-        Body { width: sp.width, height: sp.height, step_height: sp.step_height, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), object: false, orb: false, tnt: false, lava_walker: sp.lava_walker },
+        Body { width: sp.width, height: sp.height, step_height: sp.step_height, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), safe_fall: 3.0, fall_mult: 1.0, movement_efficiency: 0.0, object: false, orb: false, tnt: false, lava_walker: sp.lava_walker },
         Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 },
         FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency, max_air: sp.max_air },
         crate::targeting::Eye(sp.eye_height),
@@ -77,7 +77,7 @@ pub fn living_bundle(sp: &Species) -> impl Bundle {
         Air(sp.max_air),
         Resist(sp.knockback_resistance),
         Restitution(LIVING_RESTITUTION),
-        Immune(crate::rules::attrs_of(sp.rules).immune | cap_bit(sp, crate::behaviours::Cap::FireImmune, crate::effects::IMMUNE_FIRE) | cap_bit(sp, crate::behaviours::Cap::WitherImmune, crate::effects::IMMUNE_WITHER) | cap_bit(sp, crate::behaviours::Cap::PoisonImmune, crate::effects::IMMUNE_POISON) | cap_bit(sp, crate::behaviours::Cap::WeaknessImmune, crate::effects::IMMUNE_WEAKNESS)),
+        Immune(crate::rules::attrs_of(sp.rules).immune | cap_bit(sp, crate::behaviours::Cap::FireImmune, crate::effects::IMMUNE_FIRE) | cap_bit(sp, crate::behaviours::Cap::WitherImmune, crate::effects::IMMUNE_WITHER) | cap_bit(sp, crate::behaviours::Cap::PoisonImmune, crate::effects::IMMUNE_POISON) | cap_bit(sp, crate::behaviours::Cap::WeaknessImmune, crate::effects::IMMUNE_WEAKNESS) | cap_bit(sp, crate::behaviours::Cap::FreezeImmune, crate::effects::IMMUNE_FREEZE)),
     )
 }
 
@@ -121,6 +121,35 @@ pub fn spawn_bundle(sp: &Species, x: f64, z: f64, seed: u64) -> impl Bundle {
     (transform_bundle(sp, x, z, uid), solid_bundle(sp, x, z), body_bundle(sp), living_bundle(sp), locomotion_bundle(sp, yaw), targets_bundle(sp), crate::goals::head_bundle(sp), goals_part(sp, uid, rng))
 }
 
+/// The speed and jump strength drawn after the max health, as base values, in the order of the class's `randomizeAttributes`: `Horse` draws
+/// its speed then its jump (`generateSpeed`, `generateJumpStrength`: three doubles each), `ZombieHorse` its jump then its speed (the zombie
+/// formulas), `SkeletonHorse` its jump.
+fn horse_attrs(g: crate::species::HorseGen, rng: &mut Rng) -> Vec<(String, f64, Vec<crate::attr_mod::Modifier>)> {
+    use crate::species::HorseGen;
+    let mut three = || [rng.next_f64(), rng.next_f64(), rng.next_f64()];
+    let mut out: Vec<(&str, f64)> = Vec::new();
+    match g {
+        HorseGen::None => {}
+        HorseGen::Horse => {
+            let s = three();
+            let j = three();
+            out.push(("movement_speed", (0.449_999_988_079_071_04 + s[0] * 0.3 + s[1] * 0.3 + s[2] * 0.3) * 0.25));
+            out.push(("jump_strength", 0.400_000_005_960_464_5 + j[0] * 0.2 + j[1] * 0.2 + j[2] * 0.2));
+        }
+        HorseGen::Skeleton => {
+            let j = three();
+            out.push(("jump_strength", 0.400_000_005_960_464_5 + j[0] * 0.2 + j[1] * 0.2 + j[2] * 0.2));
+        }
+        HorseGen::Zombie => {
+            let j = three();
+            let s = three();
+            out.push(("jump_strength", 0.5 + j[0] * 0.066_666_666_666_666_67 + j[1] * 0.066_666_666_666_666_67 + j[2] * 0.066_666_666_666_666_67));
+            out.push(("movement_speed", (9.0 + s[0] + s[1] + s[2]) / 42.159_999_847_412_11));
+        }
+    }
+    out.into_iter().map(|(n, b)| (n.to_owned(), b, Vec::new())).collect()
+}
+
 /// Creates the entity with the capabilities `sp` declares and no others (body first: the goals' `equip` reads it).
 pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64, natural: bool) -> Entity {
     let mut rng = Rng(seed | 1);
@@ -132,8 +161,9 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
         let max: u32 = if rng.next_f64() < 0.04 { 5 } else { 3 };
         1 + (rng.next_u32() % max) as i32
     });
-    // `AbstractHorse.randomizeAttributes` (`Horse`, `AbstractChestedHorse`, a llama): `generateMaxHealth`, 15 and a `nextInt(8)` and two `nextInt(9)`.
-    let max_health = sp.random_max_health.then(|| 15.0 + (rng.next_u32() % 8) as f32 + (rng.next_u32() % 9) as f32 + (rng.next_u32() % 9) as f32);
+    // `AbstractHorse.randomizeAttributes` (`Horse`, `AbstractChestedHorse`, a llama): `generateMaxHealth`, 15 and a `nextInt(8)` and a `nextInt(9)`.
+    let max_health = sp.random_max_health.then(|| 15.0 + (rng.next_u32() % 8) as f32 + (rng.next_u32() % 9) as f32);
+    let mut attrs = horse_attrs(sp.horse_gen, &mut rng);
     let uid = crate::goals::next_uid();
     let has = |c: crate::behaviours::Cap| sp.caps.contains(&c);
     // The species markers are zero-size: they go in first, so the bundle below is the only one that writes data.
@@ -146,6 +176,20 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     }
     if let Some(s) = strength {
         e.insert(crate::behaviours::forget_target::LlamaStrength(s));
+    }
+    if sp.body_wear {
+        e.insert(crate::equipment_wear::BodyWear);
+    }
+    // `getSwimSound`: the species' water sound, a component only where it differs from `entity.generic.swim`.
+    if let Some(sw) = crate::species::swim::swim_sounds(sp.name, crate::cow::is_monster(sp.name)) {
+        e.insert(sw);
+    }
+    // The seats of a vehicle and of a rider (`species::attachments`), a component only where the species has one.
+    if let Some(seats) = crate::species::attachments::passenger_seats(sp.name) {
+        e.insert(crate::mount::PassengerSeats { adult: seats.adult, baby: seats.baby });
+    }
+    if let Some(seat) = crate::species::attachments::rider_seat(sp.name) {
+        e.insert(seat);
     }
     e.insert(transform_bundle(sp, x, z, uid));
     if saved {
@@ -164,7 +208,11 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
         e.insert(living_bundle(sp));
     }
     if let Some(m) = max_health {
-        e.insert((crate::attr_mod::AttrMods(vec![("max_health".to_owned(), f64::from(m), Vec::new())]), Health(m)));
+        attrs.insert(0, ("max_health".to_owned(), f64::from(m), Vec::new()));
+        e.insert(Health(m));
+    }
+    if !attrs.is_empty() {
+        e.insert(crate::attr_mod::AttrMods(attrs));
     }
     if has(crate::behaviours::Cap::Locomotion) {
         e.insert(locomotion_bundle(sp, yaw));
@@ -232,6 +280,9 @@ pub fn spawn_species(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64)
         if r.no_portal {
             world.entity_mut(e).insert(crate::portal::NoPortal);
         }
+        if let Some(ticks) = r.despawn_delay {
+            crate::despawn_delay::start_for(world, e, ticks);
+        }
     }
     enter_index(world, e);
     crate::rules::equip_all(world, e, sp.rules);
@@ -252,13 +303,15 @@ pub fn schedule() -> Schedule {
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
     // The damage queued since the last tick (a blow, a fall, a hazard) is applied first: its recoil is integrated by
     // this tick's physics, as a mob's hurt precedes its tick.
-    s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, fluid_update, pathfind, follow, path_ended, move_control, breathing, wall_check, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
+    s.add_systems((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, fluid_update, pathfind, follow, path_ended, move_control, breathing, wall_check, crate::fall_reset::fall_reset, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain());
     s.add_systems(cramming.after(apply_pushes));
+    s.add_systems(crate::cow::health::rain_out.after(crate::cow::health::hazard_tick));
     s.add_systems(crate::breath_cloud::tick_live.after(apply_pushes));
     crate::goals::register(&mut s);
     s.add_systems(crate::despawn::step.after(crate::goals::online_events).before(player_near));
     s.add_systems(crate::spawning::step.after(crate::goals::online_events).before(player_near));
     crate::farm::register(&mut s);
+    crate::hand_over::register(&mut s);
     crate::projectile::register(&mut s);
     crate::brain::register(&mut s);
     crate::item::register(&mut s);
@@ -274,6 +327,7 @@ pub fn schedule() -> Schedule {
     crate::fishing_hook::register(&mut s);
     crate::inside::register(&mut s);
     crate::inside_effects::register(&mut s);
+    crate::landing_trample::register(&mut s);
     crate::inside_more::register(&mut s);
     crate::poi::register(&mut s);
     crate::block_watch::register(&mut s);
@@ -281,6 +335,7 @@ pub fn schedule() -> Schedule {
     crate::tame::register(&mut s);
     crate::mount::register(&mut s);
     crate::hostile::register(&mut s);
+    crate::behaviours::bed::register(&mut s);
     crate::seat::register(&mut s);
     crate::boat_tick::register(&mut s);
     crate::boat_effects::register(&mut s);
@@ -288,10 +343,13 @@ pub fn schedule() -> Schedule {
     crate::cart_variants::register(&mut s);
     crate::general::register(&mut s);
     crate::stuck::register(&mut s);
+    crate::gliding::register(&mut s);
     crate::colony_register::register(&mut s);
     crate::raids::register(&mut s);
     crate::tnt_tick::register(&mut s);
     crate::move_events::register(&mut s);
+    crate::nav_supplied::register(&mut s);
+    crate::behaviours::glow_particles::register(&mut s);
     crate::vehicle_push::register(&mut s);
     s
 }

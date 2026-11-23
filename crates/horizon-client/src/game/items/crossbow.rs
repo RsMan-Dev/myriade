@@ -423,7 +423,7 @@ mod tests {
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
         root: &std::path::Path,
     ) -> (Game<'a>, [f64; 3]) {
-        use crate::game::{Audio, Options, Progress, Settings, load_resources};
+        use crate::game::{Options, Progress, Settings, load_resources};
         let settings = Settings::default();
         let loaded = load_resources(
             horizon_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -432,33 +432,41 @@ mod tests {
             root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.to_path_buf();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let res = resources.insert(loaded.resources);
         let mut game = Game::new(
             res,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.creative = true;
-        game.player = Some(
-            horizon_client::motion::PlayerMotion::new(
-                game.motion,
-                horizon_core::geometry::Vec3::new(10.5, 64.0, -3.25),
-            )
-            .unwrap(),
-        );
-        let p = game.player.as_ref().expect("a player").position;
         game.audio.capture = Some(Vec::new());
-        (game, [p.x, p.y, p.z])
+        (game, [10.5, 64.0, -3.25])
+    }
+
+    /// `game_with_player`, with the body run as a creative guest standing at its feet; `f` gets the feet.
+    fn with_creative_guest(f: impl FnOnce(&mut Game<'_>, [f64; 3])) {
+        let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
+        let mut resources = None;
+        let (mut game, feet) = game_with_player(&mut resources, &root);
+        let [x, y, z] = feet;
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(
+            &mut game,
+            horizon_core::geometry::Vec3::new(x, y, z),
+            |game| {
+                game.creative = true;
+                f(game, feet)
+            },
+        );
     }
 
     /// `BowItem.releaseUsing` and `CrossbowItem.performShooting` play the shot
@@ -468,9 +476,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn bow_and_crossbow_shots_sound_at_the_feet_not_the_eye() {
-        let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        let mut resources = None;
-        let (mut game, feet) = game_with_player(&mut resources, &root);
+        with_creative_guest(|game, feet| {
         let eye = game.eye_position().unwrap();
         assert_ne!(eye, feet);
 
@@ -496,6 +502,7 @@ mod tests {
             .map(|s| s.position)
             .collect();
         assert_eq!(at, vec![feet]);
+        });
     }
 
     /// `Projectile.applyOnProjectileSpawned` runs `EnchantmentHelper.onProjectileSpawned`
@@ -505,9 +512,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_flame_crossbow_shoots_burning_arrows() {
-        let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        let mut resources = None;
-        let (mut game, _) = game_with_player(&mut resources, &root);
+        with_creative_guest(|game, _| {
         // Shoots a crossbow with `enchantments` and one arrow loaded per shot,
         // and returns how long each new arrow burns for.
         let mut shoot = |enchantments: &[&str], shots: usize| -> Vec<i32> {
@@ -532,6 +537,7 @@ mod tests {
             shoot(&["minecraft:flame", "minecraft:multishot"], 3),
             vec![2000; 3]
         );
+        });
     }
 
     /// A charge that crosses a point between two ticks plays that point's

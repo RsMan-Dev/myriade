@@ -2,4 +2,4 @@
 use super::Def;
 use crate::behaviours::Cap;
 
-pub static DEF: Def = Def { name: "minecraft:experience_orb", caps: Some(&[Cap::Transform]), ..Def::EMPTY };
+pub static DEF: Def = Def { sound_source: super::SoundCategory::Ambient, name: "minecraft:experience_orb", caps: Some(&[Cap::Transform]), ..Def::EMPTY };

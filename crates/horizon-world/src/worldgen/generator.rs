@@ -237,7 +237,7 @@ pub struct ProtoChunk {
     full: bool,
 }
 impl ProtoChunk {
-    /// Its own heap bytes by part (`horizon-ctl memory`): packed blocks,
+    /// Its own heap bytes by part (the control socket's `memory`): packed blocks,
     /// section palettes and lists, heightmaps, other terrain data, biomes,
     /// and the box with its structure lists (the starts it shares not counted).
     pub fn heap_bytes(&self) -> [usize; 6] {
@@ -1844,7 +1844,7 @@ trait SeededPipeline: Send + Sync {
         region: &mut [ProtoChunk; 9],
     ) -> Result<DecorateStats, GeneratorError>;
     fn data(&self) -> &Arc<GeneratorData>;
-    /// What the shared caches hold, for `horizon-ctl memory`.
+    /// What the shared caches hold, for the control socket's `memory`.
     fn cache_census(&self) -> CacheCensus {
         CacheCensus::default()
     }
@@ -2729,7 +2729,7 @@ impl OverworldGenerator {
     pub fn set_saved_starts(&self, source: Arc<SavedStructureStarts>) {
         self.pipeline.set_saved_starts(source);
     }
-    /// What the shared caches hold, for `horizon-ctl memory`.
+    /// What the shared caches hold, for the control socket's `memory`.
     pub fn cache_census(&self) -> CacheCensus {
         self.pipeline.cache_census()
     }

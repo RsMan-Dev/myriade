@@ -58,28 +58,15 @@ class ParityRunnerTests(unittest.TestCase):
 
     def test_prebuild_follows_a_moved_target_without_losing_features(self):
         selection = ["-p", "horizon-client", "--no-default-features", "--features", "horizon-client/rng-trace"]
-        artifacts = [["example", "client_probe", "fast", selection, True],
-                     ["bin", "horizon-ctl", "fast", selection, False]]
-        packages = {("example", "client_probe"): "horizon-client-lib", ("bin", "horizon-ctl"): "horizon-client-lib"}
+        artifacts = [["example", "client_probe", "fast", selection, True]]
+        packages = {("example", "client_probe"): "horizon-client-lib"}
         commands = parity.prebuild_commands(artifacts, packages)
-        self.assertEqual(len(commands), 2)
+        self.assertEqual(len(commands), 1)
         for command in commands:
             self.assertEqual(command[:5], ["cargo", "build", "--locked", "--profile", "fast"])
             self.assertEqual(command[5:5 + len(selection)], selection)
             self.assertEqual(command[5 + len(selection):7 + len(selection)], ["-p", "horizon-client-lib"])
         self.assertEqual(artifacts[0][3], selection)
-
-    def test_old_broad_client_selections_include_the_moved_targets(self):
-        packages = {("bin", "horizon-client"): "horizon-client", ("bin", "horizon-ctl"): "horizon-client-lib",
-                    ("example", "client_probe"): "horizon-client-lib"}
-        for flag in ["--bins", "--examples"]:
-            command = ["cargo", "build", "-p", "horizon-client", "--no-default-features", flag]
-            artifacts = parity.artifacts_of(command)
-            before = [list(artifact[3]) for artifact in artifacts]
-            self.assertEqual(parity.prebuild_commands(artifacts, packages),
-                             [["cargo", "build", "--locked", "--profile", "dev", "-p", "horizon-client",
-                               "--no-default-features", "-p", "horizon-client-lib", flag]])
-            self.assertEqual([artifact[3] for artifact in artifacts], before)
 
     def test_prebuild_repeats_each_harness_selection(self):
         artifacts = [
@@ -909,7 +896,6 @@ class ParityRunnerTests(unittest.TestCase):
     def test_named_only_harnesses_are_listed_from_the_host_config(self):
         self.assertEqual(parity.named_only({"named_only": {"lan_integration": "slow"}}), {"lan_integration": "slow"})
         self.assertEqual(parity.named_only({}), {})
-        self.assertIn("lan_integration", parity.named_only(parity.host_config()))
 
     def test_a_pass_from_another_worktree_counts_only_for_the_same_content(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -2340,16 +2326,14 @@ class SoloTests(unittest.TestCase):
 
 class ClashTests(unittest.TestCase):
     """On Windows, harnesses that build one program with different selections don't run at once."""
-    PACKAGES = {("bin", "horizon-client"): "horizon-client", ("bin", "horizon-ctl"): "horizon-client-lib",
-                ("example", "client_probe"): "horizon-client-lib"}
+    PACKAGES = {("bin", "horizon-client"): "horizon-client", ("example", "client_probe"): "horizon-client-lib"}
     SERVER = ["bin", "horizon-client", "fast", ["-p", "horizon-client"], False]
     BOTH = ["bins", "", "fast", ["-p", "horizon-client", "-p", "horizon-client-lib"], False]
     PROBE = ["example", "client_probe", "dev", ["-p", "horizon-client-lib"], True]
 
     def test_a_run_naming_every_bin_builds_those_of_its_packages(self):
         self.assertEqual(parity.executables([self.BOTH], self.PACKAGES), {
-            ("bin", "horizon-client", "fast"): (("-p", "horizon-client", "-p", "horizon-client-lib"), False),
-            ("bin", "horizon-ctl", "fast"): (("-p", "horizon-client", "-p", "horizon-client-lib"), False)})
+            ("bin", "horizon-client", "fast"): (("-p", "horizon-client", "-p", "horizon-client-lib"), False)})
 
     def test_another_selection_of_a_running_harness_program_waits(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(parity, "STATE_DIR", Path(tmp)):

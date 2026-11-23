@@ -28,5 +28,6 @@ pub static DEF: Def = Def {
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
     locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: true, control: swim::Control::Guardian, push: swim::Push::Fixed(0.1), ..swim::Params::DEFAULT }))],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

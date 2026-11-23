@@ -2,27 +2,24 @@
 """Decides when Horizon releases, names the release and writes its notes (.github/workflows/release.yml).
 
     python3 tools/release_train.py decide --kind game [--head SHA] [--force]
-    python3 tools/release_train.py decide --kind launcher
     python3 tools/release_train.py notes --kind game --tag v2026.10.15 --out dist/notes
     python3 tools/release_train.py gate --kind game --smoke dist/smoke-test.json [--blockers]   # before publishing
 
 The game ships only the Nightly since 2026-10-28 (Ludovic): when `decide --kind game` says so, release.yml starts
 `nightly build` on the commit it decided (tools/ci/nightly.py), and "the last release" is the published Nightly.
-A kind releases when a pull request merged into main since its last published release changed one of its
-player-facing paths (GAME_PATHS, LAUNCHER_RELEASE_PATHS), once BATCH of them are waiting and the newest merged at least
-DEBOUNCE ago (a burst of merges becomes one release), or once the oldest has waited MAX_WAIT (LAUNCHER_MAX_WAIT for the launcher: a lone fix still ships),
+A release goes out when a pull request merged into main since the last published release changed one of its
+player-facing paths (GAME_PATHS), once BATCH of them are waiting and the newest merged at least
+DEBOUNCE ago (a burst of merges becomes one release), or once the oldest has waited MAX_WAIT,
 or at once when one of those pull requests is labelled release-now. Pull requests labelled skip-release (work players don't see) don't count
 towards a release and aren't listed in the notes. RELEASES_PAUSED=1 (a repository variable) stops automatic releases,
 and an open issue labelled release-blocker stops game releases, even forced ones, until it is closed.
 
 Tags (docs/versioning.md): with a release line in .github/release-line.txt (MAJOR.MINOR, e.g. 0.2), game releases
-are vMAJOR.MINOR.PATCH and launcher releases launcher@MAJOR.MINOR.PATCH, each the patch after the last tag of its kind
-on the line (MAJOR.MINOR.0 first: a line's first release goes out without waiting for a pull request). Without the
-file, the tags from before 0.2: vYYYY.MM.DD, then .01, .02 the same UTC day, and launcher-vX.Y.Z, the patch after
-the last launcher tag or the next minor when a merged pull request is labelled feature. Every 0.2 tag is newer than
-every tag from before (tag_key). Notes:
+are vMAJOR.MINOR.PATCH, the patch after the last tag on the line (MAJOR.MINOR.0 first: a line's first release goes
+out without waiting for a pull request). Without the file, the tags from before 0.2: vYYYY.MM.DD, then .01, .02 the
+same UTC day. Every 0.2 tag is newer than every tag from before (tag_key). Notes:
 "### New" lists the pull requests labelled feature, "### Fixed" the others, "### Known issues" the bullets of
-docs/known-issues.md. Every release is published as the release, GitHub's latest, which launchers, servers and
+docs/known-issues.md. Every release is published as the release, GitHub's latest, which servers and
 install.sh take at once; one channel, no promotion. A game release is published only after `gate`: its smoke test
 passed and no release-blocker is open. Notes cover everything since the last published release; the game
 pre-releases of the old Alpha channel (v0.2.1 on) don't count, so the first release after them lists all of
@@ -49,10 +46,6 @@ MAINTAINER = "ludovic111"
 BATCH = 5
 DEBOUNCE = dt.timedelta(minutes=5)
 MAX_WAIT = dt.timedelta(hours=6)
-# The launcher waits an hour at most: a fix to installs or updates is what players are waiting for, and a launcher
-# release updates itself without touching worlds (2026-11-17: the Voltz install fix sat merged, "3 of 5 pull
-# requests: waiting for more, or 234 more minutes", while players couldn't install the mod).
-LAUNCHER_MAX_WAIT = dt.timedelta(hours=1)
 # Kept as typed in release titles, where the clauses after the first are lowercased.
 PROPER = {"Horizon", "Horizon's", "Minecraft", "Mojang", "Microsoft", "Java", "Xbox", "PlayStation", "Steam", "Windows",
           "Linux", "LAN", "Kira", "Discord", "Wayland", "Hyprland", "F3", "GUI", "UI"}
@@ -63,98 +56,16 @@ SEMVER = r"(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
 # Semver's majors stay below this; a date tag's first number is a year.
 FIRST_YEAR = 1000
 GAME_PREFIX = "v"
-LAUNCHER_PREFIX = "launcher@"
-OLD_LAUNCHER_PREFIX = "launcher-v"
 
 # What players run. Documentation (*.md), tests, benchmarks and harness probes (examples/) never count.
 GAME_PATHS = ["crates/", "xtask/", "packaging/", "Cargo.toml", "Cargo.lock", "research-lock.json"]
-# Every crate the launcher builds in: the path packages its manifest reaches, through dependencies of any kind of the
-# launcher and normal and build dependencies of each crate after it (tests/test_release_train.py fails when they differ).
-# It decides only whether the launcher's checks and build run (tools/ci/rust_changes.py, tools/pr_ready.py, launcher.yml);
-# LAUNCHER_RELEASE_PATHS below decides releases.
-LAUNCHER_PATHS = [
-    "launcher/",
-    "crates/horizon-addresses/",
-    "crates/horizon-anticheat/",
-    "crates/horizon-assets/",
-    "crates/horizon-bench/",
-    "crates/horizon-chat-filter/",
-    "crates/horizon-core/",
-    "crates/horizon-cosmetics/",
-    "crates/horizon-friends/",
-    "crates/horizon-game-discovery/",
-    "crates/horizon-guest-stack/",
-    "crates/horizon-hooks/",
-    "crates/horizon-java-properties/",
-    "crates/horizon-mcp/",
-    "crates/horizon-mod-api-gen/",
-    "crates/horizon-mod-api-macros/",
-    "crates/horizon-mod-package/",
-    "crates/horizon-mod-point-emit/",
-    "crates/horizon-mod-point-shape/",
-    "crates/horizon-mod-runtime/",
-    "crates/horizon-mod-source/",
-    "crates/horizon-mod-surface/",
-    "crates/horizon-mod-vocab/",
-    "crates/horizon-perf-format/",
-    "crates/horizon-platform/",
-    "crates/horizon-port-pack/",
-    "crates/horizon-prepare/",
-    "crates/horizon-protocol/",
-    "crates/horizon-release-sign/",
-    "crates/horizon-server-files/",
-    "crates/horizon-server-launch/",
-    "crates/horizon-shader-api/",
-    "crates/horizon-system/",
-    "crates/horizon-telemetry/",
-    "crates/horizon-theme/",
-    "crates/horizon-threads/",
-    "crates/horizon-world/",
-    # Its icon, its menu entries and its AppImage are compiled or packaged into a release
-    # (launcher/build.rs, src/desktop.rs, packaging/linux/appimage.sh).
-    "packaging/icons/",
-    "packaging/linux/",
-    # launcher.yml's macOS build packages Horizon.app and the .dmg with packaging/macos/package.sh.
-    "packaging/macos/",
-]
-# What counts toward a launcher release (player_facing). Deliberately narrower than LAUNCHER_PATHS: the checks must see
-# every crate the launcher compiles, but a release for each change to the other 26 (horizon-world, horizon-core...)
-# would mean about 60% more launcher releases, more auto-updates for players and more release jobs on the Mac that
-# parity and Nightlies need; at about 47 releases a week such changes ship within hours anyway. Don't widen it to match.
-LAUNCHER_RELEASE_PATHS = [
-    "launcher/",
-    "crates/horizon-bench/",
-    "crates/horizon-friends/",
-    "crates/horizon-mcp/",
-    "crates/horizon-mod-api-gen/",
-    "crates/horizon-mod-package/",
-    "crates/horizon-port-pack/",
-    "crates/horizon-prepare/",
-    "crates/horizon-release-sign/",
-    "crates/horizon-system/",
-    "crates/horizon-theme/",
-    # Its icon, its menu entries and its AppImage are compiled or packaged into a release
-    # (launcher/build.rs, src/desktop.rs, packaging/linux/appimage.sh).
-    "packaging/icons/",
-    "packaging/linux/",
-    # launcher.yml's macOS build packages Horizon.app and the .dmg with packaging/macos/package.sh.
-    "packaging/macos/",
-]
-LAUNCHER_IGNORED = ["launcher/links.json", "launcher/docs/", "launcher/tests/"]
-
 # A game release is GitHub's latest (servers and install.sh follow it), so it is the first release people land on:
-# its notes open with the way to the launcher (#1647). Raw HTML on one line, which GitHub shows and every launcher's
-# notes view and one-line summary skip (pulldown-cmark's HTML events), so launchers never tell players to get
-# themselves. The site's Releases page leaves it out too.
+# its notes open with a banner for players (#1647). Raw HTML on one line, which GitHub shows and every
+# notes view and one-line summary skip (pulldown-cmark's HTML events). The site's Releases page leaves it out too.
 # The same warning closes the notes, above the disclaimer, for whoever scrolls past the changes to the files.
-PLAYERS_FOOTER = ('<h1>Want to play? Download the <a href="https://playhorizon.dev">Horizon launcher</a>.</h1>'
-                  '<h1>Do NOT run the files below. They will not work on their own.</h1>')
-PLAYERS = (PLAYERS_FOOTER + '<p>The launcher installs this version and keeps it up to date. You need your own copy of '
-           'Minecraft: Java Edition. The files below are what the launcher installs, and the dedicated server for '
-           'people who host one.</p>')
-LAUNCHER_FOOTER = ("Your launcher updates itself. New here? On Linux take the .AppImage below, make it executable "
-                   "and run it; on Windows and macOS download the archive, extract it and run `horizon-launcher` "
-                   "(Horizon.app on macOS). Website: https://playhorizon.dev")
+PLAYERS_FOOTER = '<h1>Do NOT run the files below. They will not work on their own.</h1>'
+PLAYERS = (PLAYERS_FOOTER + '<p>You need your own copy of Minecraft: Java Edition. The files below are the game and the dedicated '
+           'server for people who host one.</p>')
 DISCLAIMER = "Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft."
 # An open issue with this label holds every game release (docs/release-flow.md). Only people who can triage the
 # repository can add it, and the issue's text is never read: its author could edit it afterwards.
@@ -185,10 +96,8 @@ def exporters():
 
 def player_facing(path, kind, exporter_paths=frozenset()):
     """Whether a change to path ships to players in a release of this kind."""
-    if path.endswith(".md") or re.match(r"(crates|launcher)/([\w-]+/)?(examples|tests|benches)/", path):
+    if path.endswith(".md") or re.match(r"crates/([\w-]+/)?(examples|tests|benches)/", path):
         return False
-    if kind == "launcher":
-        return any(path.startswith(p) for p in LAUNCHER_RELEASE_PATHS) and not any(path.startswith(p) for p in LAUNCHER_IGNORED)
     return any(path == p or path.startswith(p) for p in GAME_PATHS) or path in exporter_paths
 
 
@@ -204,15 +113,11 @@ def is_game_tag(tag):
     return re.fullmatch(r"v\d{4}\.\d{2}\.\d{2}(\.\d+)?", tag) is not None or semver(tag, GAME_PREFIX) is not None
 
 
-def is_launcher_tag(tag):
-    return re.fullmatch(r"launcher-v\d+\.\d+\.\d+", tag) is not None or semver(tag, LAUNCHER_PREFIX) is not None
-
-
 def tag_key(tag):
-    """A tag's place among releases (docs/versioning.md): the tags from before 0.2 (vYYYY.MM.DD[.N],
-    launcher-vX.Y.Z) by their numbers, trailing zeros dropped (v2026.10.19 is v2026.10.19.0); then every 0.2 tag
-    (vX.Y.Z, launcher@X.Y.Z) in semver's order, a pre-release (v0.3.0-rc.1) before its release."""
-    version = semver(tag, GAME_PREFIX) or semver(tag, LAUNCHER_PREFIX)
+    """A tag's place among releases (docs/versioning.md): the tags from before 0.2 (vYYYY.MM.DD[.N])
+    by their numbers, trailing zeros dropped (v2026.10.19 is v2026.10.19.0); then every 0.2 tag (vX.Y.Z) in semver's
+    order, a pre-release (v0.3.0-rc.1) before its release."""
+    version = semver(tag, GAME_PREFIX)
     if version is None:
         numbers = [int(part) for part in re.findall(r"\d+", tag)]
         while numbers and numbers[-1] == 0:
@@ -268,15 +173,6 @@ def next_game_tag(tags, today, line=None):
     return f"{day}.{max(int(tag.split('.')[3]) if tag.count('.') == 3 else 0 for tag in taken) + 1:02d}"
 
 
-def next_launcher_tag(tags, minor, line=None):
-    """launcher@MAJOR.MINOR.PATCH on a release line (a feature doesn't change the line); before 0.2,
-    launcher-vX.Y.Z, the next patch or with minor the next minor."""
-    if line:
-        return next_on_line(tags, LAUNCHER_PREFIX, line)
-    versions = sorted((tuple(int(part) for part in re.findall(r"\d+", tag)) for tag in tags
-                       if tag.startswith(OLD_LAUNCHER_PREFIX) and is_launcher_tag(tag)), reverse=True)
-    major, minor_, patch = versions[0] if versions else (0, 1, 0)
-    return f"launcher-v{major}.{minor_ + 1}.0" if minor else f"launcher-v{major}.{minor_}.{patch + 1}"
 
 
 def merged_pull_requests(base, head):
@@ -353,14 +249,13 @@ def open_blockers():
 
 
 def smoke_problem(report):
-    """Why a release smoke test's report (the game's --smoke-report) fails, or None when the game drew a world."""
+    """Why a release smoke test's report (tools/ci/game_smoke.sh) fails, or None when the dedicated server started."""
     if report is None:
         return "no smoke-test.json: the release smoke test did not run"
     if report.get("error") is not None:
         return f"the smoke run failed: {report['error']}"
-    if report.get("frames", 0) < 1500 or not report.get("chunks") or not report.get("meshed_sections") \
-            or not report.get("player"):
-        return "the smoke run did not draw a world"
+    if not report.get("started"):
+        return "the smoke run did not start the dedicated server"
     return None
 
 
@@ -373,8 +268,7 @@ def gate(report, blockers):
 
 
 def last_release(releases, kind):
-    keep = is_game_tag if kind == "game" else is_launcher_tag
-    ours = [release for release in releases if keep(release["tag_name"])]
+    ours = [release for release in releases if is_game_tag(release["tag_name"])]
     return max(ours, key=lambda release: tag_key(release["tag_name"]), default=None)
 
 
@@ -386,7 +280,7 @@ def decision(kind, prs, now, paused=False, force=False, new_line=None, blockers=
     counted = [pr for pr in prs if pr["paths"] and "skip-release" not in pr["labels"]]
     urgent = [pr for pr in counted if "release-now" in pr["labels"]]
     merged = [pr["merged_at"] for pr in counted if pr.get("merged_at")]
-    max_wait = LAUNCHER_MAX_WAIT if kind == "launcher" else MAX_WAIT
+    max_wait = MAX_WAIT
     hours = max_wait.seconds // 3600
     if blockers:
         return False, "held by " + ", ".join(f"release-blocker #{number}" for number in blockers)
@@ -479,19 +373,16 @@ def known_issues(path=ROOT / "docs" / "known-issues.md"):
 
 def line_intro(kind, version, previous):
     """The paragraph a line's first release (X.Y.0) opens with; the first after the dated tags says what changed."""
-    found = semver(version, GAME_PREFIX if kind == "game" else LAUNCHER_PREFIX)
+    found = semver(version, GAME_PREFIX)
     if not found or found[2] != 0 or found[3] is not None:
         return None
     line = f"{found[0]}.{found[1]}"
-    if previous and semver(previous, GAME_PREFIX if kind == "game" else LAUNCHER_PREFIX):
+    if previous and semver(previous, GAME_PREFIX):
         return f"The first release of Horizon {line}."
-    if kind == "launcher":
-        return (f"The launcher is numbered with the game from now on: this is launcher {line}.0, the release after "
-                f"launcher {(previous or '').removeprefix(OLD_LAUNCHER_PREFIX) or '0.16'}. Your launcher takes it by itself.")
     before = (previous or "").removeprefix(GAME_PREFIX)
     return (f"Horizon is numbered from now on: this is Horizon {line}.0" + (f", the release after {before}" if before else "")
             + ". Releases used to be named after the day they came out; from now on they count up from "
-            f"{line}.0, and the launcher's too. The launcher installs it by itself once it has updated itself. A server "
+            f"{line}.0. A server "
             "installed with install.sh that still says it is up to date takes it with "
             f"`horizon-server update --version {version}`.")
 
@@ -501,12 +392,9 @@ def notes(kind, version, prs, issues, previous=None):
     shown = [pr for pr in prs if pr["paths"] and "skip-release" not in pr["labels"]]
     new = [pr for pr in shown if "feature" in pr["labels"]]
     fixed = [pr for pr in shown if "feature" not in pr["labels"]]
-    if kind == "game":
-        title = f"Horizon {version.removeprefix(GAME_PREFIX)}" + (f": {summary(new, fixed)}" if shown else "")
-    else:
-        title = f"Horizon launcher {version.removeprefix(OLD_LAUNCHER_PREFIX).removeprefix(LAUNCHER_PREFIX)}"
+    title = f"Horizon {version.removeprefix(GAME_PREFIX)}" + (f": {summary(new, fixed)}" if shown else "")
     intro = line_intro(kind, version, previous)
-    parts = [PLAYERS] if kind == "game" else []
+    parts = [PLAYERS]
     if intro:
         parts.append(intro)
     if not shown:
@@ -515,15 +403,12 @@ def notes(kind, version, prs, issues, previous=None):
         parts.append("### New\n" + "\n".join(map(bullet, new)))
     if fixed:
         parts.append("### Fixed\n" + "\n".join(map(bullet, fixed)))
-    if issues and kind == "game":
+    if issues:
         parts.append("### Known issues\n" + "\n".join(issues))
     contributors = sorted({pr["author"] for pr in shown if pr["author"] and pr["author"] != MAINTAINER})
     if contributors:
         parts.append("### Contributors\nThanks to " + ", ".join(f"@{name}" for name in contributors) + ".")
-    if kind == "launcher":
-        parts.append(LAUNCHER_FOOTER)
-    if kind == "game":
-        parts.append(PLAYERS_FOOTER)
+    parts.append(PLAYERS_FOOTER)
     parts.append("---\n" + DISCLAIMER)
     return title, "\n\n".join(parts) + "\n"
 
@@ -656,7 +541,7 @@ def write_outputs(values):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=["decide", "notes", "gate"])
-    parser.add_argument("--kind", choices=["game", "launcher"], required=True)
+    parser.add_argument("--kind", choices=["game"], required=True)
     parser.add_argument("--head", help="the commit to release (default: the newest commit on main whose checks passed)")
     parser.add_argument("--tag", help="notes: the release's tag")
     parser.add_argument("--force", action="store_true", help="release even without player-facing changes, before merges settle, while paused or before parity-main passed")
@@ -707,8 +592,7 @@ def main():
 
     tags = run("git", "tag", "--list").split()
     line = release_line()
-    prefix = GAME_PREFIX if args.kind == "game" else LAUNCHER_PREFIX
-    new_line = f"{line[0]}.{line[1]}" if line and first_on_line(tags, prefix, line) and not nightly else None
+    new_line = f"{line[0]}.{line[1]}" if line and first_on_line(tags, GAME_PREFIX, line) and not nightly else None
     blockers = open_blockers() if args.kind == "game" else []
     release, reason = decision(args.kind, prs, now, os.environ.get("RELEASES_PAUSED") == "1", args.force, new_line,
                                blockers)
@@ -718,8 +602,7 @@ def main():
     if args.kind == "game":
         release, reason, urgent = nightly_decision(release, reason, prs, nightly_building(now),
                                                    len(nightly_builds_today(now.date().isoformat())), args.force)
-    minor = any("feature" in pr["labels"] for pr in prs if pr["paths"])
-    tag = "nightly" if args.kind == "game" else next_launcher_tag(tags, minor, line)
+    tag = "nightly"
     result = {
         "release": release, "reason": reason, "tag": tag, "head": head, "urgent": urgent,
         "last": last["tag_name"] if last else None, "last_published": last["published_at"] if last else None,

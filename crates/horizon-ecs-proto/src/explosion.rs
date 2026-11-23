@@ -277,12 +277,13 @@ fn explode_full(w: &mut World, b: Blast, breaks_blocks: bool, skull: bool) {
         let (dx, dy, dz) = (feet.x - b.at.x, eye - b.at.y, feet.z - b.at.z);
         let l = (dx * dx + dy * dy + dz * dz).sqrt();
         let dir = if l < 1.0e-4 { Vec3::ZERO } else { Vec3::new(dx / l, dy / l, dz / l) };
-        let pow = push_power(dist, exposure);
+        // `ServerExplosion.hurtEntities`: the push is scaled by 1 minus the entity's explosion knockback resistance (0 for a non-living).
+        let pow = push_power(dist, exposure) * (1.0 - crate::attr_mod::read(w, c, "explosion_knockback_resistance", 0.0).clamp(0.0, 1.0));
         // `ItemEntity.hurtServer`: no damage when a mob blasts with mob griefing off, nor to a stack that resists the blast; still pushed.
         let item = w.get::<crate::item::Item>(c).is_some();
         let spared_item = item && ((mob_source && !griefs) || w.get::<crate::item::BlastResist>(c).is_some() || w.get_resource::<ExplosionSpared>().is_some_and(|s| s.0.contains(&c)));
         if !spared_item {
-            w.resource_mut::<DamageQueue>().add_from(c, blast_damage(dist, exposure, diameter), Cause::Blast, (b.at.x, b.at.z));
+            w.resource_mut::<DamageQueue>().add_blast(c, blast_damage(dist, exposure, diameter), (b.at.x, b.at.z), b.source.is_some());
         }
         if let Some(mut v) = w.get_mut::<Vel>(c) {
             v.0 = Vec3::new(v.0.x + dir.x * pow, v.0.y + dir.y * pow, v.0.z + dir.z * pow);

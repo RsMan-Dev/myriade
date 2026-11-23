@@ -25,7 +25,6 @@ fn values(game: &Game<'_>) -> Vec<u32> {
 #[ignore = "daily"]
 fn query_snapshot_dimension_and_stale_writes() {
     with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         assert!(values(game).is_empty());
         game.world
@@ -81,7 +80,6 @@ fn query_snapshot_dimension_and_stale_writes() {
 #[ignore = "daily"]
 fn query_writes_join_transaction_journal_without_implicit_commit() {
     with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         game.world
             .chunks

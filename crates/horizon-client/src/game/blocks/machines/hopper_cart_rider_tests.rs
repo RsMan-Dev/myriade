@@ -56,6 +56,7 @@ fn a_ridden_hopper_cart_takes_one_item_a_tick() {
     chest(&mut game, 12);
     spawn_hopper(&mut game, 1, [8.5, 64.0625, 8.5]);
     spawn_hopper(&mut game, 2, [12.5, 64.0625, 8.5]);
+    // TODO(phase 2): joueur agissant = invité impossible ici : `/ride` et `game.riding` lisent le joueur local (Target::Player) hors tour, et `tick_cart_riding` garde le joueur posé sur le Game ; à convertir quand le monté d'un invité sera exposé.
     game.player = Some(
         horizon_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.5, 8.5)).unwrap(),
     );

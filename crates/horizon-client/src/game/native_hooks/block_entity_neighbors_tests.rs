@@ -53,7 +53,6 @@ fn installed_block_entity_neighbor_parts_dispatch_through_game() {
                 directory.path().to_path_buf(),
                 horizon_client::save::LevelShape::OVERWORLD,
             ));
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -129,7 +128,6 @@ fn block_entity_neighbor_traversal_keeps_far_chunk_unloaded() {
     mod_platform::testing::with_mods(mods.clone(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world.chunks.clear();
             game.world
                 .chunks

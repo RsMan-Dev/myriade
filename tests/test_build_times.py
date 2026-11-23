@@ -90,7 +90,6 @@ class TimingsTests(unittest.TestCase):
         self.assertEqual(bt.unit_label(unit(0, "horizon-client", 0, 1)), "horizon-client")
         # cargo before 1.99 puts the kind first
         self.assertEqual(bt.unit_label(unit(0, "horizon-client", 0, 1, target=' bin "horizon-client"')), "horizon-client (bin)")
-        self.assertEqual(bt.unit_label(unit(0, "horizon-client", 0, 1, target=' bin "horizon-ctl"')), "horizon-client (bin horizon-ctl)")
 
     def test_pages_of_older_cargo_give_the_same_critical_path(self):
         # Up to 1.92 cargo writes unlocked_units / unlocked_rmeta_units, and rmeta_time instead of sections.

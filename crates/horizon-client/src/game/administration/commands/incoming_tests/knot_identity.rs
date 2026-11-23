@@ -28,20 +28,19 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let res = resources.insert(loaded.resources);
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();
@@ -54,6 +53,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
             .add_empty_chunk(ChunkPos::new(x, 0))
             .unwrap();
     }
+    // TODO(phase 2): fixture sans hub : le test exige game.lan absent avant host(), lan_guests_on l'ouvrirait (knot_identity.rs:57)
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(12.5, 201.0, 2.5)).unwrap());
     for command in [
         "forceload add 0 0 31 15",
@@ -127,7 +127,6 @@ fn host(game: &mut Game<'_>) {
             allow_flight: false,
             seed: 0,
             max_players: 2,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         },

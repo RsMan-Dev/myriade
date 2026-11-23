@@ -8,8 +8,7 @@ pub trait Hooks {
     /// `RecipePropertyAddition` per set to add to; the vanilla recipes' own
     /// items stay in. Called once per load, after the recipes are resolved, with
     /// the `DataLoadContext` of the load that owns them (`origin()`
-    /// `ServerDataLoad` on a server, `ClientPreload` on a client's own load),
-    /// and again after `/reload`. A new namespaced key creates a set when its
+    /// `ServerDataLoad`), and again after `/reload`. A new namespaced key creates a set when its
     /// namespace belongs to the listener's manifest (its ID or `namespaces`).
     /// Later listeners may extend existing sets. Invalid or foreign new keys,
     /// unknown vanilla keys, and air are logged and skipped; unknown items are

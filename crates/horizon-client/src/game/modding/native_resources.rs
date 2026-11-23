@@ -25,9 +25,7 @@ impl Game<'_> {
                 sources.push(&self.pack.data_source);
             }
             sources.push(&self.pack.data_changes);
-            if self.options.execution_role.is_logical_server() {
-                sources.extend(self.fns.pack_sources().rev());
-            }
+            sources.extend(self.fns.pack_sources().rev());
             ("data", sources)
         };
         let name = format!("{top}/{}/{}", identifier.namespace(), identifier.path());
@@ -151,24 +149,4 @@ mod tests {
         });
     }
 
-    #[test]
-    #[ignore = "daily"]
-    fn client_assets_read_the_winning_pack_file() {
-        super::super::native_entity_refs::tests::with_client_game(|game| {
-            let bytes = game
-                .resource(
-                    PackType::ClientResources,
-                    &id("minecraft:models/block/stone.json"),
-                )
-                .expect("the vanilla asset pack holds stone's model");
-            assert!(bytes.starts_with(b"{"));
-            assert!(
-                game.resource(
-                    PackType::ClientResources,
-                    &id("minecraft:models/block/not_a_real_model.json")
-                )
-                .is_none()
-            );
-        });
-    }
 }

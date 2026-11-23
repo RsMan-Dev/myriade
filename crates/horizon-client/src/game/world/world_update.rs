@@ -1,16 +1,8 @@
 //! The world update (`update_world`): what arrived from the server, the chunks that
-//! streamed in, the columns that unload (their entities and block entities saved out first);
-//! and the far terrain's reset (`clear_lod`).
+//! streamed in, the columns that unload (their entities and block entities saved out first).
 use super::*;
 
 impl Game<'_> {
-    /// Forgets the server's far terrain state: the next frame asks the source again.
-    pub(super) fn clear_lod(&mut self) {
-        self.lod_source_attempted = false;
-        self.lod_observe.clear();
-        self.far_beacons.clear();
-        self.lod_covered_at = None;
-    }
     pub(in crate::game) fn update_world(&mut self) {
         self.ask_edited_light_emission();
         if let Some(p) = &self.player {

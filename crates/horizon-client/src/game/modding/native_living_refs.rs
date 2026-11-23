@@ -144,13 +144,7 @@ impl Game<'_> {
     /// server's entity, or on a client the local player (`Minecraft.player`),
     /// whose state is the client's copy of what the server sent.
     pub(super) fn native_living_read_target(&self, living: LivingRef) -> Option<Target> {
-        if self.is_logical_server() {
-            return self.native_living_target(living);
-        }
-        match None::<Target>? {
-            Target::Player => Some(Target::Player),
-            _ => None,
-        }
+        self.native_living_target(living)
     }
     /// The effective value of an attribute on a living entity
     /// (`AttributeMap.getValue`). None for an unknown or absent attribute, an
@@ -1119,22 +1113,19 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn durability_handle_and_held_path_share_rng_and_damage() {
-        use horizon_client::motion::PlayerMotion;
         use horizon_core::random::RandomSource;
         use mod_api::ServerHost;
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-            let living = game.living(game.entity(20).unwrap()).unwrap();
+        super::super::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
+            let living = game.living(game.entity(12).unwrap()).unwrap();
             let mut stack = ItemStack::new("minecraft:diamond_sword", 1);
             stack.data_mut().enchantments = vec![("minecraft:unbreaking".into(), 3)];
             game.inventory[game.selected] = Some(stack.clone());
             let random = game.world.random.clone();
             // Before the migration, damage_held called wear and added its result.
-            let old_loss = game.wear(&stack, 20);
+            let old_loss = game.wear(&stack, 12);
             let old_next_random = game.world.random.next_float();
             game.world.random = random.clone();
-            game.damage_held(20);
+            game.damage_held(12);
             let held_result = game.inventory[game.selected].clone();
             let next_random = game.world.random.next_float();
             assert_eq!(held_result.as_ref().unwrap().damage, old_loss);
@@ -1213,14 +1204,11 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn immutable_host_attribute_read_refreshes_live_cache() {
-        use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
         use horizon_world::attributes::{Modifier, Operation};
         use mod_api::Host;
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-            let living = game.living(game.entity(20).unwrap()).unwrap();
+        super::super::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
+            let living = game.living(game.entity(12).unwrap()).unwrap();
             let attributes = &mut game.player.as_mut().unwrap().attributes;
             let key = attributes.key("minecraft:max_health").unwrap();
             let instance = attributes.get_instance(Some(key.clone())).unwrap().unwrap();
@@ -1272,6 +1260,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_handle_lists_its_attributes_and_reads_its_modifiers() {
+        // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : ce test place les mobs 12 et 13, ids déjà pris par l'invité 12)
         use horizon_client::entities::ArmorStand;
         use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
@@ -1384,6 +1373,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn living_reads_answer_the_vanilla_defaults_and_a_gone_entity_reads_none() {
+        // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : ce test place les mobs 12 et 13, ids déjà pris par l'invité 12)
         use horizon_client::entities::ArmorStand;
         use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
@@ -1391,7 +1381,7 @@ mod tests {
             crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [0.0; 3]);
             crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
             // The eight dragon parts must not overlap the player at ID 20.
-            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 40));
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(), &mut || 40));
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             // The vanilla attribute defaults: a player and a zombie 20, an
@@ -1444,6 +1434,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn set_health_journal_restores_nested_player_and_mob_writes() {
+        // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : ce test place le mob 12, id déjà pris par l'invité 12)
         use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -1531,6 +1522,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn absorbed_player_hit_still_remembers_the_living_attacker() {
+        // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : la boucle recrée un joueur d'entité 20 à chaque absorption, uuid 123, attendu dans les sorties)
         use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -1598,6 +1590,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn raw_health_write_can_change_a_dead_entity_but_heal_cannot() {
+        // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : ce test place le mob 12, id déjà pris par l'invité 12)
         use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -1632,13 +1625,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn set_hand_item_writes_the_hands_slot() {
-        use horizon_client::motion::PlayerMotion;
         use mod_api::ServerHost;
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
+        super::super::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
             game.selected = 3;
-            let player = game.living(game.entity(20).unwrap()).unwrap();
+            let player = game.living(game.entity(12).unwrap()).unwrap();
             let sword = ItemStack::new("minecraft:iron_sword", 1);
             let shield = ItemStack::new("minecraft:shield", 1);
             let host: &mut dyn ServerHost = game;
@@ -1767,7 +1757,7 @@ mod tests {
             ));
             assert_eq!(game.living_equipment(horse, EquipmentSlot::Body), None);
             // Reserve the dragon's eight consecutive part IDs away from the stand.
-            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 40));
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(), &mut || 40));
             let dragon = game.living(game.entity(40).unwrap()).unwrap();
             // The dragon and an armor stand store all eight slots, full
             // stacks included, and save them through the real codecs.
@@ -1801,19 +1791,12 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_host_players_body_and_saddle_are_slots_and_saved_in_equipment() {
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_guest_turn_tests::with_acting_guest(horizon_core::geometry::Vec3::ZERO, |game| {
             let owner = Owner::Entity(Target::Player);
             let mut body = ItemStack::new("minecraft:diamond_horse_armor", 1);
             body.damage = 4;
             body.data_mut().custom_name = Some(horizon_core::nbt::Tag::String("armor".into()));
             let saddle = ItemStack::new("minecraft:saddle", 1);
-            game.player = Some(
-                horizon_client::motion::PlayerMotion::new(
-                    game.motion,
-                    horizon_core::geometry::Vec3::ZERO,
-                )
-                .unwrap(),
-            );
             game.audio.capture = Some(Vec::new());
             for (name, stack) in [("armor.body", &body), ("saddle", &saddle)] {
                 let slots = game.slots_named(&owner, name);
@@ -1900,14 +1883,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn player_mod_drop_and_drop_key_have_equivalent_motion() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(
-                horizon_client::motion::PlayerMotion::new(
-                    game.motion,
-                    horizon_core::geometry::Vec3::ZERO,
-                )
-                .unwrap(),
-            );
+        super::super::native_guest_turn_tests::with_acting_guest(horizon_core::geometry::Vec3::ZERO, |game| {
             game.world.chunks.insert(
                 (0, 0),
                 std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
@@ -1921,8 +1897,7 @@ mod tests {
             let (_, seeds) = horizon_client::random_source::record_seeds(|| game.drop_held(true));
             let key_velocity = game.ecs.item_views().pop().unwrap().velocity;
             *game.world.random = horizon_core::random::LegacyRandom::new(12345);
-            crate::game::native_entity_refs::tests::bind_local_player(game, 42, 123);
-            let player = game.living(game.entity(42).unwrap()).unwrap();
+            let player = game.living(game.entity(12).unwrap()).unwrap();
             game.player.as_mut().unwrap().random = player_random;
             let id = horizon_client::random_source::replay_seeds(seeds.clone(), || {
                 game.living_drop(player, item, false, true).unwrap().id()
@@ -1961,11 +1936,7 @@ mod tests {
                 Vec::<ModEntry>::new().into()
             };
             mod_platform::testing::with_mods(mods, || {
-                super::super::native_entity_refs::tests::with_game(|game| {
-                    game.player = Some(
-                        horizon_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap(),
-                    );
-                    super::super::native_entity_refs::tests::bind_local_player(game, 42, 123);
+                super::super::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
                     game.yaw = 0.0;
                     game.pitch = 0.0;
                     game.player.as_mut().unwrap().random.set_seed(12345);
@@ -2049,10 +2020,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_engines_own_portal_melee_freeze_and_air_answers() {
-        use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
         use mod_api::Host;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
             // Two zombies an arm's length apart, and one a stride away.
             crate::game::ecs::test_support::place_test_mob(game, 30, "minecraft:zombie", [0.5, 64.0, 0.5]);
             crate::game::ecs::test_support::place_test_mob(game, 31, "minecraft:zombie", [1.5, 64.0, 0.5]);
@@ -2105,9 +2075,7 @@ mod tests {
             }
 
             // A player's own answers: alive and awake, freezable, drowning.
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-            let player = game.living(game.entity(20).unwrap()).unwrap();
+            let player = game.living(game.entity(12).unwrap()).unwrap();
             {
                 let host: &dyn Host = game;
                 assert_eq!(player.can_use_portal(host), Some(true));

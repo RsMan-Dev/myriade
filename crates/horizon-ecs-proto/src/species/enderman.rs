@@ -4,6 +4,7 @@ use crate::behaviours::{ender_teleport, float, freeze_when_looked_at, hurt_by, l
 use crate::species::Def;
 
 pub static DEF: Def = Def {
+    load_attrs: &[crate::attr_mod::LoadAttr { name: "movement_speed", base: None, when: crate::attr_mod::LoadWhen::Always }],
     name: "minecraft:enderman",
     targets: &[
         Entry::new(&look_for_player::MODULE, 1, &look_for_player::Params::DEFAULT),
@@ -24,5 +25,6 @@ pub static DEF: Def = Def {
     rules: &[crate::rules::RuleEntry::new(&crate::hostile::SUN_FLEE, &())],
     spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

@@ -6,23 +6,33 @@
 use super::Game;
 use super::commands::{R, execute::Source};
 use super::game_tests::tests::server_game;
-use horizon_client::{
-    command::vanilla, motion::PlayerMotion, sculk::WardenSpawnTracker,
-};
+use horizon_client::{command::vanilla, sculk::WardenSpawnTracker};
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Tag;
 use std::sync::Arc;
 
-/// A server's game with the window's own player standing at the world spawn,
-/// or `None` without prepared resources.
+/// A server's game, or `None` without prepared resources.
 fn game(resources: &mut Option<Arc<crate::game::Resources>>) -> Option<Game<'_>> {
     std::env::var_os("HORIZON_TEST_RESOURCES")?;
     let mut game = server_game(resources);
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
     game.build_registries();
     game.set_allow_commands(true);
     game.session.registries.permission = 4;
     Some(game)
+}
+
+/// `game`, with the body run as a guest standing at (0.5, 64, 0.5); skipped without the resources.
+fn with_acting_guest_game(f: impl FnOnce(&mut Game<'_>)) {
+    let mut resources = None;
+    let Some(mut game) = game(&mut resources) else {
+        return;
+    };
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+    crate::game::native_guest_turn_tests::with_acting_guest_on(
+        &mut game,
+        Vec3::new(0.5, 64.0, 0.5),
+        f,
+    );
 }
 
 /// Runs a line of the dev tree (`/warden_spawn_tracker` is registered only
@@ -48,10 +58,7 @@ fn run(game: &mut Game<'_>, line: &str) -> R<i32> {
 /// file is written from: the tracker after `set 2`, then after `clear`.
 #[test]
 fn the_warden_spawn_tracker_is_in_the_players_saved_data() {
-    let mut resources = None;
-    let Some(mut game) = game(&mut resources) else {
-        return;
-    };
+    with_acting_guest_game(|game| {
     assert_eq!(run(&mut game, "warden_spawn_tracker set 2").unwrap(), 1);
     let set = WardenSpawnTracker {
         ticks_since_last_warning: 0,
@@ -80,6 +87,7 @@ fn the_warden_spawn_tracker_is_in_the_players_saved_data() {
         game.player_nbt().unwrap().get("warden_spawn_tracker"),
         Some(&cleared)
     );
+    });
 }
 
 /// Only the source player's tracker: a mob has none, so `execute as <mob>`
@@ -87,10 +95,7 @@ fn the_warden_spawn_tracker_is_in_the_players_saved_data() {
 /// source reports it.
 #[test]
 fn the_warden_spawn_tracker_edits_only_the_source_player() {
-    let mut resources = None;
-    let Some(mut game) = game(&mut resources) else {
-        return;
-    };
+    with_acting_guest_game(|game| {
     assert_eq!(run(&mut game, "warden_spawn_tracker set 3").unwrap(), 1);
     assert!(run(&mut game, "summon minecraft:pig 4.5 64 4.5 {NoAI:1b}").is_ok());
     assert_eq!(
@@ -111,16 +116,14 @@ fn the_warden_spawn_tracker_edits_only_the_source_player() {
         "{err:?}"
     );
     assert_eq!(game.sculk.tracker.warning_level, 3);
+    });
 }
 
 /// The reply carries the source player's `getDisplayName`, not a literal: the
 /// LAN owner's name, with the `/tell` suggestion, hover and insertion.
 #[test]
 fn the_warden_spawn_tracker_names_the_actor() {
-    let mut resources = None;
-    let Some(mut game) = game(&mut resources) else {
-        return;
-    };
+    with_acting_guest_game(|game| {
     // The LAN owner Alice, as `as_guest` puts them in place.
     game.lan_acting_uuid = Some(0x0123_4567_89ab_cdef_0123_4567_89ab_cdef);
     game.lan_acting_name = Some("Alice".into());
@@ -146,4 +149,5 @@ fn the_warden_spawn_tracker_names_the_actor() {
         1
     );
     assert!(game.chat_capture.as_ref().unwrap().is_empty());
+    });
 }

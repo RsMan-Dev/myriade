@@ -1,5 +1,6 @@
-//! Ambient sounds (`PiglinAi` idle sounds, `mobs/piglin.rs:478-512`): every `min..max` ticks of its own time the animal plays one
-//! of `sounds`, drawn from its random source. The goal runs for an instant: start plays, the next try is armed, nothing polls.
+//! Ambient sounds: either every `min..max` ticks of its own time the animal plays one of `sounds` (`PiglinAi` idle sounds,
+//! `mobs/piglin.rs:478-512`), or with `interval` the `Mob.baseTick` law (`rules::ambient_sound::vanilla_delay`), and `choose` names the
+//! sound (the wolf's whine, pant or growl). The goal runs for an instant: start plays, the next try is armed, nothing polls.
 use super::*;
 use crate::rules::ambient_sound;
 use crate::{cow::*, goals::*};
@@ -10,9 +11,15 @@ pub struct Params {
     /// Ticks between two sounds: drawn in `min..=max`.
     pub min: u32,
     pub max: u32,
+    /// `Mob.getAmbientSoundInterval`: when set, the delay follows `Mob.baseTick` instead of `min..max`.
+    pub interval: Option<u32>,
+    /// The sound of this play, chosen by the species from the creature's state; `sounds` is unused when set.
+    pub choose: Option<fn(&mut World, Entity) -> &'static str>,
+    /// The sounds of this list are played at volume 2 (`Fox.playAmbientSound`: the screech).
+    pub loud: &'static [&'static str],
 }
 impl Params {
-    pub const DEFAULT: Self = Self { sounds: &[], min: 200, max: 400 };
+    pub const DEFAULT: Self = Self { sounds: &[], min: 200, max: 400, interval: None, choose: None, loud: &[] };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Ambient(pub &'static Params);
@@ -34,7 +41,10 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 fn delay(w: &mut World, e: Entity) -> i32 {
     let p = w.get::<Ambient>(e).unwrap().0;
     let r = w.get_mut::<Rng>(e).unwrap().next_u32();
-    ambient_sound::delay(p.min, p.max, r)
+    match p.interval {
+        Some(i) => ambient_sound::vanilla_delay(i, r),
+        None => ambient_sound::delay(p.min, p.max, r),
+    }
 }
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     let d = delay(w, e);
@@ -46,12 +56,19 @@ fn can_use(_: &mut World, _: Entity, _: Inst) -> bool {
 /// The sound of the creature's ambient, drawn from its random source and queued at its place; false without one.
 pub fn play(w: &mut World, e: Entity) -> bool {
     let Some(p) = w.get::<Ambient>(e).map(|a| a.0) else { return false };
-    if p.sounds.is_empty() {
+    let name = match p.choose {
+        Some(choose) => choose(w, e),
+        None if p.sounds.is_empty() => return false,
+        None => p.sounds[ambient_sound::pick(w.get_mut::<Rng>(e).unwrap().next_u32(), p.sounds.len())],
+    };
+    // A `choose` that names no sound (`""`) is the vanilla null ambient: nothing plays.
+    if name.is_empty() {
         return false;
     }
-    let pick = p.sounds[ambient_sound::pick(w.get_mut::<Rng>(e).unwrap().next_u32(), p.sounds.len())];
+    let Some(name) = crate::sound_slots::sound(w, e, |o| o.ambient, Some(name)) else { return false };
     let at = w.get::<Pos>(e).unwrap().0;
-    w.resource_mut::<Events>().host.sound(pick, [at.x, at.y, at.z], 1.0, 1.0);
+    let volume = if p.loud.contains(&name) { 2.0 } else { 1.0 };
+    w.resource_mut::<Events>().host.sound(name, [at.x, at.y, at.z], volume, 1.0);
     true
 }
 fn start(w: &mut World, e: Entity, inst: Inst) {

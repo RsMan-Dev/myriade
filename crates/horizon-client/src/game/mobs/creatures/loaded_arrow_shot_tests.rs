@@ -1,4 +1,4 @@
-use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+use crate::game::{Game, Options, Progress, Settings, load_resources};
 use horizon_client::{chunk::Chunk, motion::PlayerMotion};
 use horizon_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
 use horizon_ecs_proto::bridge::select::Select;
@@ -13,7 +13,7 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
@@ -23,13 +23,12 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
             .join(format!("h114-{:?}", std::thread::current().id())),
     );
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();
@@ -126,7 +125,6 @@ fn guest_crossbow_shot_leaves_the_host_context_as_it_was() {
                 allow_flight: false,
                 seed: 0,
                 max_players: 2,
-                integrated: false,
                 levels: Default::default(),
                 level_seeds: Default::default(),
             },

@@ -29,26 +29,50 @@ fn rotate(v: [f64; 3], a: f64) -> [f64; 3] {
 /// `Leashable.computeElasticInteraction` for the single attachment of a creature (0, 0,5, 0,5 of its box) and its holder (0, 0,5, 0): the
 /// force toward the holder and the torque, or `None` while slack.
 pub fn elastic_pull(pos: Vec3, yaw: f32, size: (f64, f64), holder: &HolderState, motion: Vec3, elastic: f64) -> Option<([f64; 3], f64)> {
+    pull(pos, yaw, size, holder, motion, elastic, (&[[0.0, 0.5, 0.5]], &[[0.0, 0.5, 0.0]], 1.0))
+}
+/// `Leashable.checkElasticInteractions` with a quad lead: the four shared corners of each end pull, a quarter of the sum each.
+pub fn quad_pull(pos: Vec3, yaw: f32, size: (f64, f64), holder: &HolderState, motion: Vec3, elastic: f64) -> Option<([f64; 3], f64)> {
+    const SHARED: [[f64; 3]; 4] = [[-0.5, 0.5, 0.5], [-0.5, 0.5, -0.5], [0.5, 0.5, -0.5], [0.5, 0.5, 0.5]];
+    pull(pos, yaw, size, holder, motion, elastic, (&SHARED, &SHARED, 0.25))
+}
+/// `Leashable.createQuadLeashOffsets`: the four attachment points of a quad lead on a body of this size, front-left first, clockwise from above.
+pub fn quad_points(width: f32, height: f32, front: f64, front_back: f64, left_right: f64, up: f64) -> [[f64; 3]; 4] {
+    let (fb, lr) = (front_back * f64::from(width), left_right * f64::from(width));
+    let (f, y) = (front * f64::from(width), up * f64::from(height));
+    [[-lr, y, fb + f], [-lr, y, -fb + f], [lr, y, -fb + f], [lr, y, fb + f]]
+}
+/// The pull of each pair of attachment points (`own` on the creature, `theirs` on the holder), summed and scaled; `None` while every pair is slack.
+fn pull(pos: Vec3, yaw: f32, size: (f64, f64), holder: &HolderState, motion: Vec3, elastic: f64, ends: (&[[f64; 3]], &[[f64; 3]], f64)) -> Option<([f64; 3], f64)> {
+    let (own, theirs, scale) = ends;
     let (w, h) = size;
-    let lever = rotate([0.0, 0.5 * h, 0.5 * w], -f64::from(yaw.to_radians()));
-    let object = [pos.x + lever[0], pos.y + lever[1], pos.z + lever[2]];
-    let arm = rotate([0.0, 0.5 * holder.height, 0.0], -f64::from(holder.yaw.to_radians()));
-    let pivot = [holder.position.x + arm[0], holder.position.y + arm[1], holder.position.z + arm[2]];
-    let d = [pivot[0] - object[0], pivot[1] - object[1], pivot[2] - object[2]];
-    let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-    if distance < elastic {
-        return None;
-    }
-    let unit = if distance < 1.0e-5 { [0.0; 3] } else { [d[0] / distance, d[1] / distance, d[2] / distance] };
-    let pull = distance - elastic;
-    let mut f = [unit[0] * pull, unit[1] * pull, unit[2] * pull];
-    let torque = lever[2] * f[0] - lever[0] * f[2];
-    if motion.x * f[0] + motion.y * f[1] + motion.z * f[2] >= 0.0 {
-        for v in &mut f {
-            *v *= f64::from(0.3_f32);
+    let (mut force, mut torque, mut any) = ([0.0; 3], 0.0, false);
+    for (mine, other) in own.iter().zip(theirs) {
+        let lever = rotate([mine[0] * w, mine[1] * h, mine[2] * w], -f64::from(yaw.to_radians()));
+        let object = [pos.x + lever[0], pos.y + lever[1], pos.z + lever[2]];
+        let arm = rotate([other[0] * holder.width, other[1] * holder.height, other[2] * holder.width], -f64::from(holder.yaw.to_radians()));
+        let pivot = [holder.position.x + arm[0], holder.position.y + arm[1], holder.position.z + arm[2]];
+        let d = [pivot[0] - object[0], pivot[1] - object[1], pivot[2] - object[2]];
+        let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        if distance < elastic {
+            continue;
         }
+        let unit = if distance < 1.0e-5 { [0.0; 3] } else { [d[0] / distance, d[1] / distance, d[2] / distance] };
+        let slack = distance - elastic;
+        let mut f = [unit[0] * slack, unit[1] * slack, unit[2] * slack];
+        let t = lever[2] * f[0] - lever[0] * f[2];
+        if motion.x * f[0] + motion.y * f[1] + motion.z * f[2] >= 0.0 {
+            for v in &mut f {
+                *v *= f64::from(0.3_f32);
+            }
+        }
+        for k in 0..3 {
+            force[k] += f[k];
+        }
+        torque += t;
+        any = true;
     }
-    Some((f, torque))
+    any.then(|| ([force[0] * scale, force[1] * scale, force[2] * scale], torque * scale))
 }
 /// Whether the lead is stretched: the distance to the holder's centre is past the elastic distance less both half-widths.
 pub fn is_stretched(distance: f64, elastic: f64, holder_width: f64, body_width: f32) -> bool {

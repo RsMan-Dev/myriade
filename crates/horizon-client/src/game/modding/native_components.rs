@@ -850,16 +850,14 @@ mod hot_key_tests {
 #[cfg(test)]
 mod combat_query_tests {
     use super::super::api_values::test_snapshot;
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_guest_turn_tests::with_acting_guest;
     use super::*;
-    use horizon_client::motion::PlayerMotion;
     use horizon_core::geometry::Vec3;
     use horizon_core::random::RandomSource;
 
+    /// The acting guest 12, in a turn.
     fn actor(game: &mut Game<'_>) -> mod_api::LivingRef {
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-        crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-        mod_api::LivingRef::new(game.entity(20).unwrap())
+        mod_api::LivingRef::new(game.entity(12).unwrap())
     }
     fn resource(stack: &ItemStack) -> mod_api::ItemResource {
         mod_api::ItemResource::of(&test_snapshot(stack))
@@ -913,7 +911,7 @@ mod combat_query_tests {
     #[test]
     #[ignore = "daily"]
     fn stack_combat_immunity_honors_default_override_tag_and_removal() {
-        with_game(|game| {
+        with_acting_guest(Vec3::ZERO, |game| {
             let attacker = actor(game);
             let mut stack = ItemStack::new("minecraft:netherite_chestplate", 1);
             let mut source = resource(&stack).damage_source(game, attacker).unwrap();

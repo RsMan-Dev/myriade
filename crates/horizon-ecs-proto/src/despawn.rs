@@ -44,6 +44,28 @@ pub struct Despawn {
 #[derive(Component, Clone, Copy, Debug)]
 #[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
 pub struct Persistent;
+/// `Bucketable.setFromBucket`: `AbstractFish.requiresCustomPersistence` keeps the creature from the despawns, but it is not
+/// `PersistenceRequired` (not saved as it, not counted by the spawn caps). Saved as `FromBucket`.
+#[derive(Component, Clone, Copy, Debug)]
+#[cfg_attr(feature = "sparse", component(storage = "SparseSet"))]
+pub struct FromBucket;
+/// The creature is kept from the despawns: persistent, or from a bucket (`requiresCustomPersistence`).
+fn kept(w: &World, e: Entity) -> bool {
+    w.get::<Persistent>(e).is_some() || w.get::<FromBucket>(e).is_some()
+}
+/// `Monster.updateNoActionTime`: a creature counts 3 a tick where the spot is brighter than 0.5 and 1 in the dark (`lit`: always 3,
+/// as a blaze or a vex). The count is SAMPLED: read at the deadlines of the ring, each segment since the last sample credited at the
+/// rate of the spot the creature stands in then. Only the monsters carry it.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct LightRated {
+    pub lit: bool,
+    /// `noActionTime` as of the last sample.
+    pub count: u64,
+    /// The own-time tick of the last sample.
+    pub sampled: u64,
+    /// The chance of going is drawn: the deadline is the going.
+    pub drawn: bool,
+}
 /// The creatures that left the 32-block ring of a player since the last step (`cow::player_near` writes it).
 #[derive(Resource, Default)]
 pub struct LeftRing(pub Vec<Entity>);
@@ -64,12 +86,63 @@ pub struct DespawnStats {
     pub measured: u64,
 }
 
+/// Gives a creature the light count (`lit`: a blaze or a vex) and starts it over now.
+pub fn rate_light(w: &mut World, e: Entity, lit: bool) {
+    let now = crate::cow::now_of(w, e);
+    w.entity_mut(e).insert(LightRated { lit, count: 0, sampled: now, drawn: false });
+    arm(w, e);
+}
+fn restart_light(w: &mut World, e: Entity) {
+    let now = crate::cow::now_of(w, e);
+    if let Some(mut l) = w.get_mut::<LightRated>(e) {
+        l.count = 0;
+        l.sampled = now;
+        l.drawn = false;
+    }
+    sample_light(w, e);
+}
+/// The rate of the spot the creature stands in now (read at a sample, not per tick).
+fn light_rate(w: &World, e: Entity, lit: bool) -> u64 {
+    if lit {
+        return 3;
+    }
+    let (Some(p), Some(l)) = (w.get::<crate::cow::Pos>(e), w.get_resource::<crate::cow::Level>()) else { return 1 };
+    let v = p.0;
+    let bright = crate::rules::flee_sun::bright_enough(f64::from(l.mw.0.brightness(v.x.floor() as i32, v.y.floor() as i32, v.z.floor() as i32)));
+    if bright { 3 } else { 1 }
+}
+/// A deadline of a light-counted creature: the segment since the last sample is credited at the rate of the spot now. Below `idle`
+/// the next deadline comes as early as the fastest rate reaches it, at most 100 ticks on; at `idle` the chance of going is drawn.
+fn sample_light(w: &mut World, e: Entity) {
+    let Some(l) = w.get::<LightRated>(e).copied() else { return };
+    let (Some(d), now) = (w.get::<Despawn>(e).copied(), crate::cow::now_of(w, e)) else { return };
+    let count = l.count + now.saturating_sub(l.sampled) * light_rate(w, e, l.lit);
+    let left = u64::from(d.def.idle).saturating_sub(count);
+    let at = if left > 0 {
+        now + left.div_ceil(3).min(100)
+    } else {
+        let g = {
+            let mut r = w.resource_mut::<DespawnRng>();
+            crate::cow::geometric(&mut r.0, d.def.chance)
+        };
+        now + 1 + u64::try_from(g.max(0)).unwrap_or(0)
+    };
+    if let Some(mut m) = w.get_mut::<LightRated>(e) {
+        m.count = count;
+        m.sampled = now;
+        m.drawn = left == 0;
+    }
+    w.get_mut::<Despawn>(e).unwrap().deadline = at;
+    crate::cow::arm_at(w, e, at, Due::Despawn);
+}
 fn inside_ring(w: &World, e: Entity) -> bool {
     w.get::<ActiveUntil>(e).is_some_and(|a| a.0 == u64::MAX)
 }
 fn removable(w: &World, e: Entity, d: &Despawn) -> bool {
-    let tamed = w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0.is_some());
-    rule::removable(d.def.removable, tamed, crate::cow::now_of(w, e) - d.born)
+    // A trusting ocelot counts as tamed (`Ocelot.isTrusting`), a cat by its owner (`Cat.isTame`).
+    let tamed = w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0.is_some()) || w.get::<crate::behaviours::cat_state::Trusting>(e).is_some();
+    let named = w.get::<crate::custom_name::CustomName>(e).is_some();
+    rule::removable(d.def.removable, tamed, named, crate::cow::now_of(w, e) - d.born)
 }
 /// The resources of the service, made when the first creature that may go away is given its rule (a world that has none does not carry them).
 pub fn ensure(w: &mut World) {
@@ -103,8 +176,11 @@ pub fn admit(w: &mut World, e: Entity, def: DespawnDef, nearest_sqr: f64) {
 /// The chance of going comes up `idle + 1` ticks from now, then the first success of the per-tick draw.
 fn arm(w: &mut World, e: Entity) {
     let Some(d) = w.get::<Despawn>(e).copied() else { return };
-    if w.get::<Persistent>(e).is_some() {
+    if kept(w, e) {
         return;
+    }
+    if w.get::<LightRated>(e).is_some() {
+        return restart_light(w, e);
     }
     let g = {
         let mut r = w.resource_mut::<DespawnRng>();
@@ -131,17 +207,32 @@ pub fn idle_for(w: &World, e: Entity) -> Option<i32> {
     if inside_ring(w, e) {
         return Some(0);
     }
+    if let Some(l) = w.get::<LightRated>(e) {
+        return Some(i32::try_from(l.count).unwrap_or(i32::MAX));
+    }
     Some(i32::try_from(crate::cow::now_of(w, e).saturating_sub(d.idle_since)).unwrap_or(i32::MAX))
 }
 /// Sets `noActionTime` to `ticks` (a creature with a rule only): the count started `ticks` ago, and the chance of going is drawn from
 /// that start, as `arm` draws it from now. Nothing is counted per tick.
 pub fn set_idle(w: &mut World, e: Entity, ticks: i32) {
     let Some(d) = w.get::<Despawn>(e).copied() else { return };
+    if w.get::<LightRated>(e).is_some() {
+        let now = crate::cow::now_of(w, e);
+        if let Some(mut l) = w.get_mut::<LightRated>(e) {
+            l.count = u64::try_from(ticks.max(0)).unwrap_or(0);
+            l.sampled = now;
+            l.drawn = false;
+        }
+        if !kept(w, e) && !inside_ring(w, e) {
+            sample_light(w, e);
+        }
+        return;
+    }
     let since = crate::cow::now_of(w, e).saturating_sub(u64::try_from(ticks.max(0)).unwrap_or(0));
     if let Some(mut m) = w.get_mut::<Despawn>(e) {
         m.idle_since = since;
     }
-    if w.get::<Persistent>(e).is_some() || inside_ring(w, e) {
+    if kept(w, e) || inside_ring(w, e) {
         return;
     }
     let g = {
@@ -159,10 +250,11 @@ pub fn keep(w: &mut World, e: Entity) {
     }
     w.entity_mut(e).insert(Persistent);
     crate::spawning::uncount(w, e);
+    w.entity_mut(e).remove::<crate::spawn_cost::ChargeBearer>();
 }
 pub fn release(w: &mut World, e: Entity) {
     w.entity_mut(e).remove::<Persistent>();
-    crate::spawning::recount(w, e);
+    crate::spawn_cost::count(w, e);
     if !inside_ring(w, e) {
         arm(w, e);
     }
@@ -183,8 +275,11 @@ pub fn remove(w: &mut World, e: Entity) {
 pub fn due(w: &mut World, e: Entity) {
     let Some(d) = w.get::<Despawn>(e).copied() else { return };
     let now = crate::cow::now_of(w, e);
-    if d.deadline == u64::MAX || now < d.deadline || w.get::<Persistent>(e).is_some() || inside_ring(w, e) {
+    if d.deadline == u64::MAX || now < d.deadline || kept(w, e) || inside_ring(w, e) {
         return;
+    }
+    if w.get::<LightRated>(e).is_some_and(|l| !l.drawn) {
+        return sample_light(w, e);
     }
     if !removable(w, e, &d) {
         if d.def.removable == Removable::Never {
@@ -200,7 +295,7 @@ pub fn due(w: &mut World, e: Entity) {
 /// A creature measured against the nearest player: past its distance it goes at once. Without any player, it stays.
 fn far_check(w: &mut World, e: Entity) {
     let Some(d) = w.get::<Despawn>(e).copied() else { return };
-    if w.get::<Persistent>(e).is_some() || w.get::<crate::zone::Dormant>(e).is_some() || !removable(w, e, &d) {
+    if kept(w, e) || w.get::<crate::zone::Dormant>(e).is_some() || !removable(w, e, &d) {
         return;
     }
     let Some(b) = w.get::<Bounds>(e) else { return };

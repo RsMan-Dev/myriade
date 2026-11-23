@@ -2,7 +2,8 @@
 //! and its brain (panic at 2.0, looking at players and at the nearest creatures, swimming about, following the frog food (slime ball) for
 //! 60 ticks, then its cooldown count of 60 ticks, the swim stroll, the walk to the look target). Its own swimming mode (`SmoothSwimming`) is not in this file: the fish's modes apply (DOUTE).
 use super::{templates::fish, Def};
-use crate::behaviours::Cap;
+use crate::locomotion::{swim, walk, Medium};
+use crate::behaviours::{Cap, Entry};
 use crate::brain::behaviours::{follow_temptation, gate_all, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, panic, stay_in_fluid, swim_stroll, walk_to_look_target};
 use crate::brain::sensors::{hurt_by, living, nearest_players, tempting};
 use crate::brain::*;
@@ -14,6 +15,10 @@ const WALK_LOOK: walk_to_look_target::Params = walk_to_look_target::Params { spe
 pub static DEF: Def = Def {
     name: "minecraft:tadpole",
     reference: Some(&fish::DEF),
+    locomotion: &[
+        (Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params::DEFAULT)),
+        (Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { flop: Some("entity.tadpole.flop"), ..swim::Params::DEFAULT })),
+    ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     brain: BrainDef {
         sensors: &[SensorEntry::new(&living::SENSOR, 20), SensorEntry::new(&nearest_players::SENSOR, 20), SensorEntry::new(&hurt_by::SENSOR, 20), SensorEntry::new(&tempting::SENSOR, 20).with(&tempting::Params { range: 10.0, foods: FOOD })],

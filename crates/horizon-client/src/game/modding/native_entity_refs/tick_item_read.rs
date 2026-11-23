@@ -1,7 +1,6 @@
 impl Game<'_> {
     pub(super) fn unscoped_native_entity_target(&self, entity: EntityRef) -> Option<Target> {
         if self.held_out.contains(&entity.id())
-            || !self.is_logical_server()
             || self.native_lifecycle.epoch() != Some(entity.epoch())
         {
             return None;

@@ -432,9 +432,6 @@ impl Game<'_> {
             // `Minecraft.startUseItem`: the stick's client-side `useOn` is
             // SUCCESS, so the actor's hand swings; a remote guest swings in
             // its own client, not on the server.
-            if self.lan_acting.is_none() {
-                self.swing_arm();
-            }
             if success {
                 // `ServerPlayerGameMode.useItemOn`: a consuming `useOn` triggers ITEM_USED_ON_BLOCK.
                 self.trigger_block("minecraft:item_used_on_block", hit.pos, before);
@@ -973,10 +970,6 @@ impl Game<'_> {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/scaffolding_inside_tests.rs"]
-mod scaffolding_inside_tests;
-
 
 #[cfg(test)]
 #[path = "tests/bow_enchantment_tests.rs"]
@@ -985,3 +978,7 @@ mod bow_enchantment_tests;
 #[cfg(test)]
 #[path = "tests/jigsaw_place_tests.rs"]
 mod jigsaw_place_tests;
+
+#[cfg(test)]
+#[path = "tests/scaffolding_inside_tests.rs"]
+mod scaffolding_inside_tests;

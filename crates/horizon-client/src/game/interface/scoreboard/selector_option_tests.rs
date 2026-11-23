@@ -20,6 +20,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
     let mut game = crate::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
+    // TODO(phase 2): assertion sur l'hôte : team join red @s et Target::Player sur le joueur hôte (selector_option_tests.rs:23)
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
     assert!(game.run_command("team add red"));
     assert!(game.run_command("team modify red prefix \"[R] \""));

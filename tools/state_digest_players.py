@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
-"""State-digest scene with players: BINARY RESOURCES TEMPLATE OUT BOTS [--integrated] [--nether] [--detail] [--ticks N] [--no-digest], or --compare OUT_A OUT_B; template from `state_digest_scene.py --generate`, gate in HORIZON_SCENE_GATE."""
-import json
-import os
-import re
+"""State-digest scene with players: BINARY RESOURCES TEMPLATE OUT BOTS [--nether] [--detail] [--ticks N] [--no-digest], or --compare OUT_A OUT_B; template from `state_digest_scene.py --generate`, gate in HORIZON_SCENE_GATE."""
 import shutil
 import socket
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 from pathlib import Path
 
@@ -16,7 +12,7 @@ import lab
 import state_digest_scene as base
 
 STATE_PATHS = ('Pos', 'Health', 'foodLevel', 'XpLevel', 'XpTotal', 'Inventory', 'active_effects[0].id', 'active_effects[1].id', 'Dimension')
-PLAYERS = ['Alice0', 'Bob0']  # dedicated: two scripted bots; integrated: Alice0 joins the host's LAN
+PLAYERS = ['Alice0', 'Bob0']  # two scripted bots
 SETTLE_ATTEMPTS = 400  # frozen server ticks to wait for a join or a settle, before giving up
 
 
@@ -57,7 +53,7 @@ def player_commands(names, nether):
 
 
 class Bots:
-    """Scripted `horizon-bots` that stand where the server puts them: their per-tick moves repeat one position."""
+    """Scripted `myriade-bot` that stand where the server puts them: their per-tick moves repeat one position."""
 
     def __init__(self, binary, port, directory):
         self.binary, self.port, self.directory = binary, port, directory
@@ -193,111 +189,10 @@ def run_dedicated(args, home, out, timings):
         server.stop()
 
 
-def ctl_run(ctl, socket_path, env, cwd, *words, timeout=600):
-    result = subprocess.run([str(ctl), '--socket', str(socket_path), *map(str, words)], cwd=cwd, env=env,
-                            capture_output=True, text=True, timeout=timeout)
-    lines = result.stdout.strip().splitlines()
-    reply = json.loads(lines[-1]) if lines else {'error': result.stderr.strip()}
-    if result.returncode or 'error' in reply:
-        raise SystemExit(f'ctl {words}: {reply}')
-    return reply
-
-
-def run_integrated(args, home, out, timings):
-    """The host's window runs a server thread, opened to LAN; one bot joins as a guest beside the host's own player."""
-    binary, resources, template, _, bots = args[:5]
-    ctl = Path(os.environ.get('HORIZON_SCENE_CTL') or binary.parent / 'horizon-ctl')
-    work = out / 'host'
-    if work.exists():
-        shutil.rmtree(work)
-    (work / 'game' / 'saves').mkdir(parents=True)
-    shutil.copytree(template / 'world', work / 'game' / 'saves' / 'T')
-    (work / 'game' / 'saves' / 'T' / 'session.lock').unlink(missing_ok=True)
-    digest = None if '--no-digest' in sys.argv else out / 'digest.txt'
-    # The server starts frozen (state-digest feature): ticks before the script's freeze would spawn mobs and differ run to run.
-    env = lab.game_env(base.scratch_env(home, digest, '--detail' in sys.argv), HORIZON_HOME=work / 'home', HORIZON_STATE_DIGEST_FREEZE='1')
-    sock = work / 'c.sock'
-
-    def run(*words, timeout=600):
-        return ctl_run(ctl, sock, env, work, *words, timeout=timeout)
-
-    def command(line):
-        return run('command', line)
-
-    run('launch', '--world', 'T', '--headless', '--wait', '--game', binary, '--game-dir', work / 'game', '--resources', resources)
-    bot_log = open(out / 'bot-Alice.log', 'w')
-    players = Bots(bots, None, out)
-    ticks = int(sys.argv[sys.argv.index('--ticks') + 1]) if '--ticks' in sys.argv else 200
-    try:
-        run('wait-ready', 400)
-        command('tick freeze')
-        command('gamerule spawn_mobs false')
-        command('gamerule random_tick_speed 0')
-        port = run('lan', 'open', 0, 'commands')['port']
-        try:
-            reply = json.dumps(command('digest-sync ' + ' '.join(map(str, base.SYNC))))
-            if 'Unknown' in reply or 'Incorrect' in reply or 'rror' in reply or 'digest-sync:' in reply or 'digest-sync done' not in reply:
-                raise SystemExit(reply)
-            timings['digest_sync'] = 'ok'
-        except SystemExit as e:
-            timings['digest_sync'] = f'failed, so the digest is not comparable run to run: {e}'
-        for line in base.scene_commands(False)[1:]:
-            command(line)
-        players.processes.append(subprocess.Popen(
-            [bots, '--server', f'127.0.0.1:{port}', '--bots', '1', '--behaviour', 'stand', '--name', 'Alice', '--seconds', '3600',
-             '--view-distance', '4', '--seed', '12345'], stdout=bot_log, stderr=subprocess.STDOUT))
-        deadline = time.time() + 120
-        while not any(g['name'] == 'Alice0' for g in run('lan', 'status')['guests']):
-            if time.time() > deadline:
-                raise SystemExit('Alice0 did not join the LAN')
-            time.sleep(0.5)
-        for line in player_commands(['Alice0'], False):
-            command(line)
-        host = run('lan', 'status').get('host', 'Player')
-        command(f'tp {host} 40.5 {base.Y} 40.5')
-        # The host's player is moved by the window's own ticks, which a frozen server does not pace: a spectator stays put,
-        # so no mob pushes it and what looks at it sees the same place every run.
-        command(f'gamemode spectator {host}')
-        command(f'give {host} minecraft:bread 4')
-        time.sleep(3)
-        before = game_time(command)
-        start = time.time()
-        command('tick rate 10000')
-        command(f'tick step {ticks}')
-        while game_time(command) < before + ticks:
-            time.sleep(0.05)
-        timings['step_seconds'] = time.time() - start
-        (out / 'players.txt').write_text(integrated_state(command, host).replace(host, 'HOST'))
-    finally:
-        players.stop()
-        try:
-            run('quit')
-        except SystemExit:
-            pass
-
-
-def game_time(command):
-    reply = json.dumps(command('time query gametime'))
-    match = re.search(r'time is (\d+)', reply)
-    if not match:
-        raise SystemExit(f'no game time in {reply}')
-    return int(match.group(1))
-
-
-def integrated_state(command, host):
-    lines = []
-    for name in ('Alice0', host):
-        for path in STATE_PATHS:
-            lines.append(f'{name} {path} {json.dumps(command(f"data get entity {name} {path}"))}')
-    return '\n'.join(lines) + '\n'
-
-
 def main():
     if sys.argv[1] == '--compare':
         raise SystemExit(compare(Path(sys.argv[2]), Path(sys.argv[3])))
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
-    if '--ctl' in sys.argv:
-        args.remove(sys.argv[sys.argv.index('--ctl') + 1])
     args = [Path(a).resolve() for a in args]
     out = args[3]
     out.mkdir(parents=True, exist_ok=True)
@@ -305,7 +200,7 @@ def main():
     base.hold_gate()
     timings = {}
     try:
-        (run_integrated if '--integrated' in sys.argv else run_dedicated)(args, home, out, timings)
+        run_dedicated(args, home, out, timings)
     finally:
         shutil.rmtree(home, ignore_errors=True)
     (out / 'timings.txt').write_text(f'{timings}\n')

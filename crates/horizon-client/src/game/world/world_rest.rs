@@ -114,7 +114,7 @@ pub(super) fn load_world_rest(
         crate::game::entity_part_state::refuse_entity_part_state_kinds(|kind| {
             mob_types.contains_key(kind)
         })?;
-        horizon_client::mobs::trial_spawner::load_registry(root);
+        horizon_client::trial_config::load_registry(root);
         Ok((mob_types, mob_data))
     };
     let load_transformers = || -> Result<_> {

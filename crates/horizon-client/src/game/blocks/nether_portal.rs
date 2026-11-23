@@ -319,7 +319,7 @@ impl Game<'_> {
     /// The plan of an entity of `width` by `height` at `at` going through the
     /// portal at `entry` (`getDimensionTransitionFromExit` and the scaled,
     /// clamped exit of `getPortalDestination`).
-    pub(super) fn portal_plan(
+    pub(in crate::game) fn portal_plan(
         &self,
         entry: BlockPos,
         at: Vec3,
@@ -875,7 +875,6 @@ impl Game<'_> {
         horizon_client::mobs::mob_can_use_portal(m)
             && m.extra.mount.is_none()
             && self.riding != Some(m.id)
-            && (!self.guest_rides(m.id) || self.carries_riders())
     }
     /// `Entity.canUsePortal(false)` for a primed TNT: it carries no mob.
     pub(super) fn tnt_can_use_portal(&self, id: u32) -> bool {
@@ -889,14 +888,8 @@ impl Game<'_> {
         if self.riding == Some(id) {
             return false;
         }
-        // Mob riders always go along; server players only on a server.
-        !self.ridden_by_guest(id) || self.carries_riders()
-    }
-    /// Whether a vehicle can take the server players riding it through a
-    /// portal: only a server moves players between its levels. Elsewhere a
-    /// ridden vehicle stays, rather than leave its rider behind.
-    fn carries_riders(&self) -> bool {
-        self.options.dedicated.is_some()
+        // Mob riders and server players always go along.
+        true
     }
     /// The vehicles that went through a portal in `dim` with server players
     /// on them.
@@ -1532,7 +1525,7 @@ mod tests {
     fn portal_capture_preserves_rejected_objects_and_reverses_admission() {
         with_gate(|game, _, _| {
             game.options.execution_role =
-                super::super::execution_role::ExecutionRole::IntegratedServer;
+                super::super::execution_role::ExecutionRole::DedicatedServer;
             game.options.game_dir = Some(
                 std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
                     .join("portal-tree"),
@@ -1687,7 +1680,6 @@ mod tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_guest_turn_tests::with_guests(|game| {
-                game.options.dedicated = Some(Vec::new());
                 test(game, &spare, &heard);
             });
         });
@@ -2229,6 +2221,44 @@ mod stand_tests;
 #[cfg(test)]
 mod ecs_portal_tests {
     use crate::game::ecs::test_support::ecs_game_with;
+    use horizon_core::nbt::Tag;
+
+    /// The TNT ids other than `first`, loaded after it.
+    fn other_tnts(game: &crate::game::Game<'_>, first: u32) -> Vec<u32> {
+        game.ecs.species_ids("minecraft:tnt").into_iter().filter(|&t| t != first).collect()
+    }
+
+    /// `PrimedTnt.teleport` sets `usedPortal` (iconst_1): the arrived TNT carries
+    /// its transient blast immunity; the TNT that never went through does not.
+    #[test]
+    fn portal_transfer_teleported_tnt_arrives_with_transient_immunity() {
+        let (mut game, id) = ecs_game_with("minecraft:tnt", [0.5, 64.0, 0.5]);
+        assert!(!game.ecs_tnt_used_portal(id));
+        let saved = game.ecs_save_chunk(0, 0, Vec::new());
+        assert_eq!(saved.len(), 1, "the tnt is saved");
+        let tnt = saved.into_iter().next().unwrap();
+        game.load_tnt_with_portal(Tag::Compound(tnt), None, None, true);
+        let arrived = other_tnts(&game, id);
+        assert_eq!(arrived.len(), 1, "the arrived tnt is loaded");
+        assert!(game.ecs_tnt_used_portal(arrived[0]));
+        assert!(!game.ecs_tnt_used_portal(id));
+    }
+
+    /// `PrimedTnt.addAdditionalSaveData` and `readAdditionalSaveData` never touch
+    /// `usedPortal`: a saved TNT reloads without the immunity it had.
+    #[test]
+    fn portal_transfer_saved_tnt_reloads_without_transient_immunity() {
+        let (mut game, id) = ecs_game_with("minecraft:tnt", [0.5, 64.0, 0.5]);
+        game.ecs_set_tnt_used_portal(id, true);
+        let saved = game.ecs_save_chunk(0, 0, Vec::new());
+        assert_eq!(saved.len(), 1, "the tnt is saved");
+        let tnt = saved.into_iter().next().unwrap();
+        game.load_tnt_with_portal(Tag::Compound(tnt), None, None, false);
+        let reloaded = other_tnts(&game, id);
+        assert_eq!(reloaded.len(), 1, "the reloaded tnt is loaded");
+        assert!(!game.ecs_tnt_used_portal(reloaded[0]));
+        assert!(game.ecs_tnt_used_portal(id), "the saved tnt keeps its state in the game");
+    }
 
     #[test]
     fn primed_tnt_portal_gate_reads_the_bridge_by_id() {

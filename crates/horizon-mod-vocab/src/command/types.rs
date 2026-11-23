@@ -62,8 +62,6 @@ impl Command {
 pub enum Authority {
     /// A single-player game with no server thread; does not fire.
     LocalAuthoritative,
-    /// The server thread of a single-player or LAN world.
-    IntegratedServer,
     /// A dedicated server.
     DedicatedServer,
     /// A client of someone else's server; does not fire.

@@ -1,9 +1,8 @@
 //! The held item's say on a player's blow and swing: `ItemPart::on_left_click_entity` and
 //! `ItemPart::on_entity_swing` heard by a trait mod through the game's own paths.
 use super::creatures::SpawnSite;
-use super::native_entity_refs::tests::with_game;
-use super::native_guest_turn_tests::with_guests;
-use horizon_client::{items::ItemStack, motion::PlayerMotion};
+use super::native_guest_turn_tests::with_acting_guest;
+use horizon_client::items::ItemStack;
 use mod_api::client::first_person::Hand;
 use crate::hand_use::SwingAnimation;
 use horizon_core::geometry::Vec3;
@@ -101,10 +100,8 @@ fn with_probe(probe: &Probe, test: impl FnOnce()) {
 fn a_part_keeps_the_swing_from_starting() {
     let probe = Probe::default();
     with_probe(&probe, || {
-        with_game(|game| {
-            let mut player = PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap();
-            player.entity_id = 7;
-            game.player = Some(player);
+        with_acting_guest(Vec3::new(0.5, 64.0, 0.5), |game| {
+            game.player.as_mut().unwrap().entity_id = 7;
             game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
             game.offhand = Some(ItemStack::new("minecraft:stone", 1));
 

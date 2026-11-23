@@ -25,6 +25,7 @@ use horizon_core::geometry::{Aabb, Vec3, trig};
 #[allow(unused_imports)]
 use std::sync::Arc;
 use super::*;
+use crate::rules::climbable;
 
 /// `ItemEntity.tick`'s motion for an object: a fluid slows it (water 0.99, lava 0.95, lifting a slow one by 5.0E-4) or gravity pulls it
 /// down BEFORE the move; it moves unless it lies still on the ground; then the drag of the air (0.98 on every axis, times the block's friction
@@ -59,11 +60,6 @@ pub(crate) fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Y
         return true;
     }
     do_move(level, pos, vel, c, body, bounds, fall_damage);
-    // `Entity.move`'s last step: the horizontal velocity scaled by the block's speed factor, read only when it moves sideways.
-    if vel.0.x != 0.0 || vel.0.z != 0.0 {
-        let f = f64::from(crate::block_factor::speed(level.mw.0, [pos.0.x, pos.0.y, pos.0.z]));
-        vel.0 = Vec3::new(vel.0.x * f, vel.0.y, vel.0.z * f);
-    }
     let mut friction = 0.98_f32;
     if c.on_ground {
         let mw = level.mw.0;
@@ -96,11 +92,6 @@ pub(crate) fn travel_orb(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Co
     }
     let wanted_y = vel.0.y;
     do_move(level, pos, vel, c, body, bounds, fall_damage);
-    // `Entity.move`'s last step, as for an object: the horizontal velocity scaled by the block's speed factor.
-    if vel.0.x != 0.0 || vel.0.z != 0.0 {
-        let f = f64::from(crate::block_factor::speed(mw, [pos.0.x, pos.0.y, pos.0.z]));
-        vel.0 = Vec3::new(vel.0.x * f, vel.0.y, vel.0.z * f);
-    }
     let mut friction = 0.98_f32;
     if c.on_ground {
         let below = mw.world.block(pos.0.x.ifloor(), (pos.0.y - 0.999_999).ifloor(), pos.0.z.ifloor());
@@ -115,8 +106,37 @@ pub(crate) fn travel_orb(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Co
     false
 }
 
+/// The block under a creature on the ground (`getBlockPosBelowThatAffectsMyMovement`, `getOnPos(0.500001F)`): the supporting block under
+/// the box, found as `world_push` finds it, else the centre column. Read here only: nothing is kept per entity.
+pub(crate) fn ground_block(level: &Level, pos: Vec3, bounds: Aabb) -> horizon_core::position::BlockPos {
+    let mw = level.mw.0;
+    let mut scene = SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
+    let mut ground = horizon_world::ground_support::GroundState::default();
+    let _ = ground.check_support(true, bounds, None, |foot| {
+        horizon_world::ground_support::find_supporting_block(&mut scene, horizon_world::collision_context::CollisionContext::empty(false), pos, foot, 1_000_000)
+    });
+    let centre = horizon_core::position::BlockPos::new(pos.x.ifloor(), (pos.y - 0.500_001).ifloor(), pos.z.ifloor());
+    horizon_world::movement_support::support_position(&mut crate::block_factor::PBlocks { mw }, pos, ground.supporting_block, horizon_world::movement_support::MOVEMENT_SUPPORT_OFFSET).unwrap_or(centre)
+}
+
+/// The block friction under a creature on the ground (`LivingEntity.travelInAir`), read at [`ground_block`].
+fn ground_friction(level: &Level, pos: Vec3, bounds: Aabb) -> f32 {
+    let at = ground_block(level, pos, bounds);
+    level.mw.0.facts.get(level.mw.0.world.block(at.x, at.y, at.z)).friction
+}
+
 /// `LivingEntity.travel` of a cow: in the air (on the ground), or in water or lava (`travelInFluid`).
 #[allow(clippy::too_many_arguments)]
+/// `Entity.getBlockSpeedFactor` of a living body (`LivingEntity`: the block's factor lerped toward 1 by `movement_efficiency`), read by the
+/// caller for the horizontal motion; 1 when it does not move sideways and takes no input (no block is read).
+pub fn block_speed(level: &Level, pos: &Pos, body: &Body, vel: &Vel, input: bool) -> f32 {
+    if !input && vel.0.x == 0.0 && vel.0.z == 0.0 {
+        return 1.0;
+    }
+    let f = crate::block_factor::speed(level.mw.0, [pos.0.x, pos.0.y, pos.0.z]);
+    f + (1.0 - f) * body.movement_efficiency
+}
+
 pub(crate) fn travel_one(level: &Level, sp: &FluidParams, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut Contact, d: &mut Drive, body: &Body, gravity: Option<f64>, bounds: &mut Bounds, fs: &FluidState, jumping: bool, fall_damage: &mut f32) -> bool {
     travel_one_with(level, sp, pos, vel, yaw, c, d, body, gravity, bounds, fs, jumping, fall_damage, true)
 }
@@ -143,6 +163,8 @@ pub(crate) fn travel_one_with(
         return travel_object(level, pos, vel, yaw, c, d, body, gravity, bounds, fs, fall_damage);
     }
     let g = gravity.unwrap_or(0.0);
+    // `LivingEntity.getEffectiveGravity`: a falling mob with slow falling has its gravity capped at 0.01.
+    let g = if d.slow_falling && vel.0.y <= 0.0 { g.min(0.01) } else { g };
     let rest_vy = (0.0 - g) * f64::from(0.98_f32);
     let in_fluid = fs.in_water || fs.in_lava;
     let jumping = jumping || d.jump;
@@ -193,7 +215,11 @@ pub(crate) fn travel_one_with(
             }
             move_relative(vel, yaw.0, speed, d.xxa, d.yya, d.zza);
             do_move(level, pos, vel, c, body, bounds, fall_damage);
-            let m = vel.0;
+            // `LivingEntity.travelInWater`: `horizontalCollision && onClimbable()` lifts it (a ladder under water too).
+            let mut m = vel.0;
+            if climbable::climb_lift(climbable::on_climbable(level.mw.0, pos.0, d.climber, d.climbing, d.no_climb, d.fall_flying), c.horizontal, false) {
+                m.y = 0.2;
+            }
             let m = Vec3::new(m.x * f64::from(slow), m.y * f64::from(0.8_f32), m.z * f64::from(slow));
             vel.0 = horizon_client_lib::mobs::living::fluid_falling(g, falling, false, m);
             c.fall_distance = 0.0;
@@ -220,7 +246,7 @@ pub(crate) fn travel_one_with(
         }
         return false;
     }
-    let friction: f32 = if c.on_ground { 0.6 } else { 1.0 };
+    let friction: f32 = if c.on_ground { ground_friction(level, pos.0, bounds.0) } else { 1.0 };
     let speed = if c.on_ground {
         if friction > 0.6 { d.speed * (0.216_000_02 / (friction * friction * friction)) } else { d.speed }
     } else {
@@ -228,16 +254,14 @@ pub(crate) fn travel_one_with(
     };
     move_relative(vel, yaw.0, speed, d.xxa, d.yya, d.zza);
     // `LivingEntity.handleOnClimbable`, the move, then the climb up a wall (a wall climber pressed against one).
-    let climbing = d.climber && d.climbing;
-    if climbing {
+    let on_climb = climbable::on_climbable(level.mw.0, pos.0, d.climber, d.climbing, d.no_climb, d.fall_flying);
+    if on_climb {
         c.fall_distance = 0.0;
-        let limit = f64::from(0.15_f32);
-        let u = vel.0;
-        vel.0 = Vec3::new(u.x.clamp(-limit, limit), if u.y.is_nan() { u.y } else { u.y.max(-limit) }, u.z.clamp(-limit, limit));
+        vel.0 = climbable::velocity(vel.0);
     }
     do_move(level, pos, vel, c, body, bounds, fall_damage);
     let mut movement = vel.0;
-    if climbing && (c.horizontal || jumping) {
+    if climbable::climb_lift(on_climb, c.horizontal, jumping) {
         movement.y = 0.2;
     }
     if d.climber {
@@ -293,17 +317,62 @@ pub(crate) fn travel(
                 cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().left_ground.push(e));
             });
         }
+        // `FarmlandBlock.fallOn`: a landing on farmland after a fall is marked sparse (`Landed`), judged once by `landing_trample`.
+        if was_in_air && c.on_ground && fell > 0.0 && !b.object {
+            let at = ground_block(&level, p.0, bb.0);
+            if &*level.mw.0.facts.get(level.mw.0.world.block(at.x, at.y, at.z)).name == "minecraft:farmland" {
+                let landed = crate::landing_trample::Landed { at: [at.x, at.y, at.z], fall: f64::from(fell) };
+                par.command_scope(e, |mut cmd| {
+                    cmd.queue(move |w: &mut World| {
+                        if let Ok(mut en) = w.get_entity_mut(e) {
+                            en.insert(landed);
+                        }
+                    });
+                });
+            }
+        }
         if was_in_air && c.on_ground && !b.object {
+            // `LivingEntity.checkFallDamage`: the dust of the landed block, pulled to the face the mob straddles.
+            let dust = crate::landing_trample::landing_dust_count(f64::from(fell), 3.0).map(|n| {
+                let g = ground_block(&level, p.0, bb.0);
+                (crate::landing_trample::landing_dust_at(p.0, [g.x, g.z]), level.mw.0.world.block(g.x, g.y, g.z), n)
+            });
             par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| {
                     w.resource_mut::<crate::goals::Events>().landed.push(e);
                     crate::fall_passengers::land_sound(w, e, f64::from(fell));
+                    if let Some((at, state, n)) = dust {
+                        w.resource_mut::<crate::goals::Events>().host.block_particles(state, [at.x, at.y, at.z], n, 0.0);
+                    }
                 });
             });
         }
         if fall > 0.0 && !b.object && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) {
+            // `LivingEntity.causeFallDamage`: the fall sound by the damage (big past 4), then the fall sound of the block under the feet
+            // at half volume and three quarters of its pitch (`playBlockFallSound`, none in air).
+            let at = [p.0.x, p.0.y, p.0.z];
+            let g = ground_block(&level, p.0, bb.0);
+            let state = level.mw.0.world.block(g.x, g.y, g.z);
+            // `Block.fallOn`: the default fall loses its `fallDistanceReduction` of the distance before the damage.
+            let fall = fall * (1.0 - level.mw.0.landing.default_fall_reduction(state).unwrap_or(0.0));
+            let facts = level.mw.0.facts.get(state);
+            let air = &*facts.name == "minecraft:air" || facts.name.ends_with("_air");
+            let block_fall = (!air).then(|| (facts.sounds.fall.to_string(), facts.sounds.volume * 0.5, facts.sounds.pitch * 0.75));
             par.command_scope(e, |mut cmd| {
                 cmd.queue(move |w: &mut World| {
+                    // `calculateFallDamage` past 4 hearts: the big sound; a monster has its own pair (`Monster.getFallSounds`).
+                    let big = (fall - 3.0).floor() > 4.0;
+                    let hostile = w.get::<crate::landing_trample::HostileFall>(e).is_some();
+                    let small_or_big = match (hostile, big) {
+                        (true, true) => "entity.hostile.big_fall",
+                        (true, false) => "entity.hostile.small_fall",
+                        (false, true) => "entity.generic.big_fall",
+                        (false, false) => "entity.generic.small_fall",
+                    };
+                    w.resource_mut::<crate::goals::Events>().host.sound(small_or_big, at, 1.0, 1.0);
+                    if let Some((name, volume, pitch)) = block_fall {
+                        w.resource_mut::<crate::goals::Events>().host.sound(name, at, volume, pitch);
+                    }
                     w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall);
                     crate::fall_passengers::propagate(w, e, f64::from(fell), 1.0);
                 });

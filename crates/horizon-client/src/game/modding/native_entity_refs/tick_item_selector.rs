@@ -1,9 +1,6 @@
 impl Game<'_> {
     pub(super) fn unscoped_level_all_entities(&self, level: LevelRef) -> Option<Vec<EntityRef>> {
-        if !self.is_logical_server()
-            || !self.level_handle_current(level)
-            || level.dimension() != self.dim.key()
-        {
+        if !self.level_handle_current(level) || level.dimension() != self.dim.key() {
             return None;
         }
         let mut ids = self
@@ -33,10 +30,7 @@ impl Game<'_> {
     #[cold]
     #[inline(never)]
     fn scoped_level_all_entities(&self, level: LevelRef) -> Option<Vec<EntityRef>> {
-        if !self.is_logical_server()
-            || !self.level_handle_current(level)
-            || level.dimension() != self.dim.key()
-        {
+        if !self.level_handle_current(level) || level.dimension() != self.dim.key() {
             return None;
         }
         let ids = self

@@ -191,7 +191,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn for_player_keeps_the_outer_body_in_its_original_dimension() {
-        use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+        use crate::game::{Game, Options, Progress, Settings, load_resources};
         use horizon_client::{
             lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
             motion::PlayerMotion,
@@ -207,19 +207,18 @@ mod tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         let scratch = std::env::temp_dir().join(format!(
@@ -232,6 +231,7 @@ mod tests {
         ));
         std::fs::create_dir_all(&scratch).unwrap();
         game.world_root = scratch.clone();
+        // TODO(phase 2): assertion sur l'hôte : game.player lu après for_player et original = bounds du joueur hôte (building_players.rs:234)
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, 0.5)).unwrap());
         let original = game.player.as_ref().unwrap().bounds();
         let net = NetConfig {
@@ -256,7 +256,6 @@ mod tests {
                 allow_flight: false,
                 seed: 0,
                 max_players: 2,
-                integrated: false,
                 levels: Default::default(),
                 level_seeds: Default::default(),
             },

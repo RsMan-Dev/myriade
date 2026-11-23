@@ -53,7 +53,6 @@ fn a_mods_fluid_is_placed_flows_is_collected_and_saved() {
             .prepared()
             .to_path_buf();
         with_game_at(root, |game| {
-            game.options.dedicated = Some(Vec::new());
             // A floor wider than any spread looks: an edge would be a way down to flow to.
             for cx in -1..=1 {
                 for cz in -1..=1 {

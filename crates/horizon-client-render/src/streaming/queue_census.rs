@@ -1,4 +1,4 @@
-//! What the streamer's queues hold, for `horizon-ctl memory` and captures.
+//! What the streamer's queues hold, for `the control socket's memory command` and captures.
 use super::{Queued, Streaming};
 
 /// What the streamer's work queues hold, each as (entries, estimated bytes).
@@ -11,7 +11,7 @@ pub struct QueueCensus {
 }
 
 impl Streaming {
-    /// The queues' lengths and the bytes of their tables, from capacities. For `horizon-ctl memory`.
+    /// The queues' lengths and the bytes of their tables, from capacities. For `the control socket's memory command`.
     pub fn queue_census(&self) -> QueueCensus {
         use std::mem::size_of;
         let table = |capacity: usize, entry: usize| capacity * (entry + 1);

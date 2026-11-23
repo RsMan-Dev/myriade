@@ -55,14 +55,14 @@ mod restitution;
 /// A living entity jumped (`LivingEvent.LivingJumpEvent`).
 #[inline(never)]
 pub fn native_living_jump(context: &LoopContext, entity: u32, kind: &str) {
-    crate::native_client_hooks::living_jump(context, entity, kind);
+    crate::native_level_hooks::living_jump(context, entity, kind);
 }
 
 /// A living entity's jump power is about to be used (beyond NeoForge: there is no counterpart).
 /// Mods may change it. Fires on replayed ticks too, so a listener must be a pure function of its inputs.
 #[inline(never)]
 pub fn native_living_jump_power(context: &LoopContext, entity: u32, kind: &str, power: &mut f32) {
-    crate::native_client_hooks::living_jump_power(context, entity, kind, power);
+    crate::native_level_hooks::living_jump_power(context, entity, kind, power);
 }
 
 /// A living entity's movement speed is about to drive its travel (beyond NeoForge: there is no
@@ -70,7 +70,7 @@ pub fn native_living_jump_power(context: &LoopContext, entity: u32, kind: &str, 
 /// function of its inputs.
 #[inline(never)]
 pub fn native_living_speed(context: &LoopContext, entity: u32, kind: &str, speed: &mut f32) {
-    crate::native_client_hooks::living_speed(context, entity, kind, speed);
+    crate::native_level_hooks::living_speed(context, entity, kind, speed);
 }
 
 /// A living entity's airborne acceleration is about to be used (beyond NeoForge: there is no
@@ -78,7 +78,7 @@ pub fn native_living_speed(context: &LoopContext, entity: u32, kind: &str, speed
 /// function of its inputs.
 #[inline(never)]
 pub fn native_living_flying_speed(context: &LoopContext, entity: u32, kind: &str, speed: &mut f32) {
-    crate::native_client_hooks::living_flying_speed(context, entity, kind, speed);
+    crate::native_level_hooks::living_flying_speed(context, entity, kind, speed);
 }
 
 /// The player's crouch edge backoff asks whether it is staying on the ground surface
@@ -90,7 +90,7 @@ pub fn native_player_stays_on_ground_surface(
     entity: u32,
     staying: &mut bool,
 ) {
-    crate::native_client_hooks::player_stays_on_ground_surface(context, entity, staying);
+    crate::native_level_hooks::player_stays_on_ground_surface(context, entity, staying);
 }
 
 /// The current a fluid block pushes with (`FlowingFluid.getFlow`) is about to push an entity
@@ -98,7 +98,7 @@ pub fn native_player_stays_on_ground_surface(
 /// listener must be a pure function of its inputs.
 #[inline(never)]
 pub fn native_fluid_flow(context: &LoopContext, fluid: &str, pos: BlockPos, flow: &mut [f64; 3]) {
-    crate::native_client_hooks::fluid_flow(context, fluid, pos, flow);
+    crate::native_level_hooks::fluid_flow(context, fluid, pos, flow);
 }
 
 /// `FlowingFluid.getFlow` as it pushes an entity: the vanilla vector, then `fluid_flow`.
@@ -4141,64 +4141,6 @@ mod tests {
     /// hurt is the server's alone), so the glider hears it.
     #[test]
     #[ignore = "daily"]
-    fn a_clients_own_glide_into_a_wall_plays_the_fall_sound_and_does_not_hurt_it() {
-        let Some(v) = crate::test_fixtures::vanilla() else {
-            return;
-        };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
-        // A wall in the way of a glide along +x, at feet height.
-        let stone = assets.registry.default_state("minecraft:stone").unwrap();
-        for y in 4..=5 {
-            for z in 19..=21 {
-                scene.set(23, y, z, stone).unwrap();
-            }
-        }
-        let mut player = PlayerMotion::new(resources, Vec3::new(22.0, 4.0, 20.5)).unwrap();
-        player.client_side = true;
-        player.fall_flying = true;
-        // Looking along +x keeps the glide on its course into the wall.
-        player.yaw = -90.0;
-        player.pitch = 0.0;
-        player.carry_client_movement(Vec3::new(1.2, 0.0, 0.0));
-        let loop_context = crate::test_resources::loop_context(
-            horizon_world::native_load_context::LoopSide::Client,
-        );
-        let mut w = MotionWorld {
-            tag_items: None,
-            block_registries: None,
-            loop_context: &loop_context,
-            damage_hooks: &crate::health::DamageHooks::NONE,
-            entities: &[],
-            player: &mut player,
-            scene: &mut scene,
-            assets,
-            collision_binding: binding,
-            resources,
-            health: &resources.health,
-        };
-        w.travel_fall_flying(&mut MoveGate::new()).unwrap();
-        let is_fall = |e: &_| {
-            matches!(
-                e,
-                MotionEvent::Fall(crate::landing::FallEvent::Sound { .. })
-            )
-        };
-        assert_eq!(w.player.events.iter().filter(|e| is_fall(e)).count(), 1);
-        // The sound must play only once on impact, not repeat on subsequent ticks (#12304):
-        w.travel_fall_flying(&mut MoveGate::new()).unwrap();
-        assert_eq!(w.player.events.iter().filter(|e| is_fall(e)).count(), 1);
-        assert!(
-            !w.player
-                .hurt_log
-                .last()
-                .is_some_and(|hurt| hurt.source == "minecraft:fly_into_wall"),
-            "a client's own glide does not hurt it: {:?}",
-            w.player.hurt_log
-        );
-        assert_eq!(w.player.health.health(), 20.0);
-    }
-
     #[test]
     #[ignore = "daily"]
     fn spectator_scroll_speed_controls_horizontal_and_vertical_flight() {

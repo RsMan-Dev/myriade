@@ -49,7 +49,7 @@ pub fn death_drops(
     }
     let mut wear = w.get::<Wear>(e).copied().unwrap_or_default();
     let mut worn_armor = false;
-    for slot in [Slot::Main, Slot::Off, Slot::Feet, Slot::Legs, Slot::Chest, Slot::Head] {
+    for slot in [Slot::Main, Slot::Off, Slot::Feet, Slot::Legs, Slot::Chest, Slot::Head, Slot::Body] {
         let id = equipped(w, e, slot);
         if id == 0 {
             continue;

@@ -2,7 +2,7 @@
 use crate::spans::Span;
 use horizon_perf_format::files;
 use horizon_perf_format::v1::{
-    BenchResult, GpuMode, Kind, Mark, MemorySnapshot, Options, Overhead, Side, Start, Stop,
+    BenchResult, Kind, Mark, MemorySnapshot, Options, Overhead, Side, Start, Stop,
     StopReason, ThreadSelection, Trigger, Unit, Warning, WarningCode,
 };
 use horizon_perf_format::{
@@ -67,14 +67,6 @@ impl Role {
         unit: Unit::Tick,
         thread: "tick",
         span_thread: "Server thread",
-        background_probe: true,
-    };
-    pub const CLIENT: Role = Role {
-        side: Side::Client,
-        kind: Kind::Client,
-        unit: Unit::Frame,
-        thread: "render",
-        span_thread: "Render thread",
         background_probe: true,
     };
 }
@@ -190,7 +182,6 @@ pub struct ServerPerf {
     gauges_at: f64,
     system: SystemProbe,
     background: Option<BackgroundProbe>,
-    frame_medians: Option<f32>,
     session: Option<Session>,
     ending: Vec<Ending>,
 }
@@ -211,7 +202,6 @@ impl ServerPerf {
             gauges_at: start,
             system: SystemProbe::default(),
             background: None,
-            frame_medians: None,
             session: None,
             ending: Vec::new(),
         }
@@ -234,13 +224,13 @@ impl ServerPerf {
         &self.health
     }
 
-    /// Whether the next `tick` reads the gauges, so a client can set the frame medians of the second first.
+    /// Whether the next `tick` reads the gauges.
     pub fn gauges_due(&self, t: f64) -> bool {
         t - self.gauges_at >= 1.0
     }
 
 
-    /// One tick or frame that took `wall_ms` and ended at `t`; `world` and `wire` are read when the gauges are due.
+    /// One tick that took `wall_ms` and ended at `t`; `world` and `wire` are read when the gauges are due.
     pub fn tick(
         &mut self,
         t: f64,
@@ -259,7 +249,7 @@ impl ServerPerf {
         }
         if let (true, Some(counts)) = (due, counts) {
             self.gauges_at = t;
-            let mut g = match &self.background {
+            let g = match &self.background {
                 Some(probe) => {
                     probe.request(t, counts);
                     Gauges {
@@ -271,7 +261,6 @@ impl ServerPerf {
                 }
                 None => self.system.read(t, counts),
             };
-            g.frame_cpu_ms_p50 = self.frame_medians;
             self.health.set_gauges(g);
             if let Some(session) = &mut self.session {
                 session.traffic.sample(t - session.origin, &wire());
@@ -412,7 +401,6 @@ impl ServerPerf {
             ticks_over_ms: options.sampler.over_ms.filter(|_| sampled),
             wall: sampled && options.sampler.wall,
             samples: sampled,
-            gpu: GpuMode::Unspecified as i32,
             timeline: session.timeline.is_some(),
         });
         if sampled && let Some(build) = &mut start.build {

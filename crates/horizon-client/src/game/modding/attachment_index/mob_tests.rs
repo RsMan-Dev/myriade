@@ -16,7 +16,6 @@ static VALUE: AttachmentType<i32> = AttachmentType {
 #[ignore = "daily"]
 fn tnt_with_real_lifetime_accepts_first_store() {
     with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         game.summon_with_nbt("minecraft:tnt", [0.5, 70.0, 0.5], "{}")
             .unwrap();

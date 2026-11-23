@@ -1,5 +1,5 @@
 //! Bootstrap capture -> real registration -> real Game hosts, with the compiled wasm guest.
-use crate::game::{Game, Options, api_values, execution_role::ExecutionRole, mods};
+use crate::game::{Game, Options, api_values, mods};
 use horizon_mod_package::selection::LaunchArguments;
 use mod_api::{Dist, Hooks, Host, ModEntry, PackageInfo, RegistrationContext, RuntimeEnvironment};
 use std::sync::{Arc, Mutex};
@@ -84,19 +84,11 @@ fn run(wasm: bool) {
         .unwrap();
         let owner = tempfile::tempdir().unwrap();
         let cases = [
-            "client_off",
-            "client_flag",
-            "client_env_one",
-            "client_env_true",
-            "client_env_false",
             "dedicated_off",
             "dedicated_before",
             "dedicated_after",
             "dedicated_env_one",
             "dedicated_operand",
-            "integrated_off",
-            "integrated_flag",
-            "integrated_env_true",
         ];
         let run = |case: &str| {
             let scratch = owner.path().join(case);
@@ -113,11 +105,9 @@ fn run(wasm: bool) {
                 .env("HORIZON_RUNTIME_ENV_CASE", case)
                 .env("HORIZON_TEST_RESOURCES", &resources)
                 .env("HORIZON_NO_AUDIO", "1")
-                .env("HORIZON_LAUNCHER_NO_SELF_UPDATE", "1")
                 .env_remove("HORIZON_GAME_TESTS");
             for key in [
                 "HORIZON_HOME",
-                "HORIZON_LAUNCHER_HOME",
                 "XDG_DATA_HOME",
                 "XDG_CONFIG_HOME",
             ] {
@@ -162,7 +152,6 @@ fn run(wasm: bool) {
         return;
     }
     let case = std::env::var("HORIZON_RUNTIME_ENV_CASE").unwrap();
-    let dedicated = case.starts_with("dedicated");
     let enabled = case.ends_with("flag")
         || case.ends_with("before")
         || case.ends_with("after")
@@ -172,9 +161,7 @@ fn run(wasm: bool) {
     if case.ends_with("flag") || case.ends_with("before") {
         args.push("--game-tests".to_owned());
     }
-    if dedicated {
-        args.push("--dedicated".to_owned());
-    }
+    args.push("--dedicated".to_owned());
     if case.ends_with("after") {
         args.push("--game-tests".to_owned());
     }
@@ -185,19 +172,12 @@ fn run(wasm: bool) {
     let launch = LaunchArguments::parse(args.into_iter(), &cwd, &cwd, None).unwrap();
     let options = Options::from_launch(launch.clone()).unwrap().unwrap();
     if case.ends_with("operand") {
-        assert_eq!(
-            options.dedicated.as_deref().unwrap(),
-            ["--world", "--game-tests"]
-        );
+        assert_eq!(options.dedicated, ["--world", "--game-tests"]);
     }
     // The same entry capture used before the executable loads any code.
     crate::entry::runtime_environment::capture(&launch);
     let expected = RuntimeEnvironment::new(
-        if dedicated {
-            Dist::DedicatedServer
-        } else {
-            Dist::Client
-        },
+        Dist::DedicatedServer,
         horizon_core::VANILLA_VERSION.to_owned(),
         crate::crash::version(),
         enabled,
@@ -249,27 +229,12 @@ fn run(wasm: bool) {
     // Freeze the real bootstrap snapshot before with_mods runs registration hooks.
     mods::install_registration_data(&root).unwrap();
     mod_platform::testing::with_mods(entries.into(), || {
-        let role = if dedicated {
-            ExecutionRole::DedicatedServer
-        } else if case.starts_with("integrated") {
-            ExecutionRole::IntegratedServer
-        } else {
-            ExecutionRole::Client
-        };
-        crate::game::native_entity_refs::tests::with_game_role(
-            root,
-            role,
-            |game: &mut Game<'_>| {
+        crate::game::native_entity_refs::tests::with_game_role(root, |game: &mut Game<'_>| {
                 let _phase =
                     mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
-                if role.is_client() {
-                    // A client process's integrated logical server must read that same snapshot.
-                    game.options.execution_role = ExecutionRole::IntegratedServer;
-                }
-                game.native_server_started(dedicated);
+                game.native_server_started(true);
                 game.native_register_game_tests(&mut mod_api::GameTestFunctions::default());
-            },
-        );
+        });
     });
     let observed = observed.lock().unwrap();
     assert!(
@@ -316,9 +281,9 @@ fn normal_options_preserve_dedicated_flag_valued_operands() {
         )
         .unwrap();
         let options = Options::from_launch(launch).unwrap().unwrap();
-        assert_eq!(options.dedicated.as_ref(), Some(&tail));
+        assert_eq!(options.dedicated, tail);
         assert_eq!(
-            crate::entry::dedicated_arguments::parse(options.dedicated.as_ref().unwrap())
+            crate::entry::dedicated_arguments::parse(&options.dedicated)
                 .collect::<Result<Vec<_>, _>>()
                 .unwrap(),
             [(option, Some("--game-tests"))],

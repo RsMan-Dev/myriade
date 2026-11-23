@@ -59,7 +59,6 @@ fn wasm_server_tick_messages_reach_dedicated_game_on_guest_stack() {
         super::super::native_guest_turn_tests::with_guests(|game| {
             game.options.execution_role =
                 crate::game::execution_role::ExecutionRole::DedicatedServer;
-            game.options.dedicated = Some(Vec::new());
             let (tx, rx) = std::sync::mpsc::channel();
             let host = game.lan.as_mut().unwrap();
             host.hub.guests.update(0, |guest| {

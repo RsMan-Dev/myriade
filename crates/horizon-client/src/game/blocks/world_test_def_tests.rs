@@ -43,20 +43,19 @@ fn game<'a>(
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::DedicatedServer;
     let res = resources.insert(loaded.resources);
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.world_root = world.to_path_buf();
@@ -65,12 +64,23 @@ fn game<'a>(
     game
 }
 
+/// `game`, with the body run as a guest standing at (24.5, 100, 8.5).
+fn with_acting_guest_game(world: &std::path::Path, f: impl FnOnce(&mut Game<'_>)) {
+    let mut resources = None;
+    let mut game = game(&mut resources, world);
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+    crate::game::native_guest_turn_tests::with_acting_guest_on(
+        &mut game,
+        Vec3::new(24.5, 100.0, 8.5),
+        f,
+    );
+}
+
 #[test]
 #[ignore = "daily"]
 fn a_test_instance_from_an_enabled_world_pack_is_found_and_runs() {
     let world = world_with_pack("found");
-    let mut resources = None;
-    let mut game = game(&mut resources, &world);
+    with_acting_guest_game(&world, |game| {
     // The world opens: its state, registries and test instances.
     game.load_world_state().unwrap();
     game.ensure_datapacks();
@@ -94,10 +104,6 @@ fn a_test_instance_from_an_enabled_world_pack_is_found_and_runs() {
                 .insert((cx, cz), Arc::new(Chunk::empty(cx, cz)));
         }
     }
-    game.player = Some(
-        horizon_client::motion::PlayerMotion::new(game.motion, Vec3::new(24.5, 100.0, 8.5))
-            .unwrap(),
-    );
     game.chat_capture = Some(Vec::new());
     assert!(game.run_command("test run h275:broken"));
     let said: Vec<String> = game
@@ -119,6 +125,7 @@ fn a_test_instance_from_an_enabled_world_pack_is_found_and_runs() {
         "{said:?}"
     );
     let _ = std::fs::remove_dir_all(&world);
+    });
 }
 
 /// A world folder with one pack holding these `test_instance` files.

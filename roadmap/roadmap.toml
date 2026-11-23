@@ -86,7 +86,7 @@ In review: no main-thread tick stutter at high render distances (#3827), each pr
 (#3815), video memory handed back by the vertex arena (#3466), chunk batches assembled on helper threads (#3036), \
 free structure starts in the generation workers (#1760). Still open: far terrain at 48 to 64 chunks (#718) and CPU-bound fields of block entities (#717). Every \
 change shows before and after numbers from `tools/perf_bench.py` against vanilla 26.3 (docs/benchmark.md)."""
-links = ["#3827", "#3815", "#3466", "#3036", "#1760", "#678", "#718", "#717", "docs/benchmark.md"]
+links = ["#3827", "#3815", "#3466", "#3036", "#1760", "#678", "#718", "#717"]
 
 [[item]]
 id = "modpack-worldgen"
@@ -313,24 +313,6 @@ speed-ups are under 'Steady frames at long render distances'."""
 links = ["#1805"]
 
 [[item]]
-id = "native-shaders"
-title = "Horizon's own shader format and kit"
-status = "shipped"
-shipped_in = "v0.2.70"
-area = "rendering"
-plain = """Horizon's own way to make shader packs, with tools to write and test them. Every pack is checked before it \
-runs, and the registry will list them."""
-dev = """`horizon-shader-api` (API 0.2, experimental): WGSL stages with typed inputs inside the renderer's passes, \
-options as WGSL override constants, and the `horizon-shader new|check|pack` tool with templates and the \
-example pack Golden Hour. Merged: the check every pack passes (#1820) and the tool, templates and guide \
-(#1822). In review: the post stage running in the game with hot reload (#1861), the sky stage (#1863) and \
-registry checks that use the game's own check (#1855). Left: the material, lighting and shadow stages, a \
-last-good fallback on reload, a GPU-time overlay per stage and budgets (docs/shaders.md, \
-docs/api/shaders.md). The Iris/OptiFine loader is a separate item, 'Shader packs, written again from \
-scratch'."""
-links = ["#1820", "#1822", "#1861", "#1863", "#1855", "docs/shaders.md", "docs/api/shaders.md"]
-
-[[item]]
 id = "discord-presence"
 title = "Discord Rich Presence"
 status = "shipped"
@@ -354,17 +336,6 @@ and boolean inputs (#1735)."""
 links = ["#1720", "#1734", "#1735"]
 
 [[item]]
-id = "microsoft-sign-in"
-title = "Microsoft sign-in"
-status = "shipped"
-area = "launcher"
-announce = true
-plain = """Sign in with your Microsoft account in the launcher to play on online-mode servers."""
-dev = """Device-code sign-in in the launcher, tokens in the system keychain (long secrets split over several items, #2879), the session handed to the game and online-mode login in the client (docs/microsoft-account.md). Release builds carry the app's client id; Play needs an account that owns Java Edition."""
-links = ["docs/microsoft-account.md", "#2879"]
-shipped_in = "launcher@0.2.17"
-
-[[item]]
 id = "benchmarks"
 title = "Fresh benchmarks against vanilla"
 status = "next"
@@ -378,7 +349,7 @@ across releases (an automatic comparison of each release with the last, on a tim
 battery, low-end laptops, community reports). Server scale is published in #12930 and \
 docs/performance/server-vs-vanilla.md. Players' reports come in through `--benchmark` and \
 `horizon-launcher data benchmark` (docs/benchmark.md)."""
-links = ["#1073", "#1346", "#1749", "#12930", "docs/benchmark.md", "docs/performance/server-vs-vanilla.md"]
+links = ["#1073", "#1346", "#1749", "#12930", "docs/performance/server-vs-vanilla.md"]
 
 [[item]]
 id = "world-entry"
@@ -392,7 +363,7 @@ structure starts, and leave one core free for the rest of the game as vanilla do
 review, are listed under 'Steady frames at long render distances'). Still to profile on small CPUs: the \
 first seconds of a fresh world deliver no chunk, and fluids remesh for about a minute after loading. \
 Measured with `tools/perf_bench.py` (docs/benchmark.md, docs/profiling.md)."""
-links = ["docs/benchmark.md", "docs/profiling.md"]
+links = ["docs/profiling.md"]
 
 [[item]]
 id = "low-end-mode"
@@ -405,7 +376,7 @@ dev = """Partly done: an opt-in 60 FPS cap with fewer workers on battery, Far De
 animated textures on the GPU (both shipped). Left: measured targets and fixes per class of machine (memory \
 use, worker counts, startup) on a Steam Deck, old Intel and Apple Silicon Macs and 8 GB computers, reported \
 on the Benchmarks page."""
-links = ["docs/benchmark.md", "https://playhorizon.dev/docs/performance"]
+links = ["https://playhorizon.dev/docs/performance"]
 
 [[item]]
 id = "upscaling"
@@ -520,16 +491,6 @@ through naga, buffers, uniforms and the terrain, entity, sky, weather and hand s
 links = ["#1561", "#1584", "#1586", "#1698", "#1771", "#1786", "#1801", "#9045", "#6233", "#6485", "#3734", "#3125"]
 
 [[item]]
-id = "launcher-redesign"
-title = "A new launcher design"
-status = "next"
-area = "launcher"
-owner = "ludovic111"
-plain = """A redesigned launcher: every button where you expect it, the fewest clicks to play, add an instance or add mods, smooth animations, and instant startup."""
-dev = """Based on the site concept by the Team (Bricolage Grotesque, a night sky and an animated pixel sunset). Screens and flows are designed first, then small PRs; tokens in crates/horizon-theme and rules in docs/design-system.md, the game's vanilla look unchanged. Measured before and after: startup, frame time and idle CPU/GPU, reduced motion honoured. Mods screens separate Horizon native mods from Java mods; a running instance can be stopped from the launcher."""
-links = ["#3635", "#3636", "#3637", "docs/design-system.md", "crates/horizon-theme"]
-
-[[item]]
 id = "splitscreen"
 title = "Splitscreen"
 status = "next"
@@ -586,17 +547,6 @@ far-terrain levels of detail already shipped; the open work on them is #718."""
 links = ["#718", "#4678"]
 
 [[item]]
-id = "older-jars"
-title = "Older Fabric and Forge mods"
-status = "later"
-area = "modpacks"
-plain = """Recognise mods built for versions before 26.1 in the mod browser, so they can be checked and carried over \
-like newer ones."""
-dev = """A mapping table from intermediary and SRG names so pre-26.1 jars can be classified, and a rename for mod ids \
-with dashes (`fabric-api`); the port step then treats them like newer jars (docs/mod-browser.md)."""
-links = ["docs/mod-browser.md", "#10262"]
-
-[[item]]
 id = "modpack-own-packs"
 title = "A modpack's own resource and shader packs"
 status = "later"
@@ -645,11 +595,10 @@ status = "later"
 area = "servers"
 plain = """Friends who join through an invite code could prove who they are with their Microsoft account, as on \
 online-mode servers."""
-dev = """Play with Friends joins over an encrypted tunnel with an invite code (docs/play-with-friends.md, \
-'Identity'). Online-mode checks against Mojang's session servers can be added on top of the same tunnel; \
+dev = """Play with Friends joins over an encrypted tunnel with an invite code ('Identity'). Online-mode checks against Mojang's session servers can be added on top of the same tunnel; \
 they need Microsoft sign-in first, which is coming soon. Play with Friends stays self-hosted between \
 players, with no relay run by the project."""
-links = ["docs/play-with-friends.md"]
+links = []
 
 [[item]]
 id = "orbital-laser"
@@ -661,15 +610,6 @@ listed in the registry."""
 dev = """A native port (a horizon-mixins bundle, docs/modding/src/how-to/native-mods.md) of https://github.com/Stink-O/orbital-laser \
 (MIT), which today runs through its author's fork. Tested in the game, and listed in the registry."""
 links = ["https://github.com/Stink-O/orbital-laser"]
-
-[[item]]
-id = "client-mod-natives"
-title = "Native versions of popular client mods"
-status = "later"
-area = "mods"
-plain = """Built-in versions of the client mods players ask for: block info on hover, a world map, inventory tweaks and schematic overlays."""
-dev = """Done: a mod list and menu, minimap, zoom, keystrokes, an FPS counter and a recipe viewer, as native mods (horizon-mods/native/). Asked for: an angled world map that shows hills, overhangs and caves, inventory tweaks (drag and scroll to move items), block info tooltips and schematic overlays."""
-links = ["docs/extras.md", "docs/modding/src/how-to/native-mods.md"]
 
 [[item]]
 id = "create-physics"
@@ -690,17 +630,6 @@ plain = """Hear nearby players talk, as with the voice chat mods of other Minecr
 dev = """A native mod (docs/modding/src/how-to/native-mods.md). It needs a way to carry voice between players and an audio path in the \
 game before anything can be built."""
 links = ["docs/modding/src/how-to/native-mods.md"]
-
-[[item]]
-id = "light-default-pack"
-title = "A light default shader pack"
-status = "later"
-area = "rendering"
-plain = """A small built-in look (tone mapping, colour grade, a cheap vignette) that costs almost nothing, for players \
-who want a nicer picture without a heavy pack."""
-dev = """An opt-in, composite-only pack on the native shader API, under about 0.3 ms at 1080p, shown on the Shader \
-Packs page. Pack option sliders and profiles, and a Failed row with the full error, belong with it."""
-links = ["docs/shaders.md"]
 
 [[item]]
 id = "ray-tracing"
@@ -726,18 +655,6 @@ above paper white (#6671). Next: LabPBR emission, an HDR output for shader packs
 links = ["#1441", "#2021", "#2292"]
 
 [[item]]
-id = "msaa-fullscreen"
-title = "MSAA, anisotropic filtering, exclusive fullscreen"
-status = "later"
-area = "rendering"
-plain = """More graphics options: multisample anti-aliasing, anisotropic filtering and an exclusive fullscreen mode. \
-Today Horizon has FXAA and borderless fullscreen."""
-dev = """Not implemented (docs/graphics.md). Anisotropic filtering needs linear magnification in wgpu, which blurs \
-close blocks, so close-up sharpness has to be kept first; MSAA would sit beside FXAA, and SMAA or TAA are \
-asked for too; exclusive fullscreen where the backend supports it."""
-links = ["docs/graphics.md"]
-
-[[item]]
 id = "video-studio"
 title = "A complete video studio inside the game"
 status = "later"
@@ -746,22 +663,8 @@ plain = """Record, replay and edit videos without leaving the game: record in a 
 finish the video. One of Horizon's original goals."""
 dev = """Three stages. Recording: capture gameplay in a keypress with an encoder thread and little frame-time cost. \
 Replay: a replay mode for recorded sessions. Editing: cuts, camera paths, titles and export. None of it \
-exists yet; the agent-control socket (docs/agent-control.md) already lets tools drive the game for scripted \
-shots."""
-links = ["docs/agent-control.md", "#10025"]
-
-[[item]]
-id = "controllers"
-title = "Controllers: tested on real pads, and in the launcher"
-status = "later"
-area = "gameplay"
-plain = """Make controller support solid: tested with real PlayStation and Xbox pads and a Steam Deck, and usable in \
-the launcher too."""
-dev = """The game side is merged (docs/controllers.md): pads read with gilrs, menus, rumble, glyphs, remapping and \
-DualSense adaptive triggers, lightbar and haptics, but not yet confirmed on real pads or a Steam Deck \
-(DualSense haptics stay behind a switch until then). Left: a test pass on real hardware, and the same focus \
-navigation in the GPUI launcher."""
-links = ["docs/controllers.md", "#10298", "#8678"]
+exists yet; the agent-control socket already lets tools drive the game for scripted shots."""
+links = ["#10025"]
 
 [[item]]
 id = "debug-screen"
@@ -769,10 +672,10 @@ title = "The full debug screen"
 status = "later"
 area = "gameplay"
 plain = """Vanilla's complete F3 screen: debug options, a profiler chart, ten-second captures and an atlas dump."""
-dev = """Today F3 shows position, chunk, light, biome and FPS (docs/native-client.md). Vanilla also has F3+F6 debug \
+dev = """Today F3 shows position, chunk, light, biome and FPS. Vanilla also has F3+F6 debug \
 options with profiles, F3+1 the profiler pie, F3+L a ten-second capture and F3+S the atlas dump (#562 asked \
 for the F3 editor)."""
-links = ["#562", "docs/native-client.md"]
+links = ["#562"]
 
 [[item]]
 id = "lean-installs"
@@ -865,19 +768,6 @@ dev = """Kira already shows new uploads in a read-only Discord channel (done). T
 project: a script, edits, titles and a thumbnail per video."""
 
 [[item]]
-id = "curseforge"
-title = "CurseForge in the mod browser (coming soon)"
-status = "later"
-area = "modpacks"
-announce = true
-plain = """Coming soon: search and download CurseForge mods and modpacks from the launcher, as you can with \
-Modrinth today."""
-dev = """The mod browser lists CurseForge as coming soon (docs/mod-browser.md): it needs CurseForge API access. \
-Meanwhile packs import from a CurseForge zip or instance folder, and jars only CurseForge hosts come from the \
-player's own instance (docs/modpacks.md)."""
-links = ["docs/mod-browser.md", "docs/modpacks.md"]
-
-[[item]]
 id = "pistons-push"
 title = "Pistons push players and mobs"
 status = "later"
@@ -915,20 +805,6 @@ scenes (#1461). Profile first, keep what pays, show before and after numbers."""
 links = ["#1461", "docs/profiling.md", "#7752", "#8251", "#10229"]
 
 [[item]]
-id = "convert-to-rust"
-title = "A Convert to Rust button for what isn't rewritten yet"
-status = "later"
-area = "modpacks"
-plain = """When a mod, shader pack or modpack hasn't been rewritten for Horizon, one button converts what can be \
-converted, so you don't have to wait for the rewrite."""
-dev = """Generalise the mod browser's Port step (`horizon-port-pack`: the data, assets, worldgen and block and item \
-definitions of Java mods, .mrpack and CurseForge zips) to every kind of content: code mods as native \
-mods (see 'Mods with code') and shader packs, converting an Iris/OptiFine pack into Horizon's format. \
-The browser says what works before the install. Java code itself does not run (docs/modpacks.md, \
-docs/mod-browser.md)."""
-links = ["docs/modpacks.md", "docs/mod-browser.md"]
-
-[[item]]
 id = "code-mods"
 title = "Mods with code: machines, magic, mobs"
 status = "later"
@@ -940,17 +816,6 @@ entities, networking, rendering, menus, inventories) that unlock them in tiers, 
 recommended path. Code mods are native mods now (docs/modding/src/how-to/native-mods.md): each port is a horizon-mixins bundle. \
 The path isn't started yet (docs/modpacks.md)."""
 links = ["docs/modpacks.md", "docs/modding/src/how-to/native-mods.md"]
-
-[[item]]
-id = "datapack-browser"
-title = "Data packs in the mod browser"
-status = "later"
-area = "modpacks"
-plain = """Search and install data packs from the launcher's mod browser, for the world you choose, as you do mods and \
-resource packs."""
-dev = """A Datapacks tab beside Mods and Resource packs: install into a chosen world's datapacks folder, with the \
-same checks and 'works in Horizon' notes as the other kinds (docs/mod-browser.md)."""
-links = ["docs/mod-browser.md"]
 
 [[item]]
 id = "prepare-without-java"
@@ -1016,19 +881,6 @@ an older Windows computer had no sound at all, and a device choice is how such c
 links = ["#1035"]
 
 [[item]]
-id = "shader-pack-examples"
-title = "Well-known shader looks, rewritten for Horizon"
-status = "later"
-area = "rendering"
-plain = """Popular shader packs rewritten in Horizon's format, so good packs exist from the start. Only packs whose \
-licence is open source and compatible with ours are rewritten, never anything else."""
-dev = """The first candidates are Photon, Chocapic13 and MakeUp Ultra Fast, each only after its licence is read and \
-recorded: a pack is rewritten only if it is open source and compatible with Horizon's licence, and the \
-rewrite is written from the shader format's documentation and the look on screen, not from anyone's code. \
-Today only the Golden Hour example exists (`crates/horizon-shader-api/packs/golden_hour`)."""
-links = ["docs/shaders.md", "crates/horizon-shader-api/packs/golden_hour"]
-
-[[item]]
 id = "beta-label"
 title = "A visible beta label"
 status = "later"
@@ -1060,9 +912,8 @@ event stream so tools keep working as Horizon changes."""
 dev = """`hello` answers with the API version, the release and the features; `horizon-ctl --api`; MCP serverInfo; \
 reply schemas generated into the reference; a `test.` namespace for hooks; transcript compatibility tests; \
 `subscribe` as a stream of events on one connection; Horizon option files by key and saved-server commands. \
-Agent control itself (`horizon-ctl`, both MCP servers, the No AI switch) is done: docs/agent-control.md, \
-docs/api/agent-control.md."""
-links = ["docs/agent-control.md", "docs/api/agent-control.md", "docs/api/stability.md"]
+"""
+links = ["docs/api/stability.md"]
 
 [[item]]
 id = "own-agents-porting"
@@ -1071,11 +922,11 @@ status = "later"
 area = "ai"
 plain = """You can port a mod to Horizon with your own AI agent on your own computer. Horizon documents how and gives \
 you the tools, but provides no hosted agents."""
-dev = """A player runs their own agent locally with `horizon-ctl` and the MCP servers (docs/agent-control.md), `cargo \
+dev = """A player runs their own agent locally with the MCP servers, `cargo \
 horizon-mod`, `horizon-port-pack` and the parity harnesses as the check. Horizon writes the guide \
 (playhorizon.dev/docs/agents, docs/modpacks.md) and runs no agents, accounts or keys for players. The No AI \
 switch turns all of it off."""
-links = ["https://playhorizon.dev/docs/agents", "docs/modpacks.md", "docs/agent-control.md"]
+links = ["https://playhorizon.dev/docs/agents", "docs/modpacks.md"]
 
 [[item]]
 id = "x-account"
@@ -1209,28 +1060,6 @@ dev = """Opt-in reduced far terrain (#1199), on far-terrain chunk summaries buil
 links = ["#1199", "#1029"]
 
 [[item]]
-id = "mod-browser"
-title = "The launcher's mod browser"
-status = "shipped"
-shipped_in = "launcher@0.2.0"
-area = "modpacks"
-plain = """Search Modrinth for mods, modpacks and resource packs from the launcher; it says before installing what \
-works in Horizon."""
-dev = """The Mods page (#1154), Java mods checked before install (#1242), project pages, filters and galleries \
-(#1243), modpacks ported in the same step (#1246). docs/mod-browser.md."""
-links = ["#1154", "#1242", "#1243", "#1246", "docs/mod-browser.md"]
-
-[[item]]
-id = "launcher-look"
-title = "A blocky, Minecraft-like launcher"
-status = "shipped"
-shipped_in = "launcher@0.2.0"
-area = "launcher"
-plain = """The launcher got a new blocky look in Horizon's purple, in dark and light."""
-dev = """The Blocks look (#1269), from `horizon-theme` (docs/design-system.md)."""
-links = ["#1269", "docs/design-system.md"]
-
-[[item]]
 id = "dynamic-lights"
 title = "Dynamic lights"
 status = "shipped"
@@ -1239,29 +1068,6 @@ area = "extras"
 plain = """An optional extra: torches you hold, drop or set on fire light up what is around them."""
 dev = """Held, dropped and burning light sources (#1162), in Horizon Extras, off by default."""
 links = ["#1162"]
-
-[[item]]
-id = "servers-page"
-title = "Host a server from the launcher"
-status = "shipped"
-shipped_in = "launcher-v0.15.0"
-area = "servers"
-plain = """The launcher's Servers page creates, starts, backs up and updates a Horizon server with buttons, and \
-invites friends."""
-dev = """The launcher's Servers page (#1026) over `horizon-server` (docs/hosting.md)."""
-links = ["#1026", "docs/hosting.md"]
-
-[[item]]
-id = "launcher-look-menus"
-title = "Game menus in the launcher's style"
-status = "later"
-area = "extras"
-plain = """An optional look for the game's own menus and options that matches the Horizon launcher. Off by default: \
-the vanilla menus stay as they are."""
-dev = """A player's idea (#horizon-ideas). A built-in resource pack or a Horizon setting that restyles the title, \
-pause and options screens with the launcher's design tokens (crates/horizon-theme), following \
-docs/design-system.md; off by default because it changes the vanilla look."""
-links = ["docs/design-system.md"]
 
 [[item]]
 id = "linux-packages"
@@ -1273,4 +1079,3 @@ dev = """A player's idea (#horizon-ideas). The launcher's AppImage ships with ea
 (packaging/linux/appimage.sh): one file with the libraries GPUI needs, which replaces itself when it \
 updates. A flake.nix packaging the release binaries with their runtime libraries (Vulkan loader, \
 X11/Wayland, ALSA) is still missing, the way horizon-parity's NixOS setup runs them today."""
-links = ["packaging/linux/appimage.sh"]

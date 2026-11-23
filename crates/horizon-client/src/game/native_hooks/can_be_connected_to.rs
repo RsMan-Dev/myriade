@@ -27,9 +27,6 @@ impl GameLevel<'_> {
         face_solid: bool,
         vanilla: bool,
     ) -> bool {
-        if !self.native_authoritative {
-            return vanilla;
-        }
         let mut answer = None;
         if let Err(error) = horizon_client::crash::contain(|| {
             self.native_can_be_connected_to(super::fire::CanBeConnectedToCall {

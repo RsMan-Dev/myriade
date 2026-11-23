@@ -4,16 +4,13 @@
 //! entity hover and the name a shift-click inserts.
 use super::*;
 use crate::game::{lan::LanSettings, lan_actions::GuestCommand};
-use horizon_client::{
-    lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
-    motion::PlayerMotion,
-};
+use horizon_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 use horizon_protocol::packets::configuration::ClientInformation;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 
 /// A host game with a window player and two other online players.
 fn game_with_two_guests() -> Game<'static> {
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     let root = std::path::PathBuf::from(
         std::env::var_os("HORIZON_TEST_RESOURCES").expect("set HORIZON_TEST_RESOURCES"),
     );
@@ -25,31 +22,23 @@ fn game_with_two_guests() -> Game<'static> {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let res: &'static _ = Box::leak(Box::new(loaded.resources));
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
-    game.player = Some(
-        PlayerMotion::new(
-            game.motion,
-            horizon_core::geometry::Vec3::new(10.5, 64.0, -3.25),
-        )
-        .unwrap(),
-    );
     game.lan_host(
         LanSettings {
             port: 0,
@@ -71,7 +60,6 @@ fn game_with_two_guests() -> Game<'static> {
             allow_flight: false,
             seed: 0,
             max_players: 3,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         },
@@ -110,7 +98,6 @@ fn guest_2_command(game: &mut Game<'_>, command: &str) -> Vec<Text> {
             conn: 2,
             command: command.into(),
             permission: 4,
-            integrated: false,
             quiet: false,
         })
         .expect("guest 2 is online");

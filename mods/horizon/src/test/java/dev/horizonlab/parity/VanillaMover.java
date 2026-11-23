@@ -59,6 +59,7 @@ public final class VanillaMover {
                 mc.player.setYRot(Float.parseFloat(words[1]));
                 mc.player.setXRot(Float.parseFloat(words[2]));
             }
+            case "hotbar" -> KeyMapping.click(o.keyHotbarSlots[Integer.parseInt(words[1]) - 1].getDefaultKey());
             case "attack" -> {
                 try {
                     var startAttack = Minecraft.class.getDeclaredMethod("startAttack");

@@ -21,6 +21,11 @@ pub struct Genes {
     pub hidden: Gene,
 }
 
+/// A creature whose `Shared` draw made no group: a loner (`TropicalFish.isSchool` false), read by the spawner.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Loner;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum When {
     /// Before the class's own `finalizeSpawn` draws (the species draws first, then calls `super`).
@@ -40,6 +45,8 @@ pub enum Store {
     WoolColor,
     MerchantVariant,
     Size,
+    /// A write the action's module owns (a marker, a memory's date): the value goes to its function.
+    Call(fn(&mut World, Entity, u32)),
 }
 
 /// How a member takes its value from the group's.
@@ -182,6 +189,8 @@ pub fn run(w: &mut World, e: Entity, d: &Draws, when: When, group: &mut Option<G
                             let mut draw = |n: i32| r.next_int_bound(n).unwrap_or(0);
                             take(vals, n, &mut draw)
                         } else {
+                            // `TropicalFish.isSchool = false`: a draw past the odds is a loner, the school ends at it.
+                            w.entity_mut(e).insert(Loner);
                             roll(free, c, r)
                         }
                     }
@@ -221,6 +230,7 @@ fn store(w: &mut World, e: Entity, s: Store, v: u32) {
             }
         }
         Store::Size => crate::size::set_size(w, e, v as i32),
+        Store::Call(f) => f(w, e, v),
     }
 }
 

@@ -56,9 +56,11 @@ fn boxes_of(p: &Parts) -> [Aabb; 8] {
 }
 
 impl EcsWorld {
-    /// `EnderDragon` summoned at `at` with `yaw`, its generators seeded by `seed`, born in `phase`.
-    pub fn summon_dragon(&mut self, mw: &MobWorld<'_>, at: [f64; 3], yaw: f32, seed: i64, phase: u8) -> Entity {
-        self.lent(mw, |w| crate::dragon::respawn::summon(w, Vec3::new(at[0], at[1], at[2]), yaw, seed, phase))
+    /// `EnderDragon` summoned at `at` with `yaw`, its generators seeded by `seed`, born in `phase`, its spawn `sheet` applied.
+    pub fn summon_dragon(&mut self, mw: &MobWorld<'_>, at: [f64; 3], yaw: f32, seed: i64, phase: u8, sheet: &crate::spawn_sheet::SpawnSheet) -> Entity {
+        let e = self.lent(mw, |w| crate::dragon::respawn::summon(w, Vec3::new(at[0], at[1], at[2]), yaw, seed, phase));
+        self.apply_sheet(e, sheet);
+        e
     }
 
     /// The dragons of the level (every one carries its flight generators), in entity order.

@@ -21,7 +21,7 @@ pub enum MiscEvent {
     PufferSting { fish: bevy_ecs::entity::Entity, player: u32, size: u8, silent: bool },
     /// `LivingDestroyBlockEvent` (only while a mod hears it): the creature `breaker` is about to turn the block `pos` into air; the host asks
     /// the mods and, unless one cancels, writes the air itself.
-    DestroyAsk { breaker: bevy_ecs::entity::Entity, pos: [i32; 3] },
+    DestroyAsk { breaker: bevy_ecs::entity::Entity, pos: [i32; 3], drop: bool },
     /// `DolphinSwimToTreasureGoal.start`: the dolphin `dolphin`, at block `at`, asks for the nearest `#dolphin_located` structure within 50; the
     /// host answers with `EcsWorld::dolphin_treasure` (`None` when there is none) and plays entity event 38 when found.
     TreasureAsk { dolphin: bevy_ecs::entity::Entity, at: [i32; 3] },

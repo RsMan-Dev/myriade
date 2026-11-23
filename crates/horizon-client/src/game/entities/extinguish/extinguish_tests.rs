@@ -3,7 +3,7 @@
 //! change only where `mayInteract` allows it.
 use super::*;
 use crate::game::game_tests::tests::server_game;
-use horizon_client::motion::{MotionWorld, PlayerMotion};
+use horizon_client::motion::MotionWorld;
 use horizon_core::geometry::Vec3;
 use horizon_world::chunk::BlockState;
 use horizon_world::entity_move::MovementRecord;
@@ -54,33 +54,37 @@ fn burn_in(game: &mut Game<'_>, pos: [i32; 3]) {
         f64::from(pos[1]),
         f64::from(pos[2]) + 0.5,
     );
-    game.player = Some(PlayerMotion::new(game.motion, at).unwrap());
-    game.player.as_mut().unwrap().fire_ticks = 100;
-    let events = {
-        let player = game.player.as_mut().unwrap();
-        // The move the client sent: standing still, inside the block.
-        player.history.add(MovementRecord {
-            from: at,
-            to: at,
-            original: None,
-        });
-        let mut w = MotionWorld {
-            entities: &[],
-            player,
-            scene: &mut game.world,
-            assets: &game.pack.assets,
-            collision_binding: game.collision,
-            resources: game.motion,
-            health: &game.health_resources,
-            tag_items: Some(game.res.items()),
-            loop_context: &game.loop_context,
-            damage_hooks: &game.damage_hooks,
-            block_registries: Some(&game.pack.block_registries),
+    if game.lan.is_none() {
+        crate::game::native_guest_turn_tests::lan_guests_on(game);
+    }
+    crate::game::native_guest_turn_tests::with_acting_guest_on(game, at, |game| {
+        game.player.as_mut().unwrap().fire_ticks = 100;
+        let events = {
+            let player = game.player.as_mut().unwrap();
+            // The move the client sent: standing still, inside the block.
+            player.history.add(MovementRecord {
+                from: at,
+                to: at,
+                original: None,
+            });
+            let mut w = MotionWorld {
+                entities: &[],
+                player,
+                scene: &mut game.world,
+                assets: &game.pack.assets,
+                collision_binding: game.collision,
+                resources: game.motion,
+                health: &game.health_resources,
+                tag_items: Some(game.res.items()),
+                loop_context: &game.loop_context,
+                damage_hooks: &game.damage_hooks,
+                block_registries: Some(&game.pack.block_registries),
+            };
+            w.server_block_damage(at).unwrap();
+            std::mem::take(&mut w.player.events)
         };
-        w.server_block_damage(at).unwrap();
-        std::mem::take(&mut w.player.events)
-    };
-    game.block_extinguish_player(&events);
+        game.block_extinguish_player(&events);
+    });
 }
 
 /// Outside the world border, as `/worldborder center 1000 1000` and

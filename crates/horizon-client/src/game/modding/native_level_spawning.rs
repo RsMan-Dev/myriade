@@ -1,9 +1,9 @@
 //! Mob spawning and a level's natural spawning policy through a `LevelRef`
 //! (docs/modding/src/how-to/world/spawning.md, "Spawning from a level"): a mob made
 //! as `EntityType.spawn` makes one, the per-category limits and the flags
-//! natural spawning reads (`natural_spawning::SpawnPolicy`), and the chunk
+//! natural spawning reads (`spawn_level::SpawnPolicy`), and the chunk
 //! question it asks (`ServerLevel.canSpawnEntitiesInChunk`).
-use super::{Game, creatures::SpawnSite, natural_spawning};
+use super::{Game, creatures::SpawnSite, spawn_level};
 use mod_api::{EntityRef, LevelRef, SpawnFlags, SpawnLimits};
 
 impl Game<'_> {
@@ -58,12 +58,16 @@ impl Game<'_> {
     fn native_set_spawn_policy(
         &mut self,
         level: LevelRef,
-        set: impl FnOnce(&mut natural_spawning::SpawnPolicy),
+        set: impl FnOnce(&mut spawn_level::SpawnPolicy),
     ) -> bool {
         if self.native_level_world(level).is_none() {
             return false;
         }
         set(self.spawn_policies.entry(level.dimension()).or_default());
+        if level.dimension() == self.dim.key() {
+            let policy = self.ecs_spawn_policy();
+            self.ecs.set_spawn_policy(policy);
+        }
         true
     }
     /// `ServerLevel.canSpawnEntitiesInChunk` as natural spawning answers it. None for a
@@ -74,7 +78,7 @@ impl Game<'_> {
         pos: [i32; 2],
     ) -> Option<bool> {
         let world = self.native_level_world(level)?;
-        Some(natural_spawning::can_spawn_entities_in_chunk(
+        Some(spawn_level::can_spawn_entities_in_chunk(
             world, pos[0], pos[1],
         ))
     }

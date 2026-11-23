@@ -1,8 +1,5 @@
 impl Game<'_> {
     pub(super) fn unscoped_game_stack(&mut self, place: &ItemPlace) -> Option<ItemStack> {
-        if !self.places_simulated() {
-            return None;
-        }
         if let ItemPlace::ItemEntity { id } = place {
             return self
                 .ecs.item(*id)
@@ -30,9 +27,6 @@ impl Game<'_> {
     #[cold]
     #[inline(never)]
     fn scoped_game_stack(&mut self, place: &ItemPlace) -> Option<ItemStack> {
-        if !self.places_simulated() {
-            return None;
-        }
         if let ItemPlace::ItemEntity { id } = place
             && let Some(stack) = self.tick_item_view(*id)
         {

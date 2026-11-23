@@ -7,6 +7,7 @@ use crate::species::Def;
 
 pub static DEF: Def = Def {
     name: "template:fish",
+    despawn: Some(crate::despawn::DespawnDef { removable: crate::despawn::Removable::UnlessNamed, ..crate::despawn::DespawnDef::MOB }),
     reference: None,
     targets: &[],
     goals: &[
@@ -24,6 +25,6 @@ pub static DEF: Def = Def {
         (Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params::DEFAULT)),
     ],
     
-    spawn: Some(crate::spawning::SpawnDef { category: crate::spawning::Category::WaterAmbient, place: crate::spawning::Place::InWater, rule: crate::spawning::Rule::SurfaceWater, cluster: 8, far: false, peaceful: true, liquid: true, despawn: crate::despawn::DespawnDef { distance: 64.0, ..crate::despawn::DespawnDef::MOB } }), despawn: Some(crate::despawn::DespawnDef { distance: 64.0, ..crate::despawn::DespawnDef::MOB }),
+    spawn: Some(crate::spawning::SpawnDef { category: crate::spawning::Category::WaterAmbient, place: crate::spawning::Place::InWater, rule: crate::spawning::Rule::SurfaceWater, cluster: 8, far: false, peaceful: true, liquid: true, despawn: crate::despawn::DespawnDef { distance: 64.0, removable: crate::despawn::Removable::UnlessNamed, ..crate::despawn::DespawnDef::MOB } }), despawn: Some(crate::despawn::DespawnDef { distance: 64.0, ..crate::despawn::DespawnDef::MOB }),
     ..Def::EMPTY
 };

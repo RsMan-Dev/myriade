@@ -6,6 +6,7 @@ use crate::species::Def;
 static ANGRY: Cond = Cond::Is("neutral:angry");
 
 pub static DEF: Def = Def {
+    load_attrs: super::templates::zombie_base::LOAD_ATTRS,
     name: "minecraft:zombified_piglin",
     caps: Some(super::FIRE_IMMUNE_CAPS),
     targets: &[
@@ -31,5 +32,6 @@ pub static DEF: Def = Def {
         crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::ZOMBIFIED_PIGLIN),
     ],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

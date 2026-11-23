@@ -4,19 +4,16 @@ use std::time::Instant;
 
 impl Game<'_> {
     /// `MinecraftServer.haveTime`: the current server tick has not reached the
-    /// moment the next one is due. A client, and a server outside a scheduled
-    /// tick, always has time, as NeoForge's client `LevelTickEvent.hasTime` does.
+    /// moment the next one is due. A server outside a scheduled tick always has time.
     pub(super) fn server_has_time(&self) -> bool {
-        !self.is_logical_server()
-            || self
-                .server_tick_deadline
-                .is_none_or(|end| Instant::now() < end)
+        self.server_tick_deadline
+            .is_none_or(|end| Instant::now() < end)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+    use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{
         Hooks, HostSide, LevelTickPreEvent, ModEntry, ServerHost, ServerTickEvent, ServerTickPhase,
     };
@@ -33,15 +30,6 @@ mod tests {
             assert!(game.server_has_time());
             game.server_tick_deadline = Some(Instant::now() - Duration::from_millis(1));
             assert!(!game.server_has_time());
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_client_level_always_has_time() {
-        with_client_game(|game| {
-            game.server_tick_deadline = Some(Instant::now() - Duration::from_millis(1));
-            assert!(game.server_has_time());
         });
     }
 

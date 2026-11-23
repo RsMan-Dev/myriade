@@ -635,9 +635,8 @@ mod content_tests {
     /// answer the pass left. The occurrence under a slot other than
     /// `ingredients` (a banner recipe's `banner`) and the nested one are
     /// answered too, and an answer a data file carries is dropped. Measured
-    /// in the game before the pass existed, per occurrence: an integrated
-    /// open heard it twice with `ServerDataLoad` and once with `ClientPreload`,
-    /// and a dedicated server three times.
+    /// in the game before the pass existed, per occurrence: a dedicated server
+    /// heard it three times.
     #[test]
     fn ingredient_hook_hears_each_occurrence_once_per_load_with_its_origin() {
         let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -689,20 +688,6 @@ mod content_tests {
             assert_eq!(*resolved.recipes[0].file, recipe);
             horizon_client::crafting::Ingredient::forget_answers(&mut copy);
             assert!(!copy.to_string().contains("resolved_items"));
-
-            heard.lock().unwrap().clear();
-            let client =
-                ResolvedSources::resolve(sources(), &load(EngineDataLoadOrigin::ClientPreload))
-                    .unwrap();
-            assert!(
-                heard
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .all(|(origin, _)| *origin == DataLoadOrigin::ClientPreload)
-            );
-            assert_eq!(heard.lock().unwrap().len(), 3);
-            drop(client);
         });
     }
 

@@ -405,14 +405,10 @@ mod tests {
         let mods: Mods = vec![ModEntry::new("uses", Box::new(UseMod(uses.clone())))].into();
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
+            crate::game::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
                 crate::game::native_entity_refs::tests::resolve_parts(game).unwrap();
-                game.player = Some(
-                    horizon_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap(),
-                );
-                crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
                 game.right = true;
-                let player = game.living(game.entity(20).unwrap()).unwrap();
+                let player = game.living(game.entity(12).unwrap()).unwrap();
                 test(game, &uses, player);
             });
         });
@@ -626,6 +622,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mobs_stuck_arrows_and_stingers_fall_out_in_its_ticks() {
+        // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : floor_and_zombies pose le joueur 20 et place les zombies 12 et 13, ids déjà pris par l'invité 12)
         with_game(|game| {
             floor_and_zombies(game);
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
@@ -651,6 +648,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mobs_spear_use_goes_on_from_the_ticks_a_write_left() {
+        // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : floor_and_zombies pose le joueur 20 et place les zombies 12 et 13, ids déjà pris par l'invité 12)
         use mod_api::EquipmentSlot;
         with_game(|game| {
             floor_and_zombies(game);
@@ -671,6 +669,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_waypoint_write_on_a_mob_is_kept_with_the_waypoint() {
+        // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : floor_and_zombies pose le joueur 20 et place les zombies 12 et 13, ids déjà pris par l'invité 12)
         use super::super::commands::Target;
         with_game(|game| {
             floor_and_zombies(game);
@@ -702,7 +701,7 @@ mod tests {
             packets::play::{Clientbound as C, waypoint_operation},
         };
         with_game(|game| {
-            guest_server(game, false, true);
+            guest_server(game);
             let (spinner, _rx) = guest(game, 12);
             let (_, observer) = guest(game, 13);
             let host = game.lan.as_mut().unwrap();
@@ -825,7 +824,6 @@ mod tests {
                 allow_flight: true,
                 seed: 0,
                 max_players: 2,
-                integrated: true,
                 levels: game.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };

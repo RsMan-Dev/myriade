@@ -34,7 +34,7 @@ fn a_splash_harms_the_creature_it_hits_for_the_origin_amount_at_each_level() {
     if !have_data() {
         return;
     }
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let hit = ecs_cow(&mut h, 0.5, 1.0, 0.5, 5);
     h.tick();
     let at = Vec3::new(0.5, 1.0, 0.5);
@@ -53,7 +53,7 @@ fn a_lingering_harming_cloud_harms_at_half_strength_as_the_origin_does() {
     if !have_data() {
         return;
     }
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let hit = ecs_cow(&mut h, 0.5, 1.0, 0.5, 5);
     h.tick();
     let spec = CloudSpec { wait: 0, duration: -1, ..CloudSpec::new(2.0, "minecraft:harming", None) };

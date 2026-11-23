@@ -31,7 +31,7 @@ pub fn native_ingredient(
 /// `RecipePropertyAddition` per set to add to; the vanilla recipes' own
 /// items stay in. Called once per load, after the recipes are resolved, with
 /// the `DataLoadContext` of the load that owns them (`origin()`
-/// `ServerDataLoad` on a server, `ClientPreload` on a client's own load),
+/// `ServerDataLoad`),
 /// and again after `/reload`. New keys in manifest-owned namespaces create
 /// custom input sets. Unknown vanilla keys, invalid or foreign new keys and
 /// air are logged and skipped; unregistered items are ignored. The answer

@@ -1,6 +1,6 @@
 //! A projectile that strikes an item frame hurts it (#11383): `ItemFrame.hurtServer`
 //! gives the item up, an empty frame breaks, and a fixed one refuses the hit.
-use crate::game::{Audio, Game, Options, Progress, Settings, execution_role, load_resources};
+use crate::game::{Game, Options, Progress, Settings, execution_role, load_resources};
 use horizon_client::chunk::Chunk;
 use horizon_core::position::ChunkPos;
 use horizon_client::arrows::Pickup;
@@ -20,20 +20,19 @@ fn game() -> Game<'static> {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::DedicatedServer;
     let res: &'static _ = Box::leak(Box::new(loaded.resources));
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();

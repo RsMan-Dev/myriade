@@ -50,7 +50,7 @@ pub(super) type R<T> = Result<T, CommandError>;
 
 /// An entity a selector found.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(super) enum Target {
+pub(in crate::game) enum Target {
     /// The player in place: the host's, or the guest whose turn it is.
     Player,
     /// Another player of a hosted world or server: a guest by connection
@@ -251,12 +251,16 @@ impl Game<'_> {
     /// Commands.performCommand for a line without its slash. A client mod's
     /// `command` hook is the caller's: this also runs on a server.
     pub(super) fn run_command(&mut self, command: &str) -> bool {
+        self.run_command_value(command).0
+    }
+    /// `run_command` with the command's result: whether it succeeded, and its value (0 when it failed).
+    pub(in crate::game) fn run_command_value(&mut self, command: &str) -> (bool, i32) {
         let d = self.session.dispatcher.0.clone();
         let parse = d.parse(command, &self.session.registries);
         let result = match parse.executable() {
             Err(e) => {
                 self.syntax_failure(&e, command);
-                return false;
+                return (false, 0);
             }
             Ok((ctx, _)) => {
                 let ctx = ctx.clone();
@@ -266,6 +270,7 @@ impl Game<'_> {
             }
         };
         let ok = result.is_ok();
+        let value = result.as_ref().map_or(0, |v| *v);
         if let Err(e) = result {
             if e.input.is_some() {
                 self.syntax_failure(&e, command);
@@ -277,20 +282,24 @@ impl Game<'_> {
         if self.player.is_some() {
             self.check_inventory_trigger();
         }
-        ok
+        (ok, value)
     }
     /// `run_command` with its output suppressed
     /// (`CommandSourceStack.withSuppressedOutput`): the player's own source,
     /// rights and checks, no feedback and no failure in the chat.
     pub(super) fn run_command_quietly(&mut self, command: &str) -> bool {
+        self.run_command_quietly_value(command).0
+    }
+    /// `run_command_quietly` with the command's result, as `run_command_value`.
+    pub(in crate::game) fn run_command_quietly_value(&mut self, command: &str) -> (bool, i32) {
         let quiet = execute::Source {
             silent: true,
             ..self.player_source()
         };
         let outer = self.command_source.replace(quiet);
-        let ok = self.run_command(command);
+        let out = self.run_command_value(command);
         self.command_source = outer;
-        ok
+        out
     }
     pub(in crate::game) fn syntax_failure(&mut self, e: &CommandError, command: &str) {
         self.command_failure(e.message.clone());
@@ -398,11 +407,10 @@ impl Game<'_> {
             .session
             .rules
             .bool_at(horizon_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
-        let console = self.is_dedicated_server()
-            && self
-                .session
-                .rules
-                .bool_at(horizon_client::gamerules::vanilla::LOG_ADMIN_COMMANDS);
+        let console = self
+            .session
+            .rules
+            .bool_at(horizon_client::gamerules::vanilla::LOG_ADMIN_COMMANDS);
         if ops || console {
             self.admin_feedback.push((line, ops, console));
         }
@@ -433,7 +441,6 @@ impl Game<'_> {
         // MinecraftServer.sendSystemMessage, unless the server is the source.
         let console = self.console_broadcast.is_none()
             && self.lan_acting.is_some()
-            && self.is_dedicated_server()
             && self
                 .session
                 .rules
@@ -615,9 +622,6 @@ impl Game<'_> {
             ('s', Some(source)) => source_candidates.extend(source.entity),
             ('s', None) => source_candidates.extend(self.source_entity()),
             // A guest in place is among the players, in join order.
-            _ if self.player.is_some() && self.lan_acting.is_none() => {
-                source_candidates.push(Target::Player);
-            }
             _ => {}
         }
         if s.kind != 's' {
@@ -1072,8 +1076,6 @@ impl Game<'_> {
             "save-off" | "save-on" => self.cmd_auto_save(id == "save-on"),
             "transfer" => self.cmd_transfer(ctx),
             "fetchprofile" => self.cmd_fetchprofile(ctx),
-            "publish" => self.cmd_publish(ctx),
-            "unpublish" => self.cmd_unpublish(),
             id if id.starts_with("modprofile.") => self.cmd_modprofile(id),
             "debug" => self.cmd_debug(ctx),
             "jfr" => self.cmd_jfr(ctx),
@@ -1474,7 +1476,7 @@ impl Game<'_> {
     ) {
         let from = self.place_teleport_filed(t, pos, rotation, relative, turn_riders);
         if let (Some(entity), Some(to)) = (self.network_entity_id(t), self.target_position(t))
-            && let (true, Some(from)) = (self.options.dedicated.is_some(), from)
+            && let Some(from) = from
         {
             self.native_entity_teleport(self.dim.id(), entity as u32, from, to);
         }
@@ -1794,9 +1796,6 @@ impl Game<'_> {
         else {
             return Some(pos);
         };
-        if !self.native_authoritative() {
-            return Some(pos);
-        }
         let mut to = pos;
         let mut cancel = false;
         self.native_teleport_command(level.id(), entity as u32, from, &mut to, &mut cancel);
@@ -2450,12 +2449,16 @@ impl Game<'_> {
     /// `Level.destroyBlock(pos, true, entity)`: [`Self::destroy_block_dropping`]
     /// with `entity` as the loot's `LootContextParams.THIS_ENTITY`.
     pub(super) fn destroy_block_by(&mut self, pos: [i32; 3], entity: Option<u32>) -> R<()> {
+        self.destroy_block_as(pos, true, entity)
+    }
+    /// `Level.destroyBlock(pos, drop, entity)`.
+    pub(in crate::game) fn destroy_block_as(&mut self, pos: [i32; 3], drop: bool, entity: Option<u32>) -> R<()> {
         let at = horizon_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
         let entity = self.loot_entity_ref(entity);
         self.with_level(|b, level, ticks| {
             level.drop_entity = entity;
             level.drop_breaker_at = entity.map(|_| at);
-            b.destroy_block(level, ticks, at, true)
+            b.destroy_block(level, ticks, at, drop)
         });
         self.process_level_events()
             .map_err(|e| CommandError::new(Text::literal(e.to_string())))
@@ -3101,20 +3104,18 @@ impl Game<'_> {
             self.game_rule_changed(&rule.name, value, actor);
         }
         self.sync_rules();
-        if self.is_dedicated_server() {
-            let (value_type, json) = match value {
-                Value::Bool(b) => ("boolean", serde_json::json!(b)),
-                Value::Int(i) => ("integer", serde_json::json!(i)),
-            };
-            super::dedicated::events::record_server(
-                "gamerule",
-                serde_json::json!({
-                    "key": rule.name.clone(),
-                    "valueType": value_type,
-                    "value": json,
-                }),
-            );
-        }
+        let (value_type, json) = match value {
+            Value::Bool(b) => ("boolean", serde_json::json!(b)),
+            Value::Int(i) => ("integer", serde_json::json!(i)),
+        };
+        super::dedicated::events::record_server(
+            "gamerule",
+            serde_json::json!({
+                "key": rule.name.clone(),
+                "valueType": value_type,
+                "value": json,
+            }),
+        );
     }
     fn cmd_gamerule(&mut self, ctx: &Context) -> R<i32> {
         horizon_gameplay::commands::gamerule::gamerule(self, ctx)
@@ -3189,6 +3190,7 @@ impl Game<'_> {
         let old_angle = self.level.world_spawn_angle;
         let moved_level = self.level.spawn_dimension() != level.id();
         let old = self.level.world_spawn.replace(pos);
+        self.ecs_world_spawn_changed(pos);
         self.level.world_spawn_angle = rot;
         self.level.world_spawn_dimension = Some(level.id().to_string());
         // MinecraftServer.setRespawnData compares the whole RespawnData, its
@@ -3805,7 +3807,7 @@ impl Game<'_> {
             }
         };
         if id == "say" {
-            if self.lan.is_some() && self.is_dedicated_server() {
+            if self.lan.is_some() {
                 self.lan_log_event(horizon_client::lan::hub::HostEvent::Chat {
                     line: line.plain(),
                     secure: false,
@@ -4028,14 +4030,11 @@ mod teleport_pitch_tests {
     #[ignore = "daily"]
     fn teleport_to_the_current_position_marks_the_player_for_sync() {
         use super::Target;
-        use crate::game::native_entity_refs::tests::with_game;
-        use horizon_client::motion::PlayerMotion;
+        use crate::game::native_guest_turn_tests::with_acting_guest;
         use horizon_core::geometry::Vec3;
 
-        with_game(|game| {
-            let at = Vec3::new(0.5, 64.0, 0.5);
-            game.player = Some(PlayerMotion::new(game.motion, at).unwrap());
-
+        let at = Vec3::new(0.5, 64.0, 0.5);
+        with_acting_guest(at, |game| {
             game.teleport_to_in_level(Target::Player, [at.x, at.y, at.z], None, [false; 3], false);
 
             assert!(game.player.as_ref().is_some_and(|p| p.teleported));
@@ -4150,15 +4149,13 @@ mod teleport_level_tests;
 
 #[cfg(test)]
 mod teleport_player_tests {
-    use crate::game::native_entity_refs::tests::with_game;
-    use horizon_client::motion::PlayerMotion;
+    use crate::game::native_guest_turn_tests::with_acting_guest;
     use horizon_core::geometry::Vec3;
 
     #[test]
     #[ignore = "daily"]
     fn command_moves_velocity_per_axis_and_keeps_fall_distance() {
-        with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+        with_acting_guest(Vec3::ZERO, |game| {
             crate::game::native_entity_refs::tests::bind_local_player(game, 1, 99);
             let player = game.player.as_mut().unwrap();
             player.position = Vec3::new(0.0, 64.0, 0.0);
@@ -4306,19 +4303,18 @@ mod selector_bounds_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -4459,19 +4455,18 @@ mod query_feedback_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            ExecutionRole::IntegratedServer,
+            ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -4516,13 +4511,12 @@ mod forced_respawn_tests {
     #[test]
     #[ignore = "daily"]
     fn setworldspawn_reports_normalized_rotation() {
-        use crate::game::native_entity_refs::tests::with_game;
-        use horizon_client::{chunk::Chunk, motion::PlayerMotion, text::Text};
+        use crate::game::native_guest_turn_tests::with_acting_guest;
+        use horizon_client::{chunk::Chunk, text::Text};
         use horizon_core::geometry::Vec3;
         use std::sync::Arc;
 
-        with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(5.5, 64.0, 5.5)).unwrap());
+        with_acting_guest(Vec3::new(5.5, 64.0, 5.5), |game| {
             game.build_registries();
             game.set_allow_commands(true);
             game.world
@@ -4585,67 +4579,69 @@ mod forced_respawn_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
-        game.player = Some(
-            horizon_client::motion::PlayerMotion::new(game.motion, Vec3::new(5.5, 64.0, 5.5))
-                .unwrap(),
-        );
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
         game.build_registries();
         game.set_allow_commands(true);
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         game.level.world_spawn = Some([0, 80, 0]);
-        let registry = game.pack.assets.registry;
-        let air = registry.default_state("minecraft:air").unwrap();
-        // Liquid is a block property: aquatic plants such as kelp still permit
-        // a forced point, while a bubble column does not, at feet or head.
-        for (block, allowed) in [
-            ("air", true),
-            ("water", false),
-            ("lava", false),
-            ("bubble_column", false),
-            ("kelp", true),
-            ("stone", false),
-        ] {
-            let state = registry
-                .default_state(&format!("minecraft:{block}"))
-                .unwrap();
-            for height in [0, 1] {
-                game.world.set(5, 64, 5, air).unwrap();
-                game.world.set(5, 65, 5, air).unwrap();
-                game.world.set(5, 64 + height, 5, state).unwrap();
-                assert!(game.run_command("spawnpoint @s 5 64 5"));
-                let config = game
-                    .respawn_config
-                    .expect("Overworld commands must retain a forced configuration");
-                assert!(config.forced);
-                assert_eq!(config.pos, [5, 64, 5]);
-                let actual = game.resolve_server_respawn(config, true);
-                assert_eq!(actual.is_some(), allowed, "{block} at height {height}");
-                assert_eq!(game.respawn_config.is_some(), allowed);
-                assert_eq!(game.level.world_spawn, Some([0, 80, 0]));
-                if let Some((at, yaw, pitch)) = actual {
-                    assert_eq!(at, Vec3::new(5.5, 64.1, 5.5));
-                    assert_eq!(yaw, 0.0);
-                    assert_eq!(pitch, 0.0);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(
+            &mut game,
+            Vec3::new(5.5, 64.0, 5.5),
+            |game| {
+                let registry = game.pack.assets.registry;
+                let air = registry.default_state("minecraft:air").unwrap();
+                // Liquid is a block property: aquatic plants such as kelp still permit
+                // a forced point, while a bubble column does not, at feet or head.
+                for (block, allowed) in [
+                    ("air", true),
+                    ("water", false),
+                    ("lava", false),
+                    ("bubble_column", false),
+                    ("kelp", true),
+                    ("stone", false),
+                ] {
+                    let state = registry
+                        .default_state(&format!("minecraft:{block}"))
+                        .unwrap();
+                    for height in [0, 1] {
+                        game.world.set(5, 64, 5, air).unwrap();
+                        game.world.set(5, 65, 5, air).unwrap();
+                        game.world.set(5, 64 + height, 5, state).unwrap();
+                        assert!(game.run_command("spawnpoint @s 5 64 5"));
+                        let config = game
+                            .respawn_config
+                            .expect("Overworld commands must retain a forced configuration");
+                        assert!(config.forced);
+                        assert_eq!(config.pos, [5, 64, 5]);
+                        let actual = game.resolve_server_respawn(config, true);
+                        assert_eq!(actual.is_some(), allowed, "{block} at height {height}");
+                        assert_eq!(game.respawn_config.is_some(), allowed);
+                        assert_eq!(game.level.world_spawn, Some([0, 80, 0]));
+                        if let Some((at, yaw, pitch)) = actual {
+                            assert_eq!(at, Vec3::new(5.5, 64.1, 5.5));
+                            assert_eq!(yaw, 0.0);
+                            assert_eq!(pitch, 0.0);
+                        }
+                    }
                 }
-            }
-        }
+            },
+        );
     }
 
     #[test]
@@ -4847,7 +4843,7 @@ mod effective_presence_tests {
 mod fill_note_instrument_tests {
     use super::*;
     use crate::game::{Audio, Options, Progress, Settings, load_resources};
-    use horizon_client::{chunk::Chunk, motion::PlayerMotion};
+    use horizon_client::chunk::Chunk;
     use horizon_core::position::ChunkPos;
     use std::sync::Arc;
     fn with_game(test: impl FnOnce(&mut Game<'_>)) {
@@ -4860,7 +4856,7 @@ mod fill_note_instrument_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -4870,13 +4866,12 @@ mod fill_note_instrument_tests {
             std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
                 .join(format!("h164-{:?}", std::thread::current().id())),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -4888,12 +4883,18 @@ mod fill_note_instrument_tests {
         game.block_ticks
             .add_empty_chunk(ChunkPos::new(0, 0))
             .unwrap();
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5)).unwrap());
-        game.creative = true;
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("tick freeze"));
         assert!(game.run_command("fill 0 198 0 15 199 15 stone"));
-        test(&mut game);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(
+            &mut game,
+            Vec3::new(2.5, 200.0, 2.5),
+            |game| {
+                game.creative = true;
+                test(game);
+            },
+        );
     }
 
     fn instrument(game: &Game<'_>, x: i32, z: i32) -> String {
@@ -4984,7 +4985,6 @@ mod item_damage_range_tests {
     #[ignore = "daily"]
     fn actual_chest_damage_range_uses_live_damage_and_effective_presence() {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
                 std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
@@ -5159,7 +5159,6 @@ mod global_selector_order_tests {
     #[ignore = "daily"]
     fn actual_registered_global_selector_keeps_interleaved_insertion_and_limits() {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
                 std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),

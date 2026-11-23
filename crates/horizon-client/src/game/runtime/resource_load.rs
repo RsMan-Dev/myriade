@@ -44,18 +44,12 @@ impl Progress {
 /// Harness and dedicated runs keep the fully-synchronous startup so their
 /// output stays byte-identical; only an ordinary launch shows the window first.
 pub(super) fn synchronous_startup(options: &Options) -> bool {
-    // A headless game has no window for the loading screen.
-    options.headless
-        || options.frames.is_some()
-        || options.world_frames.is_some()
-        || options.benchmark.is_some()
-        || options.control.is_some()
+    options.control.is_some()
         || true
         || std::env::var_os("HORIZON_SCREEN_BUILD_FIXTURE").is_some()
         || std::env::var_os("HORIZON_DISPENSE_FIXTURE").is_some()
         || std::env::var_os("HORIZON_SCULK_FIXTURE").is_some()
         || std::env::var_os("HORIZON_HOT_PATHS").is_some()
-        || std::env::var_os("HORIZON_COMMAND_SCRIPT").is_some()
         || std::env::var_os("HORIZON_NET_REPORT").is_some()
 }
 
@@ -63,15 +57,13 @@ pub(super) fn synchronous_startup(options: &Options) -> bool {
 /// window an ordinary launch started. Scripted, offscreen, server and split-screen guest runs
 /// sharing the folder neither write it nor take it.
 pub(super) fn owns_device_loss_marker(options: &Options) -> bool {
-    !options.offscreen && !options.split_guest && !synchronous_startup(options)
+    !synchronous_startup(options)
 }
 
 /// The local world a client's launch opens at once (`--world`,
 /// `--quickPlaySingleplayer`), whose generator data can load with the game's.
-pub(super) fn launch_world(options: &Options) -> Option<&str> {
-    (false && options.server.is_none() && !options.test_terrain)
-        .then_some(options.world.as_deref())
-        .flatten()
+pub(super) fn launch_world(_options: &Options) -> Option<&str> {
+    None
 }
 
 /// A scoped thread with a name, for one step of the resource load.

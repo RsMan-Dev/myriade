@@ -568,7 +568,7 @@ the thrower (the snowball's 3 to blazes is not copied):
 It is the entity type `<id>:<name>`, with its network id after vanilla's. Using its item throws it as a snowball is
 thrown: same speed, spread, sound and cooldown, and one item used outside creative. It flies as a snowball, breaks on
 what it hits with its item's crumbs, and is drawn as its item's model (`ThrownItemRenderer`), unless a client
-mod registers a renderer for it ([entity renderers](client/entity-renderers.md)). Its name is the translation
+mod registers a renderer for it. Its name is the translation
 `entity.<id>.<name>`. It works in single player, on LAN and on dedicated servers with the same mods. Clients join a server only with the same mods' entity types, as with its blocks. It is saved with its
 chunk, `/summon <id>:<name>` makes one, and it has its template's row in `entity-types.json`, with `template` naming
 it. A world opened without the
@@ -609,7 +609,7 @@ class: `minecraft:zombie`, `minecraft:villager`, `minecraft:wandering_trader`, o
 item, then sits, follows and teleports to its owner, and fights for it, as its template does. Its owner, sitting state
 and its template's own fields (a wolf's collar, a cat's or a parrot's variant) save and load under the type's id. A
 tamed wolf type's hits are its owner's, as a wolf's are. A parrot type rides a player's shoulder and comes back off
-as itself; drawing it there is its mod's (an [entity layer](client/entity-layers.md)), as vanilla draws only its own
+as itself; drawing it there is its mod's, as vanilla draws only its own
 parrot there. Every living type is tracked to clients as far, and as often, as its template. It has no `item` or
 `damage`. `attributes`
 sets default attribute values that differ from its template's (`EntityAttributeCreationEvent`), by attribute id, and
@@ -732,7 +732,7 @@ behaviour, with its own attributes. It saves what its template's class saves und
 table is its own, `<id>:entities/<name>` (vanilla's `EntityType.getDefaultLootTable`). It is not in vanilla's entity type
 tags (`#minecraft:undead`, `#minecraft:zombies`...) unless the mod adds it. Its row in `entity-types.json` is its
 template's, with `template` added and its attributes in place of the template's. To draw a custom model or texture,
-a client mod registers a renderer for it ([entity renderers](client/entity-renderers.md)); the content declaration
+a client mod registers a renderer for it; the content declaration
 inherits the template's goals.
 
 #### Menu types

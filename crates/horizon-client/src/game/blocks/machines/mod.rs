@@ -14,7 +14,6 @@ mod crafter;
 pub(in crate::game) mod native_energy;
 pub(in crate::game) mod native_fluids;
 pub(in crate::game) mod native_items;
-mod screen;
 #[cfg(test)]
 mod tank_reopen_tests;
 use horizon_client::{
@@ -1876,7 +1875,7 @@ impl Game<'_> {
     // ---- dispensers and droppers ----
 
     /// `DispenserBlock.dispenseFrom` / `DropperBlock.dispenseFrom`.
-    pub(super) fn dispense_from(&mut self, pos: BlockPos, state: BlockStateId) -> Result<()> {
+    pub(in crate::game) fn dispense_from(&mut self, pos: BlockPos, state: BlockStateId) -> Result<()> {
         let key = (pos.x, pos.y, pos.z);
         let name = self.res.facts().get(state).name.clone();
         if &*name == "minecraft:crafter" {
@@ -2359,7 +2358,6 @@ mod part_front_tests {
             return;
         };
         with_game_at(root, |game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -2420,7 +2418,6 @@ mod part_front_tests {
             return;
         };
         with_game_at(root, |game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -2478,7 +2475,6 @@ mod part_front_tests {
             return;
         };
         with_game_at(root, |game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -2584,6 +2580,7 @@ mod hopper_cart_transfer_tests {
     use horizon_client::{containers::BlockEntity, items::ItemStack};
     use horizon_core::nbt::Tag;
 
+    // TODO(phase 2): joueur local retiré — à faire agir par un joueur connecté (as_guest).
     #[test]
     #[ignore = "daily"]
     fn chest_boat_automation_does_not_award_player_loot() {
@@ -2592,7 +2589,6 @@ mod hopper_cart_transfer_tests {
         use std::sync::Arc;
 
         crate::game::native_guest_turn_tests::with_guests(|game| {
-            game.options.dedicated = None;
             let files = vec![(
             "advancement/parity:boat_loot".into(),
             vec![br#"{"criteria":{"loot":{"trigger":"minecraft:player_generates_container_loot","conditions":{"loot_tables":"minecraft:chests/spawn_bonus_chest"}}}}"#.to_vec()],

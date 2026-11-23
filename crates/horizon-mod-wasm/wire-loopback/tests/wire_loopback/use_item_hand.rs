@@ -79,26 +79,19 @@ fn generated_guest_item_dispatch_preserves_hands_sides_and_results() {
         mod_api::InteractionResult::TryWithEmptyHand,
     ] {
         RESULT.set(answer);
-        for client in [false, true] {
-            for hand in [mod_api::Hand::Main, mod_api::Hand::Off] {
+        for hand in [mod_api::Hand::Main, mod_api::Hand::Off] {
                 EXPECTED.set(hand);
-                // Distinct per side and hand, so a swapped or substituted identity fails.
-                let who = match (client, hand) {
-                    (false, mod_api::Hand::Main) => (0x1111_2222_3333_4444_5555_6666_7777_8888, 11),
-                    (false, mod_api::Hand::Off) => (0x9999_aaaa_bbbb_cccc_dddd_eeee_ffff_0001, 12),
-                    (true, mod_api::Hand::Main) => (0x0123_4567_89ab_cdef_0123_4567_89ab_cdef, 13),
-                    (true, mod_api::Hand::Off) => (0xfedc_ba98_7654_3210_fedc_ba98_7654_3210, 14),
+                // Distinct per hand, so a swapped or substituted identity fails.
+                let who = match hand {
+                    mod_api::Hand::Main => (0x1111_2222_3333_4444_5555_6666_7777_8888, 11),
+                    mod_api::Hand::Off => (0x9999_aaaa_bbbb_cccc_dddd_eeee_ffff_0001, 12),
                 };
                 WHO.set(who);
                 SEEN.set(false);
                 let mut result = None;
                 let mut world = World;
                 mod_api::dispatch_use_item(
-                    if client {
-                        mod_api::HostSide::Client(&mut world)
-                    } else {
-                        mod_api::HostSide::Server(&mut world)
-                    },
+                    mod_api::HostSide::Server(&mut world),
                     mod_api::__private::UseItemCall {
                         stack: &stack,
                         hand,
@@ -111,11 +104,7 @@ fn generated_guest_item_dispatch_preserves_hands_sides_and_results() {
                 SEEN.set(false);
                 result = None;
                 mod_api::dispatch_use_on(
-                    if client {
-                        mod_api::HostSide::Client(&mut world)
-                    } else {
-                        mod_api::HostSide::Server(&mut world)
-                    },
+                    mod_api::HostSide::Server(&mut world),
                     mod_api::__private::UseOnCall {
                         stack: &stack,
                         pos: [0, 64, 0],
@@ -132,11 +121,7 @@ fn generated_guest_item_dispatch_preserves_hands_sides_and_results() {
                 SEEN.set(false);
                 result = None;
                 mod_api::dispatch_item_interact_mob(
-                    if client {
-                        mod_api::HostSide::Client(&mut world)
-                    } else {
-                        mod_api::HostSide::Server(&mut world)
-                    },
+                    mod_api::HostSide::Server(&mut world),
                     hand,
                     42,
                     "minecraft:zombie",
@@ -153,11 +138,7 @@ fn generated_guest_item_dispatch_preserves_hands_sides_and_results() {
                     corrupt: false,
                 }
                 .entity_interact(
-                    if client {
-                        mod_api::HostSide::Client(&mut world)
-                    } else {
-                        mod_api::HostSide::Server(&mut world)
-                    },
+                    mod_api::HostSide::Server(&mut world),
                     &mut mod_api::EntityInteractEvent {
                         dimension: "minecraft:the_nether",
                         hand,
@@ -169,7 +150,6 @@ fn generated_guest_item_dispatch_preserves_hands_sides_and_results() {
                 assert!(SEEN.get());
                 assert_eq!(result, Some(answer));
             }
-        }
     }
 }
 

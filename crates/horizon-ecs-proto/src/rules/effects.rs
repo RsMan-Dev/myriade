@@ -6,9 +6,10 @@ pub fn period(base: i32, amp: i32) -> i32 {
     base.wrapping_shr(amp as u32).max(1)
 }
 
-/// The last tick of an effect of `ticks` that starts after `first`: it acts on it and is gone after it.
+/// The last tick of an effect of `ticks` that starts after `first`: it acts on it and is gone after it. With no duration
+/// (`MobEffectInstance.hasRemainingDuration` false) the last tick is the one before `first`: it never acts.
 pub fn ends_at(first: u64, ticks: i32) -> u64 {
-    first + (ticks.max(1) - 1) as u64
+    (first + ticks.max(0) as u64).saturating_sub(1)
 }
 
 /// The first tick a periodic effect of `period` acts on: the remaining time is a multiple of the period.

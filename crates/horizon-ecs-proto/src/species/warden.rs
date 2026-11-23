@@ -1,6 +1,8 @@
 //! `minecraft:warden`: the values of the Mob's constants (`mobs/warden.rs`, `mobs/warden_brain.rs`), given to the modules. The
 //! modules hold the mechanics only; their parameters have no default. Priorities: the lower number runs first (the brain's order).
 use super::{templates::monster, Change, Def};
+use crate::behaviours::spawn_draw::{Draw, Draws, Store, When};
+use crate::rules::spawn_draw::Roll;
 use crate::behaviours::{
     look_at_player, nearest_target, random_look, darkness_pulse, dig, emerge, float, go_to_disturbance, melee, roar_at_target, sniff, sonic_boom, stroll, suspect_anger, timed_idle,
     vibration_listen, warden_drop_invalid_target, warden_look_target, Cap, Entry,
@@ -8,10 +10,11 @@ use crate::behaviours::{
 
 pub static DEF: Def = Def {
     name: "minecraft:warden",
+    rules: &[crate::rules::RuleEntry::new(&crate::behaviours::vibration_listen::UNNOTICED, &())],
     reference: Some(&monster::DEF),
     goals: &[
         Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { step_gap: 0.55, dampens: true, ..crate::behaviours::move_emission::Params::DEFAULT }),
-        Entry::new(&emerge::MODULE, 0, &emerge::Params { duration: 134, sound: "entity.warden.emerge" }),
+        Entry::new(&emerge::MODULE, 0, &emerge::Params { duration: 134 }),
         Entry::new(&dig::MODULE, 1, &dig::Params { duration: 100, cooldown: 1200, sound_ground: "entity.warden.dig", sound_liquid: "entity.warden.agitated" }),
         Entry::new(
             &suspect_anger::MODULE,
@@ -65,5 +68,17 @@ pub static DEF: Def = Def {
     changes: &[Change::Remove { module: &look_at_player::MODULE, nth: 0 }, Change::Remove { module: &random_look::MODULE, nth: 0 }, Change::Remove { module: &nearest_target::MODULE, nth: 0 }],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune]),
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
+    draws: Some(&DRAWS),
     ..Def::EMPTY
 };
+
+/// `Warden.finalizeSpawn`: the dig cooldown (`DIG_COOLDOWN`, 1200 ticks) at every birth, no draw.
+static DRAWS: Draws = Draws { group: None, list: &[Draw { when: When::Before, kind: crate::behaviours::spawn_draw::Kind::Plain(Roll::Const(0)), store: Store::Call(dig_cooldown) }] };
+
+fn dig_cooldown(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity, _: u32) {
+    let now = crate::cow::now_of(w, e);
+    if let Some(mut st) = w.get_mut::<crate::behaviours::act_phase::ActPhase>(e) {
+        st.dig_cooldown_until = now + 1200;
+    }
+}

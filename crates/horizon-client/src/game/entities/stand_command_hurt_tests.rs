@@ -22,20 +22,19 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
         &root,
         &settings,
         std::time::Instant::now(),
-        execution_role::ExecutionRole::IntegratedServer,
+        execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::DedicatedServer;
     let res = resources.insert(loaded.resources);
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();
@@ -253,6 +252,7 @@ fn control_repeated_burning_breaks_the_stand_once() {
 // succeeds.
 
 fn with_player(game: &mut Game<'_>) {
+    // TODO(phase 2): with_player pose l'hôte sur un Game construit par game() ; les appelants lancent des commandes hôte (stand_command_hurt_tests.rs:255)
     game.player = Some(
         horizon_client::motion::PlayerMotion::new(
             game.motion,

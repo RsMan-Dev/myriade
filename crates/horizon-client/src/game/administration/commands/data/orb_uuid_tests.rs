@@ -1,6 +1,6 @@
 // Same logical test module, kept in its own file.
 use super::Target;
-use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+use crate::game::{Game, Options, Progress, Settings, load_resources};
 use horizon_core::nbt::Tag;
 
 #[test]
@@ -15,19 +15,18 @@ fn saved_orb_uuid_comes_from_registered_identity_without_or_despite_raw() {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();

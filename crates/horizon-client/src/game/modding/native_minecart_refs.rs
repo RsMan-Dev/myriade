@@ -236,7 +236,6 @@ mod tests {
     #[ignore = "daily"]
     fn a_furnace_carts_push_is_read_and_set_through_its_handle() {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             let furnace = spawn(game, 20, "minecraft:furnace_minecart");
             assert_eq!(furnace.push(game), Some([0.0; 3]));
             assert!(furnace.set_push(game, [0.5, 0.0, -0.25]));
@@ -251,7 +250,6 @@ mod tests {
     #[ignore = "daily"]
     fn minecart_handles_narrow_read_and_write_by_kind() {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             let names = [
                 ("minecraft:minecart", MinecartKind::Rideable),
                 ("minecraft:chest_minecart", MinecartKind::Chest),

@@ -3,7 +3,7 @@
 //! slot the state calls occupied but that holds nothing.
 use crate::game::machines::shelf_signal;
 use crate::game::sculk::TEST_POSTED_EVENTS;
-use crate::game::{Audio, Game, Hit, Options, Progress, Settings, load_resources};
+use crate::game::{Game, Hit, Options, Progress, Settings, load_resources};
 use horizon_client::{
     chunk::Chunk,
     containers::{BlockEntity, ChiseledBookshelf},
@@ -29,20 +29,19 @@ fn with_game<R>(f: impl FnOnce(&mut Game<'static>) -> R) -> Option<R> {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .ok()?;
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let res: &'static _ = Box::leak(Box::new(loaded.resources));
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();

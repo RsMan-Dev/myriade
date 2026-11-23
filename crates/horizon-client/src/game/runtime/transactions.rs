@@ -1261,7 +1261,7 @@ mod player_tests;
 #[cfg(test)]
 mod tests {
     use super::super::api_values::TryIntoApi;
-    use super::super::{Audio, BlockEntity, Game, Options, Progress, Settings, load_resources};
+    use super::super::{BlockEntity, Game, Options, Progress, Settings, load_resources};
     use horizon_client::{chunk::Chunk, items::ItemStack};
     use mod_api::HostTransaction;
     use mod_api::ServerHost;
@@ -1467,7 +1467,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn cauldron_effects_wait_for_root_and_abort_with_inventory() {
-        super::super::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_guest_turn_tests::with_acting_guest(horizon_core::geometry::Vec3::new(0.5, 65.0, 3.5), |game| {
             let pos = [2, 64, 2];
             game.world
                 .chunks
@@ -1479,13 +1479,6 @@ mod tests {
                 .default_state("minecraft:cauldron")
                 .unwrap();
             game.world.set(pos[0], pos[1], pos[2], empty).unwrap();
-            game.player = Some(
-                super::super::PlayerMotion::new(
-                    game.motion,
-                    horizon_core::geometry::Vec3::new(0.5, 65.0, 3.5),
-                )
-                .unwrap(),
-            );
             game.selected = 0;
             game.creative = false;
             game.inventory[0] = Some(ItemStack::new("minecraft:water_bucket", 1));
@@ -1634,7 +1627,6 @@ mod mod_capability_tests {
             return;
         };
         with_game_at(root, |game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1716,7 +1708,6 @@ mod mod_capability_tests {
             sync: false,
         };
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1734,7 +1725,6 @@ mod mod_capability_tests {
                 allow_flight: false,
                 seed: 0,
                 max_players: 20,
-                integrated: false,
                 levels: Default::default(),
                 level_seeds: Default::default(),
             };

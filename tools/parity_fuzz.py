@@ -325,9 +325,7 @@ class Runner:
                    '--groups-file', str(batch / 'groups.json'), '--work-dir', str(batch / 'run')]
         if self.binary:  # otherwise the harness builds the game (the first batch; later ones find it built)
             command += ['--binary', str(self.binary)]
-        result = subprocess.run(command, cwd=ROOT, capture_output=True, encoding='utf-8', errors='replace',
-                                # The game's script deadline (600 s by default) is for the fixed corpus.
-                                env={**os.environ, 'HORIZON_HARNESS_TIMEOUT': str(30 * len(scenarios) + 600)})
+        result = subprocess.run(command, cwd=ROOT, capture_output=True, encoding='utf-8', errors='replace')
         (batch / 'harness.log').write_text(result.stdout + result.stderr, encoding='utf-8')
         if result.returncode:
             if len(scenarios) == 1:

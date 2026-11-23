@@ -1,11 +1,7 @@
-//! Runtime compilation budget, shared by client and dedicated server startup.
-use std::{
-    fmt,
-    path::{Path, PathBuf},
-    time::Duration,
-};
+//! Runtime compilation budget, read at dedicated server startup.
+use std::{fmt, path::PathBuf, time::Duration};
 
-/// The runtime setting in options.txt (client) or server.properties (dedicated server).
+/// The runtime setting in the game folder's server.properties.
 pub const SETTING: &str = "wasm.compile_timeout_secs";
 
 /// A runtime compilation setting that cannot be applied.
@@ -64,22 +60,11 @@ impl CompileBudget {
             threads: None,
         })
     }
-    /// Read the resolved player's options, or the dedicated server's game-directory properties.
-    /// The shared game/cache directory is independent of the client's `--player-dir`.
+    /// Read the setting from the game folder's server.properties (missing file: the default).
     pub fn read(
         launch: &horizon_mod_package::selection::LaunchArguments,
-        player_dir: &Path,
     ) -> Result<Self, SettingError> {
-        use horizon_mod_package::selection::Argument;
-        let dedicated = launch
-            .rest
-            .iter()
-            .any(|arg| matches!(arg, Argument::Dedicated(_)));
-        let path = if dedicated {
-            launch.context.game_dir.join("server.properties")
-        } else {
-            player_dir.join("options.txt")
-        };
+        let path = launch.context.game_dir.join("server.properties");
         let contents = match std::fs::read_to_string(&path) {
             Ok(contents) => contents,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
@@ -90,29 +75,17 @@ impl CompileBudget {
                 });
             }
         };
-        if dedicated {
-            let properties =
-                horizon_java_properties::Properties::load(&contents.chars().collect::<Vec<_>>())
-                    .map_err(|error| SettingError::File {
-                        path,
-                        why: error.to_string(),
-                    })?;
-            return properties
-                .get(SETTING)
-                .map(Self::parse)
-                .transpose()
-                .map(|budget| budget.unwrap_or_default());
-        }
-        let separator = ':';
-        let mut configured = None;
-        for line in contents.lines() {
-            if let Some((name, value)) = line.split_once(separator)
-                && name.trim() == SETTING
-            {
-                configured = Some(Self::parse(value.trim())?);
-            }
-        }
-        Ok(configured.unwrap_or_else(Self::default))
+        let properties =
+            horizon_java_properties::Properties::load(&contents.chars().collect::<Vec<_>>())
+                .map_err(|error| SettingError::File {
+                    path,
+                    why: error.to_string(),
+                })?;
+        properties
+            .get(SETTING)
+            .map(Self::parse)
+            .transpose()
+            .map(|budget| budget.unwrap_or_default())
     }
 }
 impl Default for CompileBudget {
@@ -160,34 +133,12 @@ mod tests {
         );
     }
     #[test]
-    fn startup_context_honors_player_and_dedicated_settings_locations() {
+    fn startup_context_reads_the_game_folder_properties() {
         use horizon_mod_package::selection::LaunchArguments;
         let dir = tempfile::tempdir().unwrap();
         let game = dir.path().join("shared");
-        let player = dir.path().join("players/alex");
         std::fs::create_dir_all(&game).unwrap();
-        std::fs::create_dir_all(&player).unwrap();
-        std::fs::write(game.join("options.txt"), format!("{SETTING}:0\n")).unwrap();
-        std::fs::write(player.join("options.txt"), format!("{SETTING}:120\n")).unwrap();
         std::fs::write(game.join("server.properties"), format!("{SETTING}=240\n")).unwrap();
-        let client = LaunchArguments::parse(
-            [
-                "--game-dir",
-                "shared",
-                "--player-dir",
-                player.to_str().unwrap(),
-            ]
-            .into_iter()
-            .map(str::to_owned),
-            dir.path(),
-            dir.path(),
-            None,
-        )
-        .unwrap();
-        assert_eq!(
-            CompileBudget::read(&client, &player).unwrap().limit,
-            Duration::from_secs(120)
-        );
         let server = LaunchArguments::parse(
             ["--game-dir", "shared", "--dedicated", "nogui"]
                 .into_iter()
@@ -198,22 +149,19 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            CompileBudget::read(&server, &player).unwrap().limit,
+            CompileBudget::read(&server).unwrap().limit,
             Duration::from_secs(240)
         );
         for value in ["0", "not-a-number"] {
-            std::fs::write(player.join("options.txt"), format!("{SETTING}:{value}\n")).unwrap();
             std::fs::write(
                 game.join("server.properties"),
                 format!("{SETTING}={value}\n"),
             )
             .unwrap();
-            for launch in [&client, &server] {
-                assert_eq!(
-                    CompileBudget::read(launch, &player).unwrap_err(),
-                    SettingError::InvalidValue(value.to_owned()),
-                );
-            }
+            assert_eq!(
+                CompileBudget::read(&server).unwrap_err(),
+                SettingError::InvalidValue(value.to_owned()),
+            );
         }
     }
 }

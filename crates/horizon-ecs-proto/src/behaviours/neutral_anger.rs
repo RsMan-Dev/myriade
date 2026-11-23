@@ -109,6 +109,10 @@ fn lost(w: &mut World, e: Entity) {
     if !a.holding {
         return;
     }
+    // `NeutralMob.updatePersistentAnger`: a Peaceful difficulty ends the anger against a player at once, no countdown.
+    if a.at_player && w.resource::<crate::hostile::PlayerState>().peaceful {
+        return stop_being_angry(w, e);
+    }
     let wait = crate::goals::with_rng(w, e, |r| anger_countdown(a.def.base, a.def.spread, |bound| r.next_int(bound)));
     let until = now_of(w, e) + wait as u64;
     {

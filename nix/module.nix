@@ -187,8 +187,8 @@ in
       default = null;
       example = "/srv/horizon/26.3";
       description = ''
-        A folder of game files you prepared yourself (`horizon-prepare --prepare`, or the launcher; the
-        `26.3` folder it writes). Read only. Null: the files `prepare` writes to `dataDir/game-files`.
+        A folder of game files you prepared yourself (`horizon-prepare --prepare`; the `26.3` folder it
+        writes). Read only. Null: the files `prepare` writes to `dataDir/game-files`.
         Give it as a string: a Nix path would copy Mojang's files into the world-readable store.
       '';
     };
@@ -384,9 +384,8 @@ in
         ++ lib.optional (cfg.resources != null) cfg.resources;
         environment = {
           HOME = cfg.dataDir;
-          # Nix decides the release: no "a newer release is out" in the log, and no audio device.
+          # Nix decides the release: no "a newer release is out" in the log.
           HORIZON_NO_UPDATE_CHECK = "1";
-          HORIZON_NO_AUDIO = "1";
         }
         // cfg.environment;
         serviceConfig = hardening // {

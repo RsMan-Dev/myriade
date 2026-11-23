@@ -8,7 +8,7 @@ use horizon_client::{
     enchant::EffectContext,
     health::ArmorWeapon,
     items::ItemStack,
-    mobs::{Damage, Mob, MobEvent, Species},
+    mobs::{Damage, MobEvent, Species},
 };
 use horizon_core::{
     geometry::{Aabb, Vec3},
@@ -23,22 +23,6 @@ const HEAVY_THRESHOLD: f64 = 5.0;
 const KNOCKBACK_RADIUS: f64 = 3.5;
 /// `MaceItem.SMASH_ATTACK_KNOCKBACK_POWER`.
 const KNOCKBACK_POWER: f32 = 0.7;
-
-/// `Entity.isAlliedTo` between the player (`player` its UUID) and a mob
-/// without teams: `TamableAnimal.considersEntityAsAlly` (a pet it tamed) and
-/// `Allay.considersEntityAsAlly` (an allay that likes it).
-pub(super) fn ally_of_player(m: &Mob, player: Option<[i32; 4]>) -> bool {
-    let tamable = matches!(
-        m.species(),
-        Species::Wolf
-            | Species::Cat
-            | Species::Parrot
-            | Species::Nautilus
-            | Species::ZombieNautilus
-    );
-    tamable && m.extra.tame && m.extra.owner.is_some() && m.extra.owner == player
-        || m.species() == Species::Allay && m.extra.tame
-}
 
 /// `ally_of_player` for an ECS mob: `owner` is the network id the bridge reads (`EcsLevel::owner`), `player` the acting one.
 pub(super) fn ally_of_player_ecs(species: Option<Species>, tame: bool, owner: Option<u32>, player: u32) -> bool {
@@ -266,11 +250,7 @@ impl Game<'_> {
             .lan_acting_uuid
             .map(horizon_client::lan::playerdata::uuid_ints)
             .or(self.level.player_uuid)?;
-        let owner = self
-            .serving
-            .as_ref()
-            .map(|s| horizon_client::lan::playerdata::uuid_ints(s.owner))
-            .or(self.level.player_uuid)?;
+        let owner = self.level.player_uuid?;
         (actual == owner).then_some(actual)
     }
     /// `DamageSource.getWeaponItem` for a hit on the player, when its

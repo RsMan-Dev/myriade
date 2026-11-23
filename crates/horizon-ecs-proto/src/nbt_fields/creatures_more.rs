@@ -1,7 +1,7 @@
 //! Les champs NBT de créatures restantes : la laine d'un mouton (`Sheared`), la durée de vie d'un vex (`life_ticks`), la température d'un
 //! cheval (`Temper`), le dauphin qui a mangé un poisson (`GotFish`) et la patrouille et la vague d'un pillard (`Raider`, `Patrol`).
 //! Chaque clé n'est déclarée que pour le composant qui la porte ; sans lui, elle reste libre.
-use crate::behaviours::fox_sleep::Sleeping;
+use crate::behaviours::fox_sleep::FoxSleeping;
 use crate::behaviours::limited_life::Lifespan;
 use crate::behaviours::swim_to_treasure::GotFish;
 use crate::cow::now_of;
@@ -49,7 +49,7 @@ fn read_pumpkin(w: &mut World, e: Entity, t: &Tag) -> bool {
 pub const CREATORS: &[Field] = &[
     Field { key: Cow::Borrowed("life_ticks"), write: write_life, read: read_life, accepts: accept::int, owner: Some(owner::<Lifespan>) },
     Field { key: Cow::Borrowed("GotFish"), write: write_got_fish, read: read_got_fish, accepts: is_byte, owner: Some(owner::<GotFish>) },
-    Field { key: Cow::Borrowed("Sleeping"), write: write_sleeping, read: read_sleeping, accepts: is_byte, owner: Some(owner::<Sleeping>) },
+    Field { key: Cow::Borrowed("Sleeping"), write: write_sleeping, read: read_sleeping, accepts: is_byte, owner: Some(owner::<FoxSleeping>) },
     Field { key: Cow::Borrowed("RaidId"), write: write_raid_id, read: read_raid_id, accepts: accept::int, owner: Some(owner::<Raider>) },
     Field { key: Cow::Borrowed("Wave"), write: write_wave, read: read_wave, accepts: accept::int, owner: Some(owner::<Raider>) },
     Field { key: Cow::Borrowed("PatrolLeader"), write: write_patrol_leader, read: read_patrol_leader, accepts: is_byte, owner: Some(owner::<Patrol>) },
@@ -165,7 +165,7 @@ fn read_life(w: &mut World, e: Entity, t: &Tag) -> bool {
 
 /// `Sleeping`: a byte, 1 while the fox's sleep goal runs (the marker is there); 0 takes it away.
 fn write_sleeping(w: &World, e: Entity, c: &mut Compound) {
-    if w.get::<Sleeping>(e).is_some() {
+    if w.get::<FoxSleeping>(e).is_some() {
         c.insert("Sleeping".into(), Tag::Byte(1));
     }
 }
@@ -173,9 +173,9 @@ fn write_sleeping(w: &World, e: Entity, c: &mut Compound) {
 fn read_sleeping(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Byte(v) = t else { return false };
     if *v != 0 {
-        w.entity_mut(e).insert(Sleeping);
+        w.entity_mut(e).insert(FoxSleeping);
     } else {
-        w.entity_mut(e).remove::<Sleeping>();
+        w.entity_mut(e).remove::<FoxSleeping>();
     }
     true
 }

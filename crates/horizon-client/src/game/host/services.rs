@@ -2,43 +2,6 @@
 use crate::game::{Game, api_values::TryIntoEngine};
 use mod_api::{prelude::*, *};
 
-impl ClientSession for Game<'_> {
-    fn client_server(&self) -> Option<ClientServer> {
-        mod_api::__private::check_access(
-            "client_server",
-            mod_api::__private::LoadAccess::ClientSetup,
-        );
-        None
-    }
-    fn client_language(&self) -> Option<String> {
-        mod_api::__private::check_access(
-            "client_language",
-            mod_api::__private::LoadAccess::ClientSetup,
-        );
-        None
-    }
-    fn client_latency(&self) -> Option<u32> {
-        mod_api::__private::check_access(
-            "client_latency",
-            mod_api::__private::LoadAccess::ClientSetup,
-        );
-        None
-    }
-    fn client_tab_list(&self) -> Option<ClientTabList> {
-        mod_api::__private::check_access(
-            "client_tab_list",
-            mod_api::__private::LoadAccess::ClientSetup,
-        );
-        None
-    }
-    fn client_frame_stats(&self) -> Option<ClientFrameStats> {
-        mod_api::__private::check_access(
-            "client_frame_stats",
-            mod_api::__private::LoadAccess::ClientSetup,
-        );
-        None
-    }
-}
 impl Commands for Game<'_> {
     fn refresh_commands(&mut self) {
         mod_api::__private::check_access(
@@ -161,29 +124,6 @@ impl RuntimeLevels for Game<'_> {
     fn is_open(&mut self, id: &str) -> bool {
         mod_api::__private::check_access("is_open", mod_api::__private::LoadAccess::WorldOnly);
         self.runtime_level_is_open(id)
-    }
-}
-impl RenderAssets for Game<'_> {
-    fn model(&self, _id: &Identifier) -> Result<ModelRef, ModelError> {
-        mod_api::__private::check_access(
-            "model",
-            mod_api::__private::LoadAccess::PublishedResources,
-        );
-        Err(ModelError::UnknownModel)
-    }
-    fn render_pipeline(&self, _id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
-        mod_api::__private::check_access(
-            "render_pipeline",
-            mod_api::__private::LoadAccess::PublishedResources,
-        );
-        Err(RenderPipelineError::Unknown)
-    }
-    fn animation(&self, _id: &Identifier) -> Option<AnimationHolder> {
-        mod_api::__private::check_access(
-            "animation",
-            mod_api::__private::LoadAccess::PublishedResources,
-        );
-        None
     }
 }
 

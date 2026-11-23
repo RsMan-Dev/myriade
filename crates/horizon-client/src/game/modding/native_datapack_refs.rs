@@ -11,11 +11,7 @@ impl Game<'_> {
     ) -> Option<std::sync::Arc<mod_api::DatapackRegistrySet>> {
         (self.level_handle_current(level) && level.dimension() == self.native_level_key())
             .then_some(())?;
-        if self.is_logical_server() {
-            self.mods.datapack_registries.clone()
-        } else {
-            horizon_client::datapack_net::received()
-        }
+        self.mods.datapack_registries.clone()
     }
 
     /// The entry ids of a mod's datapack registry as the world last loaded it.

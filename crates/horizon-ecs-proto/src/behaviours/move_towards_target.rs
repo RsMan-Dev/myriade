@@ -187,4 +187,21 @@ mod tests {
         ticks(&mut h, 6);
         assert!(!running(&h, golem), "arrêt quand la cible est perdue");
     }
+
+    /// Le point tiré pour une cible à 8 blocs : à 16 blocs au plus et 7 en hauteur, dans un quart de tour de la cible (origine : 16, 7, 90 degrés).
+    #[test]
+    fn it_draws_a_spot_within_16_blocks_and_7_high_toward_the_target() {
+        let Some((mut h, golem, _)) = world(8.0) else {
+            eprintln!("skipped: HORIZON_TEST_RESOURCES unset");
+            return;
+        };
+        let start = h.world.get::<Pos>(golem).unwrap().0;
+        ticks(&mut h, 30);
+        assert!(running(&h, golem), "témoin : le but marche");
+        let wanted = h.world.get::<Approach>(golem).unwrap().wanted;
+        let (dx, dz) = (wanted[0] - start.x, wanted[2] - start.z);
+        assert!((dx * dx + dz * dz).sqrt() <= 16.0, "à 16 blocs au plus");
+        assert!((wanted[1] - start.y).abs() <= 7.0, "à 7 blocs en hauteur au plus");
+        assert!(dx * (8.5 - start.x) + dz * (0.5 - start.z) >= 0.0, "dans un quart de tour de la cible");
+    }
 }

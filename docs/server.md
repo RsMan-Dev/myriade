@@ -89,7 +89,7 @@ clock `/tick query` uses), players (name, UUID, address, ping, position), loaded
 inventory on this same server thread and answers `{"mods":[{"id":"example","version":"1"}]}`.
 It includes native, wasm and content packages installed in that inventory, in inventory order; an empty
 inventory is `{"mods":[]}`. The supervisor's `GET /api/v1/mods` uses this query, never a build-record fallback.
-`memory` answers what `horizon-ctl memory` shows for a game with a window: the resident set, the allocator's
+`memory` answers what the control socket's `memory` command shows for a game with a window: the resident set, the allocator's
 committed bytes, and the server's parts (chunks, entities, players, chunk send caches, generation).
 
 **A proxy moving a player between two servers** uses more requests on this endpoint (`lan/arrivals.rs`,
@@ -429,7 +429,7 @@ game built in `Game::new`, the integrated server on its own thread. On that base
 
 ## 3. Packaging
 
-**Binaries.** The release archives hold `horizon-client`, `horizon-ctl`, `horizon-prepare` and
+**Binaries.** The release archives hold `horizon-client`, `horizon-prepare` and
 `horizon-server`. On Linux the release also has `horizon-server-linux-x86_64.tar.gz`: `horizon-server`,
 `horizon-prepare` and `horizon-engine`, the game built with `--no-default-features` (no sound, no
 controllers, no Play with Friends: the `friends` feature; nor Discord presence or the "I'm playing" ping, which
@@ -797,8 +797,7 @@ runtime or new dependency. Server-sent events can replace the polling later if a
   `players`, `run_command`, `logs`, `events`, `kick`, `ban`, `pardon`, `ban_ip`, `pardon_ip`, `op`, `deop`,
   `whitelist`, `list_backups`, `backup`, `delete_backup` and `restore` (both need `confirm: true`), `get_config`,
   `set_config`, `start`, `restart` and `stop` (needs `confirm: true`). Tools that send someone away or can't be
-  undone carry MCP's `destructiveHint`. It's the same idea as the game's `horizon-ctl`
-  (docs/agent-control.md): an AI can run and diagnose a server, and every action it takes shows in the log.
+  undone carry MCP's `destructiveHint`. An AI can run and diagnose a server, and every action it takes shows in the log.
 - **RCON.** `enable-rcon`, `rcon.port` and `rcon.password` turn on vanilla's remote console, for the hosting panels,
   Discord bridges and scripts written for it. The supervisor serves it (`rcon.rs`, std only like `http.rs`), so it
   answers while the game restarts (a command then says the game isn't running), and it reads its settings as
@@ -878,7 +877,7 @@ reproducible by anyone, and show the same gameplay on both sides.
   - `online-mode=false` and the same `server.properties`;
   - one server at a time on the same machine, with the bots on another machine on the LAN, or pinned to other
     cores when they share one (the report records which).
-- **Bots:** `horizon-bots` (PR 5), a small Rust load client on `horizon-protocol`. It handles handshake,
+- **Bots:** `myriade-bot` (PR 5), a small Rust load client on `horizon-protocol`. It handles handshake,
   offline login and configuration, accepts teleports, answers keep-alives and pings, acknowledges chunk
   batches as vanilla's client does, and sends movement at 20 Hz. The bots play in creative and fly 24 blocks
   above their spawn point: they never touch terrain, so they need no copy of the world, and no server can
@@ -997,7 +996,7 @@ vanilla.
 2. `install.sh` and `install.ps1`, the Dockerfile, systemd and launchd units, `service install`, and the server
    archive in the release.
 3. The web panel MVP: status, live TPS/MSPT/RAM/CPU, players, console, backups and login links.
-4. `horizon-bots` and `tools/server_bench.py`, with a first run against vanilla (1/10/25/50 bots, `mixed`)
+4. `myriade-bot` and `tools/server_bench.py`, with a first run against vanilla (1/10/25/50 bots, `mixed`)
    published in `benchmarks/`: done, `benchmarks/server-mixed-2026-10-18/`, and with equal work
    `benchmarks/server-equal-mixed-2026-10-18/` (section 9).
 5. Small engine fixes found on the way: logging refused logins (vanilla's lines).

@@ -35,6 +35,7 @@ fn a_ground_jump_awards_the_jump_statistic() {
     }
     assert!(player.velocity.y > 0.0, "the jump pushed the player up");
     let events = std::mem::take(&mut player.events);
+    // TODO(phase 2): le saut hôte produit ses événements hors tour, puis record_combat et game.stats lus sur l'hôte (player_stat_award_tests.rs:38)
     game.player = Some(player);
     // The player's turn on the server reads the tick's events (`guest_server_tick`).
     game.record_combat(&events);
@@ -48,20 +49,26 @@ fn a_ground_jump_awards_the_jump_statistic() {
 fn a_worn_out_helmet_awards_the_broken_statistic() {
     let mut resources = None;
     let mut game = server_game(&mut resources);
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 64.0, 2.5)).unwrap());
-    let mut helmet = ItemStack::new("minecraft:leather_helmet", 1);
-    helmet.damage = 54;
-    game.armor[0] = Some(helmet);
-    // `getDamageAfterArmorAbsorb` -> `Player.hurtArmor`: max(1, 4 / 4) points.
-    let source = horizon_client::health::HurtSource {
-        damage_type: "minecraft:generic",
-        causing: 0,
-        direct: 0,
-        position: None,
-    };
-    game.hurt_armor(&source, 4.0);
-    assert!(game.armor[0].is_none(), "the helmet broke off the head");
-    assert_eq!(game.stats.get("broken", "minecraft:leather_helmet"), 1);
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+    crate::game::native_guest_turn_tests::with_acting_guest_on(
+        &mut game,
+        Vec3::new(2.5, 64.0, 2.5),
+        |game| {
+            let mut helmet = ItemStack::new("minecraft:leather_helmet", 1);
+            helmet.damage = 54;
+            game.armor[0] = Some(helmet);
+            // `getDamageAfterArmorAbsorb` -> `Player.hurtArmor`: max(1, 4 / 4) points.
+            let source = horizon_client::health::HurtSource {
+                damage_type: "minecraft:generic",
+                causing: 0,
+                direct: 0,
+                position: None,
+            };
+            game.hurt_armor(&source, 4.0);
+            assert!(game.armor[0].is_none(), "the helmet broke off the head");
+            assert_eq!(game.stats.get("broken", "minecraft:leather_helmet"), 1);
+        },
+    );
 }
 
 /// A bed's state with its `part`, facing north.
@@ -96,21 +103,27 @@ fn sleeping_in_a_straw_bed_awards_its_own_statistic() {
     // `Level.isDarkOutside`: midnight, so a bed may be slept in.
     game.world.day_time = 18000;
     let straw = place_bed(&mut game, 2, "minecraft:straw_bed");
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 64.0, 3.5)).unwrap());
-    game.try_sleep(straw);
-    assert_eq!(
-        game.sleeping,
-        Some(straw),
-        "the player lay in the straw bed"
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+    crate::game::native_guest_turn_tests::with_acting_guest_on(
+        &mut game,
+        Vec3::new(2.5, 64.0, 3.5),
+        |game| {
+            game.try_sleep(straw);
+            assert_eq!(
+                game.sleeping,
+                Some(straw),
+                "the player lay in the straw bed"
+            );
+            assert_eq!(game.stats.get("custom", "minecraft:sleep_in_straw_bed"), 1);
+            assert_eq!(game.stats.get("custom", "minecraft:sleep_in_bed"), 0);
+            game.wake_up(true, true);
+            // An ordinary bed keeps the plain statistic.
+            let red = place_bed(game, 4, "minecraft:red_bed");
+            game.player.as_mut().unwrap().position = Vec3::new(4.5, 64.0, 3.5);
+            game.try_sleep(red);
+            assert_eq!(game.sleeping, Some(red), "the player lay in the red bed");
+            assert_eq!(game.stats.get("custom", "minecraft:sleep_in_bed"), 1);
+            assert_eq!(game.stats.get("custom", "minecraft:sleep_in_straw_bed"), 1);
+        },
     );
-    assert_eq!(game.stats.get("custom", "minecraft:sleep_in_straw_bed"), 1);
-    assert_eq!(game.stats.get("custom", "minecraft:sleep_in_bed"), 0);
-    game.wake_up(true, true);
-    // An ordinary bed keeps the plain statistic.
-    let red = place_bed(&mut game, 4, "minecraft:red_bed");
-    game.player.as_mut().unwrap().position = Vec3::new(4.5, 64.0, 3.5);
-    game.try_sleep(red);
-    assert_eq!(game.sleeping, Some(red), "the player lay in the red bed");
-    assert_eq!(game.stats.get("custom", "minecraft:sleep_in_bed"), 1);
-    assert_eq!(game.stats.get("custom", "minecraft:sleep_in_straw_bed"), 1);
 }

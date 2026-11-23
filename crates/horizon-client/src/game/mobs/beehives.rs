@@ -105,9 +105,7 @@ impl Game<'_> {
         let is_brain = self.ecs.has_brain(id);
         let mut chosen = target;
         let mut redirected = false;
-        if self.native_authoritative()
-            && mod_api::__private::listened(mod_api::HookId::LivingChangeTarget)
-        {
+        if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
             let Some(epoch) = self.native_lifecycle.epoch() else {
                 return false;
             };
@@ -533,7 +531,6 @@ mod stay_tests {
     #[ignore = "daily"]
     fn every_ready_bee_of_a_hive_turn_gets_the_same_answer() {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
                 std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),

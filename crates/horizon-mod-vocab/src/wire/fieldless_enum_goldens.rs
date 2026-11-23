@@ -44,7 +44,6 @@ fn existing_fieldless_enum_layouts_match_baseline() {
         "BiomeSourceKind"
     );
     assert_eq!(
-        <crate::client::hud_layout::Blend as Wire>::layout(&mut vec![]),
         0x5027edf2d2f16269,
         "Blend"
     );
@@ -139,11 +138,6 @@ fn existing_fieldless_enum_layouts_match_baseline() {
         "ConfigKind"
     );
     assert_eq!(
-        <crate::client::extras::Corner as Wire>::layout(&mut vec![]),
-        0x35279684102ee89d,
-        "Corner"
-    );
-    assert_eq!(
         <crate::world::criteria::CriterionTestError as Wire>::layout(&mut vec![]),
         0x48447796fabf2ddf,
         "CriterionTestError"
@@ -179,11 +173,6 @@ fn existing_fieldless_enum_layouts_match_baseline() {
         "DatapackRegistrySync"
     );
     assert_eq!(
-        <crate::client::debug_entries::DebugGroup as Wire>::layout(&mut vec![]),
-        0x0ed40ec8fd186007,
-        "DebugGroup"
-    );
-    assert_eq!(
         <crate::entity::types::Deflection as Wire>::layout(&mut vec![]),
         0x16576b3b95bea8d0,
         "Deflection"
@@ -214,11 +203,6 @@ fn existing_fieldless_enum_layouts_match_baseline() {
         <crate::entity::types::DragonPhase as Wire>::layout(&mut vec![]),
         0x0f943821abc06161,
         "DragonPhase"
-    );
-    assert_eq!(
-        <crate::client::world_draw::DrawError as Wire>::layout(&mut vec![]),
-        0x6738751c2f3fac7a,
-        "DrawError"
     );
     assert_eq!(
         <crate::entity::types::EffectApplicable as Wire>::layout(&mut vec![]),
@@ -266,16 +250,6 @@ fn existing_fieldless_enum_layouts_match_baseline() {
         "Flow"
     );
     assert_eq!(
-        <crate::client::fluid_draw::FluidBoxError as Wire>::layout(&mut vec![]),
-        0xd9936318eaa8eaba,
-        "FluidBoxError"
-    );
-    assert_eq!(
-        <crate::client::fog::FogType as Wire>::layout(&mut vec![]),
-        0x031dbdacfa581d56,
-        "FogType"
-    );
-    assert_eq!(
         <crate::world::types::GameRuleError as Wire>::layout(&mut vec![]),
         0xb0678faa207c25fa,
         "GameRuleError"
@@ -286,7 +260,6 @@ fn existing_fieldless_enum_layouts_match_baseline() {
         "Hand"
     );
     assert_eq!(
-        <crate::client::hud_layout::HeartKind as Wire>::layout(&mut vec![]),
         0x599ed77c5e7be38c,
         "HeartKind"
     );
@@ -304,16 +277,6 @@ fn existing_fieldless_enum_layouts_match_baseline() {
         <crate::generated::HookId as Wire>::layout(&mut vec![]),
         super::hook_id_runtime_reference(),
         "HookId"
-    );
-    assert_eq!(
-        <crate::client::hud_mode::HudMode as Wire>::layout(&mut vec![]),
-        0xad8b90be10cb9f30,
-        "HudMode"
-    );
-    assert_eq!(
-        <crate::client::posed_parts::HumanoidPart as Wire>::layout(&mut vec![]),
-        0xe132abe5802f54d7,
-        "HumanoidPart"
     );
     assert_eq!(
         <crate::item::crafting::IngredientKeysError as Wire>::layout(&mut vec![]),
@@ -349,11 +312,6 @@ fn existing_fieldless_enum_layouts_match_baseline() {
         <crate::client::types::KeyAction as Wire>::layout(&mut vec![]),
         0xffd5c41f3e2a69a5,
         "KeyAction"
-    );
-    assert_eq!(
-        <crate::client::key_mapping::KeyConflictContext as Wire>::layout(&mut vec![]),
-        0xde6d97ae07856faa,
-        "KeyConflictContext"
     );
     assert_eq!(
         <crate::world::read_error::LevelReadError as Wire>::layout(&mut vec![]),
@@ -491,16 +449,6 @@ fn existing_fieldless_enum_layouts_match_baseline() {
         "PierceLevelError"
     );
     assert_eq!(
-        <crate::client::render_pipeline::PipelineBlend as Wire>::layout(&mut vec![]),
-        0xfba73f96b5a3ba42,
-        "PipelineBlend"
-    );
-    assert_eq!(
-        <crate::client::render_pipeline::PipelineVertexFormat as Wire>::layout(&mut vec![]),
-        0x9fd68d6fbfedbcfb,
-        "PipelineVertexFormat"
-    );
-    assert_eq!(
         <crate::entity::mobs::Pose as Wire>::layout(&mut vec![]),
         0xa59146be4f337358,
         "Pose"
@@ -549,16 +497,6 @@ fn existing_fieldless_enum_layouts_match_baseline() {
         <crate::entity::types::RemovalReason as Wire>::layout(&mut vec![]),
         0x57b78b9bade8dd8c,
         "RemovalReason"
-    );
-    assert_eq!(
-        <crate::client::world_draw::RenderLevelStage as Wire>::layout(&mut vec![]),
-        0xdc0352afd661a02c,
-        "RenderLevelStage"
-    );
-    assert_eq!(
-        <crate::client::render_pipeline::RenderPipelineError as Wire>::layout(&mut vec![]),
-        0x4239660a490c9e70,
-        "RenderPipelineError"
     );
     assert_eq!(
         <crate::content::content_declarations::RenderShape as Wire>::layout(&mut vec![]),
@@ -671,16 +609,6 @@ fn existing_fieldless_enum_layouts_match_baseline() {
         "SupportType"
     );
     assert_eq!(
-        <crate::client::terrain_draw::TerrainMaterial as Wire>::layout(&mut vec![]),
-        0x18126913353c9cd3,
-        "TerrainMaterial"
-    );
-    assert_eq!(
-        <crate::client::terrain_draw::TerrainShade as Wire>::layout(&mut vec![]),
-        0xc0b706b669166452,
-        "TerrainShade"
-    );
-    assert_eq!(
         <crate::entity::types::TextAlignment as Wire>::layout(&mut vec![]),
         0xec307bca352fee13,
         "TextAlignment"
@@ -724,11 +652,6 @@ fn existing_fieldless_enum_layouts_match_baseline() {
         <crate::item::types::UsePhase as Wire>::layout(&mut vec![]),
         0x1584468fe19180de,
         "UsePhase"
-    );
-    assert_eq!(
-        <crate::client::world_draw::WorldDepth as Wire>::layout(&mut vec![]),
-        0x4409bd351ad1b1df,
-        "WorldDepth"
     );
     assert_eq!(
         <crate::world::types::WorldPhase as Wire>::layout(&mut vec![]),

@@ -9,6 +9,12 @@ pub fn wear_amount(damage: f32) -> i32 {
     }
 }
 
+/// `LivingEntity.hurtArmor` reaches the body piece only when the hit is not in `#bypasses_armor` (`armor_applies`) and the mob
+/// overrides `hurtArmor` (only a horse does: a donkey's body item wears nothing).
+pub fn body_wears(armor_applies: bool, overrides_hurt_armor: bool) -> bool {
+    armor_applies && overrides_hurt_armor
+}
+
 /// `ItemStack.hurtAndBreak` on one piece: its damage takes `amount`; true when it reaches `max`, the piece breaks.
 pub fn hurt(damage: &mut i32, amount: i32, max: i32) -> bool {
     *damage += amount;

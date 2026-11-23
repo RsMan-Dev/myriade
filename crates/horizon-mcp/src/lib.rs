@@ -1,13 +1,10 @@
-//! The Model Context Protocol, as Horizon's three servers speak it (`horizon-ctl mcp`,
-//! `horizon-server mcp`, `horizon-launcher mcp`: docs/agent-control.md, docs/server.md section 8):
-//! JSON-RPC 2.0 over stdin and stdout, one message per line.
+//! The Model Context Protocol, as Horizon's server speaks it (`horizon-server mcp`,
+//! docs/server.md section 8): JSON-RPC 2.0 over stdin and stdout, one message per line.
 //!
 //! Two revisions, newest first. `2026-07-28` is stateless: every request carries its version,
 //! its capabilities and who it is in `_meta`, servers answer `server/discover`, every result
 //! says `resultType`, and the list results carry `ttlMs` and `cacheScope`. `2025-06-18` opens
-//! with `initialize` and is kept for the clients that still do that (the launcher's `game_*`
-//! tools talk to whichever `horizon-ctl` version the player has installed, which may be older
-//! than this crate). A request carrying `_meta` is served statelessly whatever the process
+//! with `initialize` and is kept for the clients that still do that. A request carrying `_meta` is served statelessly whatever the process
 //! answered before it, as the revision requires.
 //!
 //! Each server supplies its identity, its instructions and the two tool methods; the protocol

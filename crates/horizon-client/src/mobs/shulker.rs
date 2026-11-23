@@ -364,7 +364,7 @@ fn teleport(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) -> bool {
         }
         // EntityTeleportEvent.EnderEntity: the spot is where `setPos` snaps to.
         let mut t = t;
-        if crate::native_client_hooks::has_mods() {
+        if crate::native_level_hooks::has_mods() {
             let mut target = [
                 f64::from(t[0]) + 0.5,
                 f64::from(t[1]),
@@ -972,10 +972,6 @@ pub fn anim(m: &Mob, s: &State, p: &mut Poses) {
     p.xrot("head", s.x_rot.to_radians());
     p.yrot("head", (s.y_rot - 180.0).to_radians());
 }
-
-#[cfg(test)]
-#[path = "shulker_space_tests.rs"]
-mod space_tests;
 
 #[cfg(test)]
 mod tests {

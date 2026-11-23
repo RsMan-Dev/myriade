@@ -15,25 +15,18 @@ const VALUE: AttachmentType<i32> = AttachmentType {
     copy_on_death: false,
     sync: false,
 };
-type Calls = Arc<Mutex<Vec<(bool, Holder)>>>;
+type Calls = Arc<Mutex<Vec<Holder>>>;
 
 struct Listener(Calls);
 
 #[mod_api::__subscriptions]
 impl Hooks for Listener {
     fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
-        self.0
-            .lock()
-            .unwrap()
-            .push((matches!(host, HostSide::Client(_)), event.holder));
+        self.0.lock().unwrap().push(event.holder);
         // Both a read and a write inside dispatch must reach the canonical map
         // without recursively constructing the same entity.
         match host {
             HostSide::Server(host) => {
-                let _ = VALUE.get(host, event.holder).unwrap();
-                VALUE.set(host, event.holder, 41).unwrap();
-            }
-            HostSide::Client(host) => {
                 let _ = VALUE.get(host, event.holder).unwrap();
                 VALUE.set(host, event.holder, 41).unwrap();
             }
@@ -71,7 +64,6 @@ fn tag(kind: &str, uuid: i32) -> Tag {
 fn spawn_summon_and_disk_load_initialize_before_first_attachment_read() {
     observe(|calls| {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             let spawn = game
                 .spawn_mob_spawned(
                     "cow",
@@ -120,7 +112,7 @@ fn spawn_summon_and_disk_load_initialize_before_first_attachment_read() {
                         .lock()
                         .unwrap()
                         .iter()
-                        .filter(|(_, h)| *h == Holder::Entity(id))
+                        .filter(|h| **h == Holder::Entity(id))
                         .count(),
                     1,
                     "{kind}"
@@ -132,7 +124,6 @@ fn spawn_summon_and_disk_load_initialize_before_first_attachment_read() {
             game.entity_chunks(&HashSet::from([(0, 0)]), false);
             game.remember_uuid(summoned, Some([100, 2, 3, 4]), &tag("minecraft:pig", 100));
             assert_eq!(calls.lock().unwrap().len(), count);
-            assert!(calls.lock().unwrap().iter().all(|(client, _)| !client));
         })
     });
 }
@@ -157,7 +148,6 @@ fn spawn_info() -> horizon_protocol::packets::play::SpawnInfo {
 fn server_players_initialize_on_join_and_new_respawn_but_not_rebind() {
     observe(|calls| {
         crate::game::native_guest_turn_tests::with_guests(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world_root = game.save.root.clone();
             game.lan
                 .as_mut()
@@ -171,7 +161,7 @@ fn server_players_initialize_on_join_and_new_respawn_but_not_rebind() {
             game.initialize_server_player(12, 12);
             assert_eq!(
                 calls.lock().unwrap().as_slice(),
-                &[(false, Holder::Player(12))]
+                &[Holder::Player(12)]
             );
             game.lan
                 .as_mut()
@@ -183,7 +173,7 @@ fn server_players_initialize_on_join_and_new_respawn_but_not_rebind() {
             assert_eq!(VALUE.get(game, Holder::Player(12)), Ok(41));
             assert_eq!(
                 calls.lock().unwrap().as_slice(),
-                &[(false, Holder::Player(12)), (false, Holder::Player(12))]
+                &[Holder::Player(12), Holder::Player(12)]
             );
         })
     });
@@ -212,7 +202,6 @@ fn marker_constructor_store_reaches_its_real_owned_map() {
         .into(),
         || {
             with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
                 game.native_level_opened(Dim::Overworld);
                 game.spawn_entity_from_nbt(tag("minecraft:marker", 909));
             });
@@ -245,7 +234,6 @@ fn cancelled_mob_creation_forgets_constructor_payload_and_identity() {
         .into(),
         || {
             with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
                 game.native_level_opened(Dim::Overworld);
                 let before = game.persist.uuids.clone();
                 assert!(

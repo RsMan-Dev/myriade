@@ -1,7 +1,7 @@
 #[test]
 #[ignore = "daily"]
 fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
-    use crate::game::{Audio, Game, Hand, Options, Progress, Settings, load_resources};
+    use crate::game::{Game, Hand, Options, Progress, Settings, load_resources};
     use horizon_client::{items::ItemStack, motion::PlayerMotion};
     use horizon_core::equipment_slot::EquipmentSlot;
     use horizon_core::geometry::Vec3;
@@ -16,19 +16,18 @@ fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.0, 70.0, 0.0)).unwrap());
@@ -66,24 +65,3 @@ fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
     assert_eq!(game.offhand.as_ref().unwrap().damage, 0);
 }
 
-#[test]
-fn a_cancelled_key_still_types_the_characters_left() {
-    // `axb` with 'x' cancelled: the key went no further, `ab` still types.
-    assert_eq!(
-        super::screen_text_hooked(&super::chars_to_type("axb", true), |c| c == 'x').as_deref(),
-        Some("ab")
-    );
-    // Backspace, Escape and the like are keys, not text.
-    assert_eq!(
-        super::screen_text_hooked(&super::chars_to_type("a\u{7f}\u{1b}b", true), |_| false)
-            .as_deref(),
-        Some("ab")
-    );
-    // Every character cancelled: the box takes none of them.
-    assert_eq!(
-        super::screen_text_hooked(&super::chars_to_type("ab", true), |_| true),
-        None
-    );
-    // Nothing typed: nothing to hand over.
-    assert_eq!(super::chars_to_type("", true).chars().next(), None);
-}

@@ -109,7 +109,7 @@ def render(result):
                f"{test_only['testing items']} of them name `testing`, `part_tests` or `with_test_packages`.")
     out.append("\n### The host areas by strand (files under game/modding/ and game/native_hooks/)\n")
     out.append("`inherent impls`: `impl Game`/`impl GameLevel` blocks, which can't leave horizon-client as they "
-               "are. `foreign trait impls`: impls of a mod crate's trait, which horizon-mod-host may not write for "
+               "are. `foreign trait impls`: impls of a mod crate's trait, which horizon-game may not write for "
                "an engine type (orphan rule). `to make public`: distinct engine-private functions, `Game` fields "
                "and `game` items the files use (textual estimate). `inbound`: engine references into them.\n")
     rows = []

@@ -33,7 +33,6 @@ mod tests {
         fn block_entity_on_load(&self, host: HostSide, event: &mut BlockEntityOnLoadEvent) {
             let (label, data) = match &host {
                 HostSide::Server(h) => ("load", event.entity.data(&**h).unwrap()),
-                HostSide::Client(h) => ("client_load", event.entity.data(&**h).unwrap()),
             };
             let Some(Tag::Int(count)) = data.get(&"count".into()) else {
                 panic!("missing saved count")
@@ -96,17 +95,9 @@ mod tests {
         }
     }
     fn with_fixture(replace: bool, f: impl FnOnce(&mut Game<'_>, Log, Arc<AtomicBool>)) {
-        with_fixture_role(
-            replace,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            f,
-        );
+        with_fixture_role(replace, f);
     }
-    fn with_fixture_role(
-        replace: bool,
-        role: crate::game::execution_role::ExecutionRole,
-        f: impl FnOnce(&mut Game<'_>, Log, Arc<AtomicBool>),
-    ) {
+    fn with_fixture_role(replace: bool, f: impl FnOnce(&mut Game<'_>, Log, Arc<AtomicBool>)) {
         let log = Log::default();
         let replace = Arc::new(AtomicBool::new(replace));
         let mods: Mods = vec![ModEntry::new(
@@ -121,22 +112,19 @@ mod tests {
         crate::game::api_values::install_parts(&mods).unwrap();
         let base = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
         let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
-        with_game_role(root.prepared().to_path_buf(), role, |game| {
-            if game.is_logical_server() {
-                game.options.dedicated = Some(vec![]);
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                let level = game.level("minecraft:overworld").unwrap();
-                let stone = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:stone")
-                    .unwrap();
-                game.level_set_block(level, [1, 63, 1], stone, BlockUpdateFlags::NONE)
-                    .unwrap();
-            }
+        with_game_role(root.prepared().to_path_buf(), |game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let level = game.level("minecraft:overworld").unwrap();
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.level_set_block(level, [1, 63, 1], stone, BlockUpdateFlags::NONE)
+                .unwrap();
             f(game, log, replace);
         });
     }

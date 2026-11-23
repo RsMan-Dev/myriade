@@ -14,6 +14,7 @@ fn standing_game() -> Game<'static> {
     let resources = Box::leak(Box::new(None));
     let mut game = server_game(resources);
     let feet = Vec3::new(8.5, 70.0, 8.5);
+    // TODO(phase 2): joueur agissant = invité (corps tick le serveur : tick_items hors tour, le ramassage lit le joueur posé ici)
     game.player = Some(horizon_client::motion::PlayerMotion::new(game.motion, feet).unwrap());
     game.world
         .chunks
@@ -24,6 +25,17 @@ fn standing_game() -> Game<'static> {
     game.ticked_entities_through = u32::MAX;
     game.audio.capture = Some(Vec::new());
     game
+}
+
+/// `standing_game`, with its body run as a guest standing at its feet.
+fn standing_acting_guest(f: impl FnOnce(&mut Game<'_>)) {
+    let mut game = standing_game();
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+    crate::game::native_guest_turn_tests::with_acting_guest_on(
+        &mut game,
+        Vec3::new(8.5, 70.0, 8.5),
+        f,
+    );
 }
 
 /// The one sound `event` played since the last call, with its volume.
@@ -42,7 +54,7 @@ fn sound(game: &mut Game<'_>, event: &str) -> (f32, f32) {
 #[test]
 #[ignore = "daily"]
 fn a_thrown_item_takes_the_throwers_random_not_the_levels() {
-    let mut game = standing_game();
+    standing_acting_guest(|game| {
     game.yaw = 0.0;
     game.pitch = 0.0;
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 4));
@@ -65,6 +77,7 @@ fn a_thrown_item_takes_the_throwers_random_not_the_levels() {
     game.drop_held(false);
     assert_ne!(game.ecs.item_views().pop().unwrap().velocity, velocity);
     assert_eq!(game.world.random.state(), level);
+    });
 }
 
 /// `Player.dropEquipment` -> `Inventory.dropAll(randomly)`: each stack a dying
@@ -72,7 +85,7 @@ fn a_thrown_item_takes_the_throwers_random_not_the_levels() {
 #[test]
 #[ignore = "daily"]
 fn a_death_scatter_takes_the_throwers_random_not_the_levels() {
-    let mut game = standing_game();
+    standing_acting_guest(|game| {
     game.inventory[0] = Some(ItemStack::new("minecraft:stone", 2));
     let level = game.world.random.state();
     game.drop_inventory(
@@ -93,6 +106,7 @@ fn a_death_scatter_takes_the_throwers_random_not_the_levels() {
         level,
         "the scatter drew from the level's random"
     );
+    });
 }
 
 /// `ClientPacketListener.handleTakeItemEntity` pitches the pickup from the
@@ -101,6 +115,7 @@ fn a_death_scatter_takes_the_throwers_random_not_the_levels() {
 #[test]
 #[ignore = "daily"]
 fn a_pickup_pitch_is_not_drawn_from_the_levels_random() {
+    // TODO(phase 2): joueur agissant = invité (corps tick le serveur : tick_items et /give lisent le joueur posé par standing_game)
     let mut game = standing_game();
     game.spawn_item(
         ItemStack::new("minecraft:stone", 2),
@@ -140,6 +155,7 @@ fn a_pickup_pitch_is_not_drawn_from_the_levels_random() {
 #[test]
 #[ignore = "daily"]
 fn a_burning_items_sound_is_not_drawn_from_the_levels_random() {
+    // TODO(phase 2): joueur agissant = invité (corps tick le serveur : tick_items hors tour, le joueur posé par standing_game)
     let mut game = standing_game();
     let lava = game
         .pack

@@ -6,12 +6,11 @@ impl GameLevel<'_> {
     /// This level's own random (vanilla's `Level.random`): the stream
     /// `native_level_random(dimension)` hands a server hook, for a world hook
     /// that draws as a vanilla block does (`isBonemealSuccess`), so the mod's
-    /// draws shift vanilla's as a Java mod's would. `None` where this level
-    /// isn't the server's copy.
+    /// draws shift vanilla's as a Java mod's would.
     pub(in crate::game) fn native_level_random(
         &mut self,
     ) -> Option<&mut horizon_core::random::LegacyRandom> {
-        self.native_authoritative.then_some(&mut self.world.random)
+        Some(&mut self.world.random)
     }
 }
 

@@ -60,32 +60,16 @@ pub(super) fn store<'a>(server: &'a mut Game<'_>) -> &'a mut dyn AttachmentStore
 
 /// The server sets the level's value, committed or rolled back.
 pub(super) fn set_level(game: &Game<'_>, value: i32, commit: bool) {
-    game.integrated
-        .as_ref()
-        .unwrap()
-        .call(move |server| {
-            let seal = server.transaction_open();
-            VALUE.set(store(server), Holder::Level, value).unwrap();
-            server.transaction_close(&seal, commit);
-        })
-        .unwrap();
+    let _ = (game, value, commit);
+    // TODO(phase 2): serveur intégré retiré — même vérification par un invité réel.
+    todo!("phase 2 : passer par un invité connecté au serveur dédié")
 }
 
 /// Let the server's hub tick `n` times, so later edits land in a later pass.
 pub(super) fn wait_server_ticks(game: &Game<'_>, n: u64) {
-    let ticks = |game: &Game<'_>| {
-        game.integrated
-            .as_ref()
-            .unwrap()
-            .call(|server| server.lan.as_ref().unwrap().hub.ticks)
-            .unwrap()
-    };
-    let start = ticks(game);
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while ticks(game) < start + n {
-        assert!(Instant::now() < deadline, "the server stopped ticking");
-        std::thread::yield_now();
-    }
+    let _ = (game, n);
+    // TODO(phase 2): serveur intégré retiré — même vérification par un invité réel.
+    todo!("phase 2 : passer par un invité connecté au serveur dédié")
 }
 
 /// A TCP peer that offers the engine's declarations (`horizon`) or offers nothing, as a

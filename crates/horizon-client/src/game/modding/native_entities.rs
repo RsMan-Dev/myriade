@@ -55,7 +55,7 @@ pub(super) fn target_id(t: Target) -> Option<u32> {
 impl Game<'_> {
     /// Whether this game simulates the level `dimension`.
     fn native_simulates_level(&self, dimension: &str) -> bool {
-        (self.serving.is_some() || self.options.dedicated.is_some()) && dimension == self.dim.id()
+        dimension == self.dim.id()
     }
     /// Spawns an entity of `kind` (`minecraft:item_display`) at `pos` in the
     /// level in place, `dimension`, from `nbt` (its compound, as `/summon

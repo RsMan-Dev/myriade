@@ -107,12 +107,12 @@ ones in this version.
 - Original code only (CONTRIBUTING.md): written from vanilla 26.3 and public descriptions of what cheats
   do. Never read, copy or paraphrase another anticheat's source (Grim, NoCheatPlus, Vulcan, Matrix,
   Spartan, Paper's anti-xray...), its decompiled jars or docs quoting its code.
-- Test it both ways in `tools/anticheat_e2e.py`: a horizon-bots cheat is caught, legit bots are never
+- Test it both ways in `tools/anticheat_e2e.py`: a myriade-bot cheat is caught, legit bots are never
   flagged, and nothing happens with the anticheat off.
 
 ```sh
 cargo build --profile fast -p horizon-game --bin horizon-client
-cargo build --profile fast -p horizon-bots
+cargo build --profile fast -p myriade-bot
 python3 tools/anticheat_e2e.py --bin-dir target/fast
 python3 tools/server_bench.py --servers horizon --bots 60 --behaviour walk --anticheat   # its cost
 python3 tools/server_bench.py --servers horizon --bots 60 --behaviour walk --ground --anticheat   # survival, on the ground

@@ -113,7 +113,6 @@ pub(super) fn discover(kind: PackType, mods: &ModsState) -> Vec<Found> {
     let mut registry = Registry::new(kind, mods.clone());
     let mut host = DiscoveryHost;
     let host = match kind {
-        PackType::ClientResources => HostSide::Client(&mut host),
         PackType::ServerData => HostSide::Server(&mut host),
         _ => return Vec::new(),
     };

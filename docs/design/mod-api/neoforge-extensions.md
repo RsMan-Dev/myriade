@@ -418,7 +418,6 @@ These are model-registration counterparts, not object-extension methods (arismok
 
 The namespace rule, `RenderAssets::model` resolution and `model_baking_completed` publication
 are unchanged. Forms rebake on every resource load; failed reloads leave old handles valid.
-See [the model drawing guide](../../modding/src/how-to/client/model-drawing.md#bake-time-standalone-forms).
 
 CPU proof selectors in `horizon-client-render` are
 `models::catalog::standalone_tests::standalone_rotated_arrow_has_literal_geometry_and_world_locked_uvs`,

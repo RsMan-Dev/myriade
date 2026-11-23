@@ -126,12 +126,10 @@ impl Game<'_> {
     /// when it is refused or fails. A command that carries a chat message
     /// (`say`, `msg`...) is refused: it would need the player's signature.
     fn run_quiet_line(&mut self, conn: u32, line: &str) -> bool {
-        let allowed = self.options.dedicated.is_some() || self.allow_commands();
         let Some(host) = self.lan.as_ref() else {
             return false;
         };
-        let integrated = host.hub.config.integrated;
-        if !integrated && (!host.settings.guest_commands || !allowed) {
+        if !host.settings.guest_commands {
             return false;
         }
         let Some((permission, uuid, name)) = host
@@ -156,7 +154,6 @@ impl Game<'_> {
             conn,
             command: command.to_owned(),
             permission,
-            integrated,
             quiet: true,
         })
     }

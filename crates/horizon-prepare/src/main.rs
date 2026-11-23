@@ -303,7 +303,7 @@ fn complete_resources(
     ))
 }
 
-/// `{"key": "text"}` on one line: `--progress json`'s `message` and `error` (docs/api/launch.md).
+/// `{"key": "text"}` on one line: `--progress json`'s `message` and `error`.
 fn json_line(key: &str, text: &str) -> String {
     let mut out = format!("{{\"{key}\": ");
     horizon_prepare::pyjson::write_string(&mut out, text);
@@ -340,8 +340,8 @@ fn check_resources(options: &horizon_prepare::Options) -> ExitCode {
 mod tests {
     use super::*;
 
-    /// `--progress json`'s three lines as docs/api/launch.md promises them: a launcher parses
-    /// them, so a refactor must not change them silently.
+    /// `--progress json`'s three lines: a caller parses them, so a refactor must not change
+    /// them silently.
     #[test]
     fn progress_json_lines_keep_their_shape() {
         assert_eq!(

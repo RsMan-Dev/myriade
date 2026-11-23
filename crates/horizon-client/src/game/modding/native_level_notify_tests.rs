@@ -11,7 +11,6 @@ fn crack_packets_wait_for_root_commit_and_preserve_fifo() {
     use horizon_client::lan::{Out, PlayerSender};
     use horizon_protocol::{buf::Reader, packets::play::Clientbound};
     with_guests(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -84,7 +83,6 @@ fn crack_packets_wait_for_root_commit_and_preserve_fifo() {
 #[ignore = "daily"]
 fn break_progress_waits_for_commit_but_explicit_block_updates_survive_abort() {
     with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -123,7 +121,6 @@ fn break_progress_waits_for_commit_but_explicit_block_updates_survive_abort() {
 #[ignore = "daily"]
 fn bone_meal_on_an_invalid_block_changes_nothing() {
     with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -149,7 +146,6 @@ fn biome_negative_min_y_and_unwind_restore_without_publication() {
     use super::native_guest_turn_tests::with_guests;
     use horizon_client::lan::PlayerSender;
     with_guests(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
             .insert((-1, -1), Arc::new(Chunk::empty(-1, -1)));

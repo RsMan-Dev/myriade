@@ -3,7 +3,6 @@
 //! on the stack a wasm guest runs on.
 #![cfg(test)]
 use crate::game::Game;
-use crate::game::execution_role::ExecutionRole;
 use crate::game::native_entity_refs::tests::{run_on_guest_stack, with_game_role};
 use horizon_client::{chunk::Chunk, projectiles::ProjectileKind};
 use horizon_core::position::ChunkPos;
@@ -96,7 +95,6 @@ impl mod_api::Hooks for Resisting {
 fn row(game: &mut Game<'_>) {
     game.build_registries();
     game.set_allow_commands(true);
-    game.options.dedicated = Some(Vec::new());
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -287,14 +285,10 @@ fn each_target(test: impl Fn(&mut Game<'_>, Via, &Resisting) + Send + Sync + 'st
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
                     crate::game::mods::content_root(&base, &Default::default()).unwrap()
                 };
-                with_game_role(
-                    root.prepared().to_path_buf(),
-                    ExecutionRole::IntegratedServer,
-                    |game| {
+                with_game_role(root.prepared().to_path_buf(), |game| {
                         row(game);
                         test(game, via, &parts);
-                    },
-                );
+                });
             });
         }
     });

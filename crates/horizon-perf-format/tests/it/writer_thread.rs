@@ -60,29 +60,18 @@ fn a_full_channel_drops_and_counts_without_waiting_and_stop_records_the_drops() 
     let started = Instant::now();
     let refused = (0..100)
         .filter(|&i| !tx.send(health(Side::Server, i as f64)))
-        .count()
-        + (0..5)
-            .filter(|&i| !tx.send(health(Side::Client, i as f64)))
-            .count();
+        .count();
     let took = started.elapsed();
-    assert_eq!(refused, 105, "every send past a full channel is refused");
+    assert_eq!(refused, 100, "every send past a full channel is refused");
     assert!(
         took < Duration::from_millis(500),
-        "105 refused sends took {took:?}: they waited on the writer"
+        "100 refused sends took {took:?}: they waited on the writer"
     );
-    assert_eq!(
-        (tx.dropped(Side::Server), tx.dropped(Side::Client)),
-        (100, 5)
-    );
+    assert_eq!(tx.dropped(Side::Server), 100);
 
     disk.release();
     assert!(tx.send(Field::Stop(Stop {
         side: Side::Server as i32,
-        t: 9.0,
-        ..Default::default()
-    })));
-    assert!(tx.send(Field::Stop(Stop {
-        side: Side::Client as i32,
         t: 9.0,
         ..Default::default()
     })));
@@ -109,5 +98,5 @@ fn a_full_channel_drops_and_counts_without_waiting_and_stop_records_the_drops() 
         .iter()
         .map(|s| (s.side(), s.overhead.unwrap_or_default().dropped_messages))
         .collect();
-    assert_eq!(drops, [(Side::Server, 100), (Side::Client, 5)]);
+    assert_eq!(drops, [(Side::Server, 100)]);
 }

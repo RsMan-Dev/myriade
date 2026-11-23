@@ -494,7 +494,7 @@ jobs:
       - name: Build and screen packages
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends pkg-config libasound2-dev libudev-dev \
+          sudo apt-get install -y -qq --no-install-recommends pkg-config \
             mesa-vulkan-drivers libvulkan1 xvfb x11-utils libx11-6 libxcursor1 libxrandr2 libxi6 libxinerama1 \
             libxkbcommon0 libxkbcommon-x11-0 libgl1 libegl1 > /dev/null
       - name: A virtual screen with software Vulkan

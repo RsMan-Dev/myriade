@@ -226,7 +226,7 @@ fn join_players(game: &mut Game<'_>, stop: &Arc<AtomicBool>) -> Result<(Vec<std:
     let net = NetConfig::loopback(PORT, "Probe".into(), REPS + 1);
     let config = HubConfig {
         default_game_mode: 0, guest_commands: false, force_game_mode: false, hardcore: false, view_distance: 2, simulation_distance: 2,
-        dimension: "minecraft:overworld".into(), allow_flight: true, seed: 0, max_players: REPS + 1, integrated: false, levels: Default::default(), level_seeds: Default::default(),
+        dimension: "minecraft:overworld".into(), allow_flight: true, seed: 0, max_players: REPS + 1, levels: Default::default(), level_seeds: Default::default(),
     };
     game.lan_host(settings, net, config).map_err(|e| e.to_string())?;
     let bots: Vec<_> = (0..REPS).map(|i| {

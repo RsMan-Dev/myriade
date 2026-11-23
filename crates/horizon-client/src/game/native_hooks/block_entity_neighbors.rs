@@ -27,15 +27,11 @@ impl horizon_world::level::BlockEntityNeighbors for GameLevel<'_> {
         state: BlockStateId,
         neighbor: BlockPos,
     ) {
-        if self.native_authoritative {
-            self.native_on_neighbor_change(self.dimension, pos, state, neighbor);
-        }
+        self.native_on_neighbor_change(self.dimension, pos, state, neighbor);
     }
     fn receives_weak_changes(&self, pos: BlockPos, state: BlockStateId) -> bool {
         let mut receive = false;
-        if self.native_authoritative {
-            self.native_weak_changes(self.dimension, pos, state, &mut receive);
-        }
+        self.native_weak_changes(self.dimension, pos, state, &mut receive);
         receive
     }
 }

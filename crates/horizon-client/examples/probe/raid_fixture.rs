@@ -12,7 +12,7 @@ use horizon_client::{
         Species,
         data::MobData,
         spawn_rules::{self, SpawnLevel},
-        spawn_selection::{self, Heightmap},
+        spawn_place::{self, Heightmap},
         spawning::LocalDifficulty,
     },
     patrol::{self, GameplayAttributes, Member, PatrolLevel, PatrolSpawner},
@@ -123,7 +123,7 @@ impl World<'_> {
         }
         (self.min_y()..=self.max_y())
             .rev()
-            .find(|&y| spawn_selection::heightmap_blocks(self, kind, x, y, z))
+            .find(|&y| spawn_place::heightmap_blocks(self, kind, x, y, z))
             .map_or(self.min_y(), |y| y + 1)
     }
     fn attribute(&self, key: &str) -> bool {

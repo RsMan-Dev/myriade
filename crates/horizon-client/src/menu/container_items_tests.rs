@@ -5,7 +5,7 @@ use super::*;
 use crate::bundle::Contents;
 use crate::items::Items;
 use crate::menu::{Kind, Menu};
-use crate::native_client_hooks::test_hooks::{answering, install, item_asks};
+use crate::native_level_hooks::test_hooks::{answering, install, item_asks};
 
 const HOOK: &str = "can_fit_inside_container_items";
 

@@ -26,7 +26,7 @@ Not every line is read by a person. Instead, every change is checked against the
 - **Signed checksums.** Every release has a `SHA256SUMS` file, a fingerprint of each download, and `SHA256SUMS.sig`, a signature of that list made with Horizon's release key, which only release builds from main can use. The launcher and `horizon-server update` check both before they install anything, and refuse a file that does not match. The very first server install with `install.sh` checks the fingerprint but not the signature.
 - **Not yet signed by Apple or Microsoft.** The macOS app is not notarized by Apple, because it is not signed with a paid Apple developer account, so macOS asks you to confirm the first time ([Install](https://playhorizon.dev/docs/install#download-the-launcher) shows how). The Windows programs are not code-signed either, so Windows may warn you too.
 - **Mods are off by default, and reviewed.** A content mod is data and runs no code. A native mod is Rust code with your rights, not sandboxed: the launcher compiles it against a pinned prebuilt game only after a warning and your OK, and the registry lists one only after a maintainer has read its source. See [Making a content mod](modding/src/how-to/content-mods.md) and [Native mods](modding/src/how-to/native-mods.md).
-- **Nothing collected.** The launcher and the game send nothing about you or your machine to any server. See [Horizon sends nothing](telemetry.md).
+- **Nothing collected.** The launcher and the game send nothing about you or your machine to any server. See Horizon sends nothing.
 
 ## What it doesn't contain
 
@@ -38,4 +38,3 @@ Not every line is read by a person. Instead, every change is checked against the
 - **Read the code and its checks.** [The source](https://github.com/horizon-rust/horizon), [the checks on every pull request](https://github.com/horizon-rust/horizon/actions/workflows/ci.yml) and [the release builds](https://github.com/horizon-rust/horizon/actions/workflows/release.yml).
 - **Compare the fingerprints.** Put a release's files and its `SHA256SUMS` in one folder and run `sha256sum -c SHA256SUMS --ignore-missing` (on macOS `shasum -a 256 -c SHA256SUMS --ignore-missing`, on Windows `Get-FileHash <file>` in PowerShell). Each file should say `OK`.
 - **Check the signature.** Download a whole release into a folder, then from a clone of the repository run `cargo run -p horizon-release-sign -- verify --tag <tag> <folder>`. The public key is in `crates/horizon-release-sign/release-keys.txt`.
-- **Build it yourself.** The README explains how to [build from source](native-client.md#run-from-a-checkout).

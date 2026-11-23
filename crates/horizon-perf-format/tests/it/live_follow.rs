@@ -10,14 +10,6 @@ use horizon_perf_format::v1::*;
 use horizon_perf_format::{CaptureWriter, FORMAT, Field};
 use prost::Message;
 
-fn side(i: u64) -> i32 {
-    if i.is_multiple_of(2) {
-        Side::Server as i32
-    } else {
-        Side::Client as i32
-    }
-}
-
 fn sample(rng: &mut Rng, s: i32, t: f64) -> HealthSample {
     HealthSample {
         side: s,
@@ -34,34 +26,28 @@ fn sample(rng: &mut Rng, s: i32, t: f64) -> HealthSample {
 fn synthetic_fields() -> Vec<Field> {
     let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
     let mut fields = Vec::new();
-    for s in [Side::Server as i32, Side::Client as i32] {
-        fields.push(Field::Start(Start {
-            side: s,
-            kind: if s == Side::Server as i32 {
-                Kind::Dedicated
-            } else {
-                Kind::Client
-            } as i32,
-            started_unix_ms: 1_794_580_324_000,
-            build: Some(Build {
-                version: "0.1.0".into(),
-                symbols: Symbols::Dwarf as i32,
-                ..Default::default()
-            }),
+    let s = Side::Server as i32;
+    fields.push(Field::Start(Start {
+        side: s,
+        kind: Kind::Dedicated as i32,
+        started_unix_ms: 1_794_580_324_000,
+        build: Some(Build {
+            version: "0.1.0".into(),
+            symbols: Symbols::Dwarf as i32,
             ..Default::default()
-        }));
-        let samples = (0..120)
-            .map(|i| sample(&mut rng, s, -120.0 + i as f64))
-            .collect();
-        fields.push(Field::History(HealthWindow {
-            side: s,
-            step_s: 1.0,
-            t0: -120.0,
-            samples,
-        }));
-    }
+        }),
+        ..Default::default()
+    }));
+    let samples = (0..120)
+        .map(|i| sample(&mut rng, s, -120.0 + i as f64))
+        .collect();
+    fields.push(Field::History(HealthWindow {
+        side: s,
+        step_s: 1.0,
+        t0: -120.0,
+        samples,
+    }));
     for i in 0..400u64 {
-        let s = side(i);
         let t = i as f64 / 2.0;
         fields.push(match rng.below(7) {
             0 => Field::String(StringEntry {
@@ -113,49 +99,23 @@ fn synthetic_fields() -> Vec<Field> {
             _ => Field::Health(sample(&mut rng, s, t)),
         });
     }
-    for s in [Side::Server as i32, Side::Client as i32] {
-        fields.push(Field::Samples(SampleProfile {
-            side: s,
-            block_s: 5.0,
-            weights: Some(Weights {
-                node: vec![0, 1],
-                slow: vec![false, true],
-                count: vec![7, 3],
-                ..Default::default()
-            }),
+    fields.push(Field::Samples(SampleProfile {
+        side: s,
+        block_s: 5.0,
+        weights: Some(Weights {
+            node: vec![0, 1],
+            slow: vec![false, true],
+            count: vec![7, 3],
             ..Default::default()
-        }));
-        fields.push(Field::GpuFrames(GpuFrames {
-            side: s,
-            frames: vec![GpuFrame {
-                source: GpuSource::Horizon as i32,
-                t: 1.25,
-                total_ms: Some(2.5),
-                passes: vec![GpuPass {
-                    name: 1,
-                    ms: Some(1.5),
-                    parts: vec![GpuPart { name: 2, ms: 0.25 }],
-                }],
-            }],
-            cpu_frame_ms: vec![4.0, 5.5],
-        }));
-        fields.push(Field::Gpu(GpuPasses {
-            side: s,
-            source: GpuSource::Horizon as i32,
-            passes: vec![GpuPass {
-                name: 1,
-                ms: Some(1.5),
-                parts: vec![GpuPart { name: 2, ms: 0.25 }],
-            }],
-            ..Default::default()
-        }));
-        fields.push(Field::Stop(Stop {
-            side: s,
-            t: 200.0,
-            reason: StopReason::Normal as i32,
-            ..Default::default()
-        }));
-    }
+        }),
+        ..Default::default()
+    }));
+    fields.push(Field::Stop(Stop {
+        side: s,
+        t: 200.0,
+        reason: StopReason::Normal as i32,
+        ..Default::default()
+    }));
     fields
 }
 

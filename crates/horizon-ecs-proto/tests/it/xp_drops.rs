@@ -14,7 +14,7 @@ use horizon_ecs_proto::orb::Orb;
 /// The species killed in the last 100 ticks by player 1 (a baby, a helmet on it, as asked); the experience of the orbs it left.
 fn kill(h: &mut Herd, seed: i64, baby: bool, helmet: bool) -> i32 {
     let player = Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, head: 0, chest: 0, legs: 0, feet: 0 };
-    set_player(&mut h.world, player, PlayerFact { alive: true, targetable: true, hero: None });
+    set_player(&mut h.world, player, PlayerFact { alive: true, targetable: true, hero: None, ..Default::default() });
     let sp = *species();
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 9);
     if baby {

@@ -32,7 +32,7 @@ fn id_of_stack(s: &Option<ItemStack>) -> u32 {
 impl EcsWorld {
     /// The vehicle `e` rides (`Riding`), if any.
     pub fn host_vehicle(&self, e: Entity) -> Option<Entity> {
-        self.world().get::<Riding>(e).map(|r| r.0)
+        host_vehicle(self.world(), e)
     }
 
     /// The creature riders of `vehicle`, its first seat then its second. A player rides by its id, so it is not listed here.
@@ -54,12 +54,12 @@ impl EcsWorld {
     }
 
     pub fn is_passenger(&self, e: Entity) -> bool {
-        self.world().get::<Riding>(e).is_some()
+        is_passenger(self.world(), e)
     }
 
     /// A seat of `vehicle` is free: the first seat, or the second one of a mount that has two.
     pub fn has_free_seat(&self, vehicle: Entity) -> bool {
-        self.world().get::<Mount>(vehicle).is_some_and(|m| m.rider.is_none() || (m.seats.len() > 1 && m.passenger.is_none()))
+        self.world().get::<Mount>(vehicle).is_some_and(|m| m.rider.is_none() || (m.capacity > 1 && m.passenger.is_none()))
     }
 
     /// Every rider of `from` gets off and rides `to` in seat order; a rider `to` has no seat for is set down. The views of the three move.
@@ -145,11 +145,7 @@ impl EcsWorld {
 
     /// The offers of the merchant `e` as they stand (none without a `Merchant`).
     pub fn trade_offers(&self, e: Entity) -> Option<Vec<MerchantOffer>> {
-        let w = self.world();
-        if let Some(t) = w.get::<trade_session::Trading>(e) {
-            return Some(t.session.offers.clone());
-        }
-        w.get::<trade_offers::Merchant>(e).map(|m| m.trade.offers.clone())
+        trade_offers(self.world(), e)
     }
 
     /// Sets the offers of the merchant `e`, as made: they are not remade by `ensure_offers`.
@@ -250,8 +246,7 @@ impl EcsWorld {
 
     /// `Villager.getVillagerXp`: the open screen's when there is one, else the `Merchant`'s.
     pub fn trade_xp(&self, e: Entity) -> Option<i32> {
-        let w = self.world();
-        w.get::<trade_session::Trading>(e).map(|t| t.session.xp).or_else(|| w.get::<trade_offers::Merchant>(e).map(|m| m.trade.xp))
+        trade_xp(self.world(), e)
     }
 
     /// `Villager.setVillagerXp`, assigned as given.
@@ -267,13 +262,12 @@ impl EcsWorld {
 
     /// `VillagerData.level` (1 for a wandering trader): the open screen's when there is one.
     pub fn trade_level(&self, e: Entity) -> Option<i32> {
-        let w = self.world();
-        w.get::<trade_session::Trading>(e).map(|t| t.session.level).or_else(|| w.get::<trade_offers::Merchant>(e).map(|m| i32::from(m.level)))
+        trade_level(self.world(), e)
     }
 
     /// `VillagerData.type`, a registry id; None without a `Merchant`.
     pub fn trade_variant(&self, e: Entity) -> Option<String> {
-        self.world().get::<trade_offers::Merchant>(e).map(|m| trade_offers::variant_name(m.variant))
+        trade_variant(self.world(), e)
     }
 
     /// `VillagerData.withType`: the index in `VILLAGER_TYPES`.
@@ -285,12 +279,7 @@ impl EcsWorld {
 
     /// `VillagerData.profession`, a registry id; None for a wandering trader or without a `Merchant`.
     pub fn trade_profession(&self, e: Entity) -> Option<String> {
-        let w = self.world();
-        let m = w.get::<trade_offers::Merchant>(e).filter(|m| !m.wandering)?;
-        Some(match w.get::<trade_offers::UnresolvedProfession>(e) {
-            Some(u) => u.0.clone(),
-            None => trade_offers::profession_name(w, m.profession),
-        })
+        trade_profession(self.world(), e)
     }
 
     /// `Villager.setVillagerData` with the profession at `index` of the active professions: a different one forgets the offers.
@@ -300,14 +289,7 @@ impl EcsWorld {
 
     /// `Villager.setUnhappy`: the villager says no (a baby with the pitch of its age) and shakes its head (`behaviours::unhappy`).
     pub fn set_unhappy(&mut self, e: Entity) {
-        let w = self.world_mut();
-        let Some(m) = w.get::<trade_offers::Merchant>(e) else { return };
-        let wandering = m.wandering;
-        crate::behaviours::unhappy::start(w, e);
-        let name = if wandering { "entity.wandering_trader.no" } else { "entity.villager.no" };
-        let pitch = if w.get::<crate::cow::GrowAt>(e).is_some() { 1.5 } else { 1.0 };
-        let at = w.get::<crate::cow::Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
-        w.resource_mut::<crate::goals::Events>().host.sound(name, at, 1.0, pitch);
+        crate::behaviours::unhappy::say_no(self.world_mut(), e);
     }
 
     /// A mount its rider's client moves (`getControllingPassenger` is a player, `handleMoveVehicle`): the one `player_steers` says the
@@ -315,4 +297,54 @@ impl EcsWorld {
     pub fn moved_by_client(&self, e: Entity) -> bool {
         self.player_steers(e)
     }
+}
+
+// The reads of the step view, over the world itself: `EcsWorld`'s methods above delegate to these.
+
+/// `Villager.getOffers`: see `EcsWorld::trade_offers`.
+pub fn trade_offers(w: &World, e: Entity) -> Option<Vec<MerchantOffer>> {
+    if let Some(t) = w.get::<trade_session::Trading>(e) {
+        return Some(t.session.offers.clone());
+    }
+    w.get::<trade_offers::Merchant>(e).map(|m| m.trade.offers.clone())
+}
+
+/// `VillagerData.level`: see `EcsWorld::trade_level`.
+pub fn trade_level(w: &World, e: Entity) -> Option<i32> {
+    w.get::<trade_session::Trading>(e).map(|t| t.session.level).or_else(|| w.get::<trade_offers::Merchant>(e).map(|m| i32::from(m.level)))
+}
+
+/// `VillagerData.type`: see `EcsWorld::trade_variant`.
+pub fn trade_variant(w: &World, e: Entity) -> Option<String> {
+    w.get::<trade_offers::Merchant>(e).map(|m| trade_offers::variant_name(m.variant))
+}
+
+/// `VillagerData.profession`: see `EcsWorld::trade_profession`.
+pub fn trade_profession(w: &World, e: Entity) -> Option<String> {
+    let m = w.get::<trade_offers::Merchant>(e).filter(|m| !m.wandering)?;
+    Some(match w.get::<trade_offers::UnresolvedProfession>(e) {
+        Some(u) => u.0.clone(),
+        None => trade_offers::profession_name(w, m.profession),
+    })
+}
+
+/// `Villager.getVillagerXp`: see `EcsWorld::trade_xp`.
+pub fn trade_xp(w: &World, e: Entity) -> Option<i32> {
+    w.get::<trade_session::Trading>(e).map(|t| t.session.xp).or_else(|| w.get::<trade_offers::Merchant>(e).map(|m| m.trade.xp))
+}
+
+/// The vehicle `e` rides (`Riding`): see `EcsWorld::host_vehicle`.
+pub fn host_vehicle(w: &World, e: Entity) -> Option<Entity> {
+    w.get::<Riding>(e).map(|r| r.0)
+}
+
+/// Whether `e` rides a vehicle: see `EcsWorld::is_passenger`.
+pub fn is_passenger(w: &World, e: Entity) -> bool {
+    w.get::<Riding>(e).is_some()
+}
+
+/// The riders of the mount `vehicle` in its seats, players included: a creature by its entity, a player by its id (`Mount.rider`, `Mount.passenger`).
+pub fn seated(w: &World, vehicle: Entity) -> Vec<Who> {
+    let Some(m) = w.get::<Mount>(vehicle) else { return Vec::new() };
+    [m.rider, m.passenger].into_iter().flatten().collect()
 }

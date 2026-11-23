@@ -155,6 +155,18 @@ pub fn mark(w: &mut World, e: Entity, species: u8) {
     if piston_ignored {
         w.entity_mut(e).insert(crate::world_push::PistonIgnored);
     }
+    // `Monster.getFallSounds`: a monster's falls sound hostile.
+    let monster = w.get_resource::<crate::cow::SpeciesTable>().and_then(|t| t.0.get(usize::from(species)).map(|s| s.name)).and_then(|n| crate::species::registry().by_name(n).ok()).is_some_and(|r| r.spawn.is_some_and(|s| matches!(s.category, crate::spawning::Category::Monster)));
+    if monster {
+        w.entity_mut(e).insert(crate::landing_trample::HostileFall);
+    }
+    if lists("minecraft:can_float_while_ridden", species) {
+        w.entity_mut(e).insert(crate::cow::FloatsWhileRidden);
+    }
+    // `Mob.controlsVehicle`: a rider with this tag does not steer its vehicle.
+    if lists("minecraft:non_controlling_rider", species) {
+        w.entity_mut(e).insert(crate::mount::NonControllingRider);
+    }
     let caps = w.get_resource::<crate::cow::SpeciesTable>().and_then(|t| t.0.get(usize::from(species)).map(|s| s.name)).and_then(|n| crate::species::registry().by_name(n).ok()).map(|r| r.caps);
     if caps.is_some_and(|c| c.contains(&crate::behaviours::Cap::Collidable)) {
         w.entity_mut(e).insert(crate::world_push::Collidable);
@@ -162,9 +174,19 @@ pub fn mark(w: &mut World, e: Entity, species: u8) {
     if caps.is_some_and(|c| c.contains(&crate::behaviours::Cap::CollidableWhenStill)) {
         w.entity_mut(e).insert(crate::world_push::CollidableWhenStill);
     }
+    if caps.is_some_and(|c| c.contains(&crate::behaviours::Cap::RefusedByMobs)) {
+        w.entity_mut(e).insert(crate::targeting::RefusedByMobs);
+    }
     let no_berry = w.get_resource::<crate::cow::SpeciesTable>().and_then(|t| t.0.get(usize::from(species)).map(|s| s.name)).and_then(|n| crate::species::registry().by_name(n).ok()).is_some_and(|r| r.caps.contains(&crate::behaviours::Cap::IgnoresBerryBush));
     if no_berry {
         w.entity_mut(e).insert(crate::inside_effects::IgnoresBerryBush);
+    }
+    let never = caps.and_then(|c| {
+        let bits = if c.contains(&crate::behaviours::Cap::NeverStuck) { crate::inside_effects::NeverStuck::ALL } else if c.contains(&crate::behaviours::Cap::NoWebStick) { crate::inside_effects::NeverStuck::WEBS } else { 0 };
+        (bits != 0).then_some(crate::inside_effects::NeverStuck(bits))
+    });
+    if let Some(n) = never {
+        w.entity_mut(e).insert(n);
     }
     let Some(list) = w.get_resource_mut::<TypeTags>().and_then(|mut t| t.by_species.get_mut(usize::from(species)).map(std::mem::take)) else {
         return;

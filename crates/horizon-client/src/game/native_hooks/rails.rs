@@ -82,8 +82,8 @@ impl GameLevel<'_> {
         horizon_world::level::RailShape::parse(shape.name())
     }
 
-    /// `LevelAccess::adjust_rail_can_make_slopes`: the parts of `state` answer on an
-    /// authoritative server, and `vanilla` stands elsewhere.
+    /// `LevelAccess::adjust_rail_can_make_slopes`: the parts of `state` answer, once
+    /// the vanilla answer `vanilla` is given.
     pub(in crate::game) fn part_rail_can_make_slopes(
         &self,
         pos: BlockPos,
@@ -91,9 +91,7 @@ impl GameLevel<'_> {
         vanilla: bool,
     ) -> bool {
         let mut can = vanilla;
-        if self.native_authoritative {
-            self.native_rail_can_make_slopes(self.dimension, state, pos, &mut can);
-        }
+        self.native_rail_can_make_slopes(self.dimension, state, pos, &mut can);
         can
     }
 
@@ -105,9 +103,7 @@ impl GameLevel<'_> {
         vanilla: bool,
     ) -> bool {
         let mut flexible = vanilla;
-        if self.native_authoritative {
-            self.native_rail_flexible(self.dimension, state, pos, &mut flexible);
-        }
+        self.native_rail_flexible(self.dimension, state, pos, &mut flexible);
         flexible
     }
 
@@ -119,9 +115,7 @@ impl GameLevel<'_> {
         vanilla: bool,
     ) -> bool {
         let mut valid = vanilla;
-        if self.native_authoritative {
-            self.native_rail_valid_shape(self.dimension, state, api_shape(shape), &mut valid);
-        }
+        self.native_rail_valid_shape(self.dimension, state, api_shape(shape), &mut valid);
         valid
     }
 }

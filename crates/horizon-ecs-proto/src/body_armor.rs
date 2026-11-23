@@ -1,5 +1,6 @@
 //! The rule `WEAR`: the owner of a tamed entity puts a body armor on it (`Wolf.mobInteract`: wolf armor) or repairs the one it wears with a
 //! repair item while it sits. The armor goes in the body slot with the whole stack the player held (`used_stack`: wear, enchantments, name).
+use crate::behaviours::sit_when_ordered::SitPose;
 use crate::cow::GrowAt;
 use crate::equip_stack;
 use crate::equipment::set_slot;
@@ -46,10 +47,12 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
             |u| ItemStack { count: 1, ..u.stack.clone() },
         );
         equip_stack::set(w, e, BODY, Some(worn_stack));
+        // The armor drops at death whatever the roll (`Wolf`: a chance of 2, kept above 1).
+        crate::spawn_gear::set_drop_chance(w, e, Slot::Body, 2.0);
         take_from_hand(w, i);
         return true;
     }
-    if !is_occupied(w, e, OCC_SITTING) || !p.repair_items.iter().any(|n| crate::items::is(n, i.item)) {
+    if w.get::<SitPose>(e).is_none() || !p.repair_items.iter().any(|n| crate::items::is(n, i.item)) {
         return false;
     }
     let Some(mut stack) = equip_stack::get(w, e, BODY) else { return false };

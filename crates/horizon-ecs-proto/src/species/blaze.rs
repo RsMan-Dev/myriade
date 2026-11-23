@@ -14,5 +14,9 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
     ],
     not_in_peaceful: true,
+    light_lit: true,
+    // SpawnPlacements: ON_GROUND, Monster.checkAnyLightMonsterSpawnRules (= checkMobSpawnRules, no light test).
+    spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Ground, ..crate::spawning::SpawnDef::MONSTER }),
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

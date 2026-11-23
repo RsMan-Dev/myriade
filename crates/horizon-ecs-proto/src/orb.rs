@@ -132,7 +132,7 @@ pub fn spawn_orb(world: &mut World, value: i32, count: u32, at: Vec3, velocity: 
             crate::goals::Uid(crate::goals::next_uid()),
             OwnTime,
             PushFree,
-            Body { width: 0.5, height: 0.5, step_height: 0.0, speed: 0.0, fall_factor: 1.0, object: true, orb: true, tnt: false, lava_walker: false },
+            Body { width: 0.5, height: 0.5, step_height: 0.0, speed: 0.0, fall_factor: 1.0, safe_fall: 3.0, fall_mult: 1.0, movement_efficiency: 0.0, object: true, orb: true, tnt: false, lava_walker: false },
             Gravity(0.03),
             Bounds(ExperienceOrb::box_at(at)),
             Cell(u32::MAX, [i32::MIN; 8], u32::MAX),

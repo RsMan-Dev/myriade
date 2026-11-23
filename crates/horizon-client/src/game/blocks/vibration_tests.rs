@@ -1,5 +1,5 @@
 //! Game event regressions for server-side block actions.
-use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+use crate::game::{Game, Options, Progress, Settings, load_resources};
 use horizon_client::{
     chunk::Chunk,
     containers::BlockEntity,
@@ -86,19 +86,18 @@ fn a_landing_posts_the_block_game_event_its_rule_posts() {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.world
@@ -141,6 +140,7 @@ fn a_landing_posts_the_block_game_event_its_rule_posts() {
                 _ => None,
             })
             .collect();
+        // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : ce test construit son propre Game avec ses ressources, et le joueur de chute local (PlayerMotion, ses événements Fall) est posé dans game.player pour landing_block_updates, ce que le tour d'invité écraserait)
         game.player = Some(player);
         super::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
         for fall in &landing {
@@ -220,19 +220,18 @@ fn a_cauldron_use_posts_its_fluid_event_after_the_sound() {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.world

@@ -38,7 +38,6 @@ fn a_mods_host_upgrades_old_data_and_refuses_by_name() {
     ));
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             let host: &dyn mod_api::ServerHost = game;
             // DataVersion 1900: Profession 1 with Career 2 is a cartographer.
             let villager =

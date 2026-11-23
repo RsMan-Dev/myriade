@@ -13,14 +13,17 @@ pub struct Params {
     pub interval: i32,
     /// The direction the walk leans to instead of the view (`BeeWanderGoal`: towards a far hive): `(xd, zd)` or `None` for the view.
     pub toward: Option<fn(&World, Entity) -> Option<(f64, f64)>>,
+    /// `None`: the hover spot first, then the air (`FlyStrollGoal`). `Some((h, v))`: the air alone, `AirAndWaterRandomPos(h, v, -2)` (`RandomStroll.fly`).
+    pub reach: Option<(i32, i32)>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { speed: 1.0, interval: 120, toward: None };
+    pub const DEFAULT: Self = Self { speed: 1.0, interval: 120, toward: None, reach: None };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct FlyStrollGoal {
     pub speed: f64,
     pub toward: Option<fn(&World, Entity) -> Option<(f64, f64)>>,
+    pub reach: Option<(i32, i32)>,
 }
 
 pub static MODULE: Module = Module {
@@ -39,7 +42,7 @@ pub static MODULE: Module = Module {
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    w.entity_mut(e).insert(FlyStrollGoal { speed: p.speed, toward: p.toward });
+    w.entity_mut(e).insert(FlyStrollGoal { speed: p.speed, toward: p.toward, reach: p.reach });
     if let Some(mut s) = w.get_mut::<Stroll>(e) {
         s.interval = p.interval;
     }
@@ -83,9 +86,13 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         // The view of the head (`Mob.view_vector`): the heading and the pitch.
         let (yaw, pitch) = (w.get::<Yaw>(e).map_or(0.0, |y| y.0), w.get::<crate::goals::Head>(e).map_or(0.0, |h| h.pitch));
         let view = view_vector(yaw, pitch);
-        let (xd, zd) = w.get::<FlyStrollGoal>(e).and_then(|g| g.toward).and_then(|f| f(w, e)).unwrap_or(view);
+        let goal = w.get::<FlyStrollGoal>(e).copied();
+        let (xd, zd) = goal.and_then(|g| g.toward).and_then(|f| f(w, e)).unwrap_or(view);
         let mut sp = spotter(&level, [pos.x, pos.y, pos.z], &nav, walk, &mut r);
-        sp.pick(Pick::Flying { xd, zd })
+        match goal.and_then(|g| g.reach) {
+            Some((h, v)) => sp.pick(Pick::AirAndWater { h, v, xd, zd }),
+            None => sp.pick(Pick::Flying { xd, zd }),
+        }
     };
     w.get_mut::<Rng>(e).unwrap().0 = r.0;
     let ok = match picked {

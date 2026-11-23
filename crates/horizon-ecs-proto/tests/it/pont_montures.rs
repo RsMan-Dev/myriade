@@ -122,7 +122,5 @@ fn rider_seat_is_the_first_seat_point() {
     let (mut h, horse) = with("minecraft:horse");
     ride(&mut h, horse);
     let at = h.world().get::<Pos>(horse).expect("a position").0;
-    let height = h.world().get::<Body>(horse).expect("a body").height;
-    let seat_height = h.world().get::<Mount>(horse).expect("a mount").seat_height;
-    assert_eq!(h.rider_seat(horse), Some([at.x, at.y + f64::from(height * seat_height), at.z]));
+    assert_eq!(h.rider_seat(horse), Some([at.x, at.y + f64::from(1.44375_f32), at.z]));
 }

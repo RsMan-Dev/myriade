@@ -60,7 +60,7 @@ for name, relative, old, new, test, case in mutants:
         assert executable, "missing test executable"
         with tempfile.TemporaryDirectory(prefix="row4-mutant-") as home:
             env.update(case)
-            homes = {key: str(Path(home) / key) for key in ["HORIZON_LAUNCHER_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "HORIZON_LAUNCHER_TRASH", "HORIZON_LAUNCHER_CLIPBOARD", "HORIZON_LAUNCHER_DESKTOP"]}
+            homes = {key: str(Path(home) / key) for key in ["XDG_DATA_HOME", "XDG_CONFIG_HOME"]}
             env = lab.game_env(env, HORIZON_TEST_RESOURCES=str(resources), HORIZON_HOME=home, **homes)
             result = subprocess.run([executable, test, "--ignored", "--nocapture", "--test-threads=1"], cwd=ROOT, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             (logs / (name + "-test.log")).write_text(result.stdout)

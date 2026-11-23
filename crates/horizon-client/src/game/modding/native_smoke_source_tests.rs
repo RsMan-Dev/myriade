@@ -47,7 +47,6 @@ fn a_block_part_decides_whether_the_campfire_above_is_a_signal_fire() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             // An authoritative server asks the Parts; a client keeps vanilla's answer.
-            game.options.dedicated = Some(Vec::new());
             game.build_registries();
             game.set_allow_commands(true);
             game.world.chunks.insert(

@@ -4,10 +4,8 @@
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, horizon_mod_api_macros::Wire)]
 #[non_exhaustive]
 pub enum Dist {
-    /// A client process, including its integrated server.
-    #[default]
-    Client,
     /// A dedicated server process.
+    #[default]
     DedicatedServer,
 }
 

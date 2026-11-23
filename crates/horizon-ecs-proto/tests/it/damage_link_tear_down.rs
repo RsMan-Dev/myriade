@@ -27,7 +27,7 @@ fn linked_cow(h: &mut Herd) -> Entity {
 }
 
 fn blow(h: &mut Herd, e: Entity, by: Option<Who>) {
-    h.world.resource_mut::<DamageQueue>().0.push(Hit { target: e, amount: 1.0, cause: Cause::Entity, damage: "mob_attack", from: None, by, direct: true, power: None, projectile: None });
+    h.world.resource_mut::<DamageQueue>().0.push(Hit { target: e, amount: 1.0, cause: Cause::Entity, damage: "mob_attack", from: None, by, direct: true, power: None, extra: None, projectile: None });
     h.tick();
 }
 

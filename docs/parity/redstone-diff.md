@@ -12,7 +12,7 @@ python tools/redstone_diff.py --only soup-s1-7 --keep scratch/rd     # one machi
 python tools/redstone_diff.py --only soup-s1-7 --near 6 1 2 3        # narrow a difference down to a box (DX DY DZ R)
 ```
 
-Needs what `tools/perf_bench.py` needs: your own client jar, a built `horizon-client` and `horizon-ctl`,
+Needs what `tools/perf_bench.py` needs: your own client jar, a built `horizon-client`,
 prepared resources. No server and no EULA: vanilla is the client, driven by the bench mod.
 
 ## How it works
@@ -24,7 +24,7 @@ prepared resources. No server and no EULA: vanilla is the client, driven by the 
   `--only` do not change what a soup is).
 - The world is frozen (`tick freeze`) and stepped one tick at a time (`tick step 1`). Vanilla: the bench mod
   (`RedstoneDiff`, with a mixin on `ServerLevel.tick`) snapshots the box before the first stepped tick and
-  after each. Horizon: `horizon-ctl command` and the new `simulation blocks X1 Y1 Z1 X2 Y2 Z2`, which reads
+  after each. Horizon: a command sent over the control socket and the new `simulation blocks X1 Y1 Z1 X2 Y2 Z2`, which reads
   the **server** world, not the client's replica (the replica lags the server by design, and reading it gave
   false piston differences).
 - Eight machines share a game session, 24 blocks apart. The first tick where the two differ is printed with

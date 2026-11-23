@@ -1159,7 +1159,7 @@ pub fn native_player_login_profile(
     name: &str,
     properties: &mut Vec<mod_api::ProfileProperty>,
 ) {
-    crate::native_client_hooks::player_login_profile(player, name, properties);
+    crate::native_level_hooks::player_login_profile(player, name, properties);
 }
 
 /// Holds an admitted login's uuid until the login reaches play. Dropping it while armed releases
@@ -2333,7 +2333,7 @@ fn counted_id(id: i32) -> i32 {
 }
 
 impl PlayConn {
-    /// `IntegratedServer.isSingleplayerOwner`: the integrated server's own player,
+    /// `integrated server isSingleplayerOwner`: the integrated server's own player,
     /// by name (ignoring case).
     fn is_owner(&self) -> bool {
         self.shared
@@ -2833,7 +2833,7 @@ mod tests {
         use mod_api::{Hooks, ModEntry, ProfileProperty};
 
         // The library's test adapter installs process-wide, once; it must dispatch this hook.
-        crate::native_client_hooks::test_hooks::install();
+        crate::native_level_hooks::test_hooks::install();
 
         #[derive(Default)]
         struct Skin;

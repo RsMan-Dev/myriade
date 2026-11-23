@@ -16,7 +16,7 @@ use horizon_ecs_proto::orb::Orb;
 /// A cow killed in the last 100 ticks by player 1, whose weapon is `weapon`; returns the items' total count and the orbs left.
 fn kill_cow(h: &mut Herd, seed: i64, weapon: Option<ItemStack>) -> (i32, usize) {
     let player = Player { id: 1, x: 0.5, y: 1.0, z: 0.5, main: 0, off: 0, head: 0, chest: 0, legs: 0, feet: 0 };
-    set_player(&mut h.world, player, PlayerFact { alive: true, targetable: true, hero: None });
+    set_player(&mut h.world, player, PlayerFact { alive: true, targetable: true, hero: None, ..Default::default() });
     let sp = *species();
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 9);
     h.world.entity_mut(e).insert((DeathSeed(seed), PlayerCredit { player: Some(1), uuid: None, until: u64::MAX }));

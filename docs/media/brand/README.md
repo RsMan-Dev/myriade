@@ -49,13 +49,7 @@ hero and is kept as it was.
 
 ## The README screenshot
 
-`docs/media/readme/hero-lookout.webp` (1600x900) is a frame of a real three-player session: a host with its
-world open to LAN and two guests, all started with `horizon-ctl launch --offscreen` at 1920x1080 on a 125 %
-display and reduced to 1600x900. The world's seed is `4815162342`; the far terrain distance is 384 chunks and
-the render distance 32. The lookout at `311 125 603` in the Overworld was built for the picture; the camera
-sneaks at `312.1 125 603.2` and faces yaw 66, pitch 15. Players are in survival with the HUD on, as a
-player's own screenshot would be. The creeper was summoned behind the sneaking player with a long fuse
-(`{ignited:1b,Fuse:1200s}`) and the frame taken about a second later, while it swells and flashes.
+The world's seed is `4815162342`; the far terrain distance is 384 chunks and the render distance 32. Players are in survival with the HUD on, as a player's own screenshot would be.
 
 `docs/media/readme/signs.webp` is the three signs cut out of the earlier picture with the dragon, so they
 fill the README's width.

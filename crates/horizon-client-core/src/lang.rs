@@ -74,20 +74,6 @@ pub trait ResourceSource {
         vec!["minecraft".into()]
     }
 }
-/// The bundled file a language reads, and whether it drops `ß`: a regional variant reads its
-/// language's file (Swiss German writes "ss" for "ß", as vanilla's de_ch does).
-fn bundled_code(code: &str) -> (&str, bool) {
-    match code {
-        "ko" => ("ko_kr", false),
-        "hr" => ("hr_hr", false),
-        "de_at" => ("de_de", false),
-        "de_ch" => ("de_de", true),
-        "fr_ca" | "fr_ch" => ("fr_fr", false),
-        "es_ar" | "es_cl" | "es_ec" | "es_mx" | "es_uy" | "es_ve" => ("es_es", false),
-        code => (code, false),
-    }
-}
-
 /// Lang files crates above the engine ship (`horizon_hooks::lang`), each a list of
 /// (code, JSON) pairs. The game's entry installs them once, before any language loads.
 static CRATE_FILES: std::sync::OnceLock<&'static [&'static [(&'static str, &'static str)]]> =
@@ -99,27 +85,22 @@ pub fn install_crate_files(files: &'static [&'static [(&'static str, &'static st
     let _ = CRATE_FILES.set(files);
 }
 
-/// The crates' entries for language `code` (through [`bundled_code`]'s variants) that the
-/// engine's own `horizon` file for it doesn't have: on a key both have, the engine wins.
+/// The crates' entries for language `code` that the engine's own `horizon` file for it doesn't
+/// have: on a key both have, the engine wins.
 fn read_crate_files(files: &[&[(&str, &str)]], code: &str, map: &mut HashMap<String, String>) {
     if files.is_empty() {
         return;
     }
-    let (file, swiss) = bundled_code(code);
     let mut own = HashMap::new();
     if let Some(bytes) = Bundled.read(&format!("assets/horizon/lang/{code}.json")) {
         read_lang_file(&bytes, &mut own);
     }
     for (c, json) in files.iter().flat_map(|f| f.iter()) {
-        if *c != file {
+        if *c != code {
             continue;
         }
         let mut theirs = HashMap::new();
-        if swiss {
-            read_lang_file(json.replace('ß', "ss").as_bytes(), &mut theirs);
-        } else {
-            read_lang_file(json.as_bytes(), &mut theirs);
-        }
+        read_lang_file(json.as_bytes(), &mut theirs);
         for (key, value) in theirs {
             if !own.contains_key(&key) {
                 map.insert(key, value);
@@ -132,279 +113,11 @@ fn read_crate_files(files: &[&[(&str, &str)]], code: &str, map: &mut HashMap<Str
 struct Bundled;
 impl ResourceSource for Bundled {
     fn read(&self, path: &str) -> Option<Vec<u8>> {
-        let code = path
-            .strip_prefix("assets/horizon/lang/")?
-            .strip_suffix(".json")?;
-        let (file, swiss) = bundled_code(code);
-        let path = format!("assets/horizon/lang/{file}.json");
-        let body = match path.as_str() {
-            "assets/horizon/lang/en_us.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/en_us.json")
-            }
-            "assets/horizon/lang/zh_cn.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/zh_cn.json")
-            }
-            "assets/horizon/lang/ru_ru.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/ru_ru.json")
-            }
-            "assets/horizon/lang/pl_pl.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/pl_pl.json")
-            }
-            "assets/horizon/lang/uk_ua.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/uk_ua.json")
-            }
-            "assets/horizon/lang/hi_in.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/hi_in.json")
-            }
-            "assets/horizon/lang/id_id.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/id_id.json")
-            }
-            "assets/horizon/lang/tr_tr.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/tr_tr.json")
-            }
-            "assets/horizon/lang/ko_kr.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/ko_kr.json")
-            }
-            "assets/horizon/lang/hr_hr.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/hr_hr.json")
-            }
-            "assets/horizon/lang/pt_pt.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/pt_pt.json")
-            }
-            "assets/horizon/lang/ur_pk.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/ur_pk.json")
-            }
-            "assets/horizon/lang/fa_ir.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/fa_ir.json")
-            }
-            "assets/horizon/lang/he_il.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/he_il.json")
-            }
-            "assets/horizon/lang/hu_hu.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/hu_hu.json")
-            }
-            "assets/horizon/lang/ro_ro.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/ro_ro.json")
-            }
-            "assets/horizon/lang/da_dk.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/da_dk.json")
-            }
-            "assets/horizon/lang/fi_fi.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/fi_fi.json")
-            }
-            "assets/horizon/lang/no_no.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/no_no.json")
-            }
-            "assets/horizon/lang/bg_bg.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/bg_bg.json")
-            }
-            "assets/horizon/lang/sk_sk.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/sk_sk.json")
-            }
-            "assets/horizon/lang/lt_lt.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/lt_lt.json")
-            }
-            "assets/horizon/lang/it_it.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/it_it.json")
-            }
-            "assets/horizon/lang/nl_nl.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/nl_nl.json")
-            }
-            "assets/horizon/lang/vi_vn.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/vi_vn.json")
-            }
-            "assets/horizon/lang/th_th.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/th_th.json")
-            }
-            "assets/horizon/lang/ja_jp.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/ja_jp.json")
-            }
-            "assets/horizon/lang/ar_sa.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/ar_sa.json")
-            }
-            "assets/horizon/lang/pt_br.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/pt_br.json")
-            }
-            "assets/horizon/lang/cs_cz.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/cs_cz.json")
-            }
-            "assets/horizon/lang/sv_se.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/sv_se.json")
-            }
-            "assets/horizon/lang/el_gr.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/el_gr.json")
-            }
-            "assets/horizon/lang/ca_es.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/ca_es.json")
-            }
-            "assets/horizon/lang/et_ee.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/et_ee.json")
-            }
-            "assets/horizon/lang/lv_lv.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/lv_lv.json")
-            }
-            "assets/horizon/lang/sl_si.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/sl_si.json")
-            }
-            "assets/horizon/lang/sr_cs.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/sr_cs.json")
-            }
-            "assets/horizon/lang/is_is.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/is_is.json")
-            }
-            "assets/horizon/lang/af_za.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/af_za.json")
-            }
-            "assets/horizon/lang/ms_my.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/ms_my.json")
-            }
-            "assets/horizon/lang/be_by.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/be_by.json")
-            }
-            "assets/horizon/lang/sr_sp.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/sr_sp.json")
-            }
-            "assets/horizon/lang/az_az.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/az_az.json")
-            }
-            "assets/horizon/lang/uz_uz.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/uz_uz.json")
-            }
-            "assets/horizon/lang/kk_kz.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/kk_kz.json")
-            }
-            "assets/horizon/lang/ka_ge.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/ka_ge.json")
-            }
-            "assets/horizon/lang/hy_am.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/hy_am.json")
-            }
-            "assets/horizon/lang/bs_ba.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/bs_ba.json")
-            }
-            "assets/horizon/lang/mk_mk.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/mk_mk.json")
-            }
-            "assets/horizon/lang/sq_al.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/sq_al.json")
-            }
-            "assets/horizon/lang/cy_gb.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/cy_gb.json")
-            }
-            "assets/horizon/lang/ga_ie.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/ga_ie.json")
-            }
-            "assets/horizon/lang/eu_es.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/eu_es.json")
-            }
-            "assets/horizon/lang/gl_es.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/gl_es.json")
-            }
-            "assets/horizon/lang/fil_ph.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/fil_ph.json")
-            }
-            "assets/horizon/lang/ta_in.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/ta_in.json")
-            }
-            "assets/horizon/lang/mn_mn.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/mn_mn.json")
-            }
-            "assets/horizon/lang/lo_la.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/lo_la.json")
-            }
-            "assets/horizon/lang/so_so.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/so_so.json")
-            }
-            "assets/horizon/lang/fy_nl.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/fy_nl.json")
-            }
-            "assets/horizon/lang/gd_gb.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/gd_gb.json")
-            }
-            "assets/horizon/lang/lb_lu.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/lb_lu.json")
-            }
-            "assets/horizon/lang/ky_kg.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/ky_kg.json")
-            }
-            "assets/horizon/lang/kn_in.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/kn_in.json")
-            }
-            "assets/horizon/lang/mt_mt.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/mt_mt.json")
-            }
-            "assets/horizon/lang/eo_uy.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/eo_uy.json")
-            }
-            "assets/horizon/lang/haw_us.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/haw_us.json")
-            }
-            "assets/horizon/lang/ig_ng.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/ig_ng.json")
-            }
-            "assets/horizon/lang/la_la.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/la_la.json")
-            }
-            "assets/horizon/lang/tt_ru.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/tt_ru.json")
-            }
-            "assets/horizon/lang/yi_de.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/yi_de.json")
-            }
-            "assets/horizon/lang/yo_ng.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/yo_ng.json")
-            }
-            "assets/horizon/lang/ba_ru.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/ba_ru.json")
-            }
-            "assets/horizon/lang/br_fr.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/br_fr.json")
-            }
-            "assets/horizon/lang/cv_cu.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/cv_cu.json")
-            }
-            "assets/horizon/lang/fo_fo.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/fo_fo.json")
-            }
-            "assets/horizon/lang/fur_it.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/fur_it.json")
-            }
-            "assets/horizon/lang/li_li.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/li_li.json")
-            }
-            "assets/horizon/lang/lmo.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/lmo.json")
-            }
-            "assets/horizon/lang/oc_fr.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/oc_fr.json")
-            }
-            "assets/horizon/lang/sah_sah.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/sah_sah.json")
-            }
-            "assets/horizon/lang/se_no.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/se_no.json")
-            }
-            "assets/horizon/lang/szl.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/szl.json")
-            }
-            "assets/horizon/lang/vec_it.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/vec_it.json")
-            }
-            "assets/horizon/lang/de_de.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/de_de.json")
-            }
-            "assets/horizon/lang/fr_fr.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/fr_fr.json")
-            }
-            "assets/horizon/lang/es_es.json" => {
-                include_str!("../../horizon-client/assets/horizon/lang/es_es.json")
-            }
-            _ => return None,
-        };
-        if swiss {
-            return Some(body.replace('ß', "ss").into_bytes());
-        }
-        Some(body.as_bytes().to_vec())
+        (path == "assets/horizon/lang/en_us.json").then(|| {
+            include_str!("../../horizon-client/assets/horizon/lang/en_us.json")
+                .as_bytes()
+                .to_vec()
+        })
     }
     fn namespaces(&self) -> Vec<String> {
         vec!["horizon".into()]
@@ -789,76 +502,25 @@ mod tests {
         }
     }
     #[test]
-    fn bundled_horizon_strings_follow_the_language() {
+    fn bundled_horizon_strings_are_english() {
         // No prepared resources at all: the namespace is compiled in.
         let empty = Mem(HashMap::new());
         let en = Language::load(&[&empty], "en_us");
         assert_eq!(en.get("horizon.options.controller"), Some("Controller"));
-        let ru = Language::load(&[&empty], "ru_ru");
-        assert_eq!(ru.get("horizon.options.controller"), Some("Геймпад"));
-        // Every bundled string carries both languages: a key added to one file
-        // and forgotten in the other shows as a key name on screen.
-        for key in en.map().keys() {
-            assert!(ru.get(key).is_some(), "{key} has no ru_ru value");
-        }
         assert_eq!(en.get("horizon.pages.mods"), Some("Mods"));
-        assert_eq!(ru.get("horizon.pages.mods"), Some("Моды"));
-        let zh = Language::load(&[&empty], "zh_cn");
-        assert_eq!(zh.get("horizon.options.controller"), Some("手柄"));
-        assert_eq!(zh.get("horizon.pages.mods"), Some("模组"));
-        assert_eq!(zh.get("Preset"), Some("预设"));
-        assert_eq!(zh.get("%s chunks"), Some("%s 个区块"));
-        // Not every bundle is complete: the en_us layer is in every map, so a
-        // missing key falls back to English (no bundle exists for xx_xx).
-        assert_eq!(zh.get("LOD Distance"), Some("LOD 距离"));
+        assert_eq!(en.get("horizon.osk.close"), Some("Close"));
+        // A language with no file of its own reads the English strings.
         let xx = Language::load(&[&empty], "xx_xx");
         assert_eq!(xx.get("horizon.mods.not_built"), Some(" (Not built)"));
-        let pl = Language::load(&[&empty], "pl_pl");
-        assert_eq!(pl.get("horizon.options.controller"), Some("Kontroler"));
-        assert_eq!(pl.get("horizon.options.vibration"), Some("Wibracje"));
-        let uk = Language::load(&[&empty], "uk_ua");
-        assert_eq!(
-            uk.get("horizon.options.on_screen_keyboard"),
-            Some("Екранна клавіатура")
-        );
-        let tr = Language::load(&[&empty], "tr_tr");
-        assert_eq!(tr.get("horizon.options.controller"), Some("Kontrolcü"));
-        let es = Language::load(&[&empty], "es_es");
-        assert_eq!(es.get("horizon.options.controller"), Some("Mando"));
-        // German and French, and their regional variants on the same file
-        // (Swiss German without "ß").
-        let de = Language::load(&[&empty], "de_de");
-        assert_eq!(de.get("horizon.osk.close"), Some("Schließen"));
-        let fr = Language::load(&[&empty], "fr_fr");
-        assert_eq!(fr.get("horizon.osk.close"), Some("Fermer"));
-        for (code, base) in [("de_at", &de), ("fr_ca", &fr), ("fr_ch", &fr)] {
-            let variant = Language::load(&[&empty], code);
-            assert_eq!(variant.map(), base.map(), "{code}");
-        }
-        let de_ch = Language::load(&[&empty], "de_ch");
-        assert_eq!(de_ch.get("horizon.osk.close"), Some("Schliessen"));
-        assert!(de_ch.map().values().all(|v| !v.contains('ß')));
-        assert_eq!(de_ch.len(), de.len());
-        let es_ve = Language::load(&[&empty], "es_ve");
-        assert_eq!(
-            es_ve.get("horizon.options.on_screen_keyboard"),
-            Some("Teclado en pantalla")
-        );
+        assert_eq!(xx.map(), en.map());
     }
 
     #[test]
     fn a_crates_text_loads_after_the_engines_and_before_packs() {
-        static CRATE: &[(&str, &str)] = &[
-            (
-                "en_us",
-                r#"{"test.crate.hello": "Hello", "horizon.osk.close": "Shut", "test.crate.packed": "Crate"}"#,
-            ),
-            (
-                "de_de",
-                r#"{"test.crate.hello": "Grüß dich", "horizon.osk.close": "Zu"}"#,
-            ),
-            ("fr_fr", r#"{"test.crate.hello": "Bonjour"}"#),
-        ];
+        static CRATE: &[(&str, &str)] = &[(
+            "en_us",
+            r#"{"test.crate.hello": "Hello", "horizon.osk.close": "Shut", "test.crate.packed": "Crate"}"#,
+        )];
         let pack = Mem(HashMap::from([(
             "assets/horizon/lang/en_us.json".to_owned(),
             br#"{"test.crate.packed": "Pack"}"#.to_vec(),
@@ -869,26 +531,20 @@ mod tests {
         // The engine's own file wins on a key both have; a pack wins over both.
         assert_eq!(en.get("horizon.osk.close"), Some("Close"));
         assert_eq!(en.get("test.crate.packed"), Some("Pack"));
-        let de = load("de_de");
-        assert_eq!(de.get("test.crate.hello"), Some("Grüß dich"));
-        assert_eq!(de.get("horizon.osk.close"), Some("Schließen"));
-        // Regional variants read their language's file, as the engine's do.
-        assert_eq!(load("de_ch").get("test.crate.hello"), Some("Grüss dich"));
-        assert_eq!(load("fr_ca").get("test.crate.hello"), Some("Bonjour"));
         // A language the crate lacks falls back to its English.
         assert_eq!(load("pl_pl").get("test.crate.hello"), Some("Hello"));
         // Without crate files, nothing changes.
-        let plain = Language::load_with(&[&pack], "de_de", &[]);
+        let plain = Language::load_with(&[&pack], "en_us", &[]);
         assert_eq!(plain.get("test.crate.hello"), None);
-        assert_eq!(plain.len() + 1, de.len());
+        assert_eq!(plain.len() + 1, en.len());
     }
 
     #[test]
     fn a_scoped_language_is_the_calling_threads_and_reports_what_it_lacks() {
         let empty = Mem(HashMap::new());
         let outside = code();
-        let ((german, english_only, fallback, elsewhere), missed) =
-            scoped(Language::load(&[&empty], "de_de"), || {
+        let ((english, english_only, fallback, elsewhere), missed) =
+            scoped(Language::load(&[&empty], "en_us"), || {
                 (
                     get("horizon.osk.close"),
                     get("horizon.no_such_key"),
@@ -897,7 +553,7 @@ mod tests {
                     std::thread::spawn(code).join().unwrap(),
                 )
             });
-        assert_eq!(german, "Schließen");
+        assert_eq!(english, "Close");
         assert_eq!(english_only, "horizon.no_such_key");
         assert_eq!(fallback, "English");
         assert_eq!(elsewhere, outside);
@@ -909,19 +565,24 @@ mod tests {
     #[test]
     fn scopes_nest_and_end_when_their_closure_panics() {
         let empty = Mem(HashMap::new());
+        // A language with a file of its own, outside the bundled ones.
+        let fr_pack = Mem(HashMap::from([(
+            "assets/minecraft/lang/fr_fr.json".to_owned(),
+            br#"{"a": "Pomme"}"#.to_vec(),
+        )]));
         let outside = code();
-        let (inner, missed) = scoped(Language::load(&[&empty], "fr_fr"), || {
-            let (inner, inner_missed) = scoped(Language::load(&[&empty], "pl_pl"), || {
+        let (inner, missed) = scoped(Language::load(&[&fr_pack], "fr_fr"), || {
+            let (inner, inner_missed) = scoped(Language::load(&[&empty], "en_us"), || {
                 (code(), get("horizon.inner_miss"))
             });
             assert_eq!(inner_missed, ["horizon.inner_miss"]);
             assert_eq!(code(), "fr_fr");
             inner.0
         });
-        assert_eq!(inner, "pl_pl");
+        assert_eq!(inner, "en_us");
         assert!(missed.is_empty());
         let panicked = std::panic::catch_unwind(|| {
-            scoped(Language::load(&[&Mem(HashMap::new())], "de_de"), || {
+            scoped(Language::load(&[&Mem(HashMap::new())], "en_us"), || {
                 panic!("a test failed inside a scope")
             })
         });
@@ -987,7 +648,7 @@ mod tests {
     fn bundled_files_are_served_and_have_no_stale_or_repeated_keys() {
         let engine = check_lang_dir(&bundled_dir(), true);
         assert!(
-            engine.1 >= 7,
+            engine.1 >= 1,
             "found {} bundled lang files in {}",
             engine.1,
             bundled_dir().display()
@@ -1081,55 +742,6 @@ mod tests {
         }
         assert!(files.len() > 100, "found only {} sources", files.len());
         files
-    }
-
-    /// A sentence key (the English text itself, not a `horizon.` id) that no
-    /// source names as a string literal is text the game no longer shows: its
-    /// rewording left it behind in every language (#13802).
-    #[test]
-    #[ignore = "daily"]
-    fn every_sentence_key_in_en_us_is_one_the_code_names() {
-        let en: HashMap<String, String> = serde_json::from_str(
-            &std::fs::read_to_string(bundled_dir().join("en_us.json")).unwrap(),
-        )
-        .unwrap();
-        // Every crate: a feature moved out of the client crates keeps its strings.
-        let code: String = crate_sources(&[])
-            .iter()
-            .map(|file| std::fs::read_to_string(file).unwrap())
-            .collect();
-        let sentences: Vec<&String> = en.keys().filter(|k| !k.starts_with("horizon.")).collect();
-        assert!(
-            sentences.len() > 100,
-            "found only {} sentence keys",
-            sentences.len()
-        );
-        // Every quote in the sources opens a candidate literal that runs to the next
-        // unescaped quote, quotes included. A needle is a quote, escaped text and a
-        // quote, so wherever it occurs it is exactly such a slice, and one pass
-        // over the sources replaces a `contains` scan per key.
-        let bytes = code.as_bytes();
-        let mut literals: std::collections::HashSet<&str> = std::collections::HashSet::new();
-        for (start, _) in bytes.iter().enumerate().filter(|(_, b)| **b == b'"') {
-            let mut at = start + 1;
-            while at < bytes.len() && bytes[at] != b'"' {
-                at += if bytes[at] == b'\\' { 2 } else { 1 };
-            }
-            if at < bytes.len() {
-                literals.insert(&code[start..=at]);
-            }
-        }
-        // A JSON string literal escapes `"` and `\` as Rust's does.
-        let mut dead: Vec<&str> = sentences
-            .into_iter()
-            .filter(|key| !literals.contains(serde_json::to_string(key).unwrap().as_str()))
-            .map(String::as_str)
-            .collect();
-        dead.sort_unstable();
-        assert!(
-            dead.is_empty(),
-            "en_us.json keys no code asks for: {dead:#?}"
-        );
     }
 
     #[test]

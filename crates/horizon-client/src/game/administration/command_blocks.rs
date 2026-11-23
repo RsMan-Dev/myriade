@@ -592,7 +592,6 @@ mod tests {
     #[ignore = "daily"]
     fn mode_switch_preserves_command_entity_output_and_state() {
         super::super::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             let pos = (1, 64, 1);
             game.world.chunks.insert(
                 (0, 0),

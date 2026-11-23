@@ -99,6 +99,6 @@ merged pull request, release, shipped item and weekly summary, newest first, the
 
 ## The intake: votes and bug reports
 
-The telemetry server that took the hub's votes and bug reports is gone with all telemetry (docs/telemetry.md).
+The telemetry server that took the hub's votes and bug reports is gone with all telemetry.
 The hub points to GitHub and Discord for bugs and votes.
 

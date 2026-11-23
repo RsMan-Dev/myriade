@@ -4,6 +4,7 @@ use crate::behaviours::Cap;
 
 pub static DEF: Def = Def {
     name: "minecraft:armor_stand",
+    rules: &[crate::rules::RuleEntry::new(&crate::behaviours::vibration_listen::UNNOTICED, &())],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Stand]),
     ..Def::EMPTY
 };

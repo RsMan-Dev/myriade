@@ -19,7 +19,33 @@ use std::borrow::Cow;
 pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed(TAG_OWNER), write: write_tnt, read: read_tnt, accepts: uuid_tag, owner: Some(owner::<Primed>) },
     Field { key: Cow::Borrowed("Thrower"), write: write_thrower, read: read_thrower, accepts: uuid_tag, owner: Some(owner::<Item>) },
+    Field { key: Cow::Borrowed("Brain"), write: write_liked, read: read_liked, accepts: crate::nbt::accept::any, owner: Some(owner::<crate::hand_over::Liked>) },
 ];
+
+/// The liked player of an allay: `Brain.memories.minecraft:liked_player`, its uuid and, while finite, its time to live (`ttl`).
+fn write_liked(w: &World, e: Entity, c: &mut Compound) {
+    let Some(l) = w.get::<crate::hand_over::Liked>(e) else { return };
+    let mut mem = Compound::new();
+    put(w, w.get::<Owner>(e).and_then(|o| o.0), "value", &mut mem);
+    if let Some(t) = l.ttl {
+        mem.insert("ttl".into(), Tag::Long(t));
+    }
+    c.insert("Brain".into(), Tag::compound([("memories", Tag::compound([("minecraft:liked_player", Tag::compound(mem))]))]));
+}
+/// Reads the liked player back; a time to live of `Long.MAX_VALUE` (or none) never expires.
+fn read_liked(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Some(mem) = t.get("memories").and_then(|m| m.get("minecraft:liked_player")) else { return false };
+    let Some(value) = mem.get("value") else { return false };
+    let ttl = match mem.get("ttl") {
+        Some(Tag::Long(t)) if *t != i64::MAX => Some(*t),
+        _ => None,
+    };
+    if !read_owner(w, e, value) {
+        return false;
+    }
+    w.entity_mut(e).insert(crate::hand_over::Liked { ttl });
+    true
+}
 
 pub(crate) fn uuid_tag(t: &Tag) -> bool {
     words_tag(t).is_some()
@@ -87,6 +113,10 @@ pub(crate) fn write_owner(w: &World, e: Entity, c: &mut Compound) {
     }
     if let Some(k) = w.get::<CloudSpec>(e) {
         put(w, k.owner, "Owner", c);
+        return;
+    }
+    // An allay's liked player is saved in its brain's memories (`write_liked`), not under `Owner`.
+    if w.get::<crate::hand_over::Liked>(e).is_some() {
         return;
     }
     let who = match w.get::<Projectile>(e) {

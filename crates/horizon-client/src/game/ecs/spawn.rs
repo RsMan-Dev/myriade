@@ -6,6 +6,7 @@ use horizon_core::nbt::{Compound, JavaString, Tag};
 use super::super::creatures::{Finalized, SpawnSite};
 use horizon_client::mobs::spawn_rules::Reason;
 use horizon_ecs_proto::spawn_reason::SpawnReason;
+use horizon_ecs_proto::spawn_sheet::SpawnSheet;
 
 impl Game<'_> {
     /// Spawns `kind` at `at` in the ECS level and links its network id; None when the level is inert or refuses the kind.
@@ -37,25 +38,22 @@ impl Game<'_> {
         finalize_at: Option<[f64; 3]>,
     ) -> Option<(u32, Option<horizon_ecs_proto::spawn_finalize::Group>)> {
         let special = super::super::creatures::local_difficulty_in(&self.world, at).special();
-        let (e, next) = match site {
+        let mut sheet = SpawnSheet::default();
+        let (id, next) = match site {
             SpawnSite::Finalizing(r) => {
                 let reason = ecs_reason(r);
-                match self.finalize_spawn_at(kind, at, r, None).0 {
+                match self.finalize_spawn_at(kind, at, r, None, Some(&mut sheet)).0 {
                     Finalized::Cancelled => return None,
-                    Finalized::Skipped => (self.ecs_with(|ecs, mw| ecs.spawn_for(mw, kind, at, None, reason))?, None),
-                    Finalized::Done => {
-                        let (e, out) = self.ecs_with(|ecs, mw| ecs.spawn_finalized_at(mw, kind, at, finalize_at, reason, special, group))?;
-                        (e, out.group)
-                    }
+                    Finalized::Skipped => self.ecs_spawn_sheet(kind, at, None, reason, None, &sheet)?,
+                    Finalized::Done => self.ecs_spawn_sheet(kind, at, finalize_at, reason, Some((special, group)), &sheet)?,
                 }
             }
-            SpawnSite::Plain => {
-                let (e, out) = self.ecs_with(|ecs, mw| ecs.spawn_finalized(mw, kind, at, SpawnReason::MobSummoned, special, group))?;
-                (e, out.group)
+            SpawnSite::Plain => self.ecs_spawn_sheet(kind, at, None, SpawnReason::MobSummoned, Some((special, group)), &sheet)?,
+            SpawnSite::Raw => {
+                let e = self.ecs_with(|ecs, mw| ecs.spawn_for(mw, kind, at, None, SpawnReason::Triggered))?;
+                (self.ecs_link(e), None)
             }
-            SpawnSite::Raw => (self.ecs_with(|ecs, mw| ecs.spawn_for(mw, kind, at, None, SpawnReason::Triggered))?, None),
         };
-        let id = self.ecs_link(e);
         if let Some(e) = self.ecs.entity_of(id) {
             if persistent {
                 self.ecs.set_persistent(e);
@@ -65,6 +63,28 @@ impl Game<'_> {
             }
         }
         Some((id, next))
+    }
+    /// The ECS spawn of `kind` at `at` from `sheet` (its edits made before the finalize), finalized as `reason` with `special` and the pack
+    /// `group` when `finalize` is given, then announced; links its network id and gives back the group the finalize made.
+    pub(in crate::game) fn ecs_spawn_sheet(
+        &mut self,
+        kind: &str,
+        at: [f64; 3],
+        finalize_at: Option<[f64; 3]>,
+        reason: SpawnReason,
+        finalize: Option<(f32, Option<horizon_ecs_proto::spawn_finalize::Group>)>,
+        sheet: &SpawnSheet,
+    ) -> Option<(u32, Option<horizon_ecs_proto::spawn_finalize::Group>)> {
+        let (e, next) = self.ecs_with(|ecs, mw| {
+            let e = ecs.spawn_prepared(mw, kind, at, finalize_at, reason, sheet)?;
+            let next = match finalize {
+                Some((special, group)) => ecs.finalize_prepared(mw, e, reason, special, group)?.group,
+                None => None,
+            };
+            ecs.announce_prepared(mw, e, reason);
+            Some((e, next))
+        })?;
+        Some((self.ecs_link(e), next))
     }
     /// `PatrolSpawner.spawnPatrolMember` on the ECS: a pillager of the patrol, a leader with its target from the origin and its banner.
     pub(in crate::game) fn ecs_spawn_patrol_member(&mut self, kind: &str, at: [f64; 3], leader: bool, reason: Reason) -> Option<u32> {

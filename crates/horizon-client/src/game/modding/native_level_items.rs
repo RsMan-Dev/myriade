@@ -164,7 +164,6 @@ mod tests {
         use mod_api::{LevelRef, WorldEpoch};
 
         super::super::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.ecs = game.test_ecs_level();
             let level = game.level(game.dim.id()).unwrap();
             let stone = || ItemStack::new("minecraft:stone", 3);

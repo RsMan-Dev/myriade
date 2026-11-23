@@ -155,7 +155,6 @@ EOF
       echo "HOME=$dir/home"
       echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=$shared/job-started.sh"
       echo "HORIZON_NO_AUDIO=1"
-      echo "HORIZON_LAUNCHER_NO_SELF_UPDATE=1"
       echo "GH_PROMPT_DISABLED=1"
       if [ "$label" = playhorizon-ci ]; then
         echo "HORIZON_RUNNER_POOL=checks"

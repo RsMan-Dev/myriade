@@ -438,11 +438,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_flag_reaches_players_and_non_mobs_and_refuses_player_damage() {
-        use horizon_client::motion::PlayerMotion;
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-            let player = game.entity(20).unwrap();
+        super::super::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
+            let player = game.entity(12).unwrap();
             crate::game::ecs::test_support::place_test_stand(game, 14, &horizon_client::entities::ArmorStand::new(
                     14,
                     Vec3::ZERO,
@@ -494,11 +491,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_players_permanent_flag_is_apart_from_their_abilities() {
-        use horizon_client::motion::PlayerMotion;
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-            let player = game.entity(20).unwrap();
+        super::super::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
+            let player = game.entity(12).unwrap();
 
             // The window refuses an ordinary hit; a creative player's
             // `player_attack` passes it (`DamageSource.isCreativePlayer`).
@@ -635,11 +629,9 @@ mod tests {
     #[ignore = "daily"]
     fn an_item_outside_the_ticking_chunks_keeps_its_window() {
         use horizon_client::items::ItemStack;
-        use horizon_client::motion::PlayerMotion;
-        with_game(|game| {
+        super::super::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
             // A player's tickets: chunks out of the simulation distance
             // around them do not tick entities.
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.update_chunk_tickets();
             let stack = || ItemStack {
                 item: "minecraft:stone".into(),
@@ -694,12 +686,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_players_flag_and_window_ride_the_save() {
-        use horizon_client::motion::PlayerMotion;
         use horizon_core::nbt::Tag;
-        with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-            let player = game.entity(20).unwrap();
+        super::super::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
+            let player = game.entity(12).unwrap();
             assert!(game.entity_set_invulnerable(player, true));
             assert!(game.entity_set_invulnerable_time(player, 7));
             // Entity.saveWithoutId: the flag always, the window while open.
@@ -739,7 +728,7 @@ mod tests {
     fn the_dragons_saved_flag_refuses_all_but_a_creative_player() {
         use horizon_client::mobs::DamageKind;
         super::super::native_entity_refs::tests::with_game(|game| {
-            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 15));
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(), &mut || 15));
             let entity = game.entity(15).unwrap();
             assert!(game.entity_set_invulnerable(entity, true));
 

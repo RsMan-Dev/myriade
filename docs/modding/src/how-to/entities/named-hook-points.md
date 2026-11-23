@@ -40,8 +40,7 @@ true for the individual wakes above. The same pairs apply to the acting player
 and stored guests. Waking that same player again inside the callback does not
 emit a second notice.
 
-See the [generated API reference](../../reference/api.md) and the hook's
-[caller notes](../../reference/hook-notes.md#player-bed-leave-callers).
+See the [generated API reference](../../reference/api.md).
 
 ## Physical movement decisions
 

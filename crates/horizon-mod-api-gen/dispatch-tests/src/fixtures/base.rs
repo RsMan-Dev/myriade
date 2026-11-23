@@ -298,25 +298,17 @@ fn item_finish_can_clear_vanilla_result() {
     )];
     let mods: Arc<[ModEntry]> = mods.into();
     install(mods.clone());
-    // Both sides reach the listener, which clears the result.
-    for client in [false, true] {
-        let mut host = TestHost;
-        let side = if client {
-            HostSide::Client(&mut host)
-        } else {
-            HostSide::Server(&mut host)
-        };
-        let mut result = Some(ItemStack::default());
-        dispatch_living_entity_use_item_finish(
-            side,
-            &ItemStack::default(),
-            None,
-            Hand::Main,
-            0,
-            &mut result,
-        );
-        assert!(result.is_none(), "client={client}");
-    }
+    let mut host = TestHost;
+    let mut result = Some(ItemStack::default());
+    dispatch_living_entity_use_item_finish(
+        HostSide::Server(&mut host),
+        &ItemStack::default(),
+        None,
+        Hand::Main,
+        0,
+        &mut result,
+    );
+    assert!(result.is_none());
 }
 
 #[test]
@@ -765,8 +757,6 @@ mod stubs {
     pub(super) struct MapDecoration;
     pub(super) struct MapInfo<'a>(pub &'a ());
     pub(super) struct PlayerRender<'a>(pub &'a ());
-    pub(super) struct PosedParts;
-    pub(super) struct HiddenParts;
     pub(super) struct Command;
     pub(super) struct LifecycleContext;
     pub(super) struct Load(pub &'static str);
@@ -797,9 +787,4 @@ mod api {
     pub struct ClientBossBar;
     #[derive(Clone, Copy)]
     pub enum KeyAction {}
-    pub mod fog {
-        #[derive(Clone, Copy)]
-        pub struct FogType;
-        pub struct FogData;
-    }
 }

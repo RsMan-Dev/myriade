@@ -94,6 +94,37 @@ pub fn add(w: &mut World, e: Entity, player: u32, kind: Kind, amount: i32) {
     }
 }
 
+/// The reputation witness (`ReputationEventHandler`): a creature that takes the gossip of a murder it sees. Set by its species' rule.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Witness;
+
+/// The rule that gives a species the `Witness` marker (`Villager implements ReputationEventHandler`).
+pub static WITNESS: crate::rules::Rule = crate::rules::Rule { name: "reputation_witness", equip: |w, e, _| { w.entity_mut(e).insert(Witness); }, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
+
+/// `Villager.tellWitnessesThatIWasMurdered`: a witness killed by `player` is witnessed by the witnesses that the dead villager's
+/// sensor sees (`NearestVisibleLivingEntities`, judged from the dead toward the witness): within 16 blocks, cut to the
+/// `sight_range` of an invisible witness, and with a line of sight. Each takes `VILLAGER_KILLED` as a major negative of 25.
+pub fn witness_murder(w: &mut World, dead: Entity, player: u32) {
+    if w.get::<Witness>(dead).is_none() {
+        return;
+    }
+    let Some(at) = w.get::<crate::cow::Pos>(dead).map(|p| p.0) else { return };
+    let looker = w.get::<crate::cow::SpeciesId>(dead).map(|s| s.0);
+    let mut near = Vec::new();
+    w.resource::<crate::cow::Index>().for_radius(at.x, at.z, 16.0, |c| near.push(c));
+    for v in near {
+        if v == dead || w.get::<Witness>(v).is_none() {
+            continue;
+        }
+        let Some(to) = w.get::<crate::cow::Pos>(v).map(|p| p.0) else { continue };
+        let reach = crate::targeting::sight_range(16.0, crate::targeting::creature_visibility_to(w, v, looker));
+        let d2 = (to.x - at.x).powi(2) + (to.y - at.y).powi(2) + (to.z - at.z).powi(2);
+        if d2 <= reach * reach && crate::targeting::sees(w, dead, crate::targeting::Who::Entity(v)) {
+            add(w, v, player, Kind::MajorNegative, PER_EVENT);
+        }
+    }
+}
+
 /// `Villager.gossip` : la rencontre de `a` et `b`. Rien si l'un des deux a entendu il y a moins de 1200 ticks. Sinon `a`
 /// reçoit jusqu'à 10 commérages tirés chez `b`, affaiblis par le récit, et les deux notent le temps. Rend si elle a eu lieu
 /// (l'appelant enchaîne `summon_defender::check`).

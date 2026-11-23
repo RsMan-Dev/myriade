@@ -36,8 +36,11 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
         put(w, e, p.pocket, Some(ItemStack::new(name, 1)));
         crate::give_item::take_from_hand(w, i);
         play(w, p.give_sound, at);
-        if p.liked && !w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0 == Some(crate::targeting::Who::Player(i.player))) {
-            crate::tame::set_owner(w, e, crate::targeting::Who::Player(i.player));
+        if p.liked {
+            if !w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0 == Some(crate::targeting::Who::Player(i.player))) {
+                crate::tame::set_owner(w, e, crate::targeting::Who::Player(i.player));
+            }
+            w.entity_mut(e).insert(Liked { ttl: None });
         }
         return true;
     }
@@ -50,16 +53,48 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
     let to = w.resource::<Online>().get(i.player).map_or(at, |pl| Vec3::new(pl.x, pl.y, pl.z));
     if p.to_inventory {
         if p.liked {
-            w.entity_mut(e).insert(crate::tame::Owner(None));
-            if let Some(v) = w.resource_mut::<crate::tame::Pets>().0.get_mut(&i.player) {
-                v.retain(|x| *x != e);
-            }
+            forget_liked(w, e);
         }
         w.resource_mut::<Events>().host.held_given(i.player, stack);
     } else {
         toss(w, e, stack, at, to);
     }
     true
+}
+/// The liked player's memory (`minecraft:liked_player`), present while the memory is: `ttl` is the ticks it has left under AI, `None` when it
+/// never expires. The liked player is the entity's `Owner`.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Liked {
+    pub ttl: Option<i64>,
+}
+/// `Brain.eraseMemory` of the liked player: no memory, no owner, and the player's pets no longer hold the entity.
+pub fn forget_liked(w: &mut World, e: Entity) {
+    let was = w.get::<crate::tame::Owner>(e).and_then(|o| o.0);
+    w.entity_mut(e).remove::<Liked>().insert(crate::tame::Owner(None));
+    if let Some(crate::targeting::Who::Player(id)) = was
+        && let Some(v) = w.resource_mut::<crate::tame::Pets>().0.get_mut(&id)
+    {
+        v.retain(|x| *x != e);
+    }
+}
+/// `MemorySlot.tick` of the liked player: under AI a finite memory counts down, and the tick after 0 it is forgotten; `NoAi` freezes it.
+pub fn liked_step(w: &mut World) {
+    let mut gone = Vec::new();
+    let mut q = w.query_filtered::<(Entity, &mut Liked), Without<crate::dragon::flight::NoAi>>();
+    for (e, mut l) in q.iter_mut(w) {
+        match l.ttl {
+            Some(t) if t <= 0 => gone.push(e),
+            Some(t) => l.ttl = Some(t - 1),
+            None => {}
+        }
+    }
+    for e in gone {
+        forget_liked(w, e);
+    }
+}
+/// Registers the systems of this file.
+pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
+    s.add_systems(liked_step);
 }
 fn put(w: &mut World, e: Entity, pocket: bool, s: Option<ItemStack>) {
     if pocket {

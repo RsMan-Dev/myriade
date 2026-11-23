@@ -10,7 +10,6 @@ pub mod host;
 pub mod misc;
 pub mod profiler;
 pub mod profiles;
-pub mod publish;
 pub mod recipe;
 pub mod rotate;
 pub mod sound;

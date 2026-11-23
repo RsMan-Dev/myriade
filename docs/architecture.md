@@ -30,22 +30,21 @@ command above to inspect the selection rather than relying on historical counts.
 | # | Area (commits) | Files | Checks |
 |---|---|---|---|
 | 1 | Game loop, tick order, frame pacing (554) | `L/game.rs` (`fn tick`, `fn tick_world`, `fn render`), `G/runtime/window_handler.rs` (`about_to_wait`), `L/clock.rs`, `N/window.rs`, `R/spans.rs` | game_loop, frame_limiter, interaction_input, tick |
-| 2 | Mobs in the game loop, spawning (166) | `G/creatures.rs`, `G/mobs/natural_spawning.rs`, `L/mobs/spawning.rs`, `L/mobs/spawn_rules.rs`, `L/mobs/spawn_selection.rs`, `L/mobs/finalize.rs`, `G/mobs/spawner.rs`, `G/mobs/trial_spawner.rs` | natural_spawn, spawn_rules, finalize_spawn, spawner, trial_spawner, mob_ai |
+| 2 | Mobs in the game loop, spawning (166) | `G/creatures.rs`, `G/mobs/spawn_level.rs`, `L/mobs/spawning.rs`, `L/mobs/spawn_rules.rs`, `L/mobs/spawn_place.rs`, `L/mobs/finalize.rs`, `G/mobs/spawner.rs`, `G/mobs/trial_spawner.rs` | natural_spawn, spawn_rules, finalize_spawn, spawner, trial_spawner, mob_ai |
 | 3 | World save and load (163) | `L/save.rs`, `G/world/saving.rs`, `G/world/persist.rs` (entities), `L/entity_nbt.rs`, `K/block_entity_nbt.rs`, `W/region.rs`, `crates/horizon-core/src/nbt.rs` | save_roundtrip, world_reopen, world, datafix |
 | 4 | World generation (153) | `W/worldgen.rs`, `W/worldgen/` (`generator*.rs`, `feature_graph.rs`, `structure/`, `placement/`), `L/vanillagen.rs` | chunk_generation, worldgen, server_world_gen, world_spawn, feature_graph, feature_placement, decoration and the other worldgen harnesses |
 | 5 | Multiplayer client, packets in (145) | `G/network/remote/apply_packet.rs` (`fn apply_packet_body`), `G/network/remote/tick.rs` (`fn tick_remote_body`), `G/network/remote/`, `L/net.rs` | dedicated_server, server_entities, lan_e2e (all) |
-| 6 | Agent control, horizon-ctl (145) | `L/control.rs`, `L/bin/horizon-ctl/`, `G/runtime/control.rs`, `G/agent.rs`, `G/events.rs`, `G/runtime/ui_control.rs` | `python3 tools/agent_control_e2e.py`; `cargo test -p horizon-client-lib --bin horizon-ctl` |
+| 6 | Agent control, the control socket (145) | `L/control.rs` | |
 | 7 | CI and release (134) | `.github/workflows/` (`ci.yml`, `parity.yml`, `release.yml`, `launcher.yml`), `tools/ci/`, `tools/parity.py`, `tools/pr_ready.py` | `python3 -m unittest discover -s tests`; actionlint (`.github/actionlint.yaml`) |
 | 8 | LAN host: connections, play state, tracking (133) | `L/lan/` (`conn.rs`, `hub.rs` + `hub/`, `chunks.rs`, `entity.rs`, `tracking.rs`, `guest.rs`, `playerdata.rs`), `G/lan.rs` | lan, lan_e2e (all), `cargo test -p horizon-client --test lan_bot` |
 | 9 | Renderer core (132) | `R/gfx.rs` (`Renderer::new`, `Renderer::render`), `R/gfx/` (cull, occlusion, translucency, upload, timing, lod) | client_graphics, culling_rays, translucency; `horizon-client --benchmark standard` |
-| 10 | Launcher (124) | `launcher/src/` (`main.rs`, `backend.rs`, `cli.rs`, `mcp.rs`, `servers_page.rs`) | `cd launcher && cargo test`; `python3 tools/launcher_mcp_e2e.py` |
+| 10 | Launcher (124) | `launcher/src/` (`main.rs`, `backend.rs`, `cli.rs`, `mcp.rs`, `servers_page.rs`) | `cd launcher && cargo test` |
 | 11 | Mob types and species (117) | `L/mobs.rs`, `L/mobs/species.rs`, `L/mobs/data.rs`, `L/mobs/living.rs`, `L/mobs/drops.rs`, `L/mobs/gear.rs` | mob_attributes, entity_attribute, entity_death_loot, mob_ai |
 | 12 | Guests' actions on a server (98) | `G/network/lan_actions/` (`turns.rs`: `fn as_guest`, `tick.rs`: `fn tick_guests`), `G/lan_{attributes,pvp,chat,crafting,stations,trading,mount_menu,waypoints}.rs` | server_player_combat, server_player_damage, server_player_targets, lan_e2e (all) |
 | 13 | Modpack porting, mod content (97) | `crates/horizon-port-pack/`, `L/mod_content.rs`, `tools/port_*.py` | `cargo test -p horizon-port-pack`; `python3 tools/mod_port_harness.py` |
 | 14 | Mob AI (96) | `L/mobs/ai.rs`, `goals.rs`, `brain.rs`, `*_brain.rs`, `nav.rs`, `path.rs`, `control.rs` | mob_ai (probe `examples/mob_ai_probe.rs`; known failure on main: drowned_*, #290) |
 | 15 | Items and item use (96) | `I/items.rs`, `I/item_data.rs`, `G/items/hand.rs`, `G/items/consume.rs`, `G/items/using_item.rs`, `G/items/potions.rs`, `R/effects.rs`, `G/items/item_actions.rs` (`fn use_item`), `G/items/use_hand.rs` (`fn use_hand`) | use_item_on, item_use, item_use_lifecycle, consumable, consume_effect, status_effect |
 | 16 | Options and settings screens (93) | `R/options_ui.rs`, `G/interface/options.rs`, `R/settings.rs`, `R/options_file.rs`, `R/graphics_ui.rs`, `R/graphics.rs` | options, toggle_keys |
-| 17 | HUD, chat, tab list (93) | `R/hud.rs`, `R/hud_layout.rs`, `R/hud_overlays.rs`, `R/chat.rs`, `G/interface/chat.rs`, `R/tab_list.rs`, `L/locator_bar.rs`, `G/interface/locator_bar.rs`; Horizon's overlays around them: `R/hud_kit/` + `G/interface/hud_room.rs` ([ui-kit.md](ui-kit.md)) | hud, tab_list, locator_bar, chat_screen, secure_chat |
 | 18 | Command execution (88) | `G/commands.rs`, `G/commands/*.rs`, `L/scoreboard_cmd.rs`, `L/data_cmd.rs`, `K/scoreboard.rs`, `G/administration/functions.rs` | command_exec (corpus `tools/command_exec_corpus.py`), scoreboard, server_ops_feedback, lan_e2e commands |
 | 19 | Chunk streaming, light, tickets (85) | `R/streaming.rs`, `R/world.rs`, `R/chunk.rs`, `R/chunk_map.rs`, `R/light.rs`, `L/ticket_levels.rs`, `L/tick_chunk_membership.rs`, `G/world/world_loading.rs`, `G/world/world_entry.rs` | light, chunk_status, random_tick_sections; `cargo test -p horizon-client --test streaming_meshes` |
 | 20 | Mob models and animation (78) | `L/mobs/render.rs`, `L/mobs/anim.rs`, `L/mobs/body_anim.rs`, `L/mobs/keyframes.rs`, `R/entity.wgsl` | entity_model |
@@ -85,4 +84,4 @@ Construction/join callback regressions also cover nested spawns and logically
 removed incoming or neighbouring items, before the native removal sweep.
 
 Controller glyphs (`R/pad_glyph.rs`, drawn by the gameplay guide, notices, splitscreen prompts and declared
-buttons) are part of the same kit: [ui-kit.md](ui-kit.md) says how to ask for one and how to test it.
+buttons) are part of the same kit: ui-kit.md says how to ask for one and how to test it.

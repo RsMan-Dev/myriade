@@ -20,10 +20,8 @@ class IgnoredTestsHomeTest(unittest.TestCase):
             self.assertFalse((home / "fixture-state").exists())
             (home / "fixture-state").touch()
             self.assertEqual(env["HORIZON_TEST_RESOURCES"], "prepared-fixture")
-            for key in ("HORIZON_LAUNCHER_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME"):
+            for key in ("XDG_DATA_HOME", "XDG_CONFIG_HOME"):
                 self.assertTrue(Path(env[key]).is_dir())
-                self.assertEqual(Path(env[key]).parent, home.parent)
-            for key in ("HORIZON_LAUNCHER_TRASH", "HORIZON_LAUNCHER_CLIPBOARD", "HORIZON_LAUNCHER_DESKTOP"):
                 self.assertEqual(Path(env[key]).parent, home.parent)
             homes.append(home)
             return SimpleNamespace(

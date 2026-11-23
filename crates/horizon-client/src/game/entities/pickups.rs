@@ -65,7 +65,7 @@ pub(super) struct Pickup {
 pub(super) struct Pickups {
     pub live: Vec<Pickup>,
     added: Vec<Pickup>,
-    /// The particles made so far, by kind of taken entity (for horizon-ctl).
+    /// The particles made so far, by kind of taken entity (for the control socket).
     made: std::collections::BTreeMap<&'static str, u64>,
 }
 impl Pickups {

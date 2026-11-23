@@ -6,7 +6,6 @@ use crate::brain::*;
 use crate::cow::{AttackDamage, Bounds};
 use crate::rules::melee_attack as rules;
 use crate::targeting::{self, Who};
-use horizon_core::geometry::Vec3;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:melee_attack",
@@ -35,8 +34,10 @@ impl Params {
 /// inside `hostile::melee_run`; it is written here because the frame has no such function (the lot's brief asked for its visibility).
 pub fn within_melee(w: &World, e: Entity, who: Who) -> bool {
     let (Some(b), Some(i)) = (w.get::<Bounds>(e), targeting::info(w, who)) else { return false };
-    let reach = rules::reach();
-    b.0.inflate(Vec3::new(reach, 0.0, reach)).intersects(i.bounds)
+    let vehicle = w.get::<crate::mount::Riding>(e).and_then(|r| w.get::<Bounds>(r.0)).map(|v| v.0);
+    let held = w.get::<crate::equip_stack::Equipment>(e).and_then(|q| q.slots[0].as_ref());
+    let proto = held.and_then(|s| w.get_resource::<rules::PrototypeRange>().and_then(|p| (p.0)(&s.item)));
+    rules::within_strike(b.0, vehicle, i.bounds, held, proto.as_ref())
 }
 
 fn target(w: &World, e: Entity) -> Option<Who> {

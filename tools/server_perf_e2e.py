@@ -73,7 +73,7 @@ def check(bins, scratch, out):
         server.console(f'summon minecraft:cow 0 -59 0 {{CustomName:"{MOB}"}}')
         server.console(f'setblock 3 -60 3 minecraft:oak_sign{{front_text:{{messages:["{SIGN}","","",""]}}}}')
         bots = subprocess.Popen(
-            [bins / f'horizon-bots{EXE}', '--server', f'127.0.0.1:{port}', '--bots', '2', '--behaviour', 'walk',
+            [bins / f'myriade-bot{EXE}', '--server', f'127.0.0.1:{port}', '--bots', '2', '--behaviour', 'walk',
              '--seconds', '14', '--name', PLAYER, '--report', out / 'bots.json'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         server.wait_for(rf'{PLAYER}1 joined the game', 60)

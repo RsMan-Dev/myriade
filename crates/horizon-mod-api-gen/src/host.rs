@@ -6,10 +6,10 @@ use super::*;
 use heck::ToUpperCamelCase;
 use std::fmt::Write as _;
 
-/// Reads implemented by the scoped goal context over the active mob and its
-/// disjoint live mob loans. Players are read from the game's backend; other
-/// entity reads not supported by the scoped context remain typed refusals.
-pub(super) const GOAL_VIEW_READS: &[&str] = &[
+/// Reads the mob tick's step view answers from the ECS world (arismoko/horizon#1077): the body, the
+/// identity and the health of the entities the step holds. Every other entity read of the view is
+/// a typed refusal, or the game host's answer when the handle is a game entity.
+pub(super) const STEP_VIEW_READS: &[&str] = &[
     "entity_position",
     "entity_block_position",
     "entity_velocity",
@@ -19,114 +19,103 @@ pub(super) const GOAL_VIEW_READS: &[&str] = &[
     "entity_eye_height",
     "entity_eye_position",
     "entity_distance_to_sqr",
+    "entity_pick",
+    "entity_is_sprinting",
+    "entity_name",
+    "entity_added_to_level",
+    "mob_navigation_speed",
+    "entity_on_block",
+    "entity_entities_team_damage_allowed",
+    "living_in_melee_range",
+    "living_has_line_of_sight",
+    "entity_level",
+    "mob_raid",
+    "mob_goals",
+    "mob_target_goals",
+    "mob_pathfinding_malus",
+    "entity_parts",
+    "entity_dismount_location",
     "entity_on_ground",
     "entity_kind",
+    "entity_is_in_water",
+    "entity_no_gravity",
+    "entity_custom_name_visible",
+    "entity_vehicle",
+    "entity_root_vehicle",
+    "entity_is_passenger",
+    "entity_is_vehicle",
+    "entity_passengers",
+    "entity_indirect_passengers",
+    "living_last_attacker",
+    "mob_target",
+    "merchant_offers",
+    "merchant_profession",
+    "merchant_level",
+    "merchant_xp",
+    "merchant_villager_type",
+    "mob_is_aggressive",
+    "mob_no_ai",
+    "mob_is_done",
+    "mob_has_restriction",
+    "mob_restrict_center",
+    "mob_restrict_radius",
+    "mob_left_handed",
+    "mob_no_action_time",
+    "mob_requires_custom_persistence",
+    "mob_can_pick_up_loot",
+    "mob_can_use_portal",
+    "living_sleeping_pos",
+    "living_can_breathe_underwater",
+    "living_can_freeze",
+    "living_gliding_ticks",
+    "living_can_use_portal",
     "living_health",
     "living_max_health",
     "living_alive",
-    "merchant_offers",
-    "merchant_trading_player",
-    "merchant_profession",
-    "merchant_level",
-    "merchant_villager_type",
-    "merchant_xp",
-    "entity_dismount_location",
-    "entity_root_vehicle",
-    "entity_is_passenger_of_same_vehicle",
-    "entity_passengers",
-    "entity_is_vehicle",
-    "entity_indirect_passengers",
-    "entity_controlling_passenger",
-    "entity_on_block",
-    "entity_entities_team_damage_allowed",
-    "living_can_use_portal",
-    "entity_tags",
-    "entity_name",
-    "entity_added_to_level",
-    "entity_portal_cooldown",
-    "entity_invulnerable_to_damage",
-    "living_is_climbing",
-    "living_last_attacker",
-    "living_kill_credit",
-    "entity_direction",
-    "entity_pose",
-    "entity_is_crouching",
-    "entity_view_vector",
-    "entity_up_vector",
-    "entity_level",
-    "entity_vehicle",
-    "entity_is_passenger",
-    "entity_sound_source",
-    "entity_leash_holder",
-    "entity_pick",
-    "living_attribute_value",
-    "living_attribute_base",
-    "living_attributes",
-    "living_attribute_modifiers",
     "living_used_item_hand",
-    "mob_can_use_portal",
-    "mob_target",
-    "mob_raid",
-    "entity_custom_name_visible",
     "entity_classification",
     "entity_permanently_invulnerable",
     "entity_invulnerable_time",
     "entity_damage_cooldown_time",
-    "entity_invulnerable_to_piercing_weapon",
     "entity_no_physics",
-    "entity_spectator",
-    "entity_is_shift_key_down",
-    "entity_is_sprinting",
-    "entity_is_in_water",
     "entity_is_in_lava",
-    "entity_fire_immune",
     "entity_fire_ticks",
     "entity_air_supply",
     "entity_max_air_supply",
     "entity_is_silent",
     "entity_glowing",
-    "entity_no_gravity",
     "entity_ticks_frozen",
-    "entity_tick_count",
     "entity_is_invisible",
-    "entity_is_multipart",
-    "entity_parts",
-    "entity_dimensions",
-    "living_effect",
-    "living_effects",
-    "living_potion_affected",
-    "living_gliding_ticks",
     "living_is_gliding",
     "living_is_sleeping",
-    "living_sleeping_pos",
     "living_is_jumping",
     "living_baby",
+    "entity_dimensions",
+    "entity_is_multipart",
+    "mob_persistence_required",
+    "living_is_climbing",
+    "entity_controlling_passenger",
+    "entity_is_passenger_of_same_vehicle",
+    "entity_fire_immune",
+    "living_is_tamed",
+    "entity_tags",
+    "entity_sound_source",
+    "entity_portal_cooldown",
+    "entity_invulnerable_to_damage",
+    "entity_invulnerable_to_piercing_weapon",
+    "living_dimensions_for_pose",
+    "living_bed_orientation",
+    "entity_is_crouching",
+    "entity_is_shift_key_down",
+    "entity_leash_holder",
+    "entity_pose",
+    "entity_spectator",
+    "entity_up_vector",
+    "entity_view_vector",
     "living_equipment",
     "living_hand_item",
-    "living_is_tamed",
-    "living_owner",
-    "living_dimensions_for_pose",
-    "living_can_freeze",
-    "living_can_breathe_underwater",
-    "living_has_line_of_sight",
-    "living_in_melee_range",
-    "living_bed_orientation",
-    "mob_goals",
-    "mob_target_goals",
-    "mob_is_done",
-    "mob_navigation_speed",
-    "mob_pathfinding_malus",
-    "mob_is_aggressive",
-    "mob_persistence_required",
-    "mob_requires_custom_persistence",
-    "mob_no_ai",
-    "mob_restrict_center",
-    "mob_restrict_radius",
-    "mob_has_restriction",
-    "mob_is_within_restriction",
-    "mob_left_handed",
-    "mob_can_pick_up_loot",
-    "mob_no_action_time",
+    "living_kill_credit",
+    "living_potion_affected",
 ];
 
 /// The handle types whose backend reads are entity data (arismoko/horizon#1077): a read taking
@@ -135,7 +124,7 @@ pub(super) const GOAL_VIEW_READS: &[&str] = &[
 /// other backend read (a level, a chunk, a block entity, a registry key)
 /// names data the tick leaves in place, so the view forwards it to the real
 /// game backend instead of refusing it.
-const GOAL_VIEW_ENTITY_ARGS: &[&str] = &[
+const STEP_VIEW_ENTITY_ARGS: &[&str] = &[
     "EntityRef",
     "LivingRef",
     "MobRef",
@@ -148,7 +137,7 @@ const GOAL_VIEW_ENTITY_ARGS: &[&str] = &[
 /// by its own rules (the ticking mob, the player the tick sees, the snapshot,
 /// else `None`) instead of forwarding them, so nothing asks the game's taken
 /// mob list. Everything else the view forwards to the game host it carries.
-pub(super) const GOAL_VIEW_LOOKUPS: &[&str] = &[
+pub(super) const STEP_VIEW_LOOKUPS: &[&str] = &[
     "entity",
     "living",
     "mob",
@@ -278,15 +267,12 @@ fn area_tiers(camel: &str, file: syn::File) -> Result<BTreeMap<Tier, Vec<Entry>>
                         | "CameraDrawContext"
                 ) | (
                     "Services",
-                    "ClientSession"
-                        | "Commands"
+                    "Commands"
                         | "Levels"
                         | "Messages"
                         | "Players"
                         | "Profiles"
                         | "RuntimeLevels"
-                        | "RenderAssets"
-                        | "InstanceGroups"
                 )
             ) {
                 continue;
@@ -880,7 +866,7 @@ fn handle_method(
     let mut docs = doc_comments(&entry.attrs, name, true)?;
     // The reads a mob's goal tick answers from its view carry the snapshot rule where a mod reads
     // them (arismoko/horizon#1077).
-    if GOAL_VIEW_READS.contains(&name) {
+    if STEP_VIEW_READS.contains(&name) {
         docs.push_str("///\n/// In a mob's goal tick ([`GoalContext::host`](crate::GoalContext::host)) this reads\n/// the active mob or a disjoint live mob when available; player reads use the\n/// game host. Other unsupported reads retain their typed refusal.\n");
     }
     let backend = match (mutable, tier.client()) {
@@ -976,19 +962,18 @@ pub(super) fn generate(root: &Path) -> Result<(String, String), String> {
         methods.push_str(&format!("impl {handle} {{\n{code}}}\n"));
     }
     let imports = standard_imports(&syn::parse_file(&methods).map_err(|e| e.to_string())?);
-    let side_enum = |name: &str, server: &str, client: &str| {
+    let side_enum = |name: &str, server: &str, client: Option<&str>| {
+        let client = client.map_or(String::new(), |c| {
+            format!("/// The hook fired on the client.\nClient({c}),\n")
+        });
         format!(
-            "/// The logical side of a hook's host.\n// no wire: borrows the active host; passed as call context.\npub enum {name}<'a> {{\n/// The hook fired on the server.\nServer({server}),\n/// The hook fired on the client.\nClient({client}) }}\n"
+            "/// The logical side of a hook's host.\n// no wire: borrows the active host; passed as call context.\npub enum {name}<'a> {{\n/// The hook fired on the server.\nServer({server}),\n{client}}}\n"
         )
     };
     let sides = format!(
         "{}{}",
-        side_enum(
-            "HostSide",
-            "&'a mut dyn ServerHost",
-            "&'a mut dyn ClientHost"
-        ),
-        side_enum("LevelSide", "&'a dyn LevelHost", "&'a dyn LevelHost")
+        side_enum("HostSide", "&'a mut dyn ServerHost", None),
+        side_enum("LevelSide", "&'a dyn LevelHost", Some("&'a dyn LevelHost"))
     );
     let (host_supers, server_supers, client_supers) = (
         supertraits("Host"),
@@ -1004,8 +989,8 @@ pub(super) fn generate(root: &Path) -> Result<(String, String), String> {
         "// @generated by cargo run -p xtask -- mod-api; do not edit.\nuse super::*;\n{imports}/// Services supplied by the game to trait mods.\n/// Methods default to a named panic unless they specify a default value on refusal. The game implements every method.\n/// The backend accessors are the exception: they default to None, so a double without a backend answers every handle's typed refusal.\n/// Its methods are declared by area in `host/<area>.rs`; `use mod_api::prelude::*` names every area trait.\npub trait Host: {host_supers} {{\n#[doc(hidden)] fn backend(&self) -> Option<BackendRef<'_>> {{ None }}\n#[doc(hidden)] fn capability_providers(&self) -> &'static dyn CapabilityProviders {{ &InstalledProviders }}\n}}\n/// What only the server's hooks are given: writes to the world.\npub trait ServerHost: Host + {server_supers} {{\n#[doc(hidden)] fn backend_mut(&mut self) -> Option<BackendMutRef<'_>> {{ None }}\n}}\n/// What only the client's hooks are given: the client's own services.\npub trait ClientHost: Host + {client_supers} {{\n#[doc(hidden)] fn client_backend_mut(&mut self) -> Option<ClientBackendMutRef<'_>> {{ None }}\n}}\n{sides}#[doc(hidden)] pub trait Backend: {backend_supers} {{}}\n#[doc(hidden)] pub trait BackendMut: {backend_mut_supers} {{}}\n#[doc(hidden)] pub trait ClientBackendMut: {client_backend_mut_supers} {{}}\n{methods}"
     );
     syn::parse_file(&host).map_err(|e| format!("generated Host: {e}"))?;
-    let goal_view = goal_view(&areas, &reads, &host_methods)?;
-    Ok((host, goal_view))
+    let step_view = step_view(&areas, &reads, &host_methods)?;
+    Ok((host, step_view))
 }
 
 /// The goal view's generated impls (arismoko/horizon#1077): the backend ones forward the snapshot-backed
@@ -1014,15 +999,15 @@ pub(super) fn generate(root: &Path) -> Result<(String, String), String> {
 /// loaded chunks, time, height, weather, block entities — to the real backend of the game host
 /// the view carries; the host ones answer the entity lookups by the tick's own rules, refuse the
 /// mutable methods, and forward everything else to the game host the view carries. The engine
-/// includes them beside its `GoalCx`.
-fn goal_view(
+/// includes them beside its `EcsCx`.
+fn step_view(
     areas: &[Area],
     reads: &[(&Area, Tier, &Entry)],
     host_methods: &[(&Area, &Entry)],
 ) -> Result<String, String> {
     let mut impls = Impls::default();
     let mut code = String::from(
-        "// @generated by cargo run -p xtask -- mod-api; do not edit.\nuse mod_api::{prelude::*, *};\nuse std::path::PathBuf;\nuse std::sync::Arc;\n/// The mob tick's read view (#1077), as the game generates it: the snapshot-backed\n/// reads forward to the engine context's own methods, entity data the view does\n/// not carry answers its typed refusal, and every other backend read forwards\n/// to the real backend of the game host the view carries.\nimpl Backend for super::GoalCx<'_, '_> {}\n",
+        "// @generated by cargo run -p xtask -- mod-api; do not edit.\nuse mod_api::{prelude::*, *};\nuse std::path::PathBuf;\nuse std::sync::Arc;\n/// The mob tick's step view (#1077), as the game generates it: the reads it serves\n/// forward to the engine context's own methods, entity data the view does\n/// not carry answers its typed refusal, and every other backend read forwards\n/// to the real backend of the game host the view carries.\nimpl Backend for super::EcsCx<'_> {}\n",
     );
     for (area, tier, entry) in reads {
         let (name, args) = (
@@ -1041,7 +1026,7 @@ fn goal_view(
             }),
             Some(syn::Type::Path(ty))
                 if ty.path.segments.len() == 1
-                    && GOAL_VIEW_ENTITY_ARGS
+                    && STEP_VIEW_ENTITY_ARGS
                         .contains(&ty.path.segments[0].ident.to_string().as_str())
         );
         // How a forwarded read answers a host without a backend: the typed refusal, or the empty
@@ -1056,7 +1041,7 @@ fn goal_view(
             Some(refusal) => format!(".unwrap_or({refusal})"),
             None => ".unwrap_or_default()".to_string(),
         };
-        let body = if GOAL_VIEW_READS.contains(&name) {
+        let body = if STEP_VIEW_READS.contains(&name) {
             format!("self.r_{name}({args})")
         } else if entity_data {
             let Some(refusal) = refusal else {
@@ -1124,7 +1109,7 @@ fn goal_view(
     }
     code.push_str(&impls.take());
     code.push_str(
-        "/// The same view as a host: the entity lookups answer the tick's own rules\n/// (the ticking mob, the player it sees, the snapshot, else None), the mutable\n/// methods stay out of reach of the shared host the view holds, and everything\n/// else - the level, its blocks, tags, recipes and settings - forwards to the\n/// game host the view carries.\nimpl Host for super::GoalCx<'_, '_> {\n#[doc(hidden)]\nfn backend(&self) -> Option<BackendRef<'_>> { Some(mod_api::__private::backend_ref(self)) }\n}\n",
+        "/// The same view as a host: the entity lookups answer from the ECS world, else the game host\n/// (players, items, blocks), the mutable\n/// methods stay out of reach of the shared host the view holds, and everything\n/// else - the level, its blocks, tags, recipes and settings - forwards to the\n/// game host the view carries.\nimpl Host for super::EcsCx<'_> {\n#[doc(hidden)]\nfn backend(&self) -> Option<BackendRef<'_>> { Some(mod_api::__private::backend_ref(self)) }\n}\n",
     );
     // An area whose host methods all write has nothing to forward, but the view still implements it.
     for area in areas
@@ -1144,7 +1129,7 @@ fn goal_view(
             continue;
         }
         let args = signature_args(&sig, name)?;
-        let body = if GOAL_VIEW_LOOKUPS.contains(&name) {
+        let body = if STEP_VIEW_LOOKUPS.contains(&name) {
             format!("self.lookup_{name}({args})")
         } else {
             format!("self.host.{name}({args})")
@@ -1173,7 +1158,7 @@ impl Impls {
         std::mem::take(&mut self.0)
             .into_iter()
             .map(|(name, methods)| {
-                format!("impl {name} for super::GoalCx<'_, '_> {{\n{methods}}}\n")
+                format!("impl {name} for super::EcsCx<'_> {{\n{methods}}}\n")
             })
             .collect()
     }

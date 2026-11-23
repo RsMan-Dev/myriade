@@ -922,12 +922,10 @@ crate::impl_backend_mut_areas!(
 #[doc(hidden)]
 pub fn with_controller_tables<R>(
     controllers: Vec<crate::__private::parts_installation::ControllerInfoInput>,
-    poses: Vec<crate::__private::parts_installation::PoseInfoInput>,
     f: impl FnOnce() -> R,
 ) -> R {
     let controllers: Vec<ControllerInfo> = controllers.into_iter().map(Into::into).collect();
     let controllers: &'static [_] = Box::leak(controllers.into_boxed_slice());
-    let _poses = crate::client::arm_pose::test_table(poses.into_iter().map(Into::into).collect());
     let _controllers = RestoreControllers(TEST_CONTROLLERS.replace(Some(controllers)));
     f()
 }

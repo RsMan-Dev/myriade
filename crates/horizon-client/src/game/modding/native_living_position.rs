@@ -180,7 +180,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn pose_regression_dragon_dimensions() {
         with_game(|game| {
-            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 55));
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(), &mut || 55));
             let living = game.living(game.entity(55).unwrap()).unwrap();
             assert_eq!(
                 living.dimensions_for_pose(game, Pose::Standing),
@@ -260,6 +260,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn line_of_sight_follows_the_blocks_between() {
+        // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : floor_and_zombies pose le joueur 20 et place les zombies 12 et 13, ids déjà pris par l'invité 12)
         with_game(|game| {
             floor_and_zombies(game);
             let a = game.living(game.entity(12).unwrap()).unwrap();
@@ -316,7 +317,6 @@ pub(in crate::game) mod tests {
                 allow_flight: true,
                 seed: 0,
                 max_players: 2,
-                integrated: true,
                 levels: game.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };
@@ -388,6 +388,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn camel_sitting_is_lower_even_while_standing() {
+        // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : floor_and_zombies pose le joueur 20 et place les zombies 12 et 13, ids déjà pris par l'invité 12)
         with_game(|game| {
             floor_and_zombies(game);
             crate::game::ecs::test_support::place_test_mob(game, 20, "minecraft:camel", [0.5, 64.0, 0.5]);
@@ -411,6 +412,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn goat_long_jump_scales_the_box_by_seven_tenths() {
+        // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : floor_and_zombies pose le joueur 20 et place les zombies 12 et 13, ids déjà pris par l'invité 12)
         with_game(|game| {
             floor_and_zombies(game);
             crate::game::ecs::test_support::place_test_mob(game, 21, "minecraft:goat", [0.5, 64.0, 0.5]);
@@ -429,6 +431,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn no_action_time_and_pathfinding_malus_reach_the_mob() {
+        // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : floor_and_zombies pose le joueur 20 et place les zombies 12 et 13, ids déjà pris par l'invité 12)
         with_game(|game| {
             floor_and_zombies(game);
             let mob = game.mob(game.entity(12).unwrap()).unwrap();

@@ -487,11 +487,6 @@ pub mod game {
             ServerReloadContext::new(files)
         }
     }
-    impl ReloadContextNew for ClientReloadContext {
-        fn new(files: crate::world::reload::ReloadFiles) -> Self {
-            ClientReloadContext::new(files)
-        }
-    }
 
     pub trait ServerReloadListenersOrder {
         fn new() -> Self;
@@ -507,30 +502,6 @@ pub mod game {
             self,
         ) -> Result<crate::world::server_reload::OrderedServerReload, ReloadOrderError> {
             crate::world::server_reload::ServerListenerRegistry::finish(self)
-        }
-    }
-
-    pub trait ClientReloadListenersOrder {
-        fn new() -> Self;
-        #[allow(clippy::type_complexity)]
-        fn finish(
-            self,
-        ) -> Result<
-            Vec<crate::world::reload::RegisteredListener<dyn ClientReloadListener>>,
-            ReloadOrderError,
-        >;
-    }
-    impl ClientReloadListenersOrder for crate::client::client_reload::ClientListenerRegistry {
-        fn new() -> Self {
-            crate::client::client_reload::ClientListenerRegistry::new()
-        }
-        fn finish(
-            self,
-        ) -> Result<
-            Vec<crate::world::reload::RegisteredListener<dyn ClientReloadListener>>,
-            ReloadOrderError,
-        > {
-            crate::client::client_reload::ClientListenerRegistry::finish(self)
         }
     }
 

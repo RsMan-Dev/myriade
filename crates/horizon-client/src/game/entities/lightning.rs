@@ -358,6 +358,7 @@ mod tests {
                 game.session
                     .rules
                     .set("fire_spread_radius_around_player", Value::Int(radius));
+                // TODO(phase 2): pose game.player dans la boucle de cas (lightning.rs:361), conversion non faite : la boucle ouvrirait un tour par cas, à traiter à part
                 game.player = Some(
                     horizon_client::motion::PlayerMotion::new(
                         game.motion,

@@ -8,7 +8,7 @@ refuse what the range doesn't allow.
 
     python3 tools/server_reach_e2e.py --bin-dir target/fast
 
-A survival dedicated server in a flat world; pairs of horizon-bots stand on the ground (`--behaviour stand`),
+A survival dedicated server in a flat world; pairs of myriade-bot stand on the ground (`--behaviour stand`),
 placed by the console's /tp 200 blocks from the other pairs (side by side first, so the attacker knows its
 victim's entity id, as a cheat would). In each pair the attacker sends
 ServerboundAttackPacket at its victim twice a second (`--attack`) from:
@@ -23,7 +23,7 @@ ServerboundAttackPacket at its victim twice a second (`--attack`) from:
 A hit shows in the victim's health (SetHealth, in the bots' report). The server runs in a fresh folder with
 fresh HORIZON_HOME and XDG folders (lab.game_env), on a free port. Build first:
     cargo build --profile fast -p horizon-game --bin horizon-client
-    cargo build --profile fast -p horizon-bots
+    cargo build --profile fast -p myriade-bot
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
@@ -72,7 +72,7 @@ class Failed(Exception):
 
 def bot(bins, port, out, name, *extra):
     report = out / f'{name}.json'
-    subprocess.run([bins / f'horizon-bots{EXE}', '--server', f'127.0.0.1:{port}', '--bots', '1',
+    subprocess.run([bins / f'myriade-bot{EXE}', '--server', f'127.0.0.1:{port}', '--bots', '1',
                     '--behaviour', 'stand', '--seconds', str(SECONDS), '--name', name, '--report', report, *extra],
                    check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=SECONDS + 180)
     return json.loads(report.read_text())['per_bot'][0]

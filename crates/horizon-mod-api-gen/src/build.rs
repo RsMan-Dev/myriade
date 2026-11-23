@@ -63,9 +63,9 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
             }),
             ("game_host_modules.rs", game_host_modules(root)?),
             ("mod_api_fire_generated.rs", generated.fire),
-            // The mob tick's goal read view (arismoko/horizon#1077), included beside the
-            // engine's `GoalCx` in `mobs/part_goals.rs`.
-            ("mod_api_goal_view_generated.rs", generated.goal_view),
+            // The mob tick's step read view (arismoko/horizon#1077), included in `ecs_bridge/ecs_view.rs`
+            // beside the engine's `EcsCx`.
+            ("mod_api_step_view_generated.rs", generated.step_view),
         ],
         Target::Api | Target::Vocab => {
             if matches!(target, Target::Api) {
@@ -145,7 +145,7 @@ fn generated_source(
     if matches!(target, Target::Client)
         && matches!(
             name,
-            "mod_api_fire_generated.rs" | "mod_api_goal_view_generated.rs"
+            "mod_api_fire_generated.rs" | "mod_api_step_view_generated.rs"
         )
         && root.join(".horizon-source-staged").is_file()
     {
@@ -167,7 +167,7 @@ mod generated_visibility_tests {
         let input = "impl Game<'_> { pub(super) fn fire(&mut self) {} }";
         for name in [
             "mod_api_fire_generated.rs",
-            "mod_api_goal_view_generated.rs",
+            "mod_api_step_view_generated.rs",
         ] {
             assert_eq!(
                 generated_source(&root, &Target::Client, name, input.into()).unwrap(),
@@ -177,7 +177,7 @@ mod generated_visibility_tests {
         fs::write(root.join(".horizon-source-staged"), "").unwrap();
         for name in [
             "mod_api_fire_generated.rs",
-            "mod_api_goal_view_generated.rs",
+            "mod_api_step_view_generated.rs",
         ] {
             assert_eq!(
                 generated_source(&root, &Target::Client, name, input.into()).unwrap(),

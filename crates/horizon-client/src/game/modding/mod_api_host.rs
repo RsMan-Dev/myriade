@@ -88,10 +88,6 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn native_authoritative(&self) -> bool {
-        self.is_logical_server()
-    }
-
     /// Access a holder's attachment map, to lend to a mod: a server's, whose
     /// synced changes are sent at the pass's end.
     pub(super) fn attachment_map(
@@ -102,11 +98,8 @@ impl Game<'_> {
         if matches!(holder, mod_api::Holder::OriginalPlayer(_)) {
             return self.attachment_slot(holder, access);
         }
-        if self.native_authoritative() {
-            self.world.attachment_syncs.insert(holder);
-            return self.attachment_map_quiet(holder, access);
-        }
-        Err(mod_api::AttachmentError::MissingHolder)
+        self.world.attachment_syncs.insert(holder);
+        self.attachment_map_quiet(holder, access)
     }
 
     /// `attachment_map` without recording the holder for the sync. Inside a transaction, the
@@ -118,9 +111,6 @@ impl Game<'_> {
     ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
         if matches!(holder, mod_api::Holder::OriginalPlayer(_)) {
             return self.attachment_slot(holder, access);
-        }
-        if !self.native_authoritative() {
-            return Err(mod_api::AttachmentError::MissingHolder);
         }
         self.journal_attachments(holder);
         self.attachment_slot(holder, access)
@@ -377,9 +367,6 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
         self.world.shape.height
     }
     fn block_in_tag(&self, block: mod_api::BlockKey, tag: &str) -> Option<bool> {
-        if !self.native_authoritative {
-            return None;
-        }
         super::native_world_read::block_in_tag(block, tag)
     }
     fn tags(&self) -> &dyn mod_api::Tags {
@@ -404,8 +391,7 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
         )
     }
     fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
-        self.native_authoritative
-            .then(|| super::native_world_read::fluid_in_tag(self.items, fluid, tag))
+        Some(super::native_world_read::fluid_in_tag(self.items, fluid, tag))
     }
     fn state_with_property(
         &self,
@@ -457,9 +443,6 @@ impl mod_api::AttachmentHost for super::GameLevel<'_> {
         holder: mod_api::Holder,
         _: AttachmentAccess,
     ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
-        if !self.native_authoritative {
-            return Err(mod_api::AttachmentError::MissingHolder);
-        }
         self.world.attachment_syncs.insert(holder);
         world_attachments(self.world, holder)
     }
@@ -747,6 +730,6 @@ impl<'a: 'b, 'b> mod_api::LevelWriteHost for LevelTicks<'b, &mut super::GameLeve
 super::native_tags::impl_tags!(
     super::GameLevel<'_>,
     level,
-    level.native_authoritative.then_some(level.items)
+    Some(level.items)
 );
 super::native_tags::impl_tags!(super::native_hooks::HitLevel<'_>, level, level.0.tags());

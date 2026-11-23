@@ -3,7 +3,6 @@
 //! keep-inventory (or a spectator).
 use super::super::*;
 use crate::game::native_machines::tests::server_game;
-use horizon_client::motion::PlayerMotion;
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Tag;
 
@@ -36,24 +35,29 @@ fn saved_score(game: &mut Game<'_>) -> i32 {
 #[ignore = "daily"]
 fn experience_points_raise_the_score_that_set_points_and_a_normal_respawn_drop() {
     let mut game = server_game();
-    game.options.dedicated = None;
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 4.5)).unwrap());
-    game.set_allow_commands(true);
-    assert_eq!(score(&mut game), Some(0));
-    assert!(game.run_command("xp add @s 10 points"));
-    assert_eq!(score(&mut game), Some(10));
-    assert_eq!(saved_score(&mut game), 10);
-    // ExperienceCommand.Type.POINTS.set calls setExperiencePoints, not
-    // giveExperiencePoints: the bar changes, the score does not.
-    assert!(game.run_command("xp set @s 0 points"));
-    assert_eq!(score(&mut game), Some(10));
-    // ServerPlayer.transferInventoryXpAndScore, which restoreFrom calls only
-    // with KEEP_INVENTORY or for a spectator: a normal respawn drops the score.
-    game.experience.respawn(false);
-    assert_eq!(score(&mut game), Some(0));
-    assert_eq!(saved_score(&mut game), 0);
-    assert!(game.run_command("xp add @s 10 points"));
-    game.experience.respawn(true);
-    assert_eq!(score(&mut game), Some(10));
-    assert_eq!(saved_score(&mut game), 10);
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+    crate::game::native_guest_turn_tests::with_acting_guest_on(
+        &mut game,
+        Vec3::new(4.5, 100.0, 4.5),
+        |game| {
+            game.set_allow_commands(true);
+            assert_eq!(score(game), Some(0));
+            assert!(game.run_command("xp add @s 10 points"));
+            assert_eq!(score(game), Some(10));
+            assert_eq!(saved_score(game), 10);
+            // ExperienceCommand.Type.POINTS.set calls setExperiencePoints, not
+            // giveExperiencePoints: the bar changes, the score does not.
+            assert!(game.run_command("xp set @s 0 points"));
+            assert_eq!(score(game), Some(10));
+            // ServerPlayer.transferInventoryXpAndScore, which restoreFrom calls only
+            // with KEEP_INVENTORY or for a spectator: a normal respawn drops the score.
+            game.experience.respawn(false);
+            assert_eq!(score(game), Some(0));
+            assert_eq!(saved_score(game), 0);
+            assert!(game.run_command("xp add @s 10 points"));
+            game.experience.respawn(true);
+            assert_eq!(score(game), Some(10));
+            assert_eq!(saved_score(game), 10);
+        },
+    );
 }

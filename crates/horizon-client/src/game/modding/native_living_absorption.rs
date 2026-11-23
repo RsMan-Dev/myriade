@@ -59,16 +59,16 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::{bind_local_player, with_game};
-    use horizon_client::motion::PlayerMotion;
+    use super::super::native_guest_turn_tests::with_acting_guest;
     use horizon_core::geometry::Vec3;
 
     #[test]
     #[ignore = "daily"]
     fn a_players_absorption_is_cut_to_zero_and_max_absorption_and_synced() {
-        with_game(|game| {
-            let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
-            player
+        with_acting_guest(Vec3::ZERO, |game| {
+            game.player
+                .as_mut()
+                .unwrap()
                 .set_modifier(
                     "minecraft:max_absorption",
                     "test:absorption",
@@ -77,9 +77,7 @@ mod tests {
                     true,
                 )
                 .unwrap();
-            game.player = Some(player);
-            bind_local_player(game, 20, 123);
-            let living = game.living(game.entity(20).unwrap()).unwrap();
+            let living = game.living(game.entity(12).unwrap()).unwrap();
             assert_eq!(living.absorption(game), Some(0.0));
             let events = game.player.as_ref().unwrap().events.len();
             assert!(living.set_absorption(game, 8.0));

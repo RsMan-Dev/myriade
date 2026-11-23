@@ -5,6 +5,7 @@ and output stacks are independently read with /data; revision values are raw
 transport diagnostics, not a prediction/packet-family contract.
 """
 
+
 def cases(cmd, setup):
     def stack(item, count=1, map_id=None, post=None):
         return ['minecraft:' + item, count, map_id, post]

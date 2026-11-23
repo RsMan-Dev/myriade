@@ -271,20 +271,14 @@ impl Game<'_> {
 
     /// The console and the player who started the task get the progress.
     fn pregen_report(&mut self, owner: Option<u32>, message: Text) {
-        if self.is_dedicated_server() {
-            super::super::dedicated::log("INFO", &message.plain());
-        } else {
-            log::info!("{}", message.plain());
-        }
-        if let Some(host) = &self.lan {
-            if let Some(g) = owner.and_then(|c| host.hub.guest(c)) {
-                g.send(&C::SystemChat(play::SystemChat {
-                    content: component_nbt(&message.component()),
-                    overlay: false,
-                }));
-            }
-        } else if !self.is_dedicated_server() {
-            self.system_message(message);
+        super::super::dedicated::log("INFO", &message.plain());
+        if let Some(host) = &self.lan
+            && let Some(g) = owner.and_then(|c| host.hub.guest(c))
+        {
+            g.send(&C::SystemChat(play::SystemChat {
+                content: component_nbt(&message.component()),
+                overlay: false,
+            }));
         }
     }
 }

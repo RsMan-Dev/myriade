@@ -8,17 +8,11 @@ impl Game<'_> {
     /// The mod's own mob tick sampling (`tick_profile::set_mod_sampling`), apart from the
     /// report's. False on a client.
     pub(super) fn mob_cost_sampling(&mut self, on: bool) -> bool {
-        if !self.is_logical_server() {
-            return false;
-        }
         super::tick_profile::set_mod_sampling(on);
         true
     }
     /// What the mod's sampling summed since the last call, costliest first. Empty on a client.
     pub(super) fn take_mob_costs(&mut self) -> Vec<MobTickCost> {
-        if !self.is_logical_server() {
-            return Vec::new();
-        }
         super::tick_profile::take_mod()
             .into_iter()
             .map(|c| MobTickCost::new(c.dimension.to_owned(), c.kind, c.nanos, c.mob_ticks))
@@ -26,9 +20,6 @@ impl Game<'_> {
     }
     /// The server's packet counting switch (`packet_counts::set_counting`). False on a client.
     pub(super) fn count_packets(&mut self, on: bool) -> bool {
-        if !self.is_logical_server() {
-            return false;
-        }
         packet_counts::set_counting(on);
         true
     }
@@ -44,9 +35,6 @@ impl Game<'_> {
         &mut self,
         player: PlayerRef,
     ) -> Option<Vec<PacketCount>> {
-        if !self.is_logical_server() {
-            return None;
-        }
         let conn = match self.player_handle_read(player)? {
             PlayerRead::Acting { .. } => self.lan_acting?,
             PlayerRead::Guest(g) => g.conn,
@@ -105,19 +93,6 @@ mod tests {
             assert!(game.mob_cost_sampling(true));
             assert!(game.mob_cost_sampling(false));
             assert!(game.take_mob_costs().is_empty());
-        });
-    }
-
-    /// A server that stops with counting and sampling on leaves both off for the next one.
-    #[test]
-    #[ignore = "daily"]
-    fn stopping_the_server_switches_the_diagnostics_off() {
-        with_guests(|game| {
-            assert!(game.count_packets(true));
-            assert!(game.mob_cost_sampling(true));
-            assert!(packet_counts::counting());
-            game.stop_serving();
-            assert!(!packet_counts::counting());
         });
     }
 }

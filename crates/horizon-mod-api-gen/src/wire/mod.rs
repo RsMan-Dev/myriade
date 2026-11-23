@@ -39,9 +39,6 @@ pub(super) const IMPORTS: &[&str] = &[
     "Players",
     "Profiles",
     "RuntimeLevels",
-    "ClientSession",
-    "RenderAssets",
-    "InstanceGroups",
     "Tags",
     "item::menu::SlotView",
     "Registrar",
@@ -56,7 +53,6 @@ pub(super) const IMPORTS: &[&str] = &[
     "AttachmentStore",
     "ServerReloadListeners",
     "GameTests",
-    "ClientReloadListeners",
     "PackFinders",
     "ColorResolvers",
     "BlockTintSources",
@@ -142,7 +138,6 @@ const EXPORTS: &[&str] = &[
     "ServerReloadListener",
     "LoadCondition",
     "GameTestFunction",
-    "ClientReloadListener",
     "BiomeColorResolver",
     "BlockTintSource",
     "Interaction",
@@ -183,7 +178,6 @@ const LOAD_CONTEXTS: &[&str] = &[
     "RegistrationContext",
     "DataLoadContext",
     "ServerReloadContext",
-    "ClientReloadContext",
 ];
 
 /// The traits the game calls on its worker threads: a mod's structure types and their pieces on
@@ -1377,9 +1371,6 @@ mod tests {
             "crates/horizon-core/src/identifier.rs",
             "crates/horizon-mod-runtime/src/attachments/index.rs",
             "crates/horizon-mod-vocab/src/client/keyframe_animation.rs",
-            "crates/horizon-mod-vocab/src/client/model_instance.rs",
-            "crates/horizon-mod-vocab/src/client/posed_parts.rs",
-            "crates/horizon-mod-vocab/src/client/render_pipeline.rs",
             "crates/horizon-mod-vocab/src/content/registry_keys.rs",
             "crates/horizon-mod-vocab/src/entity/attachment_query.rs",
             "crates/horizon-mod-vocab/src/entity/types.rs",

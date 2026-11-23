@@ -1,7 +1,4 @@
 import datetime as dt
-import os
-import subprocess
-import sys
 import textwrap
 import tomllib
 from pathlib import Path
@@ -10,9 +7,6 @@ import unittest
 from unittest import mock
 
 from tools import release_train as train
-
-sys.path.insert(0, str(train.ROOT / "tools/ci/vendor/pyyaml-6.0.3.zip"))
-import yaml  # noqa: E402
 
 
 def owning_workspace(folder):
@@ -54,11 +48,6 @@ def path_closure(start):
     return seen
 
 
-def launcher_path_crates():
-    """The crates/ folders the launcher's manifest reaches through `path`."""
-    folders = {folder.relative_to(train.ROOT.resolve()).as_posix() + "/" for folder in path_closure(train.ROOT / "launcher")}
-    outside = {folder for folder in folders if not folder.startswith(("crates/", "launcher/"))}
-    assert not outside, f"the launcher builds path crates outside crates/: {sorted(outside)}"
     return {folder for folder in folders if folder.startswith("crates/")}
 
 
@@ -91,8 +80,8 @@ class ReleaseTrainTests(unittest.TestCase):
                         (27, "imported"), (28, "collision"), (28, "own")]), \
                     mock.patch.object(train, "gh_json", return_value=[metadata_page([]),
                         metadata_page([merged_node(28, "own")])]) as api, \
-                    mock.patch.object(train, "changed_paths", return_value=["launcher/src/main.rs"]):
-                last, prs = train.gather("launcher", "head", releases=[])
+                    mock.patch.object(train, "changed_paths", return_value=["crates/horizon-world/src/lib.rs"]):
+                last, prs = train.gather("game", "head", releases=[])
                 self.assertIsNone(last)
                 self.assertEqual([p["number"] for p in prs], [28])
                 api.assert_called_once()
@@ -100,9 +89,9 @@ class ReleaseTrainTests(unittest.TestCase):
                 self.assertEqual(args[:4], ("api", "graphql", "--paginate", "--slurp"))
                 self.assertIn(f"owner={repository.split('/')[0]}", args)
                 self.assertIn("name=horizon", args)
-                release, _ = train.decision("launcher", prs, NOW)
+                release, _ = train.decision("game", prs, NOW)
                 self.assertTrue(release)
-                _, body = train.notes("launcher", "launcher@0.2.0", prs, [])
+                _, body = train.notes("game", "v0.2.0", prs, [])
                 self.assertIn("#28", body)
                 self.assertNotIn("#27", body)
 
@@ -110,26 +99,25 @@ class ReleaseTrainTests(unittest.TestCase):
         with mock.patch.object(train, "run", return_value="root"), \
                 mock.patch.object(train, "merged_pull_requests", return_value=[(27, "imported")]), \
                 mock.patch.object(train, "gh_json", return_value=[metadata_page([])]):
-            last, prs = train.gather("launcher", "head", releases=[])
+            last, prs = train.gather("game", "head", releases=[])
             self.assertIsNone(last)
             self.assertEqual(prs, [])
-            self.assertEqual(train.next_launcher_tag([], False, (0, 2)), "launcher@0.2.0")
-            self.assertTrue(train.decision("launcher", prs, NOW, new_line="0.2")[0])
-            self.assertFalse(train.decision("launcher", prs, NOW)[0])
-            _, body = train.notes("launcher", "launcher@0.2.0", prs, [])
+            self.assertTrue(train.decision("game", prs, NOW, new_line="0.2")[0])
+            self.assertFalse(train.decision("game", prs, NOW)[0])
+            _, body = train.notes("game", "v0.2.0", prs, [])
             self.assertNotIn("#27", body)
 
     def test_release_metadata_errors_are_not_imports(self):
         with mock.patch.object(train, "merged_pull_requests", return_value=[(28, "own")]), \
                 mock.patch.object(train, "gh_json", side_effect=RuntimeError("API unavailable")):
             with self.assertRaisesRegex(RuntimeError, "API unavailable"):
-                train.merged_between("launcher", "base", "head")
+                train.merged_between("game", "base", "head")
         broken = merged_node(28, "own")
         broken["mergedAt"] = "invalid date"
         with mock.patch.object(train, "merged_pull_requests", return_value=[(28, "own")]), \
                 mock.patch.object(train, "gh_json", return_value=[metadata_page([broken])]):
             with self.assertRaises(ValueError):
-                train.merged_between("launcher", "base", "head")
+                train.merged_between("game", "base", "head")
 
     def test_large_history_uses_paginated_metadata_without_per_pr_requests(self):
         nodes = [merged_node(n, f"sha-{n}") for n in range(1, 301)]
@@ -152,8 +140,8 @@ class ReleaseTrainTests(unittest.TestCase):
         with mock.patch.object(train, "merged_pull_requests", return_value=[
                 (n["number"], n["mergeCommit"]["oid"]) for n in nodes]), \
                 mock.patch.object(train, "gh_json", side_effect=response) as api, \
-                mock.patch.object(train, "changed_paths", return_value=["launcher/src/main.rs"]):
-            prs = train.merged_between("launcher", "base", "head")
+                mock.patch.object(train, "changed_paths", return_value=["crates/horizon-world/src/lib.rs"]):
+            prs = train.merged_between("game", "base", "head")
         self.assertEqual(len(prs), 300)
         self.assertEqual(prs[0]["title"], "Fix a thing")
         self.assertEqual(prs[0]["issues"], [3, 9])
@@ -163,34 +151,6 @@ class ReleaseTrainTests(unittest.TestCase):
         self.assertEqual(prs[-1]["merged_at"], NOW - dt.timedelta(hours=9))
         api.assert_called_once()
         self.assertEqual(api.call_args.args[:4], ("api", "graphql", "--paginate", "--slurp"))
-
-    def test_the_launcher_paths_are_every_crate_the_launcher_builds_in(self):
-        listed = {path for path in train.LAUNCHER_PATHS if path.startswith("crates/")}
-        self.assertEqual(listed, launcher_path_crates(),
-                         "LAUNCHER_PATHS in tools/release_train.py must list launcher/Cargo.toml's path crates")
-
-    def test_the_launcher_release_paths_are_a_deliberate_choice(self):
-        # Changing what counts toward a launcher release is a decision, not a sync with LAUNCHER_PATHS (see its comment).
-        self.assertEqual(train.LAUNCHER_RELEASE_PATHS, [
-            "launcher/",
-            "crates/horizon-bench/",
-            "crates/horizon-friends/",
-            "crates/horizon-mcp/",
-            "crates/horizon-mod-api-gen/",
-            "crates/horizon-mod-package/",
-            "crates/horizon-port-pack/",
-            "crates/horizon-prepare/",
-            "crates/horizon-release-sign/",
-            "crates/horizon-system/",
-            "crates/horizon-theme/",
-            "packaging/icons/",
-            "packaging/linux/",
-            "packaging/macos/",
-        ])
-        self.assertFalse(train.player_facing("crates/horizon-world/src/lib.rs", "launcher"))
-
-    def test_every_launcher_release_path_runs_the_launcher_checks(self):
-        self.assertLessEqual(set(train.LAUNCHER_RELEASE_PATHS), set(train.LAUNCHER_PATHS))
 
     def test_the_closure_follows_inline_and_workspace_inherited_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -228,45 +188,6 @@ class ReleaseTrainTests(unittest.TestCase):
             self.assertEqual({folder.relative_to(root).as_posix() for folder in path_closure(root / "app")},
                              {"app", "crates/middle", "crates/inherited", "crates/test-only"})
 
-    def test_the_launcher_workflow_runs_for_every_launcher_path(self):
-        workflow = yaml.safe_load((train.ROOT / ".github/workflows/launcher.yml").read_text(encoding="utf-8"))
-        triggers = workflow.get("on", workflow.get(True))
-        self.assertEqual(set(triggers["push"]["paths"]),
-                         {path + "**" for path in train.LAUNCHER_PATHS} | {".github/workflows/launcher.yml"},
-                         "launcher.yml's push paths must be tools/release_train.py's LAUNCHER_PATHS")
-
-    def test_launcher_decision_shell_fails_closed_and_succeeds_normally(self):
-        workflow = (train.ROOT / ".github/workflows/launcher.yml").read_text()
-        step = workflow.split("      - id: decide\n", 1)[1].split("\n  build:", 1)[0]
-        script = textwrap.dedent(step.split("        run: |\n", 1)[1])
-        script = script.replace("${{ steps.mode.outputs.dry_run }}", "true")
-        for status in (23, 0):
-            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
-                root = Path(tmp)
-                (root / "tools").mkdir()
-                # Execute the workflow's real pipeline with a controlled decision subprocess.
-                (root / "tools/release_train.py").write_text(
-                    "import json, os, sys\n"
-                    f"sys.exit({status})\n" if status else
-                    "import json, os\n"
-                    "print(json.dumps({'reason': 'ready', 'tag': 'launcher@0.2.0'}))\n"
-                    "with open(os.environ['GITHUB_OUTPUT'], 'a') as out:\n"
-                    "    out.write('tag=launcher@0.2.0\\n')\n")
-                output = root / "output"
-                output.touch()
-                result = subprocess.run(["bash", "-e", "-c", script], cwd=root, capture_output=True,
-                                        text=True, env={**os.environ, "GITHUB_OUTPUT": str(output),
-                                        "GITHUB_STEP_SUMMARY": str(root / "summary"), "GITHUB_SHA": "head",
-                                        "HEAD_SHA": "head", "FORCE": ""})
-                if status:
-                    self.assertEqual(result.returncode, status, result.stderr)
-                    self.assertEqual(output.read_text(), "")
-                    self.assertFalse((root / "summary").exists())
-                else:
-                    self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertEqual(output.read_text(),
-                                     "tag=launcher@0.2.0\nversion=0.2.0\nrelease=true\nhead=head\n")
-
     def test_player_facing_paths(self):
         exporters = {"mods/horizon/src/test/java/dev/horizonlab/parity/VanillaMobDataExporter.java"}
         self.assertTrue(train.player_facing("crates/horizon-client/src/game.rs", "game"))
@@ -277,11 +198,6 @@ class ReleaseTrainTests(unittest.TestCase):
         self.assertFalse(train.player_facing("crates/horizon-world/examples/probe.rs", "game"))
         self.assertFalse(train.player_facing("crates/horizon-client/README.md", "game"))
         self.assertFalse(train.player_facing("tools/test_food_parity.py", "game"))
-        self.assertFalse(train.player_facing("launcher/src/main.rs", "game"))
-        self.assertTrue(train.player_facing("launcher/src/main.rs", "launcher"))
-        self.assertTrue(train.player_facing("crates/horizon-prepare/src/lib.rs", "launcher"))
-        self.assertFalse(train.player_facing("launcher/links.json", "launcher"))
-        self.assertFalse(train.player_facing("crates/horizon-client/src/game.rs", "launcher"))
 
     def test_the_exporters_are_those_horizon_prepare_names(self):
         found = train.exporters()
@@ -290,7 +206,7 @@ class ReleaseTrainTests(unittest.TestCase):
 
     def test_game_tags_count_up_within_a_day(self):
         today = dt.date(2026, 10, 15)
-        self.assertEqual(train.next_game_tag(["v2026.10.14", "launcher-v0.1.4"], today), "v2026.10.15")
+        self.assertEqual(train.next_game_tag(["v2026.10.14"], today), "v2026.10.15")
         self.assertEqual(train.next_game_tag(["v2026.10.15"], today), "v2026.10.15.01")
         self.assertEqual(train.next_game_tag(["v2026.10.15", "v2026.10.15.01", "v2026.10.15.02"], today), "v2026.10.15.03")
         # Unpadded tags from before the change still count, and the next one sorts after them as text too.
@@ -299,36 +215,25 @@ class ReleaseTrainTests(unittest.TestCase):
         tags = ["v2026.10.15.09", "v2026.10.15.10", "v2026.10.15"]
         self.assertEqual(sorted(tags), sorted(tags, key=train.tag_key))
 
-    def test_launcher_tags_bump_the_patch_or_the_minor(self):
-        tags = ["launcher-v0.1.3", "launcher-v0.1.10", "v2026.10.15", "launcher-v0.1.4"]
-        self.assertEqual(train.next_launcher_tag(tags, minor=False), "launcher-v0.1.11")
-        self.assertEqual(train.next_launcher_tag(tags, minor=True), "launcher-v0.2.0")
-
     def test_0_2_tags_follow_every_tag_from_before(self):
-        order = ["launcher-v0.1.9", "launcher-v0.16.0", "v2026.10.19.15", "v2026.10.21", "v0.2.0-beta.1", "v0.2.0",
+        order = ["v2026.10.19.15", "v2026.10.21", "v0.2.0-beta.1", "v0.2.0",
                  "v0.2.1-beta", "v0.2.1-beta.1", "v0.2.1-beta.2", "v0.2.1-beta.11", "v0.2.1-rc.1", "v0.2.1", "v0.2.9",
                  "v0.2.10", "v0.3.0-1", "v0.3.0-alpha", "v0.3.0", "v1.0.0"]
         self.assertEqual(sorted(reversed(order), key=train.tag_key), order)
-        self.assertGreater(train.tag_key("launcher@0.2.0"), train.tag_key("launcher-v0.16.0"))
         self.assertEqual(train.tag_key("v2026.10.19"), train.tag_key("v2026.10.19.0"))
         for tag in ["v0.2.0", "v0.3.0-rc.1", "v2026.10.21", "v2026.10.19.15"]:
             self.assertTrue(train.is_game_tag(tag), tag)
-        for tag in ["launcher@0.2.0", "launcher-v0.2.0", "v0.2", "vnext", "v2026.10.21-x", "v0.2.0-"]:
+        for tag in ["v0.2", "vnext", "v2026.10.21-x", "v0.2.0-"]:
             self.assertFalse(train.is_game_tag(tag), tag)
-        self.assertTrue(train.is_launcher_tag("launcher@0.2.0") and train.is_launcher_tag("launcher-v0.16.0"))
-        self.assertFalse(train.is_launcher_tag("v0.2.0"))
 
     def test_tags_on_a_release_line(self):
         line = (0, 2)
-        before = ["v2026.10.19.15", "v2026.10.21", "launcher-v0.16.0", "launcher-v0.2.0", "launcher-v0.2.1"]
+        before = ["v2026.10.19.15", "v2026.10.21"]
         today = dt.date(2026, 10, 23)
         self.assertEqual(train.next_game_tag(before, today, line), "v0.2.0")
-        self.assertEqual(train.next_launcher_tag(before, minor=True, line=line), "launcher@0.2.0")
         self.assertTrue(train.first_on_line(before, "v", line))
-        after = before + ["v0.2.0", "v0.2.1", "launcher@0.2.0", "v0.3.0-rc.1"]
+        after = before + ["v0.2.0", "v0.2.1", "v0.3.0-rc.1"]
         self.assertEqual(train.next_game_tag(after, today, line), "v0.2.2")
-        # A feature doesn't move the line; only .github/release-line.txt does.
-        self.assertEqual(train.next_launcher_tag(after, minor=True, line=line), "launcher@0.2.1")
         self.assertFalse(train.first_on_line(after, "v", line))
         self.assertTrue(train.first_on_line(after, "v", (0, 3)), "a pre-release isn't the line's first release")
         self.assertEqual(train.next_game_tag(after, today, (0, 3)), "v0.3.0")
@@ -336,7 +241,6 @@ class ReleaseTrainTests(unittest.TestCase):
             train.next_game_tag(after + ["v0.3.0"], today, line)
         # Without a line, the tags from before 0.2, whatever 0.2 tags exist.
         self.assertEqual(train.next_game_tag(before, today), "v2026.10.23")
-        self.assertEqual(train.next_launcher_tag(after, minor=False), "launcher-v0.16.1")
 
     def test_the_release_line_file(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -361,9 +265,7 @@ class ReleaseTrainTests(unittest.TestCase):
         body = body.removeprefix(train.PLAYERS + "\n\n")
         self.assertTrue(body.startswith("Horizon is numbered from now on: this is Horizon 0.2.0, the release after 2026.10.21."))
         self.assertIn("`horizon-server update --version v0.2.0`", body)
-        title, body = train.notes("launcher", "launcher@0.2.0", [], [], previous="launcher-v0.17.0")
-        self.assertEqual(title, "Horizon launcher 0.2.0")
-        self.assertIn("the release after launcher 0.17.0", body)
+        title, body = train.notes("game", "v0.2.0", [], [], previous="v2026.10.21")
         self.assertIn("Rebuilt from the latest main.", body)
         body = train.notes("game", "v0.3.0", [pr(1)], [], previous="v0.2.14")[1]
         self.assertTrue(body.startswith(train.PLAYERS + "\n\nThe first release of Horizon 0.3."))
@@ -390,10 +292,6 @@ class ReleaseTrainTests(unittest.TestCase):
         self.assertFalse(decide([pr(1, labels=["release-now", "skip-release"])]))
         self.assertFalse(decide([pr(1)], paused=True))
         self.assertTrue(decide([], paused=True, force=True))
-        launcher = lambda prs: train.decision("launcher", prs, NOW)[0]
-        self.assertFalse(launcher([pr(1, merged=50 * minute)]), "a lone launcher fix waits for others a while")
-        self.assertTrue(launcher([pr(1, merged=hour)]), "but only an hour")
-        self.assertFalse(launcher(five(2 * minute)), "a launcher batch still merging waits too")
 
     def test_an_open_release_blocker_holds_every_release_even_forced(self):
         release, why = train.decision("game", [pr(1, labels=["release-now"])], NOW, blockers=[7, 9])
@@ -438,16 +336,16 @@ class ReleaseTrainTests(unittest.TestCase):
 
 
     def test_a_release_is_published_only_after_its_smoke_test_and_with_no_blocker(self):
-        drew = {"error": None, "frames": 12710, "chunks": 81, "meshed_sections": 550, "player": [160.5, 71.0, 156.5]}
-        self.assertIsNone(train.gate(drew, []))
-        self.assertEqual(train.gate(drew, [4]), "release-blocker #4 is open")
+        started = {"error": None, "started": True}
+        self.assertIsNone(train.gate(started, []))
+        self.assertEqual(train.gate(started, [4]), "release-blocker #4 is open")
         self.assertEqual(train.gate(None, []), "no smoke-test.json: the release smoke test did not run")
         self.assertEqual(train.gate(None, [4]),
                          "no smoke-test.json: the release smoke test did not run; release-blocker #4 is open")
-        self.assertEqual(train.smoke_problem({**drew, "error": "device lost"}), "the smoke run failed: device lost")
-        for broken in ({**drew, "frames": 1499}, {**drew, "chunks": 0}, {**drew, "meshed_sections": 0},
-                       {**drew, "player": None}, {}):
-            self.assertEqual(train.smoke_problem(broken), "the smoke run did not draw a world", broken)
+        self.assertEqual(train.smoke_problem({"error": "device lost", "started": False}),
+                         "the smoke run failed: device lost")
+        self.assertEqual(train.smoke_problem({"error": None, "started": False}),
+                         "the smoke run did not start the dedicated server")
 
     def test_notes_never_call_a_release_alpha_or_beta(self):
         _, body = train.notes("game", "v0.2.12", [pr(1)], [])
@@ -489,22 +387,13 @@ class ReleaseTrainTests(unittest.TestCase):
         self.assertEqual(train.summary([], [pr(n, f"Change number {n} with a fairly long title") for n in range(4)]),
                          "Change number 3 with a fairly long title and 3 more fixes")
 
-    def test_launcher_notes(self):
-        title, body = train.notes("launcher", "launcher-v0.2.0", [pr(3, "Launcher: say the self-update succeeded")], [])
-        self.assertEqual(title, "Horizon launcher 0.2.0")
-        self.assertIn("### Fixed\n- Launcher: say the self-update succeeded (#3)", body)
-        self.assertNotIn("Known issues", body)
-        self.assertNotIn(train.PLAYERS, body)
-        self.assertNotIn(train.PLAYERS_FOOTER, body)
-        self.assertIn("Your launcher updates itself.", body)
-
-    def test_a_game_release_opens_with_the_way_to_the_launcher(self):
-        # GitHub's latest is a game release: whoever lands on it is sent to the launcher first (#1647).
+    def test_a_game_release_opens_with_the_players_banner(self):
+        # GitHub's latest is a game release: whoever lands on it reads the players banner first (#1647).
         _, body = train.notes("game", "v0.2.50", [pr(1)], ["- Sound cuts out after an hour."])
         self.assertTrue(body.startswith(train.PLAYERS + "\n\n"))
         self.assertTrue(body.endswith("\n\n" + train.PLAYERS_FOOTER + "\n\n---\n" + train.DISCLAIMER + "\n"), body)
         self.assertNotIn("\n", train.PLAYERS, "one line: one HTML block, which ends at the blank line after it")
-        self.assertEqual(body.count("playhorizon.dev"), 2, "said at the top and the bottom")
+        self.assertEqual(body.count(train.PLAYERS_FOOTER), 2, "said at the top and the bottom")
         _, body = train.notes("game", "v0.2.51", [], [])
         self.assertTrue(body.startswith(train.PLAYERS + "\n\nRebuilt from the latest main."))
 

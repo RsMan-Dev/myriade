@@ -126,7 +126,6 @@ pub(super) struct Parked {
     pub(super) portal_sections: horizon_client::portal_sections::PortalSections,
     paintings: horizon_client::join_seq::JoinList<horizon_client::entities::Painting>,
     item_frames: horizon_client::join_seq::JoinList<horizon_client::entities::ItemFrame>,
-    jukebox_sounds: HashMap<(i32, i32, i32), u64>,
     hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
     pub(super) ecs: horizon_client::ecs_bridge::EcsLevel,
     persist: persist::EntityMemory,
@@ -145,7 +144,7 @@ pub(super) struct Parked {
     sculk: SculkState,
     creaking: CreakingState,
     /// Natural spawning's candidate cache: each level keeps its own players' squares.
-    spawn_scratch: super::natural_spawning::SpawnScratch,
+    spawn_scratch: super::spawn_level::SpawnScratch,
     /// Server ticks since a player was last in the level.
     idle: u32,
     /// The level's own world border (`ServerLevel.getWorldBorder`), and what its players were
@@ -343,7 +342,7 @@ impl Game<'_> {
         let table = self.resident_entities.table.get_mut();
         table.reset();
         let journal = table.producer();
-        self.bind_resident_owners(&journal, self.dim.key(), self.is_logical_server());
+        self.bind_resident_owners(&journal, self.dim.key(), true);
         self.bind_specialized_resident_owners(&journal);
         for (dim, parked) in &mut self.levels.parked {
             parked.bind_resident_owners(&journal, dim.key(), true);
@@ -690,7 +689,6 @@ impl Game<'_> {
             portal_sections: Default::default(),
             paintings: Default::default(),
             item_frames: Default::default(),
-            jukebox_sounds: HashMap::new(),
             hoppers: HashMap::new(),
             ecs: self.new_ecs_level(dim, seed),
             persist: Default::default(),
@@ -816,7 +814,6 @@ impl Game<'_> {
         swap(&mut self.level_events, &mut p.level_events);
         swap(&mut self.portals.entities, &mut p.portal_states);
         swap(&mut self.portals.sections, &mut p.portal_sections);
-        swap(&mut self.jukebox_sounds, &mut p.jukebox_sounds);
         swap(&mut self.hoppers, &mut p.hoppers);
         swap(&mut self.ecs, &mut p.ecs);
         swap(&mut self.persist, &mut p.persist);
@@ -992,25 +989,19 @@ impl Game<'_> {
         } else {
             None
         };
-        let server = self.serving.is_some() || self.options.dedicated.is_some();
-        if server {
-            self.run_requested_saves();
-        }
+        self.run_requested_saves();
         // A config edited while the server is paused (empty) still reloads.
         // The parts outside every level get spans of their own, so that a slow
         // tick's line and `horizon-report` say when a mod's tick hook took it.
-        if server {
+        {
             let _span = horizon_client::spans::guard("mod_configs_poll");
             self.native_configs_poll();
         }
-        if let Some(running) = running
-            && server
-        {
+        if let Some(running) = running {
             let _span = horizon_client::spans::guard("mods_server_tick_start");
             self.native_lifecycle_server_tick_start(running);
         }
-        let observe_level =
-            running.is_some() && (self.serving.is_some() || self.options.dedicated.is_some());
+        let observe_level = running.is_some();
         let dims = self.levels_to_tick();
         let order = dims.clone();
         let n = dims.len();
@@ -1049,7 +1040,7 @@ impl Game<'_> {
             horizon_client::spans::time("update_world", || self.update_world());
             let tick_span = horizon_client::spans::guard("level_tick");
             result = horizon_client::block_contact::in_level(
-                (self.serving.is_some() || self.options.dedicated.is_some()).then_some(dim.id()),
+                Some(dim.id()),
                 || {
                     if paused {
                         self.tick_lan(true);
@@ -1058,8 +1049,6 @@ impl Game<'_> {
                         self.tick()
                     } else {
                         let running = running.unwrap_or_else(|| self.clock.world_runs());
-                        // ClientLevel.tick: the sky flash fades in a frozen level too.
-                        self.tick_weather_effects();
                         self.tick_world(running)
                     }
                 },
@@ -1181,20 +1170,11 @@ impl Game<'_> {
         // Only a server ticks its own world from here: its players are guests, swapped in for
         // their turns (`as_guest`), and the window's player is a client of it.
         self.ticks += 1;
-        let window = !self.is_logical_server();
-        if window {
-            self.tick_enchanting_book();
-        }
         // `/tick freeze` stops the world but not the player.
         let running = match self.level_pass.running {
             Some(running) => running,
             None => self.clock.world_runs(),
         };
-        if window {
-            // GameRenderer.tick: a wither's bar darkens the world, then fades;
-            // the activated item counts down.
-            self.tick_item_activation();
-        }
         span("mods_inventory_ticks", || self.native_inventory_ticks());
         if running {
             // `MinecraftServer.tickChildren`: `commandFunctions` runs before
@@ -1223,22 +1203,14 @@ impl Game<'_> {
             // stepping the world (and its mobs) through the fade.
             self.world.weather.settle_levels();
         }
-        // ClientLevel.tick: the sky flash fades in a frozen level too.
-        self.tick_weather_effects();
         let _ = span("player_autosaves", || self.finish_player_autosaves(false));
         // MinecraftServer.tickServer's countdown, then autoSave: three
         // hundred seconds of ticks at the rate the server runs at now.
         self.ticks_until_autosave -= 1;
         self.autosaving = self.ticks_until_autosave <= 0;
-        if let Some(serving) = &self.serving {
-            serving.set_saving(self.autosaving);
-        }
         if self.autosaving {
             span("autosave", || self.save_game_with(false))?;
             self.ticks_until_autosave = self.next_autosave_interval();
-            if let Some(serving) = &self.serving {
-                serving.set_saving(false);
-            }
         }
         if running {
             self.advance_clock();
@@ -1546,13 +1518,13 @@ mod tests {
             &root,
             &settings,
             Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         // The game keeps its resources for the whole test.
         let resources: &'static _ = Box::leak(Box::new(loaded.resources));
         let mut game = Game::new(
@@ -1560,7 +1532,6 @@ mod tests {
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -1676,20 +1647,19 @@ mod tests {
             &root,
             &settings,
             Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         options.spikes = Some(0.0);
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -1739,7 +1709,7 @@ mod tests {
             root,
             &settings,
             Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -1748,15 +1718,12 @@ mod tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.to_path_buf();
         options.game_dir = Some(home.to_path_buf());
-        // A fixed name: no generated horizon-player.txt in the working directory.
-        options.player_name = Some("H260".into());
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();

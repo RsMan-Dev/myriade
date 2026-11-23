@@ -32,20 +32,19 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
         &root,
         &settings,
         std::time::Instant::now(),
-        execution_role::ExecutionRole::IntegratedServer,
+        execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::DedicatedServer;
     let res = resources.insert(loaded.resources);
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();
@@ -59,6 +58,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
             .unwrap();
     }
     assert!(game.run_command("fill 0 99 0 31 99 15 stone"));
+    // TODO(phase 2): assertion sur l'hôte : le test lance lan_host avec un hôte posé, une épée hôte et une épée de l'invité 2 (loot_kill_guest_tests.rs:61)
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 6.5)).unwrap());
     let net = NetConfig {
         announce: false,
@@ -82,7 +82,6 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
             allow_flight: false,
             seed: 0,
             max_players: 2,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         },

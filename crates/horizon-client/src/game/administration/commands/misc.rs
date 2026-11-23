@@ -134,9 +134,7 @@ impl Game<'_> {
             }
             // MinecraftServer.sendSystemMessage: the server's log, unless the
             // console's captured reply below is what logs it (`console_reply`).
-            if self.options.dedicated.is_some()
-                && (self.lan_acting.is_some() || self.chat_capture.is_none())
-            {
+            if self.lan_acting.is_some() || self.chat_capture.is_none() {
                 super::super::dedicated::log("INFO", &format!("System chat: {}", line.plain()));
             }
             self.system_message(line);

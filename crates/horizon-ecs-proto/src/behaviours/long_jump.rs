@@ -130,10 +130,14 @@ fn sample(r: &mut Rng, (lo, hi): (i32, i32)) -> i32 {
 }
 
 /// The ticks left of `LONG_JUMP_COOLDOWN` (the memory `minecraft:long_jump_cooling_down`), None when it is over.
-pub(crate) fn cooldown_left(w: &World, e: Entity) -> Option<u64> {
+pub fn cooldown_left(w: &World, e: Entity) -> Option<u64> {
     let st = w.get::<LongJumpState>(e)?;
     let now = now_of(w, e);
     (st.ready_at > now).then(|| st.ready_at - now)
+}
+/// `initMemories` of the frog and the goat: the cooldown drawn at the spawn, in ticks (a `Store::Call` of the species draws).
+pub(crate) fn spawn_cooldown(w: &mut World, e: Entity, v: u32) {
+    set_cooldown_left(w, e, Some(u64::from(v)));
 }
 /// Sets the ticks left of the cooldown (`None`: over), as the memory read of a save gives them.
 pub(crate) fn set_cooldown_left(w: &mut World, e: Entity, left: Option<u64>) {

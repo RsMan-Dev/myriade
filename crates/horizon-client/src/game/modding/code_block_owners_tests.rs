@@ -3,6 +3,7 @@
 use crate::game::{
     Game,
     native_entity_refs::tests::{run_fresh_cases, with_game_at},
+    native_guest_turn_tests::with_guests_at,
 };
 use horizon_core::position::BlockPos;
 use mod_api::{BlockPart, Flow, Hooks, RandomTickEvent, Registrar};
@@ -70,23 +71,33 @@ fn an_off_code_mods_blocks_keep_still_until_it_is_on_again() {
         .unwrap()
         .prepared()
         .to_path_buf();
-    with_game_at(root, |game| {
-        game.options.dedicated = Some(Vec::new());
-        // A block-ticking chunk: lit, its neighbours loaded, with its tick list.
-        for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
-            let mut chunk = horizon_client::chunk::Chunk::empty(x, z);
-            chunk.lit = true;
-            game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
-        }
-        game.block_ticks
-            .add_empty_chunk(horizon_core::position::ChunkPos::new(0, 0))
-            .unwrap();
-        match std::env::var(CHILD).unwrap().as_str() {
-            "ticks" => ticks(game),
-            "neighbour" => neighbour(game),
-            _ => furnace(game),
-        }
-    });
+    if std::env::var(CHILD).unwrap() == "furnace" {
+        with_guests_at(root, |game| {
+            ticking_chunk(game);
+            game.as_guest(12, |game| furnace(game)).unwrap();
+        });
+    } else {
+        with_game_at(root, |game| {
+            ticking_chunk(game);
+            match std::env::var(CHILD).unwrap().as_str() {
+                "ticks" => ticks(game),
+                "neighbour" => neighbour(game),
+                other => panic!("unknown case {other}"),
+            }
+        });
+    }
+}
+
+/// A block-ticking chunk: lit, its neighbours loaded, with its tick list.
+fn ticking_chunk(game: &mut Game<'_>) {
+    for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
+        let mut chunk = horizon_client::chunk::Chunk::empty(x, z);
+        chunk.lit = true;
+        game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
+    }
+    game.block_ticks
+        .add_empty_chunk(horizon_core::position::ChunkPos::new(0, 0))
+        .unwrap();
 }
 
 /// A ripe cane's random tick and a loose cane's scheduled tick.
@@ -185,13 +196,7 @@ fn furnace(game: &mut Game<'_>) {
             recipes_used: std::collections::HashMap::new(),
         }),
     );
-    game.player = Some(
-        horizon_client::motion::PlayerMotion::new(
-            game.motion,
-            horizon_core::geometry::Vec3::new(8.5, 65.0, 8.5),
-        )
-        .unwrap(),
-    );
+    game.player.as_mut().unwrap().position = horizon_core::geometry::Vec3::new(8.5, 65.0, 8.5);
     game.update_chunk_tickets();
     assert!(game.block_ticking_area()(8, 8), "the furnace's chunk ticks");
     let lit = |game: &Game<'_>| match game.world.block_entities.get(&pos) {

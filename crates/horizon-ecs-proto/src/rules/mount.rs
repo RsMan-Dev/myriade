@@ -38,7 +38,8 @@ pub fn dash_push(vel: Vec3, yaw: f32, push: f64, lift: f64, lift_scale: f64, spe
 }
 /// `AbstractHorse.modifyTemper`'s result: the amount added, held between 0 and the highest temper.
 pub fn temper_after(temper: i32, amount: i32, max: i32) -> i32 {
-    (temper + amount).clamp(0, max)
+    // `AbstractHorse.modifyTemper`: a Java int, so the sum wraps before the clamp.
+    temper.wrapping_add(amount).clamp(0, max)
 }
 /// The squared distance between two points.
 pub fn dist_sq(a: Vec3, b: Vec3) -> f64 {

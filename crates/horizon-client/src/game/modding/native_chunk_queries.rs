@@ -60,7 +60,7 @@ mod tests {
             assert_eq!(active.is_slime_chunk(game), Some(true));
             assert!(!game.world.chunks.contains_key(&far));
             game.native_lifecycle
-                .begin_open(Authority::IntegratedServer);
+                .begin_open(Authority::DedicatedServer);
             assert_eq!(ChunkRef::new(level, [0, 0]).is_slime_chunk(game), None);
             assert_eq!(active.is_slime_chunk(game), None);
         });

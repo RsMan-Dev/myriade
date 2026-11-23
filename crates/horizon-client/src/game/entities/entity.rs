@@ -920,6 +920,7 @@ impl Entity for Mob {
     fn selector_target(&self) -> Option<Target> {
         (!self.removed && self.alive()).then_some(Target::Mob(self.id))
     }
+    // TODO(phase 1 Mob): pas d'accès ECS ici, équivalent level_read::bounds(id) à brancher
     fn bounds(&self) -> Aabb {
         Mob::bounds(self)
     }

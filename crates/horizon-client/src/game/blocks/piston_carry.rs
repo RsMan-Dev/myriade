@@ -27,7 +27,7 @@ impl GameLevel<'_> {
         destroy: &[BlockPos],
     ) -> bool {
         let mut canceled = self.world.carrier_fences.holds_move(push, destroy);
-        if !canceled && self.native_authoritative {
+        if !canceled {
             let step = direction.normal();
             self.native_piston_pre(mod_api::__private::PistonPreCall {
                 dimension: self.dimension,
@@ -51,10 +51,8 @@ impl GameLevel<'_> {
         push: &[BlockPos],
         destroy: &[BlockPos],
     ) {
-        if self.native_authoritative {
-            let step = direction.normal();
-            self.native_piston_post(self.dimension, piston, step, extending, push, destroy);
-        }
+        let step = direction.normal();
+        self.native_piston_post(self.dimension, piston, step, extending, push, destroy);
     }
     /// `piston_carries_block_entity` for the block `state` at `pos`: what
     /// its part answers, or None.
@@ -153,7 +151,7 @@ impl GameLevel<'_> {
         self.spill
             .piston_positions
             .push(super::piston_carry_state::PositionChange::Land { at: key });
-        if self.native_authoritative && self.world.block_entities.attachments(key).is_some() {
+        if self.world.block_entities.attachments(key).is_some() {
             self.world.attachment_landings.insert(
                 horizon_mod_runtime::attachments::Holder::BlockEntity([pos.x, pos.y, pos.z]),
             );

@@ -5,8 +5,14 @@
 //! look at the player (9, `period: 1`: the interact look of probability 1) and at other creatures within 8 blocks (10). Its lamas are held
 //! on its lead (`leash::attach(llama, Holder::Entity(trader))`). Not done: the item in the hand, the dimension with a fixed time (no model).
 use super::Def;
-use crate::behaviours::{avoid_entity, drink_item, float, look_at_player, move_towards_restriction, panic, stroll, trade_session, wander_to_position, Entry};
+use crate::behaviours::{ambient_sound, avoid_entity, drink_item, float, look_at_player, move_towards_restriction, panic, stroll, trade_session, wander_to_position, Entry};
 
+/// `WanderingTrader.getAmbientSound`: `wandering_trader.trade` while trading, `wandering_trader.ambient` otherwise (no sleep test); the delay is
+/// `Mob.baseTick`'s, with `Mob.getAmbientSoundInterval` (80).
+static AMBIENT: ambient_sound::Params = ambient_sound::Params { interval: Some(80), choose: Some(trader_sound), ..ambient_sound::Params::DEFAULT };
+fn trader_sound(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if w.get::<trade_session::Trading>(e).is_some() { "entity.wandering_trader.trade" } else { "entity.wandering_trader.ambient" }
+}
 pub static DEF: Def = Def {
     name: "minecraft:wandering_trader",
     goals: &[
@@ -27,7 +33,9 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 8, &stroll::Params { speed: 0.35, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::INTERACT, 9, &look_at_player::Params { range: 3.0, period: 1, ..look_at_player::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 8.0, species: look_at_player::Params::ALL, ..look_at_player::Params::DEFAULT }),
+        Entry::new(&ambient_sound::MODULE, 14, &AMBIENT),
     ],
     rules: &[crate::rules::RuleEntry::new(&crate::leash::NEVER, &())],
+    leads_llamas: true,
     ..Def::EMPTY
 };

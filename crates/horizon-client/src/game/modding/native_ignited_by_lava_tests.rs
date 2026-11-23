@@ -32,7 +32,6 @@ fn a_block_part_decides_whether_lava_lights_it() {
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let planks = registry.default_state("minecraft:oak_planks").unwrap();

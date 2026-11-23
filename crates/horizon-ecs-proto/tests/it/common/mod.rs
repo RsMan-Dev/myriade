@@ -1,144 +1,14 @@
-//! Shared by the tests that compare the ecs with a real `Mob` in the same scenario (`HORIZON_TEST_RESOURCES` set).
+//! Helpers of the ECS tests: the herd world (`Herd`), its players and creatures, and the vanilla registries the tests read.
 #![allow(dead_code)]
 use bevy_ecs::prelude::*;
-use horizon_client_lib::{
-    health::TestLevel,
-    mobs::{self, Damage, DamageKind, Mob, MobEvent, MobWorld, PendingPushes, PlayerView, Seen},
-};
+use horizon_client_lib::{items::Items, merchant::Trades, mobs::{MobWorld, PlayerView}};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_ecs_proto::{
     cow::*,
     goals::*,
 };
-use std::sync::Arc;
+use horizon_items::enchant::Enchantments;
 
-pub struct MobRef {
-    pub w: &'static MobWorld<'static>,
-    pub mobs: Vec<Mob>,
-    pub tl: TestLevel,
-    pub pushes: PendingPushes,
-    pub t: i64,
-    pub kind: Arc<mobs::MobType>,
-    pub events: Vec<MobEvent>,
-    pub level: Level,
-    applied: usize,
-    /// The path searches of each mob (by the counter around its own tick).
-    pub searches: Vec<u64>,
-}
-impl MobRef {
-    pub fn new(half: i32, patches: bool) -> Self {
-        let (level, _s, kind) = build_level(half, patches);
-        Self { w: level.mw.0, mobs: Vec::new(), tl: TestLevel::new(7), pushes: PendingPushes::default(), t: 0, kind, events: Vec::new(), level, applied: 0, searches: Vec::new() }
-    }
-    pub fn add(&mut self, at: Vec3) -> usize {
-        let mut m = Mob::new(self.mobs.len() as u32 + 1, self.kind.clone(), at, 0.0);
-        m.persistent = true;
-        m.ai.no_action_time = 100;
-        self.mobs.push(m);
-        self.searches.push(0);
-        self.mobs.len() - 1
-    }
-    /// A mob with the id given: the brain's gates shuffle with a random seeded by the id, and the first draws of Java's generator
-    /// are correlated for neighbouring seeds (sequential ids make the golems choose alike); vanilla seeds from the level random.
-    pub fn add_id(&mut self, at: Vec3, id: u32) -> usize {
-        let mut m = Mob::new(id, self.kind.clone(), at, 0.0);
-        m.persistent = true;
-        m.ai.no_action_time = 100;
-        self.mobs.push(m);
-        self.searches.push(0);
-        self.mobs.len() - 1
-    }
-    /// A mob of another type (the process's species is `self.kind`).
-    pub fn add_kind(&mut self, at: Vec3, kind: Arc<mobs::MobType>) -> usize {
-        let mut m = Mob::new(self.mobs.len() as u32 + 1, kind, at, 0.0);
-        m.persistent = true;
-        m.ai.no_action_time = 100;
-        scope(&mut m);
-        self.mobs.push(m);
-        self.searches.push(0);
-        self.mobs.len() - 1
-    }
-    /// `add_kind` with the id given (the brain's random is seeded by it): the same scene under another draw.
-    pub fn add_kind_id(&mut self, at: Vec3, kind: Arc<mobs::MobType>, id: u32) -> usize {
-        let mut m = Mob::new(id, kind, at, 0.0);
-        m.persistent = true;
-        m.ai.no_action_time = 100;
-        scope(&mut m);
-        self.mobs.push(m);
-        self.searches.push(0);
-        self.mobs.len() - 1
-    }
-    pub fn names(&self, i: usize) -> Vec<&'static str> {
-        self.mobs[i].ai.goals.running_names()
-    }
-    /// A blow of a player standing at `from`: damage and knockback away from it (`Herd::hit` on the ecs side).
-    pub fn hit(&mut self, i: usize, amount: f32, from: [f64; 3]) {
-        let mut lvl = self.tl.level();
-        self.mobs[i].damage(&mut lvl, amount, Damage::player(from));
-    }
-    /// A blow of the mob `by` (an index in `mobs`) on `i`.
-    pub fn hit_by_mob(&mut self, i: usize, amount: f32, by: usize) {
-        let (id, from) = (self.mobs[by].id, [self.mobs[by].position.x, self.mobs[by].position.y, self.mobs[by].position.z]);
-        let mut lvl = self.tl.level();
-        self.mobs[i].damage(&mut lvl, amount, Damage::mob(id, from));
-    }
-    pub fn step(&mut self, player: Option<&PlayerView>) {
-        self.step_where(player, |_| true);
-    }
-    /// A tick where only the mobs `ticks` accepts are ticked (the others stay in the snapshot, as in the game's pass over a
-    /// chunk that does not tick).
-    pub fn step_where(&mut self, player: Option<&PlayerView>, ticks: impl Fn(&Mob) -> bool) {
-        self.t += 1;
-        let items = self.w.items.expect("items");
-        let mut snapshot: Vec<Seen> = self.mobs.iter().map(|m| m.seen(None, items)).collect();
-        let mut grid = mobs::seen_grid::SeenGrid::new(snapshot.iter().map(|s| s.bounds));
-        let mut lvl = self.tl.level();
-        for slot in 0..self.mobs.len() {
-            if !ticks(&self.mobs[slot]) {
-                continue;
-            }
-            mobs::apply_mob_pushes(&mut self.mobs[slot], &mut self.pushes);
-            let from = self.events.len();
-            let view = MobWorld {
-                others: &snapshot,
-                others_grid: Some(&grid),
-                others_solid: Some(&[]),
-                nearest_player: player.map(|p| p.position),
-                player: player.cloned(),
-                game_time: self.t,
-                ..self.w.clone()
-            };
-            let before = horizon_client_lib::mobs::nav::FINDER_CALLS.load(std::sync::atomic::Ordering::Relaxed);
-            let kept = mobs::ai::tick(&mut self.mobs[slot], &view, &mut lvl, &mut self.events);
-            self.searches[slot] += horizon_client_lib::mobs::nav::FINDER_CALLS.load(std::sync::atomic::Ordering::Relaxed) - before;
-            mobs::take_mob_pushes(&mut self.events, from, &mut self.pushes);
-            let mut s = self.mobs[slot].seen(None, items);
-            s.alive &= kept;
-            s.removed |= !kept;
-            grid.update(slot, s.bounds);
-            snapshot[slot] = s;
-        }
-        self.apply_block_events();
-    }
-}
-/// The goals of a skeleton the ECS has (the bow, stroll, the two looks; hurt-by and the nearest player), with the bow in
-/// hand: `RestrictSun` (its paths avoid the sun), `FleeSun` and `AvoidEntity` are not ported, and a path that avoids the
-/// sun is not the path of the ECS (the cause of the stroll control's gap for the skeleton).
-pub fn scope(m: &mut Mob) {
-    use horizon_client_lib::mobs::goals::*;
-    if m.species() != horizon_client_lib::mobs::Species::Skeleton {
-        return;
-    }
-    m.extra.set_main_hand(Some("minecraft:bow".into()));
-    m.ai.goals.clear();
-    m.ai.targets.clear();
-    m.ai.goals.add(4, horizon_client_lib::mobs::undead::SkeletonWeapon::new(20, 40));
-    m.ai.goals.add(5, Stroll::avoiding_water(1.0));
-    m.ai.goals.add(6, LookAtPlayer::new(8.0));
-    m.ai.goals.add(6, RandomLookAround::default());
-    m.ai.targets.add(1, HurtByTarget::new());
-    m.ai.targets.add(2, NearestTarget::player(true));
-}
 pub fn player_view(at: Vec3, item: Option<&str>) -> PlayerView {
     PlayerView {
         position: at,
@@ -255,80 +125,9 @@ pub fn tick_pinned(h: &mut Herd, e: Entity, at: &Pin) {
 pub fn health(h: &Herd, e: Entity) -> f32 {
     h.world.get::<Health>(e).map_or(0.0, |x| x.0)
 }
-pub fn mob_health(m: &Mob) -> f32 {
-    if m.health <= 0.0 || m.removed { 0.0 } else { m.health }
-}
 
-/// A cow put in a cactus, in fire, in lava: its health at the ticks 40, 140 and 340, with the cow at rest (the
-/// resting vertical velocity) and fresh from its spawn (velocity zero: it is in the air for its first tick).
-
-impl MobRef {
-    /// Sets a block of the `Mob` world (the leaked world of the level: nothing else reads it meanwhile).
-    pub fn set_block(&self, x: i32, y: i32, z: i32, name: &str) {
-        let Some(state) = self.w.registry.default_state(name) else { return };
-        // SAFETY: the test thread owns the world while it steps; no reference to its blocks is alive.
-        unsafe {
-            let world = &mut *self.level.blocks.0;
-            let _ = world.set(x, y, z, state);
-            world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
-        }
-    }
-    /// A block with properties over its default state (a bed's head, an open door).
-    pub fn set_block_props(&self, x: i32, y: i32, z: i32, name: &str, props: &[(&str, &str)]) {
-        let Some(state) = horizon_ecs_proto::blocks::resolve(self.w, name, props) else { return };
-        // SAFETY: as in `set_block`.
-        unsafe {
-            let world = &mut *self.level.blocks.0;
-            let _ = world.set(x, y, z, state);
-            world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
-        }
-    }
-    /// A property of the `Mob` world's block at (x, y, z) (`open` of a door, `type` of a chest), as the golems read it.
-    pub fn prop(&self, x: i32, y: i32, z: i32, key: &str) -> Option<String> {
-        horizon_ecs_proto::blocks::property(self.w, [x, y, z], key)
-    }
-    /// Applies to the `Mob` world the block changes the mobs asked for since the last call.
-    pub fn apply_block_events(&mut self) {
-        let fresh: Vec<(i32, i32, i32, &'static str)> = self.events[self.applied..]
-            .iter()
-            .filter_map(|e| match e {
-                MobEvent::SetBlockName { pos, name, .. } => Some((pos[0], pos[1], pos[2], *name)),
-                MobEvent::BreakBlock { pos, .. } => Some((pos[0], pos[1], pos[2], "minecraft:air")),
-                _ => None,
-            })
-            .collect();
-        // The doors the mobs opened or closed (`MobEvent::SetDoorOpen`, which the game's world applies): both halves take the `open` property.
-        let doors: Vec<([i32; 3], bool)> = self.events[self.applied..]
-            .iter()
-            .filter_map(|e| match e {
-                MobEvent::SetDoorOpen { pos, open } => Some((*pos, *open)),
-                _ => None,
-            })
-            .collect();
-        self.applied = self.events.len();
-        for (x, y, z, n) in fresh {
-            self.set_block(x, y, z, n);
-        }
-        for (p, open) in doors {
-            for y in [p[1] - 1, p[1], p[1] + 1] {
-                let name = self.w.block_name(p[0], y, p[2]).to_string();
-                if !name.ends_with("_door") {
-                    continue;
-                }
-                let Some(state) = self.w.registry.state(self.w.world.block(p[0], y, p[2])) else { continue };
-                let mut props: Vec<(String, String)> = state.properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-                for kv in props.iter_mut().filter(|kv| kv.0 == "open") {
-                    kv.1 = open.to_string();
-                }
-                let refs: Vec<(&str, &str)> = props.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-                self.set_block_props(p[0], y, p[2], &name, &refs);
-            }
-        }
-    }
-}
-
-/// A chest in the block entities of a world (`MobRef::level`, or `*h.world.resource::<Level>()`) with these slots: the block entity the
-/// golems read. The block itself is placed by `set_block`.
+/// A chest in the block entities of a world (`*h.world.resource::<Level>()`) with these slots: the block entity the
+/// golems read. The block itself is placed by `Herd::set_block`.
 pub fn set_chest(level: Level, x: i32, y: i32, z: i32, slots: Vec<Option<horizon_client_lib::items::ItemStack>>) {
     // SAFETY: the test thread owns the world between two steps; no reference to its block entities is alive.
     unsafe {
@@ -336,45 +135,14 @@ pub fn set_chest(level: Level, x: i32, y: i32, z: i32, slots: Vec<Option<horizon
         world.block_entities.insert((x, y, z), horizon_client_render::chunk::block_entity::BlockEntity::Chest(slots));
     }
 }
-pub fn flat_pair() -> (MobRef, Herd) {
-    (MobRef::new(20, false), Herd::new_awake(0, 6.0, true, false, 3))
-}
 pub fn xz(a: Vec3, b: Vec3) -> f64 {
     ((a.x - b.x).powi(2) + (a.z - b.z).powi(2)).sqrt()
 }
 pub fn mean(v: &[f64]) -> f64 {
     v.iter().sum::<f64>() / v.len().max(1) as f64
 }
-
-impl MobRef {
-    /// Grows the crops a `Mob` villager worked on since `seen` (`MobEvent::Bonemeal`: the game's `BoneMealItem.growCrop`, 3 ages
-    /// here, capped at 7), tells the villager (`bonemeal_grown`), and returns the ticks of the growths.
-    pub fn bonemeal_growths(&mut self, seen: &mut usize) -> Vec<i64> {
-        let fresh: Vec<(u32, [i32; 3])> = self.events[*seen..]
-            .iter()
-            .filter_map(|e| match e {
-                MobEvent::Bonemeal { mob, pos } => Some((*mob, *pos)),
-                _ => None,
-            })
-            .collect();
-        *seen = self.events.len();
-        let mut ticks = Vec::new();
-        for (id, p) in fresh {
-            let name = self.w.block_name(p[0], p[1], p[2]).to_string();
-            let age = self.prop(p[0], p[1], p[2], "age").and_then(|a| a.parse::<i32>().ok()).unwrap_or(0);
-            let next = (age + 3).min(7).to_string();
-            self.set_block_props(p[0], p[1], p[2], &name, &[("age", next.as_str())]);
-            if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
-                horizon_client_lib::mobs::villager_brain::bonemeal_grown(m, self.t);
-            }
-            ticks.push(self.t);
-        }
-        ticks
-    }
-}
-/// Whether the warden's brain still holds an attack target (`Warden::target`).
-pub fn warden_has_target(m: &Mob) -> bool {
-    m.extra.warden.as_deref().is_some_and(|w| w.target().is_some())
+pub fn is_creature(id: &str) -> bool {
+    horizon_ecs_proto::cow::has_mob_kind(id)
 }
 /// The yaw (degrees, vanilla `lookAt`) a head at `from` takes to look at `to`, in the x/z plane.
 pub fn look_yaw(from: Vec3, to: Vec3) -> f32 {
@@ -388,6 +156,22 @@ pub fn ground_walker() -> bool {
     s.gravity.is_some_and(|g| g > 0.0) && s.modes.iter().any(|(m, _)| *m == horizon_ecs_proto::locomotion::Medium::Ground)
 }
 
+/// The items of the herd world, and the enchantments and trades read from the vanilla data (`HORIZON_TEST_RESOURCES`).
+pub fn registries() -> (&'static Items, &'static Enchantments, Trades) {
+    let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
+    let items = Herd::with_slab_awake(2, false, false).world.resource::<Level>().mw.0.items.expect("items");
+    let defaults = horizon_world::item_defaults::read(&root).expect("item defaults");
+    let enchantments: &'static Enchantments = Box::leak(Box::new(Enchantments::load(&root, &defaults).expect("enchantments")));
+    let trades = Trades::load(&root, &horizon_world::loot::PackOverlay::NONE);
+    (items, enchantments, trades)
+}
+
+/// Inserts the trade data of the vanilla registries into the herd world, as the host does when a villager's trades are read.
+pub fn insert_trade_data(h: &mut Herd) {
+    let (items, enchantments, trades) = registries();
+    h.world.insert_resource(horizon_ecs_proto::behaviours::trade_offers::TradeData { trades, items, enchantments, seed: 0x5EED, sequences: Default::default() });
+}
+
 /// A host world whose zone ticks around the origin: a player there and two steps, so what is spawned next is awake (a
 /// creature outside a ticking chunk sleeps and reads as absent).
 pub fn awake_host_with(setup: &horizon_ecs_proto::bridge::host::HostSetup, build: impl FnOnce(&mut horizon_client_lib::world::World, &horizon_world::registry::BlockRegistry)) -> (&'static MobWorld<'static>, horizon_ecs_proto::bridge::host::EcsWorld) {
@@ -397,6 +181,31 @@ pub fn awake_host_with(setup: &horizon_ecs_proto::bridge::host::HostSetup, build
     let mut h = EcsWorld::new(setup, mw, types, &tags);
     h.set_player(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None });
     // The players' chunks reach the zone one step after the player is set.
+    h.step(mw);
+    h.step(mw);
+    (mw, h)
+}
+
+/// `awake_host_on_stone` inside a world border (`border`: its geometry, the walls a mob meets at its edge).
+pub fn awake_host_in_border(setup: &horizon_ecs_proto::bridge::host::HostSetup, border: horizon_core::geometry::border::BorderGeometry) -> (&'static MobWorld<'static>, horizon_ecs_proto::bridge::host::EcsWorld) {
+    use horizon_ecs_proto::bridge::host::{EcsWorld, PlayerFact};
+    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
+    let build = |blocks: &mut horizon_client_lib::world::World, registry: &horizon_world::registry::BlockRegistry| {
+        for cx in -2..2 {
+            for cz in -2..2 {
+                blocks.chunks.insert((cx, cz), std::sync::Arc::new(horizon_client_render::chunk::Chunk::empty(cx, cz)));
+            }
+        }
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        for x in -8..8 {
+            for z in -8..8 {
+                blocks.set(x, 0, z, stone).unwrap();
+            }
+        }
+    };
+    let (mw, types, _) = horizon_client_lib::mobs::world::leaked_test_world_bordered(true, Some(border), build).expect("a prepared world");
+    let mut h = EcsWorld::new(setup, mw, types, &tags);
+    h.set_player(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None });
     h.step(mw);
     h.step(mw);
     (mw, h)

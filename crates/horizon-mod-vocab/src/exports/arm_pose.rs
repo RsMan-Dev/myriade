@@ -1,1 +1,1 @@
-pub use crate::client::arm_pose::{ArmAngles, ArmPose, CustomArmPose};
+pub use crate::client::arm_pose::ArmPose;

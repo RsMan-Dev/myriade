@@ -65,9 +65,6 @@ impl Game<'_> {
     /// dragon, an area-effect cloud, an ominous item spawner and a shulker
     /// bullet take the write, which replaces their constructor's `true`.
     pub(super) fn entity_set_no_physics(&mut self, entity: EntityRef, no_physics: bool) -> bool {
-        if !self.is_logical_server() {
-            return false;
-        }
         if let Some(id) = self.native_ecs_projectile(entity) {
             return self.native_projectile_merge(id, "NoPhysics", Tag::Byte(i8::from(no_physics)));
         }
@@ -149,16 +146,4 @@ mod tests {
     }
 
 
-    #[test]
-    #[ignore = "daily"]
-    fn no_physics_write_is_refused_on_a_client() {
-        use super::super::native_entity_refs::tests::with_client_game;
-        use mod_api::WorldEpoch;
-
-        with_client_game(|game| {
-            let entity = EntityRef::new(WorldEpoch::new(0), 1);
-            assert!(!entity.set_no_physics(game, true));
-            assert!(!entity.set_no_physics(game, false));
-        });
-    }
 }

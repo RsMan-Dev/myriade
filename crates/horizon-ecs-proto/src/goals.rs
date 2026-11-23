@@ -70,6 +70,10 @@ impl GoalSet {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+    /// The flags no goal may take (`Mob.goals.disabled`), as `set_disabled_flags` set them.
+    pub fn disabled(&self) -> u8 {
+        self.disabled
+    }
     pub fn entries(&self) -> &'static [Entry] {
         self.entries
     }
@@ -1458,10 +1462,16 @@ pub fn set_disabled_flags(w: &mut World, e: Entity, mask: u8) {
         }
     }
 }
-/// Hook of `NoAi` added: the goals running stop (the selector is no longer ticked, so nothing would end them).
+/// A mark posed by a behaviour whose state lasts without AI (a sleep kept under `NoAi`): `stop_all_goals` leaves its goals running.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct KeepsStateWithoutAi;
+/// Hook of `NoAi` added: the goals running stop (the selector is no longer ticked, so nothing would end them), unless marked.
 pub(crate) fn stop_all_goals(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
     let e = ctx.entity;
     world.commands().queue(move |w: &mut World| {
+        if w.get::<KeepsStateWithoutAi>(e).is_some() {
+            return;
+        }
         for slot in 0..MAX_ENTRIES as u8 {
             if w.get::<GoalSet>(e).is_some_and(|g| g.slot_running(slot)) {
                 end_goal(w, e, slot);
@@ -1641,6 +1651,7 @@ pub(crate) fn go_to(cmd: &mut Commands, e: Entity, x: f64, z: f64, speed: f64, g
         if let Some(mut n) = w.get_mut::<Nav>(e) {
             n.speed = speed;
         }
+        crate::walk_paces::pace(w, e, speed);
         w.entity_mut(e).insert(NeedsPath);
     });
 }
@@ -1657,6 +1668,8 @@ pub fn go_to_at(w: &mut World, e: Entity, at: [f64; 3], speed: f64, reach: i32) 
         n.speed = speed;
         n.reach = reach;
     }
+    crate::behaviours::posture::stand_for_walk(w, e);
+    crate::walk_paces::pace(w, e, speed);
     w.entity_mut(e).insert(NeedsPath);
 }
 /// The reach of the next paths of the entity (`go_to_at` sets it; a goal that ends puts the default 1 back).

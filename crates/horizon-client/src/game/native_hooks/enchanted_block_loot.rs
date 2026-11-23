@@ -26,9 +26,7 @@ impl GameLevel<'_> {
         roll: BlockLootRoll<'_>,
     ) -> Vec<ItemStack> {
         let (items, registry, seed) = (self.items, self.registry, self.seed);
-        if !self.native_authoritative
-            || !mod_api::__private::listened(mod_api::HookId::EnchantedBlockLoot)
-        {
+        if !mod_api::__private::listened(mod_api::HookId::EnchantedBlockLoot) {
             let sequences = Some((&mut *self.rand_sequences, seed));
             return items.block_drops(registry, state, roll, &mut self.world.random, sequences);
         }
@@ -143,7 +141,6 @@ mod tests {
     #[ignore = "daily"]
     fn a_listener_sets_the_level_a_block_table_reads() {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));

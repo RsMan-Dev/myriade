@@ -160,9 +160,8 @@ mod on_entity_item_update_tests {
 
     /// A serving level with a stone floor at y 63 and nothing dropped.
     fn floor(game: &mut Game<'_>) {
-        game.options.dedicated = Some(Vec::new());
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(mod_api::Authority::DedicatedServer);
         game.world = horizon_client::world::World::new(game.res.facts().air, 1);
         game.world
             .chunks

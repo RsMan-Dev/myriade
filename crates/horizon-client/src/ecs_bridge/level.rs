@@ -3,7 +3,10 @@
 //! world; no state is copied here.
 use super::state;
 use crate::lan::entity::EntityState;
-use crate::mobs::{MobTypes, MobWorld};
+use crate::mobs::{MobTypes, MobWorld, spawn_place::{StructureAt, StructureSpawns}};
+use horizon_ecs_proto::spawn_structures::{StructureHost, StructureSource};
+use horizon_core::bounding_box::BoundingBox;
+use horizon_core::fast_hash::FxHashMap;
 use bevy_ecs::{entity::Entity, world::World};
 use horizon_core::{geometry::Vec3, nbt::{Compound, Tag}};
 use horizon_ecs_proto::{
@@ -21,6 +24,59 @@ use horizon_ecs_proto::{
     targeting::Who,
 };
 use std::path::Path;
+use crate::mobs::entity_sounds::{Selection, Sounds};
+use horizon_ecs_proto::sound_slots::{self, Overrides, Slot};
+
+/// The sounds the mods declare per type (`MobType.sound_overrides`), as the slots the ECS reads: one table per load, shared by all entities.
+/// One row per type: the declared slots, and the species' own hurt voice where the declaration inherits it (`sounds[1]`). The death
+/// is left inherited: `Mob.die` plays no sound on the server (the client plays `getDeathSound` on the death event).
+fn mod_sound_table(types: &'static MobTypes) -> std::collections::HashMap<&'static str, Overrides> {
+    types
+        .types
+        .iter()
+        .map(|(id, t)| {
+            let mut o = overrides(&t.sound_overrides);
+            if o.hurt == Slot::Inherit && !t.sounds[1].is_empty() {
+                o.hurt = Slot::Id(t.sounds[1]);
+            }
+            (id.as_str(), o)
+        })
+        .collect()
+}
+
+fn overrides(s: &Sounds) -> Overrides {
+    let slot = |sel: &Selection| match *sel {
+        Selection::Inherit => Slot::Inherit,
+        Selection::Mute => Slot::Mute,
+        Selection::Id(id) => Slot::Id(id),
+    };
+    Overrides { ambient: slot(&s.ambient), hurt: slot(&s.hurt), death: slot(&s.death), step: slot(&s.step) }
+}
+
+#[cfg(test)]
+mod sound_table_tests {
+    use super::*;
+
+    #[test]
+    fn a_declared_slot_maps_to_its_id_or_mute_and_the_others_inherit() {
+        let row = serde_json::json!({ "sounds": { "hurt": "bird:hurt", "death": "none" } });
+        let s = Sounds::load("bird:call", &row).unwrap();
+        let o = overrides(&s);
+        assert_eq!(o.hurt, Slot::Id("bird:hurt"));
+        assert_eq!(o.death, Slot::Mute);
+        assert_eq!(o.ambient, Slot::Inherit, "an undeclared slot keeps the species' own");
+        assert_eq!(o.step, Slot::Inherit);
+    }
+
+    #[test]
+    fn a_vanilla_type_without_a_declared_hurt_plays_its_own_hurt_and_keeps_the_death_inherited() {
+        let (_, types, _) = horizon_client::mobs::world::leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
+        let table = mod_sound_table(types);
+        let cow = types.types.get("minecraft:cow").expect("the cow type");
+        assert_eq!(table["minecraft:cow"].hurt, Slot::Id(cow.sounds[1]), "the species' own hurt voice");
+        assert_eq!(table["minecraft:cow"].death, Slot::Inherit, "the death voice is the client's");
+    }
+}
 
 /// The flags a saved mob carries that are components: the AI pause (`ai_paused`) and `CanPickUpLoot`.
 fn restore_mob_flags(w: &mut EcsWorld, e: Entity, c: &Compound) {
@@ -29,21 +85,102 @@ fn restore_mob_flags(w: &mut EcsWorld, e: Entity, c: &Compound) {
         w.set_can_pick_up_loot(e, *on != 0);
     }
 }
+/// The mod goals of a loaded entity, by the species saved in its `id` (`mod_goals::attach`).
+fn attach_saved_goals(w: &mut EcsWorld, e: Entity, c: &Compound) {
+    if let Some(Tag::String(id)) = c.get(&"id".into()) {
+        super::mod_goals::attach(w.world_mut(), e, &id.to_string_lossy());
+    }
+}
+/// `c` and its riders (`Passengers`, depth first, root first): the compounds in the order `load_entity_tree` makes their entities.
+fn ride_compounds<'a>(c: &'a Compound, out: &mut Vec<&'a Compound>) {
+    out.push(c);
+    if let Some(Tag::List(riders)) = c.get(&"Passengers".into()) {
+        for t in riders {
+            if let Tag::Compound(p) = t {
+                ride_compounds(p, out);
+            }
+        }
+    }
+}
 use horizon_protocol::entity_data::Value;
 
 pub struct EcsLevel {
     inner: Option<Box<EcsWorld>>,
     /// The calendar date (month, day) last read for `SpecialDates`, and when it was read; `refresh_date` rereads it once a minute.
     pub(super) date: Option<(std::time::Instant, [u32; 2])>,
+    /// The structures whose references reach each loaded chunk, as the game pushed them (`set_chunk_structures`).
+    structures: ChunkStructures,
+}
+
+/// A structure start a loaded chunk refers to, owned: its id, its box and its pieces' boxes as placed (`reaches_in` reads the same).
+#[derive(Clone, Debug)]
+pub struct ChunkStart {
+    pub id: String,
+    pub bounds: BoundingBox,
+    pub pieces: Vec<BoundingBox>,
+}
+
+/// The structure starts of the loaded chunks, owned: the structure host reads them during a step without the game.
+#[derive(Clone, Default)]
+pub struct ChunkStructures(std::sync::Arc<std::sync::RwLock<FxHashMap<(i32, i32), Vec<ChunkStart>>>>);
+
+impl StructureSource for ChunkStructures {
+    /// `reaches_in`: a start reaches the position by its box or one of its pieces; the reach merges by id.
+    fn structures_at(&self, pos: [i32; 3], wanted: &dyn Fn(&str) -> bool) -> Vec<StructureAt> {
+        let chunks = self.0.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut out: Vec<StructureAt> = Vec::new();
+        for start in chunks.get(&(pos[0] >> 4, pos[2] >> 4)).into_iter().flatten().filter(|s| wanted(&s.id)) {
+            let in_bounds = start.bounds.is_inside(pos);
+            let in_piece = start.pieces.iter().any(|p| p.is_inside(pos));
+            if !in_bounds && !in_piece {
+                continue;
+            }
+            match out.iter_mut().find(|r| r.id == start.id) {
+                Some(r) => {
+                    r.in_bounds |= in_bounds;
+                    r.in_piece |= in_piece;
+                }
+                None => out.push(StructureAt { id: start.id.clone(), in_piece, in_bounds }),
+            }
+        }
+        out
+    }
 }
 
 impl EcsLevel {
     /// The level of a client, which runs no world.
     pub fn inert() -> Self {
-        Self { inner: None, date: None }
+        Self { inner: None, date: None, structures: ChunkStructures::default() }
     }
     pub fn new(setup: &HostSetup, mw: &MobWorld<'_>, types: &'static MobTypes, tags: &Path) -> Self {
-        Self { inner: Some(Box::new(EcsWorld::new(setup, mw, types, tags))), date: None }
+        let mut level = Self { inner: Some(Box::new(EcsWorld::new(setup, mw, types, tags))), date: None, structures: ChunkStructures::default() };
+        if let Some(w) = level.world_mut() {
+            sound_slots::replace(w, mod_sound_table(types));
+        }
+        level
+    }
+    /// The natural spawning of this level (`install_spawning`): the biome tables of `mw` with `seed`, the rules, and the structures' lists
+    /// and source. Nothing when inert.
+    pub fn enable_spawning(&mut self, mw: &MobWorld<'_>, seed: i64, rules: (bool, bool), spawns: &StructureSpawns) {
+        if let Some(w) = self.inner.as_mut() {
+            let host = StructureHost::new(std::sync::Arc::new(self.structures.clone()), spawns);
+            horizon_ecs_proto::cow::herd::install_spawning(w.world_mut(), mw, seed, rules, Some(host));
+        }
+    }
+    /// The mods' natural spawning policy of this level (`spawning::Policy`). Nothing when inert.
+    pub fn set_spawn_policy(&mut self, policy: horizon_ecs_proto::spawning::Policy) {
+        if let Some(w) = self.inner.as_mut() {
+            w.world_mut().insert_resource(policy);
+        }
+    }
+    /// The structure starts of chunk `chunk`, pushed when it loads (`[]` when it unloads). Stored without a step.
+    pub fn set_chunk_structures(&mut self, chunk: [i32; 2], refs: Vec<ChunkStart>) {
+        let mut chunks = self.structures.0.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if refs.is_empty() {
+            chunks.remove(&(chunk[0], chunk[1]));
+        } else {
+            chunks.insert((chunk[0], chunk[1]), refs);
+        }
     }
     pub fn is_active(&self) -> bool {
         self.inner.is_some()
@@ -68,34 +205,40 @@ impl EcsLevel {
     pub fn spawn_for(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], nbt: Option<&Compound>, reason: horizon_ecs_proto::spawn_reason::SpawnReason) -> Option<Entity> {
         self.inner.as_mut()?.spawn_for(mw, kind, at, nbt, reason)
     }
-    /// `EcsWorld::spawn_finalized`: `spawn_for`, then the species' `finalizeSpawn` for the same reason.
-    pub fn spawn_finalized(
-        &mut self,
-        mw: &MobWorld<'_>,
-        kind: &str,
-        at: [f64; 3],
-        reason: horizon_ecs_proto::spawn_reason::SpawnReason,
-        special: f32,
-        group: Option<horizon_ecs_proto::spawn_finalize::Group>,
-    ) -> Option<(Entity, horizon_ecs_proto::spawn_finalize::Outcome)> {
-        self.inner.as_mut()?.spawn_finalized(mw, kind, at, reason, special, group)
-    }
-    /// `spawn_finalized` with the variant draw at `finalize_at` (None: at `at`).
-    pub fn spawn_finalized_at(
+    /// `EcsWorld::spawn_prepared`: a creature made from `sheet`, its edits applied, not finalized yet (`finalize_prepared` does it).
+    pub fn spawn_prepared(
         &mut self,
         mw: &MobWorld<'_>,
         kind: &str,
         at: [f64; 3],
         finalize_at: Option<[f64; 3]>,
         reason: horizon_ecs_proto::spawn_reason::SpawnReason,
+        sheet: &horizon_ecs_proto::spawn_sheet::SpawnSheet,
+    ) -> Option<Entity> {
+        self.inner.as_mut()?.spawn_prepared(mw, kind, at, finalize_at, reason, sheet)
+    }
+    /// `EcsWorld::finalize_prepared`: the species' `finalizeSpawn` of `e` for `reason`, with the pack's `group`; None when inert.
+    pub fn finalize_prepared(
+        &mut self,
+        mw: &MobWorld<'_>,
+        e: Entity,
+        reason: horizon_ecs_proto::spawn_reason::SpawnReason,
         special: f32,
         group: Option<horizon_ecs_proto::spawn_finalize::Group>,
-    ) -> Option<(Entity, horizon_ecs_proto::spawn_finalize::Outcome)> {
-        self.inner.as_mut()?.spawn_finalized_at(mw, kind, at, finalize_at, reason, special, group)
+    ) -> Option<horizon_ecs_proto::spawn_finalize::Outcome> {
+        Some(self.inner.as_mut()?.finalize_prepared(mw, e, reason, special, group))
     }
-    /// `EcsWorld::spawn_natural`: a creature of the natural spawning pass.
-    pub fn spawn_natural(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3]) -> Option<Entity> {
-        self.inner.as_mut()?.spawn_natural(mw, kind, at)
+    /// `EcsWorld::announce_prepared`: `Spawned` for `e`, once it is finalized; nothing when inert.
+    pub fn announce_prepared(&mut self, mw: &MobWorld<'_>, e: Entity, reason: horizon_ecs_proto::spawn_reason::SpawnReason) {
+        if let Some(w) = self.inner.as_mut() {
+            w.announce_prepared(mw, e, reason);
+        }
+    }
+    /// `spawn_chunk_packs`: the creature packs of a generated chunk, from the world's spawn tables; `random` is the region's. Nothing when inert.
+    pub fn spawn_chunk_packs(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32, random: &mut impl horizon_core::random::RandomSource) {
+        if let Some(w) = self.world_mut() {
+            horizon_ecs_proto::spawn_generation::spawn_chunk_packs(w, mw, cx, cz, random);
+        }
     }
     pub fn despawn(&mut self, e: Entity) {
         if let Some(w) = self.inner.as_mut() {
@@ -108,10 +251,28 @@ impl EcsLevel {
             w.set_difficulty(id);
         }
     }
-    /// `EcsWorld::set_monster_spawning`: whether monsters may spawn (the `spawn_mobs` and `spawn_monsters` rules). Nothing when inert.
-    pub fn set_monster_spawning(&mut self, on: bool) {
+    /// `EcsWorld::set_spawn_rules`: `SPAWN_MOBS` and `SPAWN_MONSTERS`. Nothing when inert.
+    pub fn set_spawn_rules(&mut self, spawn_mobs: bool, monsters: bool) {
         if let Some(w) = self.inner.as_mut() {
-            w.set_monster_spawning(on);
+            w.set_spawn_rules(spawn_mobs, monsters);
+        }
+    }
+    /// `EcsWorld::set_chunk_spawnable`: a chunk enters or leaves the chunks that may take a creature. Nothing when inert.
+    pub fn set_chunk_spawnable(&mut self, cx: i32, cz: i32, on: bool) {
+        if let Some(w) = self.inner.as_mut() {
+            w.set_chunk_spawnable(cx, cz, on);
+        }
+    }
+    /// `EcsWorld::set_world_border`: `[min_x, min_z, max_x, max_z]`, or none. Nothing when inert.
+    pub fn set_world_border(&mut self, border: Option<[f64; 4]>) {
+        if let Some(w) = self.inner.as_mut() {
+            w.set_world_border(border);
+        }
+    }
+    /// `EcsWorld::set_world_spawn`: the world spawn. Nothing when inert.
+    pub fn set_world_spawn(&mut self, at: [i32; 3]) {
+        if let Some(w) = self.inner.as_mut() {
+            w.set_world_spawn(at);
         }
     }
     /// `EcsWorld::alert_guards`: the guards within reach of `player` that are at rest turn on it (`PiglinAi.angerNearbyPiglins`). 0 when inert.
@@ -171,6 +332,9 @@ impl EcsLevel {
     pub fn take_player_hits(&mut self) -> Vec<(u32, f32, [f64; 3], Option<Entity>)> {
         self.inner.as_mut().map_or_else(Vec::new, |w| w.take_player_hits())
     }
+    pub fn take_player_pushes(&mut self) -> Vec<(u32, [f64; 3], (f64, f64, f64), Entity)> {
+        self.inner.as_mut().map_or_else(Vec::new, |w| w.take_player_pushes())
+    }
     pub fn chunk_rewritten(&mut self, cx: i32, cz: i32) {
         if let Some(w) = self.inner.as_mut() {
             w.chunk_rewritten(cx, cz);
@@ -193,6 +357,7 @@ impl EcsLevel {
         let w = self.inner.as_mut()?;
         let e = w.load_entity(mw, c)?;
         restore_mob_flags(w, e, c);
+        attach_saved_goals(w, e, c);
         Some(e)
     }
     /// `load_entity` for a mount and its riders: the entity of each compound of the NBT, in its order (None: not made). Only the root's
@@ -202,6 +367,13 @@ impl EcsLevel {
         let made = w.load_entity_tree(mw, c);
         if let Some(Some(e)) = made.first() {
             restore_mob_flags(w, *e, c);
+        }
+        let mut compounds = Vec::new();
+        ride_compounds(c, &mut compounds);
+        for (c, e) in compounds.into_iter().zip(&made) {
+            if let Some(e) = e {
+                attach_saved_goals(w, *e, c);
+            }
         }
         made
     }
@@ -229,6 +401,10 @@ impl EcsLevel {
     /// Runs the schedule once with `mw` lent for the call; the host events it wrote come back.
     pub fn step(&mut self, mw: &MobWorld<'_>) -> Vec<HostEvent> {
         self.inner.as_mut().map_or_else(Vec::new, |w| w.step(mw))
+    }
+    /// `step` with the mods' goal and behaviour hooks answered by `goals`, and the natural pass's spawn hooks by `spawn` (None: no mod listens).
+    pub fn step_with(&mut self, mw: &MobWorld<'_>, goals: &dyn horizon_ecs_proto::mod_goals::ModGoalHost, spawn: Option<&dyn horizon_ecs_proto::spawn_mod_host::SpawnModHost>) -> Vec<HostEvent> {
+        self.inner.as_mut().map_or_else(Vec::new, |w| w.step_with(mw, goals, spawn))
     }
     /// Writes the tracker's state of `e` under the network id `id`; false when inert, or when `e` is asleep or has no position.
     pub fn view_state(&self, e: Entity, id: i32, out: &mut EntityState) -> bool {
@@ -316,5 +492,26 @@ impl EcsLevel {
             let (serializer, value) = sync::to_entry(&v);
             (i, serializer, value)
         }));
+    }
+}
+
+#[cfg(test)]
+mod structure_tests {
+    use super::*;
+
+    /// A position of the chunk outside the piece reads the start as its bounds only (the biome list); inside the piece, as the piece (the structure list).
+    #[test]
+    fn position_outside_piece_is_bounds_only_inside_piece_is_in_piece() {
+        let store = ChunkStructures::default();
+        let bounds = BoundingBox::new([0, 60, 0], [31, 80, 31]);
+        let piece = BoundingBox::new([0, 60, 0], [7, 70, 7]);
+        store.0.write().unwrap().insert((0, 0), vec![ChunkStart { id: "minecraft:village".into(), bounds, pieces: vec![piece] }]);
+        let any = |_: &str| true;
+        let outside = store.structures_at([10, 64, 10], &any);
+        assert_eq!(outside.len(), 1);
+        assert!(outside[0].in_bounds && !outside[0].in_piece);
+        let inside = store.structures_at([3, 64, 3], &any);
+        assert!(inside[0].in_piece);
+        assert!(store.structures_at([40, 64, 40], &any).is_empty());
     }
 }

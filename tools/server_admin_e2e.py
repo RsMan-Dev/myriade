@@ -3,7 +3,7 @@
 
     python3 tools/server_admin_e2e.py --bin-dir target/fast
 
-`horizon-server run` supervises Horizon's dedicated server (offline mode, a flat world); two horizon-bots
+`horizon-server run` supervises Horizon's dedicated server (offline mode, a flat world); two myriade-bot
 players join. Through the control API, with the token from .horizon/api.json, the run lists the players, then
 ops and deops, whitelists, bans and pardons by name and by address, kicks, and turns the whitelist on and off,
 checking each reply (`changed`, the console's lines), vanilla's files, the server's log and `GET players`.
@@ -19,7 +19,7 @@ console` attaches through a pipe, runs two commands and shows what they log.
 
 Everything runs in a fresh temporary folder with fresh HORIZON_HOME and XDG folders and no audio. Logs go
 to --out. Build first:
-    cargo build --profile fast -p horizon-game -p horizon-client-lib --bins -p horizon-bots -p horizon-server
+    cargo build --profile fast -p horizon-game -p horizon-client-lib --bins -p myriade-bot -p horizon-server
 """
 import argparse
 import http.client
@@ -89,7 +89,7 @@ def chat_packet(message):
 
 
 def bot(bins, port, name, *extra):
-    return subprocess.Popen([bins / f'horizon-bots{EXE}', '--server', f'127.0.0.1:{port}', '--bots', '1',
+    return subprocess.Popen([bins / f'myriade-bot{EXE}', '--server', f'127.0.0.1:{port}', '--bots', '1',
                              '--behaviour', 'stand', '--seconds', '600', '--name', name, *extra],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 

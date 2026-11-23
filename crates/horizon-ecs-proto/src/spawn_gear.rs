@@ -15,6 +15,11 @@ use horizon_core::random::RandomSource;
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Halloween(pub bool);
 
+/// `SpecialDates.isHalloween`: the host's day is 31 October.
+pub fn halloween_date(month: u32, day: u32) -> bool {
+    month == 10 && day == 31
+}
+
 /// A draw's gate: `float < chance` (easy/normal, hard), or the drowned's `float > bound`.
 #[derive(Clone, Copy, Debug)]
 pub enum Gate {

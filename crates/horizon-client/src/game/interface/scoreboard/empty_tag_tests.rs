@@ -1,11 +1,9 @@
 use super::*;
-use horizon_core::geometry::Vec3;
 
 #[test]
 #[ignore = "daily"]
 fn empty_tag_selectors_follow_actual_tag_edits() {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-    use horizon_client::motion::PlayerMotion;
+    use crate::game::{Game, Options, Progress, Settings, load_resources};
     let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -15,19 +13,18 @@ fn empty_tag_selectors_follow_actual_tag_edits() {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(
@@ -40,7 +37,7 @@ fn empty_tag_selectors_follow_actual_tag_edits() {
     ));
     std::fs::create_dir_all(&scratch).unwrap();
     game.world_root = scratch.clone();
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 64.0, 0.5)).unwrap());
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
 
     game.build_registries();
     game.set_allow_commands(true);

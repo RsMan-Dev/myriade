@@ -115,7 +115,6 @@ pub(in crate::game) mod tests {
             allow_flight: false,
             seed: 0,
             max_players: 2,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         };

@@ -175,14 +175,6 @@ pub fn backend_of(host: &dyn Host) -> Option<&dyn Backend> {
 /// }
 /// ```
 ///
-/// A hook that fires on both sides matches on the two:
-/// ```
-/// use mod_api::HostSide;
-/// fn side(host: HostSide<'_>) -> &'static str {
-///     match host { HostSide::Server(_) => "server", HostSide::Client(_) => "client" }
-/// }
-/// ```
-///
 /// Wrong-side services do not compile:
 /// ```compile_fail
 /// use mod_api::Host;
@@ -222,7 +214,6 @@ impl HostSide<'_> {
     pub fn reborrow(&mut self) -> HostSide<'_> {
         match self {
             Self::Server(host) => HostSide::Server(&mut **host),
-            Self::Client(host) => HostSide::Client(&mut **host),
         }
     }
 }

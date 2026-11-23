@@ -12,3 +12,21 @@ pub fn wing_step(speed: f32, flapping: f32, flap: f32, on_ground: bool) -> (f32,
 pub fn wing_settle(flap: f32, flapping: f32) -> f32 {
     flap + flapping * 0.9 * 2.0 / (1.0 - 0.9)
 }
+
+/// `CropBlock.getMaxAge` by the class of the block: beetroots 3, torchflowers 2, the other crops 7; `None` when it is no crop.
+pub fn crop_max_age(crop: bool, beetroot: bool, torchflower: bool) -> Option<i32> {
+    match (crop, beetroot, torchflower) {
+        (false, _, _) => None,
+        (true, true, _) => Some(3),
+        (true, false, true) => Some(2),
+        (true, false, false) => Some(7),
+    }
+}
+/// `CropBlock.isMaxAge`: the age of a crop is its max age (no max, no ripe crop).
+pub fn is_ripe(max: Option<i32>, age: Option<i32>) -> bool {
+    max.is_some() && max == age
+}
+/// The first slot of the villager's stock whose item plants a block (`HarvestFarmland`: the first tagged block item, in order).
+pub fn first_seed(stock: &[(String, u8)], plants: impl Fn(&str) -> bool) -> Option<usize> {
+    stock.iter().position(|(item, n)| *n > 0 && plants(item))
+}

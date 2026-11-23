@@ -351,7 +351,7 @@ fn bob(p: &mut Poses, n: &str, age: f32, scale: f32) {
     q[3] += scale * ((age * 0.067).msin() * 0.05);
 }
 pub use horizon_core::arm_pose::ArmPose;
-/// Whether this renderer extracts `HumanoidRenderState` arm poses.
+/// Whether this renderer extracts humanoid arm poses.
 pub fn extracts_humanoid(m: &Mob) -> bool {
     matches!(
         m.kind.anim,

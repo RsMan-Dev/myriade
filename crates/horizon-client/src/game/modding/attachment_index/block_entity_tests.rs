@@ -31,7 +31,6 @@ fn saved(value: i32) -> Attachments {
 #[ignore = "daily"]
 fn block_entity_rows_follow_load_restore_replacement_and_chunk_unload_in_their_dimension() {
     with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         let level = game.level(Dim::Overworld.id()).unwrap();
         let index = game.attachment_indexes[&Dim::Overworld].clone();

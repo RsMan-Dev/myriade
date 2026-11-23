@@ -14,14 +14,29 @@ pub const NEVER: u64 = u64::MAX;
 pub enum Group {
     /// `variant`: the value the first member drew (`FoxGroupData`, `HorseGroupData`, `LlamaGroupData`), taken by the next ones.
     Ageable { should_baby: bool, size: u32, chance: f32, variant: Option<u8> },
-    Zombie { baby: bool, jockey: bool },
+    /// An ageable group of the species whose variant it shares (`Shape`): the same draws as `Ageable`.
+    Shaped { shape: Shape, should_baby: bool, size: u32, chance: f32, variant: Option<u8> },
+    /// `tried_camel`: a husk's try to ride a camel husk (`HuskGroupData`); None for the other zombies.
+    Zombie { baby: bool, jockey: bool, tried_camel: Option<bool> },
     /// An ageable group that also carries the values its first member drew (`AxolotlGroupData`, `TropicalFishGroupData`): `n` of the
     /// `vals` are set; `size` counts the members already made.
     Pack { vals: [u32; 2], n: u8, size: u32, should_baby: bool, chance: f32 },
+    /// `SpiderEffectsGroupData`: the index of the effect in `species::spider::EFFECTS`, None for no effect.
+    Spider { effect: Option<u8> },
 }
 impl Group {
     /// `new AgeableMobGroupData(true)`: a fresh group, the first mob never a baby (its size is 0).
     pub const AGEABLE: Self = Self::Ageable { should_baby: true, size: 0, chance: BABY_CHANCE, variant: None };
+}
+
+/// The species whose group carries a variant (the `Shaped` group's shape): each one's group data class.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shape {
+    Fox,
+    Horse,
+    Llama,
+    Rabbit,
+    Wolf,
 }
 
 /// The chicken draws of a baby zombie: an existing free vehicle first, else a new one.
@@ -50,15 +65,23 @@ pub fn ageable_roll(group: Option<Group>, r: &mut impl RandomSource) -> (bool, G
         let baby = should_baby && size > 0 && r.next_float() <= chance;
         return (baby, Group::Pack { vals, n, size: size + 1, should_baby, chance });
     }
-    let Group::Ageable { should_baby, size, chance, variant } = g else { return (false, g) };
-    let baby = should_baby && size > 0 && r.next_float() <= chance;
-    (baby, Group::Ageable { should_baby, size: size + 1, chance, variant })
+    match g {
+        Group::Ageable { should_baby, size, chance, variant } => {
+            let baby = should_baby && size > 0 && r.next_float() <= chance;
+            (baby, Group::Ageable { should_baby, size: size + 1, chance, variant })
+        }
+        Group::Shaped { shape, should_baby, size, chance, variant } => {
+            let baby = should_baby && size > 0 && r.next_float() <= chance;
+            (baby, Group::Shaped { shape, should_baby, size: size + 1, chance, variant })
+        }
+        _ => (false, g),
+    }
 }
 
 /// `Zombie.finalizeSpawn`: a new group draws its baby (5 %) and takes a jockey; the chicken draws follow when it is a baby.
 pub fn zombie_roll(group: Option<Group>, r: &mut impl RandomSource) -> (Group, Jockey) {
-    let g = group.unwrap_or_else(|| Group::Zombie { baby: r.next_float() < 0.05, jockey: true });
-    let Group::Zombie { baby, jockey } = g else { return (g, Jockey::None) };
+    let g = group.unwrap_or_else(|| Group::Zombie { baby: r.next_float() < 0.05, jockey: true, tried_camel: None });
+    let Group::Zombie { baby, jockey, .. } = g else { return (g, Jockey::None) };
     if !baby || !jockey {
         return (g, Jockey::None);
     }

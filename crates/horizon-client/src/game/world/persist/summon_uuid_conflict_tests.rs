@@ -1,6 +1,5 @@
 // Test module extracted without changing its logical path.
 use super::*;
-use horizon_client::motion::PlayerMotion;
 
 fn positioned(kind: &str, uuid: Option<[i32; 4]>) -> Tag {
     let pos = |v: f64| Tag::Double(v.to_bits());
@@ -98,7 +97,7 @@ fn live(game: &Game<'_>, n: i32) -> Vec<u32> {
 /// A game with a loaded, force-loaded chunk 0 0, a live pig holding UUID
 /// 100 and a live armor stand holding UUID 150.
 fn with_game(test: impl FnOnce(&mut Game<'_>, u32)) {
-    crate::game::native_entity_refs::tests::with_game(|game| {
+    crate::game::native_guest_turn_tests::with_acting_guest(Vec3::new(2.5, 200.0, 2.5), |game| {
         game.options.game_dir = Some(
             std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
                 .join(format!("h160-{:?}", std::thread::current().id())),
@@ -112,7 +111,6 @@ fn with_game(test: impl FnOnce(&mut Game<'_>, u32)) {
             .add_empty_chunk(ChunkPos::new(0, 0))
             .unwrap();
         assert!(game.run_command("forceload add 0 0"));
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5)).unwrap());
         game.creative = true;
         // Setup controls: the live actors the later trees name.
         assert!(summon(game, "h160_existing", 100, ""));

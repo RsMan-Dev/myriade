@@ -2,15 +2,14 @@
 //! connects, whether it curves (`rail_flexible`), climbs (`rail_can_make_slopes`) or takes a
 //! shape at all (`rail_valid_shape`).
 use super::minecarts::Shape;
-use crate::game::{Game, native_entity_refs::tests::with_game};
-use horizon_client::{chunk::Chunk, motion::PlayerMotion};
+use crate::game::{Game, native_guest_turn_tests::with_acting_guest};
+use horizon_client::chunk::Chunk;
 use horizon_core::{geometry::Vec3, position::ChunkPos};
 use std::sync::Arc;
 
 /// A serving world with commands, a stone floor at y 63 and its chunk ticking. Returns the
 /// scratch world folder to remove.
 fn rail_world(game: &mut Game<'_>) -> std::path::PathBuf {
-    game.options.dedicated = Some(Vec::new());
     let scratch = std::env::temp_dir().join(format!(
         "horizon-rail-parts-{}-{:?}",
         std::process::id(),
@@ -18,7 +17,6 @@ fn rail_world(game: &mut Game<'_>) -> std::path::PathBuf {
     ));
     std::fs::create_dir_all(&scratch).unwrap();
     game.world_root = scratch.clone();
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 12.5)).unwrap());
     game.build_registries();
     game.set_allow_commands(true);
     game.world
@@ -43,7 +41,7 @@ fn rail_parts_decide_the_track_carts_and_connections_follow() {
     // The fixture's parts: a plain rail lays east-west for a cart and can't curve, a powered
     // rail can't climb, and an activator rail refuses east-west.
     mod_platform::__private::part_tests::rail_parts_game_thread();
-    with_game(|game| {
+    with_acting_guest(Vec3::new(8.5, 64.0, 12.5), |game| {
         let scratch = rail_world(game);
         // A rail south and one east of a plain rail would curve it south-east; it stays
         // straight.

@@ -32,7 +32,7 @@ use horizon_client::{
         hub::{HostEvent, Hub, HubConfig, TickCtx, stuck_meta},
         playerdata,
     },
-    mobs::{Mob, Species, Who},
+    mobs::{Species, Who},
     text::Text,
     world::World,
 };
@@ -175,860 +175,8 @@ pub(super) fn baby_index(species: Species) -> Option<u8> {
     }
 }
 
-/// The variant and look entries of `mob_meta`'s mobs (registry holders, the
-/// fish's, the bee's, the copper golem's weathering...), in a match of their
-/// own: `mob_meta`'s arms hold these mobs' other entries.
-fn mob_variant_meta(
-    m: &Mob,
-    sync: &SyncData,
-    meta: &mut Vec<(u8, i32, Value)>,
-    defaults: &mut Vec<(u8, i32, Value)>,
-) {
-    let (kind, e) = (m.kind.id.as_str(), &m.extra);
-    let id = |registry: &str, name: &str| sync.id(registry, &format!("minecraft:{name}"));
-    match kind {
-        // Axolotl.DATA_VARIANT (after AgeableMob's two).
-        "minecraft:axolotl" => {
-            if e.variant != 0 {
-                meta.push((18, serializer::INT, Value::Int(i32::from(e.variant))));
-            }
-        }
-        // Frog.DATA_VARIANT_ID, Pig's, Cow's, Chicken's and ZombieNautilus's
-        // (after the entries of their parents): registry holders.
-        "minecraft:frog"
-        | "minecraft:pig"
-        | "minecraft:cow"
-        | "minecraft:chicken"
-        | "minecraft:zombie_nautilus" => {
-            let (index, serializer, registry) = match kind {
-                "minecraft:frog" => (18, serializer::FROG_VARIANT, "minecraft:frog_variant"),
-                "minecraft:pig" => (19, serializer::PIG_VARIANT, "minecraft:pig_variant"),
-                "minecraft:cow" => (18, serializer::COW_VARIANT, "minecraft:cow_variant"),
-                "minecraft:chicken" => {
-                    (18, serializer::CHICKEN_VARIANT, "minecraft:chicken_variant")
-                }
-                _ => (
-                    21,
-                    serializer::ZOMBIE_NAUTILUS_VARIANT,
-                    "minecraft:zombie_nautilus_variant",
-                ),
-            };
-            // Each registry's default (`define(DATA_VARIANT_ID, ... TEMPERATE)`)
-            // stays out of the pairing data, as other default values do.
-            let name = horizon_client::mobs::finalize::variant_name(m.species(), e.variant);
-            let name = name.trim_start_matches("minecraft:");
-            if let Some(v) = id(registry, name)
-                && name != "temperate"
-            {
-                meta.push((index, serializer, Value::Id(v)));
-            }
-            if let Some(v) = id(registry, "temperate") {
-                defaults.push((index, serializer, Value::Id(v)));
-            }
-        }
-        // Rabbit.DATA_TYPE_ID (after AgeableMob's two) and
-        // Parrot.DATA_VARIANT_ID (after TamableAnimal's two and its flags and
-        // owner). The fox's type goes with its flags (arismoko/horizon#2538).
-        "minecraft:rabbit" | "minecraft:parrot" => {
-            let index = if kind == "minecraft:parrot" { 20 } else { 18 };
-            if e.variant != 0 {
-                meta.push((index, serializer::INT, Value::Int(i32::from(e.variant))));
-            }
-        }
-        // Bee.DATA_FLAGS_ID (rolling 2, stung 4, nectar 8) and
-        // DATA_ANGER_END_TIME: the texture shows the nectar and the anger.
-        "minecraft:bee" => {
-            let bee = horizon_client::mobs::bee::get(m);
-            let flags = bee.map_or(0, |b| b.flags);
-            if flags != 0 {
-                meta.push((18, serializer::BYTE, Value::Byte(flags as i8)));
-            }
-            defaults.push((18, serializer::BYTE, Value::Byte(0)));
-            let anger_end = bee.map_or(-1, |b| b.anger_end);
-            if anger_end != -1 {
-                meta.push((19, serializer::LONG, Value::Long(anger_end)));
-            }
-            defaults.push((19, serializer::LONG, Value::Long(-1)));
-        }
-        // AbstractFish.FROM_BUCKET takes 16: Salmon.DATA_TYPE (small 0,
-        // medium 1, large 2; medium is the data's default, so always sent),
-        // Pufferfish.PUFF_STATE and TropicalFish.DATA_ID_TYPE_VARIANT: the
-        // pattern's packed id (size, then index << 8), base colour << 16 and
-        // pattern colour << 24.
-        "minecraft:salmon" => {
-            meta.push((17, serializer::INT, Value::Int(i32::from(e.variant.min(2)))));
-        }
-        "minecraft:pufferfish" => {
-            if e.size > 0 {
-                meta.push((17, serializer::INT, Value::Int(e.size)));
-            }
-            defaults.push((17, serializer::INT, Value::Int(0)));
-        }
-        "minecraft:tropical_fish" => {
-            let pattern = e.variant.min(11);
-            let packed = i32::from(pattern >= 6)
-                | i32::from(pattern % 6) << 8
-                | i32::from(e.variant2 & 15) << 16
-                | i32::from(e.variant3 & 15) << 24;
-            if packed != 0 {
-                meta.push((17, serializer::INT, Value::Int(packed)));
-            }
-        }
-        // Tadpole.AGE_LOCKED (after AbstractFish's FROM_BUCKET).
-        "minecraft:tadpole" => {
-            if e.age_locked {
-                meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((17, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // CopperGolem.DATA_WEATHER_STATE: unaffected 0 to oxidized 3, and it
-        // goes back down when the golem is scraped.
-        "minecraft:copper_golem" => {
-            if e.variant != 0 {
-                meta.push((
-                    16,
-                    serializer::WEATHERING_COPPER_STATE,
-                    Value::Id(i32::from(e.variant.min(3))),
-                ));
-            }
-            defaults.push((16, serializer::WEATHERING_COPPER_STATE, Value::Id(0)));
-        }
-        // Ghast.DATA_IS_CHARGING: the shooting texture.
-        "minecraft:ghast" => {
-            if e.flag {
-                meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // WitherBoss.DATA_ID_INV (after the three head targets): the
-        // invulnerable ticks, the blinking texture and the growing scale.
-        "minecraft:wither" => {
-            if e.counter > 0 {
-                meta.push((19, serializer::INT, Value::Int(e.counter)));
-            }
-            defaults.push((19, serializer::INT, Value::Int(0)));
-        }
-        _ => {}
-    }
-}
-
-/// DATA_EFFECT_PARTICLES and DATA_EFFECT_AMBIENCE_ID of a mob's effects as the hub makes them:
-/// nothing while a native mod's answer stands in for them (`mob_meta_sync` takes it from the mob).
-pub(super) fn mob_effect_meta(m: &Mob, hub: &Hub) -> Vec<(u8, i32, Value)> {
-    match m.extra.modified_effect_particles {
-        Some(_) => Vec::new(),
-        None => hub.effect_meta(mob_effects(m)),
-    }
-}
-
-/// [`mob_meta`] from the synced tables alone, so the tick's helper threads can build it
-/// (the ECS's mob states). `effects` is [`mob_effect_meta`]: the hub's particles need the hub, so the
-/// server thread makes them.
-pub(super) fn mob_meta_sync(
-    m: &Mob,
-    sync: &SyncData,
-    effects: Vec<(u8, i32, Value)>,
-    player_entity: Option<i32>,
-    game_time: i64,
-    meta: &mut Vec<(u8, i32, Value)>,
-    defaults: &mut Vec<(u8, i32, Value)>,
-) {
-    // The entries are the class's: a content mod's living type has its
-    // template's.
-    let kind = m.kind.class_id();
-    // Entity.DATA_SHARED_FLAGS_ID: on fire 0x01, sprinting 0x08 (a dashing
-    // cat or ocelot), swimming 0x10 (a drowned under water,
-    // `Drowned.setSwimming`), invisible 0x20 (the effect's flag) and glowing
-    // 0x40 (LivingEntity.updateGlowingStatus).
-    let shared = i8::from(m.is_on_fire())
-        | i8::from(m.extra.sprinting) << 3
-        | i8::from(m.species() == Species::Drowned && m.extra.flag) << 4
-        | i8::from(m.is_invisible()) << 5
-        | i8::from(m.is_currently_glowing()) << 6;
-    if shared != 0 {
-        meta.push((0, serializer::BYTE, Value::Byte(shared)));
-    }
-    // Entity.DATA_POSE: the pose the species keeps in its own fields (a
-    // pose back at standing goes out by the entity's own default).
-    let pose = horizon_client::mobs::sync::pose_id(m);
-    if pose != 0 {
-        meta.push((6, serializer::POSE, Value::Id(i32::from(pose))));
-    }
-    // LivingEntity.DATA_SLEEPING_POS_ID: the bed a sleeping villager lies in.
-    if let Some(bed) = horizon_client::mobs::villager::sleeping_pos(m) {
-        meta.push((14, serializer::OPTIONAL_BLOCK_POS, Value::OptPos(Some(bed))));
-    }
-    if let Some(name) = &m.custom_name {
-        meta.push((
-            2,
-            serializer::OPTIONAL_COMPONENT,
-            Value::OptText(Some(super::names::name_component(m, name))),
-        ));
-    }
-    if m.name_visible {
-        meta.push((3, serializer::BOOLEAN, Value::Bool(true)));
-    }
-    // A name taken away or hidden again is sent as none / false.
-    defaults.push((2, serializer::OPTIONAL_COMPONENT, Value::OptText(None)));
-    defaults.push((3, serializer::BOOLEAN, Value::Bool(false)));
-    // LivingEntity.DATA_LIVING_ENTITY_FLAGS: using an item 1, in the off
-    // hand 2 (a skeleton draws its bow, a witch raises her potion).
-    let using = i8::from(m.extra.using_item > 0) | i8::from(m.extra.using_off_hand) << 1;
-    if using != 0 {
-        meta.push((8, serializer::BYTE, Value::Byte(using)));
-    }
-    defaults.push((8, serializer::BYTE, Value::Byte(0)));
-    // LivingEntity.DATA_HEALTH_ID: defined as 1, then set to the max health.
-    let health = m.health.max(0.0);
-    if health != 1.0 {
-        meta.push((9, serializer::FLOAT, Value::Float(health)));
-    }
-    defaults.push((9, serializer::FLOAT, Value::Float(1.0)));
-    // LivingEntity.DATA_EFFECT_PARTICLES and DATA_EFFECT_AMBIENCE_ID: the
-    // swirls of its effects, or what the native mods made of them
-    // (`Game::lan_effect_particles`, kept only while one listens: mods are
-    // installed once per process).
-    match &m.extra.modified_effect_particles {
-        Some(modified) => meta.extend_from_slice(&modified.meta),
-        None => meta.extend(effects),
-    }
-    defaults.push((10, serializer::PARTICLES, Value::Particles(Vec::new())));
-    defaults.push((11, serializer::BOOLEAN, Value::Bool(false)));
-    // LivingEntity.DATA_ARROW_COUNT_ID and DATA_STINGER_COUNT_ID.
-    stuck_meta(
-        meta,
-        defaults,
-        (m.extra.stuck.arrows, m.extra.stuck.stingers),
-    );
-    // Mob.DATA_MOB_FLAGS_ID: no AI 1, left-handed 2, aggressive 4 (what
-    // draws a vindicator's axe, a skeleton's drawn bow, a piglin's raised
-    // weapon).
-    let flags =
-        i8::from(m.no_ai) | i8::from(m.extra.left_handed) << 1 | i8::from(m.ai.aggressive) << 2;
-    if flags != 0 {
-        meta.push((15, serializer::BYTE, Value::Byte(flags)));
-    }
-    defaults.push((15, serializer::BYTE, Value::Byte(0)));
-    // AgeableMob.DATA_BABY_ID (and Zombie's, Zoglin's, Piglin's).
-    if let Some(index) = baby_index(m.species()) {
-        if m.is_baby() {
-            meta.push((index, serializer::BOOLEAN, Value::Bool(true)));
-        }
-        defaults.push((index, serializer::BOOLEAN, Value::Bool(false)));
-        // AgeableMob.AGE_LOCKED, the entry after it (not Zombie's or Piglin's).
-        if index == 16 && horizon_client::mobs::finalize::ageable(m.species()) {
-            if m.extra.age_locked {
-                meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((17, serializer::BOOLEAN, Value::Bool(false)));
-        }
-    }
-    let e = &m.extra;
-    let id = |registry: &str, name: &str| sync.id(registry, &format!("minecraft:{name}"));
-    // Pig.DATA_BOOST_TIME and Strider.DATA_BOOST_TIME (18, the first entry
-    // after AgeableMob's two). The total `boost()` stored in `counter2`.
-    // The default 0 is not registered: vanilla never writes it back, and the
-    // rider's client finishes the timer `onSynced` started.
-    if matches!(kind, "minecraft:pig" | "minecraft:strider") && e.counter2 > 0 {
-        meta.push((18, serializer::INT, Value::Int(e.counter2)));
-    }
-    mob_variant_meta(m, sync, meta, defaults);
-    mob_raider_meta(m, meta, defaults);
-    match kind {
-        "minecraft:guardian" | "minecraft:elder_guardian" => {
-            // Guardian.DATA_ID_MOVING and DATA_ID_ATTACK_TARGET.
-            if e.flag2 {
-                meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            let target = if e.flag {
-                m.ai.target.and_then(|who| match who {
-                    Who::Player => player_entity,
-                    Who::Mob(id) => Some(id as i32),
-                })
-            } else {
-                None
-            };
-            if let Some(target) = target {
-                meta.push((17, serializer::INT, Value::Int(target)));
-            }
-            defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
-            defaults.push((17, serializer::INT, Value::Int(0)));
-        }
-        // Bat.DATA_ID_FLAGS: resting in bit 0, flying by default.
-        "minecraft:bat" => {
-            if e.flag {
-                meta.push((16, serializer::BYTE, Value::Byte(1)));
-            }
-            defaults.push((16, serializer::BYTE, Value::Byte(0)));
-        }
-        // SnowGolem.DATA_PUMPKIN_ID: 16 while the pumpkin is on (the default).
-        "minecraft:snow_golem" => {
-            if e.sheared {
-                meta.push((16, serializer::BYTE, Value::Byte(0)));
-            }
-            defaults.push((16, serializer::BYTE, Value::Byte(16)));
-        }
-        // MushroomCow.DATA_TYPE (after AgeableMob's two): 0 red, 1 brown.
-        "minecraft:mooshroom" => {
-            if e.variant == 1 {
-                meta.push((18, serializer::INT, Value::Int(1)));
-            }
-            defaults.push((18, serializer::INT, Value::Int(0)));
-        }
-        // AbstractPiglin.DATA_IMMUNE_TO_ZOMBIFICATION (16: with the dimension it
-        // makes it shake) and Piglin.DATA_IS_DANCING (after the baby flag and
-        // the crossbow charge).
-        "minecraft:piglin" => {
-            if e.flag2 {
-                meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
-            if e.scratch[0] > 0 {
-                meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Sheep.DATA_WOOL_ID: the colour in the low nibble, 16 when sheared.
-        "minecraft:sheep" => {
-            let value = (e.color & 15) | if e.sheared { 16 } else { 0 };
-            if value != 0 {
-                meta.push((18, serializer::BYTE, Value::Byte(value as i8)));
-            }
-            defaults.push((18, serializer::BYTE, Value::Byte(0)));
-        }
-        // Fox.DATA_TYPE_ID and DATA_FLAGS_ID (after AgeableMob's two; sleeping 32, ...).
-        "minecraft:fox" => {
-            if e.variant != 0 {
-                meta.push((18, serializer::INT, Value::Int(i32::from(e.variant))));
-            }
-            defaults.push((18, serializer::INT, Value::Int(0)));
-            let flags = (e.ints[0] & 0xff) as u8 as i8;
-            if flags != 0 {
-                meta.push((19, serializer::BYTE, Value::Byte(flags)));
-            }
-            defaults.push((19, serializer::BYTE, Value::Byte(0)));
-        }
-        "minecraft:parrot" => {
-            // TamableAnimal.DATA_FLAGS_ID: in the sitting pose 1, tame 4.
-            let flags = i8::from(e.sitting_pose) | if e.tame { 4 } else { 0 };
-            if flags != 0 {
-                meta.push((18, serializer::BYTE, Value::Byte(flags)));
-            }
-        }
-        "minecraft:cat" | "minecraft:wolf" => {
-            // TamableAnimal.DATA_FLAGS_ID: in the sitting pose 1, tame 4.
-            let flags = i8::from(e.sitting_pose) | if e.tame { 4 } else { 0 };
-            if flags != 0 {
-                meta.push((18, serializer::BYTE, Value::Byte(flags)));
-            }
-            let (index, registry, name) = if kind == "minecraft:cat" {
-                let v = horizon_client::mobs::tame::CAT_VARIANTS[(e.variant as usize).min(10)];
-                (20, "minecraft:cat_variant", v)
-            } else {
-                let v = horizon_client::mobs::tame::WOLF_VARIANTS[(e.variant as usize).min(8)].0;
-                (23, "minecraft:wolf_variant", v)
-            };
-            let serializer = if index == 20 {
-                serializer::CAT_VARIANT
-            } else {
-                serializer::WOLF_VARIANT
-            };
-            if let Some(v) = id(registry, name) {
-                meta.push((index, serializer, Value::Id(v)));
-            }
-            // Cat.IS_LYING and RELAX_STATE_ONE.
-            if kind == "minecraft:cat" {
-                for (index, on) in [(21, e.flag), (22, e.relax_one)] {
-                    if on {
-                        meta.push((index, serializer::BOOLEAN, Value::Bool(true)));
-                    }
-                    defaults.push((index, serializer::BOOLEAN, Value::Bool(false)));
-                }
-            }
-            // Wolf.DATA_COLLAR_COLOR and Cat's, red by default.
-            let collar = if kind == "minecraft:cat" { 23 } else { 21 };
-            let red = i32::from(horizon_client::mobs::tame::RED);
-            if i32::from(e.color & 15) != red {
-                meta.push((collar, serializer::INT, Value::Int(i32::from(e.color & 15))));
-            }
-            defaults.push((collar, serializer::INT, Value::Int(red)));
-            // Wolf.DATA_ANGER_END_TIME: the game time the anger ends, -1 when calm.
-            if kind == "minecraft:wolf" {
-                // Wolf.DATA_INTERESTED_ID: BegGoal's flag, the head tilt.
-                if e.flag {
-                    meta.push((20, serializer::BOOLEAN, Value::Bool(true)));
-                }
-                defaults.push((20, serializer::BOOLEAN, Value::Bool(false)));
-                if e.anger > 0 {
-                    let end = game_time + i64::from(e.anger);
-                    meta.push((22, serializer::LONG, Value::Long(end)));
-                }
-                defaults.push((22, serializer::LONG, Value::Long(-1)));
-            }
-        }
-        "minecraft:horse"
-        | "minecraft:donkey"
-        | "minecraft:mule"
-        | "minecraft:llama"
-        | "minecraft:trader_llama"
-        | "minecraft:skeleton_horse"
-        | "minecraft:zombie_horse"
-        | "minecraft:camel" => {
-            // AbstractHorse.DATA_ID_FLAGS: tame 2, eating 16 (grazing), standing
-            // 32 (rearing).
-            let grazes = horizon_client::mobs::equine::grazes(m.species());
-            let flags = if e.tame { 2 } else { 0 }
-                | if grazes && e.flag { 16 } else { 0 }
-                | if grazes && e.counter > 0 { 32 } else { 0 };
-            if flags != 0 {
-                meta.push((18, serializer::BYTE, Value::Byte(flags)));
-            }
-            defaults.push((18, serializer::BYTE, Value::Byte(0)));
-            if kind == "minecraft:horse" {
-                let v = i32::from(e.variant) | i32::from(e.variant2) << 8;
-                if v != 0 {
-                    meta.push((19, serializer::INT, Value::Int(v)));
-                }
-            } else if kind.ends_with("llama") {
-                if e.chested {
-                    meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-                }
-                meta.push((
-                    20,
-                    serializer::INT,
-                    Value::Int(i32::from(e.variant2.max(1))),
-                ));
-                if e.variant != 0 {
-                    meta.push((21, serializer::INT, Value::Int(i32::from(e.variant))));
-                }
-            } else if (kind == "minecraft:donkey" || kind == "minecraft:mule") && e.chested {
-                meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-            }
-        }
-        // HappyGhast.STAYS_STILL (after AgeableMob's two and IS_LEASH_HOLDER),
-        // set while `serverStillTimeout > 0` (`syncStayStillFlag`).
-        "minecraft:happy_ghast" => {
-            // HappyGhast.IS_LEASH_HOLDER (`setLeashHolder` in `tick`).
-            if horizon_client::mobs::happy_ghast::is_leash_holder(m) {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-            if horizon_client::mobs::happy_ghast::on_still_timeout(m) {
-                meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Villager.DATA_VILLAGER_DATA and ZombieVillager's (after Zombie's three).
-        "minecraft:villager" | "minecraft:zombie_villager" => {
-            use horizon_client::mobs::VILLAGER_TYPES;
-            if kind == "minecraft:villager" {
-                unhappy_counter(m, meta, defaults);
-            } else {
-                // ZombieVillager.DATA_CONVERTING_ID: the cure's shaking.
-                if horizon_client::mobs::zombie_villager::is_converting(m) {
-                    meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-                }
-                defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-            }
-            let villager_type = VILLAGER_TYPES[e.variant as usize % VILLAGER_TYPES.len()];
-            let profession =
-                horizon_client::mobs::villager::profession_id(e.profession.index().unwrap_or(0));
-            if let (Some(t), Some(p)) = (
-                id("minecraft:villager_type", villager_type),
-                id("minecraft:villager_profession", profession),
-            ) {
-                let index = if kind == "minecraft:villager" { 19 } else { 20 };
-                let level = e.villager_level.max(1);
-                meta.push((
-                    index,
-                    serializer::VILLAGER_DATA,
-                    Value::Ids(vec![t, p, level]),
-                ));
-            }
-        }
-        // Phantom.ID_SIZE (after Mob's flags).
-        "minecraft:phantom" => {
-            if e.size > 0 {
-                meta.push((16, serializer::INT, Value::Int(e.size)));
-            }
-            defaults.push((16, serializer::INT, Value::Int(0)));
-        }
-        // AbstractCubeMob.ID_SIZE; SulfurCube then syncs MAX_FUSE (-1 until primed;
-        // clients tick it for the swell / white flash) and FROM_BUCKET (#13721).
-        "minecraft:slime" | "minecraft:magma_cube" | "minecraft:sulfur_cube" => {
-            if e.size > 1 {
-                meta.push((18, serializer::INT, Value::Int(e.size)));
-            }
-            defaults.push((18, serializer::INT, Value::Int(1)));
-            if kind == "minecraft:sulfur_cube" {
-                let fuse = horizon_client::mobs::sulfur_cube::fuse(m);
-                if fuse >= 0 {
-                    meta.push((19, serializer::INT, Value::Int(fuse)));
-                }
-                defaults.push((19, serializer::INT, Value::Int(-1)));
-                if e.scratch[3] != 0 {
-                    meta.push((20, serializer::BOOLEAN, Value::Bool(true)));
-                }
-                defaults.push((20, serializer::BOOLEAN, Value::Bool(false)));
-            }
-        }
-        // Creeper.DATA_SWELL_DIR, DATA_IS_POWERED and DATA_IS_IGNITED: the
-        // guest swells the creeper from them. The direction always goes in,
-        // as only changed entries are sent and it drops back to -1.
-        "minecraft:creeper" => {
-            meta.push((16, serializer::INT, Value::Int(e.counter)));
-            if e.charged {
-                meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            if e.flag {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-        }
-        // Pillager.IS_CHARGING_CROSSBOW: the charge pose and the held
-        // item's loading animation.
-        "minecraft:pillager" => {
-            if e.flag {
-                meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((17, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Panda: UNHAPPY_COUNTER, SNEEZE_COUNTER and EAT_COUNTER (after
-        // AgeableMob's two), MAIN_GENE_ID, HIDDEN_GENE_ID and DATA_ID_FLAGS;
-        // the client animates the states from them.
-        "minecraft:panda" => {
-            let (flags, counters) = horizon_client::mobs::panda::get(m)
-                .map_or((0, [0; 3]), |s| (s.flags, [s.unhappy, s.sneeze, s.eat]));
-            for (index, value) in (18..).zip(counters) {
-                if value != 0 {
-                    meta.push((index, serializer::INT, Value::Int(value)));
-                }
-                defaults.push((index, serializer::INT, Value::Int(0)));
-            }
-            for (index, gene) in [(21, e.variant), (22, e.variant2)] {
-                if gene != 0 {
-                    meta.push((index, serializer::BYTE, Value::Byte(gene as i8)));
-                }
-                defaults.push((index, serializer::BYTE, Value::Byte(0)));
-            }
-            if flags != 0 {
-                meta.push((23, serializer::BYTE, Value::Byte(flags as i8)));
-            }
-            defaults.push((23, serializer::BYTE, Value::Byte(0)));
-        }
-        // PolarBear.DATA_STANDING_ID (after AgeableMob's two): the bear
-        // rears up; the client animates it.
-        "minecraft:polar_bear" => {
-            if e.flag {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // SpellcasterIllager.DATA_SPELL_CASTING_ID: the casting pose.
-        "minecraft:evoker" | "minecraft:illusioner" => {
-            if e.variant2 != 0 {
-                meta.push((17, serializer::BYTE, Value::Byte(e.variant2 as i8)));
-            }
-            defaults.push((17, serializer::BYTE, Value::Byte(0)));
-        }
-        // Warden.CLIENT_ANGER_LEVEL: the heartbeat's pace.
-        "minecraft:warden" => {
-            let anger = e.warden.as_ref().map_or(0, |w| w.client_anger);
-            if anger != 0 {
-                meta.push((16, serializer::INT, Value::Int(anger)));
-            }
-            defaults.push((16, serializer::INT, Value::Int(0)));
-        }
-        // Sniffer.DATA_STATE (after AgeableMob's two).
-        "minecraft:sniffer" => {
-            if e.variant != 0 {
-                meta.push((
-                    18,
-                    serializer::SNIFFER_STATE,
-                    Value::Id(i32::from(e.variant)),
-                ));
-            }
-            defaults.push((18, serializer::SNIFFER_STATE, Value::Id(0)));
-        }
-        // Shulker.DATA_ATTACH_FACE_ID, DATA_PEEK_ID and DATA_COLOR_ID (16
-        // for none).
-        "minecraft:shulker" => {
-            if e.variant3 != 0 {
-                meta.push((16, serializer::DIRECTION, Value::Id(i32::from(e.variant3))));
-            }
-            defaults.push((16, serializer::DIRECTION, Value::Id(0)));
-            if e.counter != 0 {
-                meta.push((17, serializer::BYTE, Value::Byte(e.counter as i8)));
-            }
-            defaults.push((17, serializer::BYTE, Value::Byte(0)));
-            if e.color != 16 {
-                meta.push((18, serializer::BYTE, Value::Byte(e.color as i8)));
-            }
-            defaults.push((18, serializer::BYTE, Value::Byte(16)));
-        }
-        // Vex.DATA_FLAGS_ID: charging in bit 0 (the arms and the glowing
-        // texture).
-        "minecraft:vex" => {
-            if e.flag {
-                meta.push((16, serializer::BYTE, Value::Byte(1)));
-            }
-            defaults.push((16, serializer::BYTE, Value::Byte(0)));
-        }
-        // GlowSquid.DATA_DARK_TICKS_REMAINING (after AgeableMob's two): the
-        // dimming a hit gave, counted down by the server and the client alike.
-        "minecraft:glow_squid" => {
-            let ticks = horizon_client::mobs::aquatic::dark_ticks(m);
-            if ticks != 0 {
-                meta.push((18, serializer::INT, Value::Int(ticks)));
-            }
-            defaults.push((18, serializer::INT, Value::Int(0)));
-        }
-        // Ocelot.DATA_TRUSTING (after AgeableMob's two).
-        "minecraft:ocelot" => {
-            if e.trusting {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Mannequin.DATA_PROFILE, DATA_IMMOVABLE and DATA_DESCRIPTION (after Avatar's two):
-        // `updateDescription` keeps the last as a component, or none when hidden.
-        "minecraft:mannequin" => {
-            if let Some(profile) = &m.profile {
-                meta.push((
-                    17,
-                    serializer::RESOLVABLE_PROFILE,
-                    Value::Profile(profile.clone()),
-                ));
-            }
-            if e.immovable {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-            let default = horizon_client::mobs::MannequinDescription::Default.component();
-            let shown = e.description.component();
-            if shown != default {
-                meta.push((19, serializer::OPTIONAL_COMPONENT, Value::OptText(shown)));
-            }
-            defaults.push((19, serializer::OPTIONAL_COMPONENT, Value::OptText(default)));
-        }
-        // Creaking.CAN_MOVE, IS_ACTIVE and IS_TEARING_DOWN.
-        "minecraft:creaking" => {
-            if e.flag2 {
-                meta.push((16, serializer::BOOLEAN, Value::Bool(false)));
-            }
-            defaults.push((16, serializer::BOOLEAN, Value::Bool(true)));
-            if e.flag {
-                meta.push((17, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((17, serializer::BOOLEAN, Value::Bool(false)));
-            if horizon_client::mobs::creaking::tearing_down(m) {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Allay.DATA_DANCING and DATA_CAN_DUPLICATE (the held item is its
-        // main hand equipment).
-        "minecraft:allay" => {
-            if e.flag {
-                meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
-            if e.egg_time > 0 {
-                meta.push((17, serializer::BOOLEAN, Value::Bool(false)));
-            }
-            defaults.push((17, serializer::BOOLEAN, Value::Bool(true)));
-        }
-        // Axolotl.DATA_PLAYING_DEAD (after DATA_VARIANT).
-        "minecraft:axolotl" => {
-            if horizon_client::mobs::axolotl::is_playing_dead(m) {
-                meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // CopperGolem.COPPER_GOLEM_STATE (after DATA_WEATHER_STATE).
-        "minecraft:copper_golem" => {
-            if e.variant3 != 0 {
-                meta.push((
-                    17,
-                    serializer::COPPER_GOLEM_STATE,
-                    Value::Id(i32::from(e.variant3)),
-                ));
-            }
-            defaults.push((17, serializer::COPPER_GOLEM_STATE, Value::Id(0)));
-        }
-        // Armadillo.ARMADILLO_STATE (after AgeableMob's two).
-        "minecraft:armadillo" => {
-            let state = horizon_client::mobs::armadillo::state(m);
-            if state != 0 {
-                meta.push((18, serializer::ARMADILLO_STATE, Value::Id(i32::from(state))));
-            }
-            defaults.push((18, serializer::ARMADILLO_STATE, Value::Id(0)));
-        }
-        // Frog.DATA_TONGUE_TARGET_ID (after the variant): the entity id plus
-        // one, 0 for none.
-        "minecraft:frog" => {
-            if let Some(target) = e.frog.tongue_target {
-                let id = i32::try_from(target).map_or(0, |t| t + 1);
-                meta.push((19, serializer::OPTIONAL_UNSIGNED_INT, Value::Id(id)));
-            }
-            defaults.push((19, serializer::OPTIONAL_UNSIGNED_INT, Value::Id(0)));
-        }
-        // Goat.DATA_HAS_LEFT_HORN and DATA_HAS_RIGHT_HORN (after
-        // DATA_IS_SCREAMING_GOAT): both true by default.
-        "minecraft:goat" => {
-            for (index, lost) in [(19, e.lost_horns[0]), (20, e.lost_horns[1])] {
-                if lost {
-                    meta.push((index, serializer::BOOLEAN, Value::Bool(false)));
-                }
-                defaults.push((index, serializer::BOOLEAN, Value::Bool(true)));
-            }
-        }
-        "minecraft:enderman" => mob_metadata::enderman(e, meta, defaults),
-        // Zombie.DATA_DROWNED_CONVERSION_ID (after DATA_BABY_ID and
-        // DATA_SPECIAL_TYPE_ID): the shaking of the conversion under water.
-        "minecraft:zombie" | "minecraft:husk" => {
-            if e.counter2 > 0 {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Skeleton.DATA_STRAY_CONVERSION_ID (the first entry after Mob's):
-        // the shaking of the freezing conversion.
-        "minecraft:skeleton" => {
-            if e.counter2 > 0 {
-                meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Bogged.DATA_SHEARED (the first entry after Mob's): the mushrooms
-        // on its head are gone.
-        "minecraft:bogged" => {
-            if e.sheared {
-                meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // AbstractVillager.DATA_UNHAPPY_COUNTER (after AgeableMob's two).
-        "minecraft:wandering_trader" => unhappy_counter(m, meta, defaults),
-        // Hoglin.DATA_IMMUNE_TO_ZOMBIFICATION (after AgeableMob's two) and
-        // AbstractPiglin's, the first entry of its subclasses (the piglin's is
-        // in its own arm): with the dimension it makes them shake.
-        "minecraft:hoglin" | "minecraft:piglin_brute" => {
-            let index = if kind == "minecraft:hoglin" { 18 } else { 16 };
-            if e.flag2 {
-                meta.push((index, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((index, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // Blaze.DATA_FLAGS_ID: charged 1, which makes it burn.
-        "minecraft:blaze" => {
-            if e.flag {
-                meta.push((16, serializer::BYTE, Value::Byte(1)));
-            }
-            defaults.push((16, serializer::BYTE, Value::Byte(0)));
-        }
-        // Turtle.HAS_EGG and LAYING_EGG (after AgeableMob's two).
-        "minecraft:turtle" => {
-            if e.flag {
-                meta.push((18, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            if e.flag2 {
-                meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            defaults.push((18, serializer::BOOLEAN, Value::Bool(false)));
-            defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-        }
-        // WitherBoss.DATA_TARGET_B and DATA_TARGET_C (after DATA_TARGET_A, the
-        // main target): the entities the side heads look at, by id.
-        "minecraft:wither" => {
-            for (k, index) in [(0, 17), (1, 18)] {
-                let target = match e.ints[k] {
-                    0 => None,
-                    -1 => player_entity,
-                    id => Some(id),
-                };
-                if let Some(target) = target {
-                    meta.push((index, serializer::INT, Value::Int(target)));
-                }
-                defaults.push((index, serializer::INT, Value::Int(0)));
-            }
-        }
-        _ => {}
-    }
-    // Camel.DASH and LAST_POSE_CHANGE_TICK (after AbstractHorse's flags).
-    if horizon_client::mobs::camel::is_camel(m.species()) {
-        if e.flag2 {
-            meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-        }
-        defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-        let tick = horizon_client::mobs::camel::synced_pose_tick(m, game_time);
-        if tick != 0 {
-            meta.push((20, serializer::LONG, Value::Long(tick)));
-        }
-        defaults.push((20, serializer::LONG, Value::Long(0)));
-    }
-}
-
-/// AbstractVillager.DATA_UNHAPPY_COUNTER (after AgeableMob's two): the head
-/// shake of a villager saying no counts it down from 40.
-use super::villager_client::unhappy_counter;
-
-/// A mob's effects as its swirls are computed from.
-fn mob_effects(m: &Mob) -> impl Iterator<Item = ShownEffect> + '_ {
-    (m.extra.effects.iter()).map(|e| ShownEffect {
-        effect: e.id,
-        amplifier: e.amplifier,
-        visible: !m.extra.hidden_effects.contains(&e.id),
-        ambient: m.extra.ambient_effects.contains(&e.id),
-    })
-}
-
-/// Raider.IS_CELEBRATING: also list false so tracking sends the end of a celebration.
-pub(super) fn mob_raider_meta(
-    m: &Mob,
-    meta: &mut Vec<(u8, i32, Value)>,
-    defaults: &mut Vec<(u8, i32, Value)>,
-) {
-    use horizon_client::mobs::raider;
-    if raider::is_raider(m.species()) {
-        if raider::state(m).is_some_and(|state| state.celebrating) {
-            meta.push((16, serializer::BOOLEAN, Value::Bool(true)));
-        }
-        defaults.push((16, serializer::BOOLEAN, Value::Bool(false)));
-    }
-}
-
-/// What a client shakes a mob by: Entity.DATA_TICKS_FROZEN (7), whose full
-/// count is `isFullyFrozen`, and Strider.DATA_SUFFOCATING (19, after
-/// AgeableMob's two and DATA_BOOST_TIME).
-pub(super) fn mob_freeze_meta(
-    m: &Mob,
-    meta: &mut Vec<(u8, i32, Value)>,
-    defaults: &mut Vec<(u8, i32, Value)>,
-) {
-    // `setTicksFrozen` can go negative (a mob warming up), and a client reads
-    // the count as is, so anything but the default 0 goes out.
-    if m.ticks_frozen != 0 {
-        meta.push((7, serializer::INT, Value::Int(m.ticks_frozen)));
-    }
-    defaults.push((7, serializer::INT, Value::Int(0)));
-    // Every Entity tracks air, including changes back to its species' default.
-    let max = m.max_air_supply();
-    if m.air != max {
-        meta.push((1, serializer::INT, Value::Int(m.air)));
-    }
-    defaults.push((1, serializer::INT, Value::Int(max)));
-    if m.kind.id == "minecraft:strider" {
-        if m.extra.flag {
-            meta.push((19, serializer::BOOLEAN, Value::Bool(true)));
-        }
-        defaults.push((19, serializer::BOOLEAN, Value::Bool(false)));
-    }
-}
-
 /// With the game mode forced, the guests online take the default mode
 /// (setting a mode does nothing when it is already theirs). A world open to
-/// LAN is an integrated server, which leaves out the players who have game
-/// master permission; a dedicated server does not.
 fn enforce_guest_game_mode(
     host: &mut LanHost,
     world: &World,
@@ -1038,12 +186,11 @@ fn enforce_guest_game_mode(
         return;
     }
     let mode = host.hub.config.default_game_mode;
-    let spares_operators = host.hub.config.integrated;
     let stale: Vec<u32> = host
         .hub
         .guests
         .iter()
-        .filter(|g| g.game_mode != mode && !(spares_operators && g.permission >= 2))
+        .filter(|g| g.game_mode != mode)
         .map(|g| g.conn)
         .collect();
     for conn in stale {
@@ -1188,21 +335,8 @@ impl Game<'_> {
         Ok(())
     }
 
-    /// IntegratedServer.unpublishServer: the guests are sent away.
+    /// Closes the LAN: the guests are saved and sent away.
     pub(super) fn lan_close(&mut self, announce: bool) {
-        if self.integrated.is_some() || self.serving() {
-            let closed = match &self.integrated {
-                Some(server) => server.call(|g| g.unpublish()).unwrap_or(false),
-                None => self.unpublish(),
-            };
-            if closed && announce && self.integrated.is_some() {
-                self.system_message(Text::translate(
-                    "menu.multiplayerOptions.publish.stopped",
-                    &[],
-                ));
-            }
-            return;
-        }
         self.native_players_leaving();
         if self.lan.is_none() {
             return;
@@ -1955,9 +1089,8 @@ impl Game<'_> {
                     // PlayerList.placeNewPlayer: the name the user cache knew,
                     // before it learns this one, for a renamed player's join line.
                     let mut renamed = None;
-                    if self.options.execution_role.is_dedicated_server()
-                        && let Some((uuid, name)) =
-                            host.hub.guest(conn).map(|g| (g.uuid, g.name.clone()))
+                    if let Some((uuid, name)) =
+                        host.hub.guest(conn).map(|g| (g.uuid, g.name.clone()))
                         && let Some(old) = super::dedicated::cached_user_by_id(uuid)
                     {
                         if !old.name.eq_ignore_ascii_case(&name) {
@@ -1967,9 +1100,7 @@ impl Game<'_> {
                     }
                     self.lan_guest_joined(conn, entities, spawn);
                     let host = self.lan.as_ref()?;
-                    if self.is_dedicated_server()
-                        && let Some(g) = host.hub.guest(conn)
-                    {
+                    if let Some(g) = host.hub.guest(conn) {
                         // PlayerList.placeNewPlayer, then the broadcast join message.
                         super::dedicated::player_joined(g.uuid, &g.name);
                         super::dedicated::events::record(
@@ -2549,13 +1680,8 @@ impl Game<'_> {
                         .rules
                         .bool_at(horizon_client::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
                 );
-                // IntegratedServer.getScaledTrackingDistance: the Entity Distance
-                // option scales what an integrated server or a LAN host tracks (a
-                // dedicated one keeps its entity-broadcast-range-percentage).
-                if host.hub.config.integrated {
-                    host.hub.entity_range_percent =
-                        (self.settings.entity_distance * 100.0).round() as i32;
-                }
+                host.hub.entity_range_percent =
+                    (self.settings.entity_distance * 100.0).round() as i32;
                 host.hub.set_immediate_respawn(
                     self.session
                         .rules
@@ -3064,36 +2190,25 @@ impl Game<'_> {
         let Some(g) = host.hub.online_players().find(|g| g.uuid == sender) else {
             return;
         };
-        if self.is_dedicated_server() {
-            super::dedicated::events::record(
-                "chat",
-                &g.name,
-                sender,
-                serde_json::json!({ "message": text }),
-            );
-        }
+        super::dedicated::events::record(
+            "chat",
+            &g.name,
+            sender,
+            serde_json::json!({ "message": text }),
+        );
         let conn = g.conn;
         self.detect_rate_spam(conn, false);
     }
-    /// A hub's chat and log lines: a dedicated server logs them
-    /// (MinecraftServer.logChatMessage, `[Not Secure]` for unsigned or
-    /// expired messages); a LAN host shows the chat.
+    /// A hub's chat and log lines, logged as MinecraftServer.logChatMessage
+    /// does (`[Not Secure]` for unsigned or expired messages).
     pub(super) fn lan_log_event(&mut self, event: HostEvent) {
-        let dedicated = self.is_dedicated_server();
         match event {
-            HostEvent::Chat { line, secure } if dedicated => {
+            HostEvent::Chat { line, secure } => {
                 let tag = if secure { "" } else { "[Not Secure] " };
                 super::dedicated::log("INFO", &format!("{tag}{line}"));
             }
-            // Player chat (and `/say`'s or `/me`'s, which are chat messages
-            // too): the host's Chat option decides, as `ChatListener` does
-            // for the guests' packets. Command feedback is a system message
-            // and takes the system-message permission instead.
-            HostEvent::Chat { line, .. } => self.player_message(Text::untrusted(line)),
-            HostEvent::Warn(line) if dedicated => super::dedicated::log("WARN", &line),
-            HostEvent::Warn(line) => log::warn!("{line}"),
-            HostEvent::Error(line) if dedicated => super::dedicated::log("ERROR", &line),
-            HostEvent::Error(line) => log::error!("{line}"),
+            HostEvent::Warn(line) => super::dedicated::log("WARN", &line),
+            HostEvent::Error(line) => super::dedicated::log("ERROR", &line),
             _ => {}
         }
     }
@@ -3184,7 +2299,7 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{EventTimings, OFFHAND_SLOT, equipment_slot_name, living_flags, mob_freeze_meta};
+    use super::{EventTimings, OFFHAND_SLOT, equipment_slot_name, living_flags};
 
     #[test]
     fn a_burst_of_short_events_still_has_a_slow_tick_note() {
@@ -3208,7 +2323,6 @@ mod tests {
         spans::record_here(false);
         assert_eq!(notes, vec![(1000.0, "200 x UseItemOn".into())]);
     }
-    use horizon_client::mobs::Mob;
     use horizon_protocol::entity_data::{Value, serializer};
 
     fn vanilla_root() -> std::path::PathBuf {
@@ -3608,55 +2722,12 @@ mod tests {
         assert!(Arc::ptr_eq(&opened, &reused));
     }
 
-    fn mob_of(kind: &str) -> Option<Mob> {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.local/horizon-client")
-            .join(horizon_core::VANILLA_VERSION);
-        let types = horizon_client::mobs::MobTypes::load(&root).ok()?;
-        let t = std::sync::Arc::new(types.types.get(kind)?.clone());
-        Some(Mob::new(
-            1,
-            t,
-            horizon_core::geometry::Vec3::new(0.0, 64.0, 0.0),
-            0.0,
-        ))
-    }
-
-    fn freeze_meta(m: &Mob) -> (Vec<(u8, i32, Value)>, Vec<(u8, i32, Value)>) {
-        let (mut meta, mut defaults) = (Vec::new(), Vec::new());
-        mob_freeze_meta(m, &mut meta, &mut defaults);
-        (meta, defaults)
-    }
-
     /// Entity.setTicksFrozen can go negative; index 7 must carry it. Index 1
     /// (air supply) goes out for every mob, with the species' own default.
     #[test]
     fn negative_frozen_ticks_and_axolotl_air_are_synced() {
-        let Some(mut cow) = mob_of("minecraft:cow") else {
-            return;
-        };
-        cow.ticks_frozen = -3;
-        let (meta, _) = freeze_meta(&cow);
-        assert!(meta.contains(&(7, serializer::INT, Value::Int(-3))));
-        cow.air = 100;
-        assert!(
-            freeze_meta(&cow)
-                .0
-                .contains(&(1, serializer::INT, Value::Int(100)))
-        );
-
-        let Some(mut axolotl) = mob_of("minecraft:axolotl") else {
-            return;
-        };
-        axolotl.air = 5000;
-        let (meta, defaults) = freeze_meta(&axolotl);
-        assert!(meta.contains(&(1, serializer::INT, Value::Int(5000))));
-        assert!(defaults.contains(&(1, serializer::INT, Value::Int(6000))));
-        axolotl.air = 6000;
-        assert!(freeze_meta(&axolotl).0.iter().all(|e| e.0 != 1));
+        todo!("phase 2 : réécrire sur l'ECS")
     }
-
-    pub(super) use crate::game::villager_client_tests::meta_hub;
 
     /// `LivingEntity.startUsingItem` sets flag 1 for the use and flag 2 for
     /// the off hand, so an off-hand use is 3, not 2. A reader takes bit 0 as
@@ -3760,7 +2831,6 @@ mod tests {
                     allow_flight: true,
                     seed: 0,
                     max_players: 3,
-                    integrated: true,
                     levels: game.level_shapes,
                     level_seeds: game.levels.runtime.seeds(),
                 };
@@ -3951,7 +3021,6 @@ pub(crate) mod world_spawn_sync_tests {
                 allow_flight: false,
                 seed: 0,
                 max_players: 20,
-                integrated: true,
                 levels: Default::default(),
                 level_seeds: Default::default(),
             },
@@ -4286,8 +3355,6 @@ mod connected_statistics_save_tests {
         let mut resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
         game.options.execution_role = ExecutionRole::DedicatedServer;
-        // The command's dedicated-only guard also checks the launch mode.
-        game.options.dedicated = Some(Vec::new());
         let dir = std::env::current_dir().unwrap().join(if stale {
             "stats-stale"
         } else {
@@ -4342,7 +3409,7 @@ mod connected_statistics_save_tests {
         for command in ["save-all", "save-all flush"] {
             game.chat_capture = Some(Vec::new());
             // Match dedicated registration without changing the process-wide
-            // tree used by unrelated integrated-server tests.
+            // tree used by unrelated server tests.
             let dispatcher = horizon_client::command::vanilla::build_for(false, true);
             game.session.registries.permission = 4;
             let parsed = dispatcher.parse(command, &game.session.registries);
@@ -4418,13 +3485,6 @@ mod connected_statistics_save_exclusion_tests {
         assert!(!path.exists(), "no play record: no invented statistics");
         host.play.insert(1, play);
         game.lan = Some(host);
-        game.options.dedicated = None;
-        game.save_game_metadata().unwrap();
-        assert!(!path.exists(), "the existing dedicated gate is preserved");
-        game.options.dedicated = Some(Vec::new());
-        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-        game.save_game_metadata().unwrap();
-        assert!(!path.exists(), "the existing nonclient gate is preserved");
         game.options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let host = game.lan.take().unwrap();
         game.save_game_metadata().unwrap();

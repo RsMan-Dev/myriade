@@ -4,6 +4,7 @@
 //! target asks for one after `far_ticks` ticks. The teleport is the rule `R:enderman`, not here: the module counts the
 //! requests (`asked_near`, `asked_far`). Wake: a player who moves (`Online.seen`) within the follow range (no timer, no poll).
 use super::*;
+use crate::behaviours::neutral_anger::{Anger, Angry};
 use crate::targeting::{self, Eye, FollowRange, Target, Who};
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
@@ -39,6 +40,22 @@ pub struct Stare {
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Staring;
+/// The enderman's gaze: the tick its target was set (`targetChangeTime`, None: no target), the tick of its last stare sound, and the
+/// anger it shows (`DATA_CREEPY`, the last target state seen).
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Gaze {
+    pub target_at: Option<u32>,
+    pub sound_at: Option<u32>,
+    pub creepy: bool,
+}
+/// A player stares at the enderman (`DATA_STARED_AT`): set while the stare holds, cleared when the target goes.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Stared;
+/// `Enderman.playStareSound`'s throttle: a sound at most once in 400 ticks (`last`: the tick of the last one; none yet: due).
+pub fn sound_due(last: Option<u32>, now: u32) -> bool {
+    last.is_none_or(|t| now >= t + 400)
+}
 
 pub static MODULE: Module = Module {
     name: "look_for_player",
@@ -53,10 +70,10 @@ pub static MODULE: Module = Module {
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    w.entity_mut(e).insert(Stare { slot: inst.slot, p, pending: false, aggro: 0, teleport: 0, pick: 0, asked_near: 0, asked_far: 0 });
+    w.entity_mut(e).insert((Stare { slot: inst.slot, p, pending: false, aggro: 0, teleport: 0, pick: 0, asked_near: 0, asked_far: 0 }, Gaze::default()));
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((stare_wake, stare_run).chain().in_set(slot));
+    s.add_systems((stare_wake, stare_run, gaze_target).chain().in_set(slot));
 }
 /// The stare, the sight and the distance of a player, as the `Mob` reads them (`EndermanLookForPlayerGoal.isAngerInducing`
 /// without the angry-at-player part: `NeutralAnger`, fiche 38, is not here).
@@ -100,6 +117,8 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let eye = w.get::<Eye>(e).map_or(1.0, |l| l.0);
     let range = w.get::<FollowRange>(e).map_or(16.0, |f| f.0);
+    // `isAngerInducing`: a player the enderman is angry at needs no stare.
+    let angered = crate::behaviours::neutral_anger::anger_at(w, e);
     let level = w.resource::<Level>();
     let ps = w.resource::<crate::hostile::PlayerState>();
     let mut best: Option<(u32, f64)> = None;
@@ -108,7 +127,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
         if d <= range * range
             && eligible(ps, p.id)
             && best.is_none_or(|b| d < b.1)
-            && stared(level, ps, p, pos, eye)
+            && (angered == Some(Who::Player(p.id)) || stared(level, ps, p, pos, eye))
             && sees(level, pos, eye, p)
         {
             best = Some((p.id, d));
@@ -143,17 +162,49 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
         targeting::clear_target(w, e);
     }
 }
+/// `Enderman.setTarget`'s side effects, for each target that changed or went: its time is stamped (none zeroes it) and the stare ends
+/// with it. The anger flipping while stared plays the stare sound at the eyes, unless silent; the throttle counts silent ones too.
+fn gaze_target(
+    clock: Res<Clock>,
+    mut removed: RemovedComponents<Target>,
+    changed: Query<Entity, Changed<Target>>,
+    mut q: Query<(&Pos, &Eye, &mut Gaze, Has<Stared>, Has<super::elder_curse::Silent>, Option<&Target>), With<Gaze>>,
+    mut events: ResMut<Events>,
+    mut cmd: Commands,
+) {
+    let mut touched: Vec<Entity> = removed.read().collect();
+    touched.extend(changed.iter());
+    for e in touched {
+        let Ok((pos, eye, mut g, stared, silent, target)) = q.get_mut(e) else { continue };
+        let now = clock.of(e) as u32;
+        let creepy = target.is_some();
+        g.target_at = creepy.then_some(now);
+        if !creepy {
+            cmd.entity(e).remove::<Stared>();
+        }
+        if creepy == g.creepy {
+            continue;
+        }
+        g.creepy = creepy;
+        if stared && sound_due(g.sound_at, now) {
+            g.sound_at = Some(now);
+            if !silent {
+                events.host.sound("entity.enderman.stare", [pos.0.x, pos.0.y + eye.0, pos.0.z], 2.5, 1.0);
+            }
+        }
+    }
+}
 /// `LookForPlayer.canContinueToUse` and `tick`: the goal ends when its player is no longer eligible, or (while pending)
 /// when the stare is over; the eyes turn to the player (`turn_to`: 10 degrees a tick on both axes).
 fn stare_run(
     on: Res<Online>,
     ps: Res<crate::hostile::PlayerState>,
     level: Res<Level>,
-    mut q: Query<(Aim, &Eye, &mut Stare), With<Staring>>,
+    mut q: Query<(Aim, &Eye, &mut Stare, Option<&Anger>, Has<Angry>), With<Staring>>,
     mut reqs: ResMut<Requests>,
     mut cmd: Commands,
 ) {
-    for ((e, pos, mut look, looking, _, _), eye, mut st) in &mut q {
+    for ((e, pos, mut look, looking, _, _), eye, mut st, anger, angry_mark) in &mut q {
         let Some(p) = on.get(st.pick) else {
             reqs.0.push(Req::End(e, st.slot));
             continue;
@@ -164,10 +215,13 @@ fn stare_run(
         }
         let feet = pos.0;
         if st.pending {
-            if !stared(&level, &ps, p, feet, eye.0) {
+            // `isAngerInducing` is tested on every tick: the countdown runs on anger at this player, or on a stare.
+            let angered = anger.is_some_and(|a| (a.holding || angry_mark) && a.at == Some(Who::Player(p.id)));
+            if !angered && !stared(&level, &ps, p, feet, eye.0) {
                 reqs.0.push(Req::End(e, st.slot));
                 continue;
             }
+            cmd.entity(e).insert(Stared);
             aim_clamped(&mut cmd, e, &mut look, looking, [p.x, p.eye(), p.z], Some(10.0), Some(10.0));
             st.aggro -= 1;
             if st.aggro <= 0 {
@@ -184,6 +238,7 @@ fn stare_run(
         } else {
             let d = d2(feet, Vec3::new(p.x, p.y, p.z));
             if stared(&level, &ps, p, feet, eye.0) {
+                cmd.entity(e).insert(Stared);
                 if d < st.p.near_sqr {
                     st.asked_near += 1;
                     cmd.queue(move |w: &mut World| {
@@ -289,6 +344,23 @@ mod tests {
             h.tick();
         }
         assert!(running(&h, e), "the same player looking at it starts the goal");
+    }
+
+    /// `Enderman.setTarget`: a target stamps its time, and no target zeroes it.
+    #[test]
+    fn the_target_time_is_stamped_on_a_target_and_zeroed_without_one() {
+        let Some(mut h) = herd() else { return };
+        let e = enderman(&mut h, 0.5, 0.5);
+        h.tick();
+        player(&mut h, e, 6.0, true);
+        for _ in 0..6 {
+            h.tick();
+        }
+        assert!(target_of(&h, e).is_some());
+        assert!(h.world.get::<Gaze>(e).unwrap().target_at.is_some(), "a target is stamped");
+        targeting::clear_target(&mut h.world, e);
+        h.tick();
+        assert_eq!(h.world.get::<Gaze>(e).unwrap().target_at, None, "no target, no time");
     }
 
     /// A creative player is never taken; the target of a player who stops being eligible is dropped and the goal ends.

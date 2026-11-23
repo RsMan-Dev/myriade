@@ -7,6 +7,7 @@
 //! column (the Mob traces at every tick of movement).
 use super::*;
 use crate::{cow::*, goals::*};
+use crate::host_out::HostOut;
 use crate::rules::snow_trail as rules;
 use horizon_client_lib::mobs::MobWorld;
 
@@ -55,6 +56,7 @@ fn run(
     level: Res<Level>,
     mut damage: ResMut<DamageQueue>,
     mut changes: ResMut<BlockChanges>,
+    mut events: ResMut<Events>,
     mut cmd: Commands,
 ) {
     let mw = level.mw.0;
@@ -65,7 +67,7 @@ fn run(
             damage.add(e, 1.0, Cause::OnFire);
         }
         if mw.mob_griefing {
-            trail(mw, p.0.x, p.0.z, y, tr.def.corner, &mut changes);
+            trail(mw, p.0.x, p.0.z, y, e, tr.def.corner, &mut changes, &mut events.host);
         }
         if !hot && moving.is_none() {
             cmd.entity(e).remove::<Trailing>();
@@ -73,15 +75,18 @@ fn run(
     }
 }
 /// The four corners, in the Mob's order: a snow layer on each air cell over a support, once per cell.
-fn trail(mw: &MobWorld, x: f64, z: f64, y: i32, corner: f64, changes: &mut BlockChanges) {
+fn trail(mw: &MobWorld, x: f64, z: f64, y: i32, e: Entity, corner: f64, changes: &mut BlockChanges, host: &mut HostOut) {
     let mut placed = [[i32::MIN; 3]; 4];
     let mut n = 0;
+    let Some(snow) = mw.registry.default_state("minecraft:snow") else { return };
     for cell in rules::corner_cells(x, z, y, corner) {
         let [xx, _, zz] = cell;
         if mw.facts.is_air(mw.world.block(xx, y, zz)) && rules::supports(mw, [xx, y - 1, zz]) && !placed[..n].contains(&cell) {
             placed[n] = cell;
             n += 1;
             changes.0.push((xx, y, zz, "minecraft:snow"));
+            // `SnowGolem.aiStep`: `block_place` posted by the golem at the block's centre, with the snow it places.
+            host.block_place(e, [f64::from(xx) + 0.5, f64::from(y) + 0.5, f64::from(zz) + 0.5], snow);
         }
     }
 }

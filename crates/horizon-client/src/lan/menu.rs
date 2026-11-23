@@ -110,13 +110,13 @@ pub fn native_menu_still_valid(
     eye: [f64; 3],
     valid: &mut bool,
 ) {
-    crate::native_client_hooks::menu_still_valid(context, player, menu, pos, eye, valid);
+    crate::native_level_hooks::menu_still_valid(context, player, menu, pos, eye, valid);
 }
 
 /// Whether a menu of this type asks its parts `menu_still_valid`: only a mod
 /// menu type, and only when a part on it answers. Resolved once, when it opens.
 pub fn asks_still_valid(mod_type: Option<&crate::containers::ModMenuType>, menu: &str) -> bool {
-    mod_type.is_some() && crate::native_client_hooks::menu_still_valid_listens(menu)
+    mod_type.is_some() && crate::native_level_hooks::menu_still_valid_listens(menu)
 }
 
 impl Menu {
@@ -1085,7 +1085,7 @@ fn pickup(view: &mut View, slot: i32, button: i32, rules: &dyn Rules) {
     let right = button == 1;
     let mut canceled = false;
     let mut handled = false;
-    if crate::native_client_hooks::has_mods() {
+    if crate::native_level_hooks::has_mods() {
         let (container, container_slot) = match &view.container {
             Some(c) if i < c.len() => (crate::menu::MAIN, i),
             Some(c) => (crate::menu::PLAYER, player_slot(i - c.len())),

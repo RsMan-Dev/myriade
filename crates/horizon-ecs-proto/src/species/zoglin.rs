@@ -4,6 +4,7 @@ use crate::behaviours::{float, hurt_by, look_at_player, melee, nearest_target, s
 use crate::species::Def;
 
 pub static DEF: Def = Def {
+    load_attrs: &[crate::attr_mod::LoadAttr { name: "attack_damage", base: Some(0.5), when: crate::attr_mod::LoadWhen::Baby }],
     name: "minecraft:zoglin",
     caps: Some(super::FIRE_IMMUNE_CAPS),
     targets: &[
@@ -25,5 +26,6 @@ pub static DEF: Def = Def {
         crate::rules::RuleEntry::new(&crate::loot::BABY_DROPS, &crate::loot::BabyDrops::MONSTER),
     ],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

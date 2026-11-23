@@ -1,228 +1,210 @@
 #!/usr/bin/env python3
-"""Compare vaults (VaultBlockEntity.Server, VaultState and VaultBlock.useItemOn) with vanilla.
+"""Vaults on a vanilla dedicated server and on Horizon's, case by case, tick by tick.
 
-Java (VanillaNaturalSpawnOracle, mode=vault) loads a VaultBlockEntity from
-each case's NBT on the oracle's stand-in ServerLevel, on a vault block in the
-case's state, and runs `VaultBlockEntity.Server.tick` tick by tick with the
-game time advancing; before a tick, players move and use stacks on the vault
-through `VaultBlock.useItemOn`. Rust (natural_spawn_fixture, mode=vault) loads
-`vault::Vault` from the same NBT and does the same. Both log, tick by tick,
-the block's state changes, the level events, the sounds (with their pitch),
-each ejected item (type, count, position and velocity bits), every shared data
-update (display item and connected players), each use (accepted or not and
-the stack left), and at the end the saved server and shared data, the saved
-config's fields and the next draw of the level random, which pins every draw
-in between (the display item rolls, the ejection velocities).
+Each case clears a room at the flat world's spawn and places a vault with its block state and block entity NBT
+(`setblock`). Alice (a joueur-automate bot) stands at the case's position in its game mode, holds the case's item
+and uses the vault (`use_block`) twice at most; Bob joins too, far away or in range. Each tick the server steps one
+tick (`tick step`), then reads the vault's state (`execute if block`), its block entity NBT (`data get block`), the
+nearest item entities' Pos and Motion (`data get entity`); the level events and the sounds Alice receives are
+captured for the whole case. Both sides get the same commands; the transcripts must match line for line, and
+vanilla's must show the vault unlocking or ejecting.
 
-Configs are the default, the ominous vaults' and inline ones from the edge
-values up (activation past deactivation, keys of two, no key); saved data has
-rewarded players, a paused state, items left to eject and display items.
-Players stand in and out of the activation and deactivation ranges in every
-game mode, walk in and out, and use trial keys, ominous keys, too few keys and
-other items, more than once and after being rewarded.
+Not compared: the sound's pitch and seed (drawn from the level random, whose order is not pinned on a whole server).
 """
 import argparse
-import base64
+import hashlib
+import itertools
 import json
-import os
-from pathlib import Path
-import platform
-import random
-import subprocess
+import re
+import time
+import uuid as uuidlib
+
 try:
-    from . import lab, test_rust_parity as base, test_natural_spawn_parity as natural
+    from . import packet_lab, test_locator_bar_parity as locator
+    from .bot_lab import Bot
+    from .test_dedicated_server_parity import Server, game_time
 except ImportError:
-    import lab
-    import test_rust_parity as base
-    import test_natural_spawn_parity as natural
+    import packet_lab
+    import test_locator_bar_parity as locator
+    from bot_lab import Bot
+    from test_dedicated_server_parity import Server, game_time
 
-box = natural.box
+NAME = 'vault-parity'
+VAULT = '0 -60 0'
+ALICE, BOB = 'Alice', 'Bob'
+FAR = '0.5 -60 40.5'
 STATES = ['inactive', 'active', 'unlocking', 'ejecting']
-TABLES = ['minecraft:chests/trial_chambers/reward', 'minecraft:chests/trial_chambers/reward_ominous',
-          'minecraft:chests/trial_chambers/reward_rare', 'minecraft:chests/trial_chambers/reward_common',
-          'minecraft:spawners/trial_chamber/consumables', 'minecraft:chests/simple_dungeon', 'minecraft:empty']
-ITEMS = ['minecraft:trial_key', 'minecraft:ominous_trial_key', 'minecraft:diamond', 'minecraft:emerald',
-         'minecraft:golden_apple', 'minecraft:arrow', 'minecraft:heavy_core']
+KEY = 'minecraft:trial_key'
+OMINOUS = 'minecraft:ominous_trial_key'
+# name, block state, block entity NBT, Alice's position, her game mode, her item, uses, ticks, Bob's position.
+CASES = [
+    ('config-none', 'minecraft:vault[ominous=false,vault_state=inactive]', '', '0.5 -60 3.5', 'survival', None, 0, 60, FAR),
+    ('config-ominous', 'minecraft:vault[ominous=true,vault_state=inactive]',
+     '{config:{key_item:{count:1,id:"minecraft:ominous_trial_key"},loot_table:"minecraft:chests/trial_chambers/reward_ominous"}}',
+     '0.5 -60 3.5', 'survival', OMINOUS, 1, 60, FAR),
+    ('config-inline-edges', 'minecraft:vault[ominous=false,vault_state=inactive]',
+     '{config:{activation_range:0.0d,deactivation_range:0.5d,key_item:{count:2,id:"minecraft:diamond"}}}',
+     '0.5 -60 3.5', 'survival', KEY, 2, 60, FAR),
+    ('config-override-table', 'minecraft:vault[ominous=false,vault_state=inactive]',
+     '{config:{override_loot_table_to_display:"minecraft:chests/simple_dungeon",loot_table:"minecraft:empty"}}',
+     '0.5 -60 3.5', 'survival', None, 0, 200, FAR),
+    ('server-rewarded-player', 'minecraft:vault[ominous=false,vault_state=inactive]',
+     '{server_data:{rewarded_players:[{uuid}]}}', '0.5 -60 3.5', 'survival', KEY, 1, 60, FAR),
+    ('server-resumes-at', 'minecraft:vault[ominous=false,vault_state=active]',
+     '{server_data:{state_updating_resumes_at:40L}}', '0.5 -60 3.5', 'survival', None, 0, 60, FAR),
+    ('server-items-to-eject', 'minecraft:vault[ominous=false,vault_state=ejecting]',
+     '{server_data:{items_to_eject:[{id:"minecraft:diamond",count:2}]}}', '0.5 -60 12.5', 'survival', None, 0, 60, FAR),
+    ('shared-display-item', 'minecraft:vault[ominous=false,vault_state=inactive]',
+     '{shared_data:{display_item:{id:"minecraft:emerald",count:1}}}', '0.5 -60 3.5', 'survival', None, 0, 60, FAR),
+    ('player-out-of-range', 'minecraft:vault[ominous=false,vault_state=inactive]', '', '0.5 -60 12.5', 'survival', KEY, 1, 60, FAR),
+    ('player-creative', 'minecraft:vault[ominous=false,vault_state=inactive]', '', '0.5 -60 3.5', 'creative', KEY, 1, 60, FAR),
+    ('player-spectator', 'minecraft:vault[ominous=false,vault_state=inactive]', '', '0.5 -60 3.5', 'spectator', KEY, 1, 60, FAR),
+    ('use-wrong-item', 'minecraft:vault[ominous=false,vault_state=inactive]', '', '0.5 -60 3.5', 'survival',
+     'minecraft:arrow', 2, 60, FAR),
+    ('use-ominous-key-on-trial', 'minecraft:vault[ominous=false,vault_state=inactive]', '', '0.5 -60 3.5', 'survival',
+     OMINOUS, 1, 60, FAR),
+    ('use-key-twice', 'minecraft:vault[ominous=false,vault_state=inactive]', '', '0.5 -60 3.5', 'survival', KEY, 2, 200, FAR),
+    ('two-players-in-range', 'minecraft:vault[ominous=false,vault_state=inactive]', '', '0.5 -60 3.5', 'survival', KEY, 1, 60,
+     '1.5 -60 3.5'),
+]
+SERIAL = itertools.count()
+# The same vault in the other dimensions: the player and the commands go there through `execute in`.
+DIM_CASES = [
+    ('config-ominous-nether', 'the_nether', 'minecraft:vault[ominous=true,vault_state=inactive]',
+     '{config:{key_item:{count:1,id:"minecraft:ominous_trial_key"},loot_table:"minecraft:chests/trial_chambers/reward_ominous"}}',
+     '0.5 -60 3.5', 'survival', OMINOUS, 1, 60, FAR),
+    ('config-ominous-end', 'the_end', 'minecraft:vault[ominous=true,vault_state=inactive]',
+     '{config:{key_item:{count:1,id:"minecraft:ominous_trial_key"},loot_table:"minecraft:chests/trial_chambers/reward_ominous"}}',
+     '0.5 -60 3.5', 'survival', OMINOUS, 1, 60, FAR),
+]
 
 
-def uuid(rng):
-    return '[I;' + ','.join(str(rng.randrange(-2**31, 2**31)) for _ in range(4)) + ']'
+def step(server, count, timeout=300):
+    """Steps `count` ticks and returns when the game clock shows them: the console answers in order, so a time reply
+    past the target means the steps ran (the clock does not move on its own while ticking is frozen)."""
+    target = game_time(server, timeout) + count
+    server.console(f'tick step {count}')
+    deadline = time.time() + timeout
+    while game_time(server, timeout) < target:
+        if time.time() > deadline:
+            raise AssertionError(f'{server.log_path.name}: {count} ticks did not run in {timeout} s')
+        time.sleep(0.2)
 
 
-def player_uuid(i):
-    return f'[I;0,0,0,{i + 1}]'
+def int_array_uuid(name):
+    """Alice's offline UUID (the server's ops.json uses the same) as the NBT int array."""
+    digest = bytearray(hashlib.md5(f'OfflinePlayer:{name}'.encode()).digest())
+    digest[6] = (digest[6] & 0x0F) | 0x30
+    digest[8] = (digest[8] & 0x3F) | 0x80
+    value = uuidlib.UUID(bytes=bytes(digest)).int
+    parts = [(value >> shift) & 0xFFFFFFFF for shift in (96, 64, 32, 0)]
+    return '[I;' + ','.join(str(p - 2**32 if p >= 2**31 else p) for p in parts) + ']'
 
 
-def stack(rng):
-    item = rng.choice(ITEMS)
-    return f'{{id:"{item}",count:{rng.choice([1, 1, 1, 2, 3, 64])}}}'
+def observe(server, prefix):
+    """One tick's reading of the vault, as text rows, in the order the server answers them."""
+    mark = next(SERIAL)
+    start = len(server.lines)
+    for state in STATES:
+        server.console(f'{prefix}execute if block {VAULT} minecraft:vault[vault_state={state}] run say STATE {state}')
+    server.console(f'{prefix}data get block {VAULT}')
+    server.console(f'{prefix}execute as @e[type=minecraft:item,sort=nearest,limit=3] run data get entity @s Pos')
+    server.console(f'{prefix}execute as @e[type=minecraft:item,sort=nearest,limit=3] run data get entity @s Motion')
+    server.console(f'say OBS {mark}')
+    server.wait_for(rf'OBS {mark}\b', timeout=120)
+    rows = []
+    for line in server.lines[start:]:
+        if m := re.search(r'STATE (\w+)$', line):
+            rows.append(f'state {m.group(1)}')
+        elif m := re.search(r'has the following (?:block|entity) data: (.*)$', line):
+            rows.append(m.group(1))
+    return rows
 
 
-def config(rng):
-    r = rng.random()
-    if r < 0.35:
-        return None
-    if r < 0.6:
-        # The ominous vaults of the trial chambers.
-        return '{key_item:{count:1,id:"minecraft:ominous_trial_key"},loot_table:"minecraft:chests/trial_chambers/reward_ominous"}'
-    fields = []
-    if rng.random() < 0.5:
-        fields.append(f'loot_table:"{rng.choice(TABLES)}"')
-    if rng.random() < 0.4:
-        fields.append(f'activation_range:{rng.choice([0.0, 1.0, 2.5, 4.0, 6.0])}d')
-    if rng.random() < 0.4:
-        fields.append(f'deactivation_range:{rng.choice([0.5, 3.0, 4.5, 8.0])}d')
-    if rng.random() < 0.85:
-        key = rng.choice(['minecraft:trial_key', 'minecraft:trial_key', 'minecraft:ominous_trial_key', 'minecraft:diamond'])
-        fields.append(f'key_item:{{count:{rng.choice([1, 1, 1, 2])},id:"{key}"}}')
-    if rng.random() < 0.3:
-        fields.append(f'override_loot_table_to_display:"{rng.choice(TABLES)}"')
-    return '{' + ','.join(fields) + '}'
+def case(server, alice, bob, block, nbt, pos, mode, item, uses, ticks, bob_pos, dim=None):
+    prefix = f'execute in minecraft:{dim} run ' if dim else ''
+    server.console(f'execute in minecraft:overworld run tp {ALICE} 0.5 -60 40.5')
+    server.console(f'{prefix}fill -12 -60 -12 12 -54 12 minecraft:air')
+    server.console(f'{prefix}fill -12 -61 -12 12 -61 12 minecraft:stone')
+    server.console(f'{prefix}kill @e[type=!minecraft:player]')
+    server.console(f'{prefix}setblock {VAULT} {block}{nbt.replace("{uuid}", int_array_uuid(ALICE))} replace')
+    server.console(f'{prefix}tp {ALICE} {pos}')
+    server.console(f'gamemode {mode} {ALICE}')
+    server.console(f'{prefix}tp {BOB} {bob_pos}')
+    server.console(f'gamemode survival {BOB}')
+    if item:
+        server.console(f'item replace entity {ALICE} weapon.mainhand with {item}')
+    alice.capture('start', filter_ids=[packet_lab.LEVEL_EVENT, packet_lab.SOUND])
+    rows = []
+    for tick in range(ticks):
+        if tick % 2 == 0 and tick // 2 < uses:
+            alice.use_block(0, -60, 0)
+        step(server, 1)
+        rows.append(f'tick {tick} ' + ' | '.join(observe(server, prefix)))
+    levels, sounds = packet_lab.captured(alice.capture('stop')['packets'])
+    return rows + [f'level {row}' for row in levels] + [f'sound {row}' for row in sounds]
 
 
-def vault_snbt(rng, now, count):
-    fields = []
-    c = config(rng)
-    if c is not None:
-        fields.append(f'config:{c}')
-    server = []
-    if count and rng.random() < 0.25:
-        rewarded = rng.sample(range(count), rng.randrange(1, count + 1))
-        server.append('rewarded_players:[' + ','.join(player_uuid(i) for i in rewarded) + ']')
-    elif rng.random() < 0.1:
-        server.append(f'rewarded_players:[{uuid(rng)}]')
-    if rng.random() < 0.3:
-        server.append(f'state_updating_resumes_at:{now + rng.choice([-20, 0, 5, 19, 40])}L')
-    if rng.random() < 0.15:
-        server.append('items_to_eject:[' + ','.join(stack(rng) for _ in range(rng.randrange(1, 4))) + ']')
-    if rng.random() < 0.1:
-        server.append(f'total_ejections_needed:{rng.choice([0, 1, 3])}')
-    if server or rng.random() < 0.3:
-        fields.append('server_data:{' + ','.join(server) + '}')
-    shared = []
-    if rng.random() < 0.25:
-        shared.append(f'display_item:{stack(rng)}')
-    if count and rng.random() < 0.2:
-        shared.append('connected_players:[' + ','.join(player_uuid(i) for i in range(rng.randrange(1, count + 1))) + ']')
-    if rng.random() < 0.1:
-        shared.append(f'connected_particles_range:{rng.choice([2.0, 4.5, 9.0])}d')
-    if shared:
-        fields.append('shared_data:{' + ','.join(shared) + '}')
-    return '{' + ','.join(fields) + '}'
+def run(label, server_command, world, build):
+    directory = build / label
+    port = locator.server_dir(directory, world)
+    server = Server(server_command, directory, label)
+    transcript = {}
+    try:
+        server.wait_for(r'Done \(', timeout=600)
+        server.console('tick freeze')
+        server.console('forceload add -16 -16 16 16')
+        server.console('say READY')
+        server.wait_for(r'READY', timeout=120)
+        with Bot(timeout=600) as alice, Bot(timeout=600) as bob:
+            alice.join('127.0.0.1', port, ALICE)
+            alice.wait_for('loaded', 300)
+            bob.join('127.0.0.1', port, BOB)
+            bob.wait_for('loaded', 300)
+            for name, *rest in CASES:
+                transcript[name] = case(server, alice, bob, *rest)
+            for name, dim, *rest in DIM_CASES:
+                transcript[name] = case(server, alice, bob, *rest, dim=dim)
+            bob.leave()
+            alice.leave()
+    finally:
+        server.stop()
+    return transcript
 
 
-def spot(rng, vpos):
-    """A player position near the vault, around its activation (4) and deactivation (4.5) ranges."""
-    d = rng.choice([0.5, 1.5, 2.5, 3.5, 4.2, 4.6, 5.5, 8.0])
-    dx = rng.uniform(-d, d)
-    dz = rng.choice([-1, 1]) * max(0.0, d * d - dx * dx) ** 0.5
-    return vpos[0] + 0.5 + dx, vpos[1] + rng.choice([0, 0, 0, 1, -1, 3]), vpos[2] + 0.5 + dz
-
-
-def corpus():
-    rng = random.Random(0x5641554c)
-    cases = []
-    for k in range(3000):
-        w = natural.World(rng)
-        w.kv['dim'] = w.dim = 'minecraft:overworld'
-        vpos = (rng.randrange(-8, 9), rng.randrange(-40, 20), rng.randrange(-8, 9))
-        w.block(box(vpos[0] - 10, vpos[1] - 1, vpos[2] - 10, vpos[0] + 10, vpos[1] - 1, vpos[2] + 10), 'minecraft:tuff_bricks')
-        count = rng.choice([0, 1, 1, 1, 2, 2, 3])
-        modes = []
-        for _ in range(count):
-            mode = rng.choice(['survival'] * 6 + ['creative', 'adventure', 'spectator'])
-            modes.append(mode)
-            x, y, z = spot(rng, vpos)
-            w.players.append(f'{x:.3f},{y:.3f},{z:.3f}/{mode}')
-        natural.common(w, rng, rng.randrange(-2**47, 2**47))
-        for key in ('unloaded', 'respawn', 'spawners', 'rules'):
-            w.kv.pop(key, None)
-        t0 = rng.choice([0, 1, 15, 19, 20, 1000, rng.randrange(0, 10**6), rng.randrange(10**9, 10**12)])
-        ticks = rng.choice([1, 2, 20, 21, 60, 100, 200, 400])
-        w.kv['spos'] = f'{vpos[0]},{vpos[1]},{vpos[2]}'
-        w.kv['state'] = rng.choices(STATES, [5, 5, 1, 1])[0]
-        w.kv['ominous'] = int(rng.random() < 0.3)
-        w.kv['snbt'] = base64.b64encode(vault_snbt(rng, t0, count).encode()).decode()
-        w.kv['t0'] = t0
-        w.kv['ticks'] = ticks
-        if count:
-            uses = []
-            for _ in range(rng.choice([0, 1, 1, 2, 3, 6])):
-                item = rng.choice(['minecraft:trial_key'] * 4 + ['minecraft:ominous_trial_key'] * 2 + ITEMS)
-                uses.append(f'{rng.randrange(ticks)}/{rng.randrange(count)}/{item}/{rng.choice([1, 1, 1, 2, 5])}')
-            if uses:
-                w.kv['use'] = ';'.join(uses)
-            moves = []
-            for _ in range(rng.choice([0, 0, 1, 2, 4])):
-                x, y, z = spot(rng, vpos)
-                moves.append(f'{rng.randrange(ticks)}/{rng.randrange(count)}/{x:.3f},{y:.3f},{z:.3f}')
-            if moves:
-                w.kv['move'] = ';'.join(moves)
-        cases.append(f'vault/{k} mode=vault {w.tokens()}')
-    return cases
+def proves(vanilla):
+    """Why vanilla's transcript does not show the vault working, or None."""
+    if not any('state unlocking' in row or 'state ejecting' in row for rows in vanilla.values() for row in rows):
+        return 'the vault never unlocked or ejected'
+    return None
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--prepare', action='store_true')
-    args = parser.parse_args()
-    build = lab.LOCAL / 'rust-vault-parity'
-    build.mkdir(parents=True, exist_ok=True)
-    if args.prepare:
-        lab.prepare()
-    lock, jars, libraries = base.verify_artifacts()
-    resources = lab.LOCAL / 'horizon-client/26.3'
-    oracle = lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaNaturalSpawnOracle.java'
-    sources = [oracle, Path(__file__), lab.ROOT / 'crates/horizon-client/examples/probe/natural_spawn_fixture.rs',
-               lab.ROOT / 'crates/horizon-client-render/src/vault.rs',
-               lab.ROOT / 'crates/horizon-client-render/src/chunk/block_entity.rs',
-               lab.ROOT / 'crates/horizon-client-core/src/identifier.rs',
-               lab.ROOT / 'crates/horizon-client-core/src/nbt_value.rs']
-    tested = base.source_hashes(sources)
-    inputs = build / 'inputs.txt'
-    cases = corpus()
-    inputs.write_text(''.join(line + '\n' for line in cases), encoding='utf-8')
-    classes = build / 'classes'
-    classes.mkdir(exist_ok=True)
-    deps = os.pathsep.join(map(str, libraries))
-
-    def run(command, name):
-        with (build / (name + '.log')).open('w', encoding='utf-8') as log:
-            base.run(list(map(str, command)), stdout=log, stderr=subprocess.STDOUT)
-    run(['javac', '--release', lock['minecraft']['java_major'], '-proc:none', '-sourcepath', str(lab.ROOT / 'mods/horizon/src/test/java'),
-         '-cp', str(jars['server']) + os.pathsep + deps, '-d', classes, oracle], 'compile-java')
-    run(['java', '-Xmx3G', '-cp', os.pathsep.join([str(classes), str(jars['server']), deps]),
-         'dev.horizonlab.parity.VanillaNaturalSpawnOracle', inputs, build / 'server.txt'], 'server')
-    run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client-lib', '--example', 'client_probe'], 'compile-rust')
-    metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'], cwd=lab.ROOT, text=True))
-    binary = Path(metadata['target_directory']) / 'fast/examples/client_probe'
-    run([binary, 'natural_spawn_fixture', resources, inputs, build / 'rust.txt'], 'rust')
-    vanilla = (build / 'server.txt').read_text().splitlines()
-    errors = [l for l in vanilla if ' error ' in l]
-    if errors:
-        raise SystemExit(f'oracle errors ({len(errors)}): {errors[:5]}')
-    rust = (build / 'rust.txt').read_text().splitlines()
-    bad = [(a, b) for a, b in zip(vanilla, rust) if a != b]
-    if bad or len(vanilla) != len(rust):
-        report = '\n'.join(f'  vanilla {a[:2000]}\n  rust    {b[:2000]}' for a, b in bad[:12])
-        raise SystemExit(f'{len(bad)} of {len(vanilla)} cases differ (rust {len(rust)} lines):\n{report}')
-    base.ensure_sources_unchanged(sources, tested)
-    count = lambda text: sum(line.count(text) for line in vanilla)
-    stats = {'uses_on_active': count(' use ok '), 'refused': count('reject_rewarded_player'), 'wrong_keys': count('insert_item_fail'),
-             'items': count(' item minecraft:'), 'states': count(' state '), 'updates': count(' update ')}
-    for state in STATES:
-        stats[f'reached_{state}'] = sum(f' state {state} ' in line for line in vanilla)
-    lab.write_json(build / 'report.json', {
-        'schema': 1, 'minecraft': lock['minecraft']['version'], 'platform': platform.platform(), 'cases': len(cases),
-        **stats, 'sources_sha256': tested,
-        'scope': 'VaultBlockEntity: load and save (VaultConfig with its validation, VaultServerData, VaultSharedData), '
-                 'Server.tick (display item cycling from the loot table, VaultState.tickAndGetNext for every state with '
-                 'connected players in range, ejection with spawnItem and its pitch, onTransition sounds and level '
-                 'events, shared data updates), VaultBlock.useItemOn and Server.tryInsertKey (key checks, rewarded '
-                 'players, fail sounds and their buffer, reward roll with the random sequence, unlocking, creative '
-                 'players keep the key) with every level random draw.'})
-    print(f'{len(cases):,} vault cases match vanilla (' + ', '.join(f'{v:,} {k}' for k, v in stats.items()) + ')')
+    parser.parse_args()
+    lock, build, vanilla_server, horizon_server, _client = locator.sides(NAME)
+    world = locator.generate_world(vanilla_server, build)
+    vanilla = run('vanilla', vanilla_server, world, build)
+    why = proves(vanilla)
+    if why:
+        raise AssertionError(f'vanilla is no proof: {why}')
+    horizon = run('horizon', horizon_server, world, build)
+    differing = sorted(name for name in vanilla if vanilla[name] != horizon.get(name))
+    lock_version = lock['minecraft']['version']
+    (build / 'report.json').write_text(json.dumps({'minecraft': lock_version, 'cases': len(vanilla),
+                                                   'differing': differing}, indent=2) + '\n')
+    for name in differing:
+        for v, h in zip(vanilla[name], horizon[name]):
+            if v != h:
+                print(f'- {name}: {v}\n+ {name}: {h}')
+                break
+    if differing:
+        raise AssertionError(f'{len(differing)} of {len(vanilla)} vault cases differ from vanilla: {differing}')
+    print(f'vault: {len(vanilla)} cases identical to vanilla')
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except AssertionError as error:
+        raise SystemExit(f'{NAME}: {error}')

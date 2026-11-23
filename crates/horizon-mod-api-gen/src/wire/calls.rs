@@ -1106,7 +1106,7 @@ pub(super) fn dispatch(
                     .unwrap();
                     args.push(format!("&p{i}"));
                 }
-                // An optional borrow (`Option<&PosedParts>`) arrives owned and is lent again.
+                // An optional borrow (`Option<&Part>`) arrives owned and is lent again.
                 Ty::Option(inner)
                     if matches!(
                         **inner,

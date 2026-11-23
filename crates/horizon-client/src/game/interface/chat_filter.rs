@@ -136,10 +136,6 @@ impl Game<'_> {
             place.name(),
             action.name()
         );
-        if !self.is_dedicated_server() {
-            log::info!("{summary}");
-            return;
-        }
         // The text only goes to the filter's own log, for operators: never to the console or the stream.
         dedicated::log("INFO", &summary);
         if let Some(host) = self.lan.as_mut()
@@ -377,12 +373,10 @@ impl Game<'_> {
             .map(|r| format!(": {r}"))
             .unwrap_or_default();
         host.hub.mute(uuid, &name, until, by, reason.clone());
-        if self.is_dedicated_server() {
-            dedicated::log(
-                "INFO",
-                &format!("[chat-filter] {by} muted {name} {what}{why}"),
-            );
-        }
+        dedicated::log(
+            "INFO",
+            &format!("[chat-filter] {by} muted {name} {what}{why}"),
+        );
         let until = time.map_or_else(
             || Reply::translation("horizon.moderation.until_unmuted", &[]),
             |ms| Reply::translation("horizon.moderation.for_duration", &[Reply::duration(ms)]),
@@ -395,9 +389,7 @@ impl Game<'_> {
     pub(super) fn unmute(&mut self, host: &mut LanHost, name: &str, by: &str) -> Reply {
         match host.hub.unmute(name) {
             Some(name) => {
-                if self.is_dedicated_server() {
-                    dedicated::log("INFO", &format!("[chat-filter] {by} unmuted {name}"));
-                }
+                dedicated::log("INFO", &format!("[chat-filter] {by} unmuted {name}"));
                 Reply::translated("horizon.moderation.unmuted", &[Text::literal(name)])
             }
             None => Reply::translated("horizon.moderation.not_muted", &[Text::literal(name)]),

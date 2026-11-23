@@ -9,14 +9,14 @@ fn typed_item_membership_reaches_the_owning_loop_generation() {
     let emerald = mod_api::__private::item_key("minecraft:emerald").unwrap();
     let diamond = mod_api::__private::item_key("minecraft:diamond").unwrap();
     let load = engine::LoadContext::new(
-        engine::DataLoadOrigin::ClientPreload,
+        engine::DataLoadOrigin::ServerDataLoad,
         Arc::new(engine::LoadInputs::new(
             Default::default(),
             Default::default(),
         )),
         [],
     );
-    let mut loop_context = load.loop_context(engine::LoopSide::Client, []);
+    let mut loop_context = load.loop_context(engine::LoopSide::Server, []);
     loop_context.set_recipe_properties(Arc::new(HashMap::from([(
         "pot:input".into(),
         HashSet::from(["minecraft:emerald".into()]),

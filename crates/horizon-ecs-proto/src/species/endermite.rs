@@ -18,5 +18,6 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
     ],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

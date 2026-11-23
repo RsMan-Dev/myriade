@@ -3,7 +3,6 @@
 //! it has one.
 use super::*;
 use horizon_client::chunk::Chunk;
-use horizon_core::geometry::Vec3;
 
 fn end_game() -> Game<'static> {
     let root = std::path::PathBuf::from(
@@ -18,20 +17,19 @@ fn end_game() -> Game<'static> {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::DedicatedServer;
     let res: &'static _ = Box::leak(Box::new(loaded.resources));
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();
@@ -45,7 +43,7 @@ fn end_game() -> Game<'static> {
 #[ignore = "daily"]
 fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
     let mut game = end_game();
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 128.0, 0.5)).unwrap());
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     // The chunks `EnderDragonFight.isArenaLoaded` waits for, lit as received
     // chunks are, so the fight's next player scan adopts or makes its dragon.
     {

@@ -4,9 +4,6 @@
 //! `MinecartItem` placement, `VehicleEntity` breaking, the chest, hopper,
 //! furnace and TNT variants, saving, and `AbstractMinecartRenderer`'s old
 //! rail-following render with the display block.
-#[cfg(test)]
-#[path = "minecarts/lifetime_tests.rs"]
-mod lifetime_tests;
 #[path = "minecarts/section_steps.rs"]
 mod section_steps;
 
@@ -141,9 +138,7 @@ impl Game<'_> {
             .modified
             .insert((hit.pos[0] >> 4, hit.pos[2] >> 4));
         self.apply_item_stack_config(super::commands::Target::Cart(id), kind.id(), stack, true);
-        if self.serving.is_some() || self.options.dedicated.is_some() {
-            self.native_vehicle_create(kind.id(), [at.x, at.y, at.z]);
-        }
+        self.native_vehicle_create(kind.id(), [at.x, at.y, at.z]);
         // MinecartItem.useOn: ENTITY_PLACE at the rail, by the player, with the block under it.
         let below = self.world.block(hit.pos[0], hit.pos[1] - 1, hit.pos[2]);
         self.post_block_game_event(
@@ -440,7 +435,6 @@ mod hook_mutation_regressions {
         .into();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
                 game.session
                     .rules
                     .set("entity_drops", horizon_client::gamerules::Value::Bool(true));

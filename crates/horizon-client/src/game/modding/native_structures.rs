@@ -44,9 +44,6 @@ impl Game<'_> {
         rotation: StructureRotation,
         mirror: StructureMirror,
     ) -> Option<StructureTemplateSnapshot> {
-        if !self.native_authoritative() {
-            return None;
-        }
         let rotation = match rotation {
             StructureRotation::None => Rotation::None,
             StructureRotation::Clockwise90 => Rotation::Clockwise90,

@@ -92,12 +92,6 @@ impl Game<'_> {
     pub(super) fn tick_totem(&mut self) {
         self.apply_totem();
     }
-    /// `GameRenderer.tick`: the activated item counts down.
-    pub(super) fn tick_item_activation(&mut self) {
-        if self.player.is_some() {
-            self.item_activation.tick();
-        }
-    }
 }
 
 

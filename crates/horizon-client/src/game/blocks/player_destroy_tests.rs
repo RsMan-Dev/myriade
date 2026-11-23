@@ -1,7 +1,7 @@
 //! A block's parts decide whether a player breaking it destroyed it (`on_destroyed_by_player`),
 //! in place of `playerWillDestroy` and the removal.
-use crate::game::{BlockEntity, Game, native_entity_refs::tests::with_game};
-use horizon_client::{chunk::Chunk, items::ItemStack, motion::PlayerMotion};
+use crate::game::{BlockEntity, Game, native_guest_turn_tests::with_acting_guest};
+use horizon_client::{chunk::Chunk, items::ItemStack};
 use horizon_core::{geometry::Vec3, position::ChunkPos};
 use horizon_world::registry::BlockStateId;
 use std::{path::PathBuf, sync::Arc};
@@ -12,7 +12,6 @@ const POS: [i32; 3] = [5, 63, 4];
 /// server), with the destroy fixture's parts installed on this thread. Returns the scratch
 /// world folder to remove.
 fn breaking_player(game: &mut Game<'_>) -> PathBuf {
-    game.options.dedicated = Some(Vec::new());
     let scratch = std::env::temp_dir().join(format!(
         "horizon-destroyed-part-{}-{:?}",
         std::process::id(),
@@ -20,7 +19,6 @@ fn breaking_player(game: &mut Game<'_>) -> PathBuf {
     ));
     std::fs::create_dir_all(&scratch).unwrap();
     game.world_root = scratch.clone();
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 62.0, 4.5)).unwrap());
     game.player.as_mut().unwrap().ground.on_ground = true;
     game.creative = false;
     game.build_registries();
@@ -59,7 +57,7 @@ fn a_block_part_decides_whether_a_player_breaking_a_block_destroyed_it() {
     // The fixture's parts: snow loses one layer per break and stays, down to the last, which
     // vanilla removes; glass is removed by its part, which answers that it was destroyed.
     mod_platform::__private::part_tests::destroyed_by_player_game_thread();
-    with_game(|game| {
+    with_acting_guest(Vec3::new(4.5, 62.0, 4.5), |game| {
         let scratch = breaking_player(game);
         let registry = game.pack.assets.registry;
         let snow = |layers: u32| {
@@ -117,7 +115,7 @@ fn a_block_part_decides_whether_a_player_breaking_a_block_destroyed_it() {
 fn a_part_keeping_the_block_replaces_player_will_destroy_in_creative() {
     // The fixture's parts keep a shulker box and a tripwire (`Some(false)`).
     mod_platform::__private::part_tests::destroyed_by_player_game_thread();
-    with_game(|game| {
+    with_acting_guest(Vec3::new(4.5, 62.0, 4.5), |game| {
         let scratch = breaking_player(game);
         assert!(game.run_command("gamemode creative"));
         game.creative = true;
@@ -167,7 +165,7 @@ fn the_parts_answer_decides_the_tool_wear_and_the_statistics() {
     // The fixture's parts: snow of two layers or more loses one and stays (`Some(false)`), glass
     // is removed by its part (`Some(true)`), dirt has none.
     mod_platform::__private::part_tests::destroyed_by_player_game_thread();
-    with_game(|game| {
+    with_acting_guest(Vec3::new(4.5, 62.0, 4.5), |game| {
         let scratch = breaking_player(game);
         let registry = game.pack.assets.registry;
         let two_layers = registry
@@ -219,7 +217,7 @@ fn the_mods_harvest_answer_is_read_once_after_the_removal() {
     // playerWillDestroy and the removal; the part is told `will_harvest` from the tool alone
     // before it.
     mod_platform::__private::part_tests::destroyed_by_player_game_thread();
-    with_game(|game| {
+    with_acting_guest(Vec3::new(4.5, 62.0, 4.5), |game| {
         let scratch = breaking_player(game);
         let air = game
             .pack
@@ -260,7 +258,7 @@ fn a_pots_harvest_listener_runs_once_and_sees_it_cracked() {
     // playerWillDestroy cracks a pot broken with a pickaxe before the removal, and the harvest is
     // asked of that adjusted state, once.
     mod_platform::__private::part_tests::destroyed_by_player_game_thread();
-    with_game(|game| {
+    with_acting_guest(Vec3::new(4.5, 62.0, 4.5), |game| {
         let scratch = breaking_player(game);
         place(game, "minecraft:decorated_pot");
         *game.held_mut() = Some(ItemStack::new("minecraft:iron_pickaxe", 1));
@@ -278,7 +276,7 @@ fn a_pots_harvest_listener_runs_once_and_sees_it_cracked() {
 #[ignore = "daily"]
 fn denied_ice_does_not_melt_above_solid_ground() {
     mod_platform::__private::part_tests::destroyed_by_player_game_thread();
-    with_game(|game| {
+    with_acting_guest(Vec3::new(4.5, 62.0, 4.5), |game| {
         let scratch = breaking_player(game);
         let stone = game
             .pack

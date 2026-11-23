@@ -63,9 +63,21 @@ fn with_parts(test: impl FnOnce(&mut Game<'_>, &Ratio, &Ratio)) {
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             test(game, &pickaxe, &helmet)
         });
+    });
+}
+
+/// `with_parts`, with the body run as guest 12 standing at `feet`.
+fn with_parts_acting_guest(
+    feet: horizon_core::geometry::Vec3,
+    test: impl FnOnce(&mut Game<'_>, &Ratio),
+) {
+    with_parts(|game, pickaxe, _| {
+        crate::game::native_guest_turn_tests::lan_guests_on(game);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(game, feet, |game| {
+            test(game, pickaxe)
+        })
     });
 }
 
@@ -140,16 +152,8 @@ fn bad_ratios_never_break_the_repair() {
 #[test]
 #[ignore = "daily"]
 fn give_experience_points_repairs_through_the_part() {
-    with_parts(|game, pickaxe, _| {
-        game.player = Some(
-            horizon_client::motion::PlayerMotion::new(
-                game.motion,
-                horizon_core::geometry::Vec3::ZERO,
-            )
-            .unwrap(),
-        );
-        crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-        let player = game.player(123).unwrap();
+    with_parts_acting_guest(horizon_core::geometry::Vec3::ZERO, |game, pickaxe| {
+        let player = game.player(12).unwrap();
         for (damage, answer, after, experience) in [
             (100, None, 90, 0),
             (100, Some(4.0), 80, 0),

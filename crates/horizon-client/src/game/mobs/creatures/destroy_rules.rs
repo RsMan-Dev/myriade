@@ -13,12 +13,10 @@ impl Game<'_> {
         vanilla: bool,
     ) -> bool {
         let state = self.world.block(pos[0], pos[1], pos[2]);
-        if !self.is_logical_server()
-            || !crate::game::api_values::block_state::block_listens(
-                mod_api::HookId::CanEntityDestroy,
-                state,
-            )
-        {
+        if !crate::game::api_values::block_state::block_listens(
+            mod_api::HookId::CanEntityDestroy,
+            state,
+        ) {
             return vanilla;
         }
         let Some(epoch) = self.native_lifecycle.epoch() else {

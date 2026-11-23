@@ -107,6 +107,7 @@ pub(crate) fn run_island(
     q: &Query<OrderedItems>,
     marked: &Query<Entity, With<Overlapping>>,
     moving_now: &Query<(), With<Moving>>,
+    sleepers: &Query<(), With<crate::behaviours::bed::Sleeping>>,
 ) -> Vec<Effect> {
     let mut out = Vec::new();
     let mut near: Vec<Entity> = Vec::new();
@@ -153,6 +154,10 @@ pub(crate) fn run_island(
                 continue;
             }
             overlapping += 1;
+            // `LivingEntity.push(Entity)` does nothing when the receiver sleeps in a bed: this animal's call moves neither side.
+            if sleepers.contains(o) {
+                continue;
+            }
             let (omn, omx) = (ob.0.min_position(), ob.0.max_position());
             let (mut xa, mut za) = ((omn.x + omx.x) / 2.0 - cx, (omn.z + omx.z) / 2.0 - cz);
             let mut dd = xa.abs().max(za.abs());
@@ -187,7 +192,7 @@ pub(crate) fn run_island(
         }
         if overlapping + close == 0 {
             out.push(Effect::Unmark(e));
-        } else if overlapping > 0 && overlapping + 1 >= MAX_ENTITY_CRAMMING {
+        } else if overlapping > 0 && super::motion::cramming_limit(level).is_some_and(|max| overlapping + 1 >= max) {
             out.push(Effect::Crowded(e));
         }
     }
@@ -220,6 +225,7 @@ pub(crate) fn ordered_pass(
     marked: Query<Entity, With<Overlapping>>,
     uids: Query<&crate::goals::Uid>,
     moving_now: Query<(), With<Moving>>,
+    sleepers: Query<(), With<crate::behaviours::bed::Sleeping>>,
     mut commands: Commands,
     mut node: Local<Vec<u32>>,
 ) {
@@ -307,14 +313,14 @@ pub(crate) fn ordered_pass(
     }
     let effects: Vec<Vec<Effect>> = if cfg.parallel && islands.len() > 1 {
         let pool = bevy_tasks::ComputeTaskPool::get();
-        let (level, table, idx, q, marked, moving_now) = (&*level, &*table, &*idx, &q, &marked, &moving_now);
+        let (level, table, idx, q, marked, moving_now, sleepers) = (&*level, &*table, &*idx, &q, &marked, &moving_now, &sleepers);
         pool.scope(|s| {
             for i in &islands {
-                s.spawn(async move { run_island(i, level, table, idx, q, marked, moving_now) });
+                s.spawn(async move { run_island(i, level, table, idx, q, marked, moving_now, sleepers) });
             }
         })
     } else {
-        islands.iter().map(|i| run_island(i, &level, &table, &idx, &q, &marked, &moving_now)).collect()
+        islands.iter().map(|i| run_island(i, &level, &table, &idx, &q, &marked, &moving_now, &sleepers)).collect()
     };
     for fx in effects {
         for f in fx {

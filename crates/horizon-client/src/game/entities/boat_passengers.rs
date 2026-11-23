@@ -174,9 +174,6 @@ impl Game<'_> {
             .into_iter()
             .filter_map(|(_, id, player)| player.then_some(id))
             .collect();
-        let local_listed = self
-            .lan_acting_entity
-            .is_some_and(|id| players.contains(&id));
         for id in players {
             if self
                 .seated_passengers(vehicle)
@@ -186,14 +183,6 @@ impl Game<'_> {
             {
                 self.entity_stop_riding(rider);
             }
-        }
-        // A local player outside a server guest turn has no seated entity ID.
-        if !local_listed
-            && self.lan_acting.is_none()
-            && self.player.is_some()
-            && self.riding == Some(vehicle)
-        {
-            self.stop_riding();
         }
     }
 

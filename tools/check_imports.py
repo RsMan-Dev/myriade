@@ -17,7 +17,7 @@ from pathlib import Path
 
 # DLLs that are part of Windows 10 and 11. api-ms-win-* and ext-ms-win-* API
 # sets resolve inside Windows too. uiautomationcore.dll (UI Automation, in System32
-# since Windows 7) is what the launcher's accessibility (accesskit_windows) imports.
+# since Windows 7) is imported by accesskit_windows.
 WINDOWS_SYSTEM = {
     "advapi32.dll", "bcrypt.dll", "bcryptprimitives.dll", "cfgmgr32.dll", "combase.dll",
     "comctl32.dll", "comdlg32.dll", "crypt32.dll", "d2d1.dll", "d3d11.dll", "d3d12.dll",

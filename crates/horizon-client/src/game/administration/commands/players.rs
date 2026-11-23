@@ -184,7 +184,7 @@ impl Game<'_> {
             || s.delta.iter().any(Option::is_some);
         let alive = matches!(s.kind, 'e' | 'n');
         let here = self.dim.id();
-        let in_place = self.lan_acting.filter(|_| self.player.is_some());
+        let in_place = self.lan_acting;
         self.lan
             .iter()
             .flat_map(|h| h.hub.online_players())

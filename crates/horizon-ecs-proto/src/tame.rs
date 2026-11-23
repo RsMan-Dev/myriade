@@ -107,10 +107,11 @@ pub fn set_owner(w: &mut World, e: Entity, owner: Who) {
 }
 /// `TamableAnimal.tame` and `Wolf.mobInteract`'s side effects: the owner, the health, sitting, no target.
 pub fn tame(w: &mut World, e: Entity, owner: Who, health: f32) {
-    w.entity_mut(e).insert(Owner(Some(owner)));
+    w.entity_mut(e).insert((Owner(Some(owner)), crate::tame_flag::TameFlag));
     if let Some(mut h) = w.get_mut::<Health>(e) {
         h.0 = health;
     }
+    write_max_health_base(w, e, health);
     if let Who::Player(id) = owner {
         w.resource_mut::<Pets>().0.entry(id).or_default().push(e);
     }
@@ -120,6 +121,19 @@ pub fn tame(w: &mut World, e: Entity, owner: Who, health: f32) {
     // `Not(is_tame)` is read at the start only: a tamed animal that is running away (from players, from llamas) stops (the `Mob` tests `!tame` each tick).
     crate::goals::end(w, e, &crate::behaviours::avoid_entity::MODULE);
     wake_block_goals(w, e);
+}
+/// The max health base `applyTamingSideEffects` sets, written over the species' and saved (`AttrMods`, the modifiers kept); a base equal to
+/// the species' is not written.
+fn write_max_health_base(w: &mut World, e: Entity, health: f32) {
+    let default = w.get::<SpeciesId>(e).map(|s| w.resource::<SpeciesTable>().0[s.0 as usize].max_health);
+    let base = if default == Some(health) { f64::NAN } else { f64::from(health) };
+    let mut list = w.get::<crate::attr_mod::AttrMods>(e).cloned().unwrap_or_default();
+    match list.0.iter_mut().find(|x| x.0 == "max_health") {
+        Some(x) => x.1 = base,
+        None => list.0.push(("max_health".to_owned(), base, Vec::new())),
+    }
+    w.entity_mut(e).insert(list);
+    crate::attr_mod::touched(w, e, "max_health");
 }
 /// The goals that lie or sit on a block, which refused it for lack of an owner or for sitting are asked again (`Mob`: asked every other tick).
 fn wake_block_goals(w: &mut World, e: Entity) {

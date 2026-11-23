@@ -65,7 +65,6 @@ fn compiled_wasm_loopback() {
         crate::game::native_entity_refs::tests::with_game(|game| {
             let native = (game as &dyn Host).math_profile();
             assert_platform_profile(native);
-            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
             let expected = match native {
                 MathProfile::LibmRounding => 1.0,
                 MathProfile::CorrectlyRounded => 2.0,

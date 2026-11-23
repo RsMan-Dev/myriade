@@ -128,6 +128,14 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(fly);
 }
 
+/// `hit_entity(deflects)` of hook `h` hitting the deflecting entity `c` at velocity `vel`: `Projectile.deflect` turns it back at half
+/// (`ProjectileDeflection.REVERSE`) and sets `needsSync`. Returns the new velocity and whether the sound plays, once per deflecting entity.
+pub fn deflect_hit(h: &mut Hook, c: Entity, vel: Vec3) -> (Vec3, bool) {
+    let play = h.last_deflected != Some(c.to_bits());
+    h.last_deflected = Some(c.to_bits());
+    (vel.scale(-0.5), play)
+}
+
 fn sound(w: &mut World, name: &'static str, at: Vec3, volume: f32, pitch: f32) {
     w.resource_mut::<Events>().host.sound(name, [at.x, at.y, at.z], volume, pitch);
 }
@@ -463,13 +471,12 @@ fn step(w: &mut World, e: Entity) {
         let end = block.map_or(pos.add_vector(vel), |hit| hit.0);
         match first_hit(w, h.owner, pos, end, path_margin(h.tick_count)) {
             Some((_, Target::Entity(c))) if h.deflect.is_some_and(|tag| crate::type_tags::has(w, tag, c)) => {
-                // `hit_entity(deflects)`: the velocity turns back at half, the sound plays once per deflecting entity.
-                if h.last_deflected != Some(c.to_bits()) {
-                    h.last_deflected = Some(c.to_bits());
+                let (turned, play) = deflect_hit(&mut h, c, vel);
+                vel = turned;
+                if play {
                     let at = w.get::<Pos>(c).map_or(Vec3::ZERO, |p| p.0);
                     sound(w, "minecraft:entity.breeze.deflect", at, 1.0, 1.0);
                 }
-                vel = vel.scale(-0.5);
             }
             Some((_, t)) => {
                 h.phase = Phase::Hooked(t);

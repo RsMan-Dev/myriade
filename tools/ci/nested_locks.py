@@ -2,7 +2,7 @@
 """Every nested Cargo workspace still matches its Cargo.lock.
 
 The root workspace's lock is checked by verify's `--locked` builds. A nested workspace (crates/horizon-telemetry-server,
-crates/horizon-mod-registry, the wasm test fixtures, launcher/...) builds only in its own workflow or test, so when a
+crates/horizon-mod-registry, the wasm test fixtures) builds only in its own workflow or test, so when a
 crate it reaches gains or changes a dependency, its lock goes stale and its `--locked` build fails after the merge.
 `cargo update --workspace --locked`, run inside each workspace, resolves from the registry index alone (it downloads
 and compiles no crate) and fails with cargo's own message when the lock would have to change.

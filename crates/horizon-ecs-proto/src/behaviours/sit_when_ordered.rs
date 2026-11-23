@@ -9,13 +9,54 @@ pub static MODULE: Module = Module {
     name: "sit_when_ordered",
     flags: JUMP | MOVE,
     can_use,
+    equip,
     start,
+    stop,
     systems,
     requires: &[Cap::Tamable, Cap::Locomotion],
     ..Module::DEFAULT
 };
+/// A species' sitting: the head's pitch limit while it sits (`Wolf.getMaxHeadXRot`, 20; else 40), and whether it refuses to
+/// mate while it sits (`Wolf.canMate`), and whether a hit stands it up (`Wolf.hurtServer`, `Parrot.hurtServer`: `setOrderedToSit(false)`).
+#[derive(Clone, Copy, Debug)]
+pub struct Params {
+    pub head_x: f32,
+    pub refuses_mate: bool,
+    pub stands_when_hurt: bool,
+}
+impl Params {
+    pub const DEFAULT: Self = Self { head_x: 40.0, refuses_mate: false, stands_when_hurt: false };
+}
+/// The species' parameters, kept on the entity by `equip`.
+#[derive(Component, Clone, Copy)]
+pub struct SitRules(&'static Params);
+/// The sitting pose, taken while this goal runs on land (`OCC_SITTING` stays the order). Vanilla's `isInSittingPose`.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct SitPose;
+fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
+    w.entity_mut(e).insert(SitRules(params::<Params>(p)));
+}
 fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(wake_events.after(apply_damage).in_set(slot));
+    s.add_systems((wake_events.after(apply_damage), stand_when_hurt.after(apply_damage)).in_set(slot));
+}
+/// A hit stands a sitting pet up when its species says so: the order is released and its goal asked to end.
+fn stand_when_hurt(ev: Res<Events>, mut occ: Query<&mut Occupied>, rules: Query<&SitRules>, mut reqs: ResMut<Requests>, goals: Query<&GoalSet>) {
+    for e in ev.hurt.iter() {
+        if !rules.get(e).is_ok_and(|r| r.0.stands_when_hurt) {
+            continue;
+        }
+        if let Ok(mut o) = occ.get_mut(e)
+            && o.0 & OCC_SITTING != 0
+        {
+            o.0 &= !OCC_SITTING;
+            if let Ok(g) = goals.get(e)
+                && let Some(slot) = g.slot_of(&MODULE)
+            {
+                reqs.0.push(Req::End(e, slot));
+            }
+        }
+    }
 }
 /// Landing or leaving a fluid: the order that could not be obeyed is asked again.
 fn wake_events(ev: Res<Events>, q: Query<&Occupied>, mut reqs: ResMut<Requests>, goals: Query<&GoalSet>) {
@@ -54,4 +95,15 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     stop_nav(w, e);
+    let head_x = w.get::<SitRules>(e).map_or(Params::DEFAULT.head_x, |r| r.0.head_x);
+    if let Some(mut look) = w.get_mut::<Look>(e) {
+        look.x_default = head_x;
+    }
+    w.entity_mut(e).insert(SitPose);
+}
+fn stop(w: &mut World, e: Entity, _: Inst) {
+    w.entity_mut(e).remove::<SitPose>();
+    if let Some(mut look) = w.get_mut::<Look>(e) {
+        look.x_default = Params::DEFAULT.head_x;
+    }
 }

@@ -60,6 +60,12 @@ impl EcsLevel {
         })
     }
 
+    pub fn set_player_created(&mut self, id: u32, on: bool) -> bool {
+        self.write_id(id, |w, e| {
+            w.set_player_created(e, on);
+        })
+    }
+
     pub fn set_brain_attack_target(&mut self, id: u32, who: Option<horizon_ecs_proto::targeting::Who>) -> bool {
         self.write_id(id, |w, e| {
             w.set_brain_attack_target(e, who);

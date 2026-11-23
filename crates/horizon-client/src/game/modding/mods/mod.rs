@@ -349,13 +349,6 @@ fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
         std::borrow::Cow::Owned(collect())
     }
 }
-pub(super) fn collect_key_mappings<'declared>(
-    role: ExecutionRole,
-    declared: &'declared [(&'static str, mod_api::KeyRegistration)],
-) -> &'declared [(&'static str, mod_api::KeyRegistration)] {
-    if role.is_client() { declared } else { &[] }
-}
-
 /// The native mods' map decoration types (`native_map_decoration_types`), frozen once at start on
 /// every side.
 pub(super) fn register_map_decoration_types() {
@@ -363,87 +356,6 @@ pub(super) fn register_map_decoration_types() {
     Game::native_map_decoration_types(&RegistrationContext::new(), &mut types);
     horizon_client::map_decoration_types::register(types, Game::is_vanilla_decoration_sprite);
 }
-/// The native mods' HUD layers (`native_register_gui_layers`), placed among vanilla's once at
-/// start.
-pub(super) fn register_gui_layers(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut layers = Vec::new();
-    Game::native_register_gui_layers(&RegistrationContext::new(), &mut layers);
-    horizon_client::gui_layers::register(layers);
-}
-/// The native mods' numeric item model properties
-/// (`native_register_range_select_item_model_property`), kept once at start, before
-/// resources load, so `range_dispatch` models on them read the mod's number.
-pub(super) fn register_range_select_item_model_properties(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut properties = Vec::new();
-    Game::native_register_range_select_item_model_property(
-        &RegistrationContext::new(),
-        &mut properties,
-    );
-    horizon_assets::item_model::register_range_properties(properties);
-}
-/// The native mods' categorical item model properties
-/// (`native_register_select_item_model_property`), kept once at start, before resources
-/// load, so `select` models on them read the mod's value.
-pub(super) fn register_select_item_model_properties(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut properties = Vec::new();
-    Game::native_register_select_item_model_property(&RegistrationContext::new(), &mut properties);
-    horizon_assets::item_model::register_select_properties(properties);
-}
-/// The types native mods register for resource definitions, kept once at start, before
-/// resources load: item tint sources (`native_register_item_tint_sources`), so `tints` entries on
-/// them read the mod's colour; item model node
-/// types (`native_register_item_models`), so item definitions' nodes of them draw what the mod
-/// answers; and special item model renderers (`native_register_special_model_renderer`).
-pub(super) fn register_resource_sources(role: ExecutionRole) {
-    if !role.is_client() {
-        return;
-    }
-    let mut sources = Vec::new();
-    Game::native_register_item_tint_sources(&RegistrationContext::new(), &mut sources);
-    horizon_assets::item_model::register_tint_sources(sources);
-    let mut models = Vec::new();
-    Game::native_register_item_models(&RegistrationContext::new(), &mut models);
-    horizon_assets::item_model::register_item_models(models);
-    register_special_model_renderers();
-}
-/// The native mods' special item model renderers (`native_register_special_model_renderer`),
-/// kept once at start, before resources load: their types are what a `minecraft:special` model
-/// may name besides vanilla's, or in place of one. A later registration of a type replaces the
-/// earlier one, and the log names both mods.
-fn register_special_model_renderers() {
-    let mut registry = mod_api::SpecialModelRendererRegistry::default();
-    Game::native_register_special_model_renderer(&RegistrationContext::new(), &mut registry);
-    for (kind, owner) in registry.initial_owners() {
-        if horizon_assets::item_model::SpecialModel::is_builtin_type(kind) {
-            log::warn!(
-                "Horizon: special model type {kind} registered by the game is replaced by {}'s registration",
-                owner.unwrap_or("the game")
-            );
-        }
-    }
-    let (renderers, replaced) = registry.into_renderers();
-    for replaced in replaced {
-        let name = |id: Option<&str>| id.unwrap_or("the game").to_owned();
-        log::warn!(
-            "Horizon: special model type {} registered by {} is replaced by {}'s registration",
-            replaced.kind,
-            name(replaced.earlier),
-            name(replaced.later)
-        );
-    }
-    // In slot order: the types' models resolve to these slots as they decode.
-    horizon_assets::item_model::register_special_model_types(renderers.keys().cloned().collect());
-}
-
 /// `root` with the content mods that are on layered over it
 /// (docs/modpacks.md): their blocks, items, data and assets. Read once at
 /// start, before the resources load; a mod whose content is refused is left
@@ -1267,11 +1179,7 @@ impl Game<'_> {
     ) -> horizon_client::Result<PreparedLoopContext> {
         let side = self.options.execution_role.loop_side();
         let inventory = horizon_mod_package::enabled::EnabledMods::read(resources)?;
-        let ids: Vec<_> = if self.is_logical_server() {
-            inventory.server_ids().collect()
-        } else {
-            inventory.client_ids().collect()
-        };
+        let ids: Vec<_> = inventory.server_ids().collect();
         let item_data = self.res.core.item_data.context();
         Ok(self.loop_context_readers(item_data.loop_context(side, ids.iter().copied())))
     }
@@ -1281,7 +1189,7 @@ impl Game<'_> {
         context: horizon_world::native_load_context::LoopContext,
     ) -> PreparedLoopContext {
         let game = Arc::new(context);
-        let worldgen = self.is_logical_server().then(|| game.worldgen_context());
+        let worldgen = Some(game.worldgen_context());
         PreparedLoopContext { game, worldgen }
     }
 
@@ -1289,7 +1197,6 @@ impl Game<'_> {
         self.protect_condition_root();
         self.loop_context = context.game;
         self.refresh_recipe_property_context();
-        self.setting_overrides.borrow_mut().clear();
         if let Some(worldgen) = context.worldgen {
             horizon_world::native_worldgen_hooks::publish_context(Arc::new(worldgen));
         }
@@ -1397,9 +1304,6 @@ impl Game<'_> {
     }
     /// Apply the player's switches at the canonical native and wasm dispatch boundary.
     pub(super) fn sync_native_switches(&self) {
-        self.instance_groups
-            .borrow_mut()
-            .retire_disabled(&self.settings.mods.disabled);
         self.mods.apply_code_switches(&self.settings.mods.disabled);
     }
 }

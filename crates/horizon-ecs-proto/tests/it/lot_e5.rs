@@ -74,7 +74,7 @@ fn a_blow_destroys_a_flying_bullet_without_hurting_its_target() {
     if unfit_species(&["minecraft:snow_golem"], "SnowGolem.aiStep burns in a hot place by its rule (snow_trail.rs): its health moves by itself; the temperature of the grid is not verified") {
         return;
     }
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let owner = ecs_cow(&mut h, 0.5, 1.0, 0.5, 5);
     let target = ecs_cow(&mut h, 4.5, 1.0, 0.5, 6);
     h.world.entity_mut(target).insert(horizon_ecs_proto::cow::Health(1000.0));
@@ -89,7 +89,7 @@ fn a_blow_destroys_a_flying_bullet_without_hurting_its_target() {
     assert!(shulker_bullet::struck(&mut h.world, bullet), "the blow destroys the bullet");
     let out = drain(&mut h);
     assert!(h.world.get_entity(bullet).is_err(), "the bullet is gone");
-    assert!(out.iter().any(|x| matches!(x, HostEvent::Sound { name: "entity.shulker_bullet.hurt", .. })), "{out:?}");
+    assert!(out.iter().any(|x| matches!(x, HostEvent::Sound { name, .. } if *name == "entity.shulker_bullet.hurt")), "{out:?}");
     assert!(out.iter().any(|x| matches!(x, HostEvent::Particles { kind: "minecraft:crit", count: 15, .. })), "{out:?}");
     assert!(!out.iter().any(|x| matches!(x, HostEvent::GameEvent { .. })), "no game event at a blow: {out:?}");
     tick_pinned(&mut h, target, &at);
@@ -105,7 +105,7 @@ fn a_bullet_pursues_its_creature_and_hurts_it_on_impact() {
     if unfit_species(&["minecraft:enderman"], "Enderman.hurtServer: a projectile damage teleports it instead of hurting (jar)") {
         return;
     }
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let owner = ecs_cow(&mut h, 0.5, 1.0, 0.5, 5);
     let target = ecs_cow(&mut h, 4.5, 1.0, 0.5, 6);
     h.world.entity_mut(target).insert(horizon_ecs_proto::cow::Health(1000.0));
@@ -137,5 +137,5 @@ fn a_bullet_pursues_its_creature_and_hurts_it_on_impact() {
     tick_pinned(&mut h, target, &at);
     out.extend(h.drain_host_out());
     assert!(before > health(&h, target), "the creature is hurt");
-    assert!(out.iter().any(|x| matches!(x, HostEvent::Sound { name: "entity.shulker_bullet.hurt", .. })), "{out:?}");
+    assert!(out.iter().any(|x| matches!(x, HostEvent::Sound { name, .. } if *name == "entity.shulker_bullet.hurt")), "{out:?}");
 }

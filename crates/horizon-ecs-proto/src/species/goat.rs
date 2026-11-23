@@ -2,9 +2,11 @@
 //! the long jump (2: 600 to 1200 ticks between two, a box of 5 x 5, any landing spot, only while the ram cools down). Left out: the screaming
 //! goat's horns, the lowered-head pose of the ram, the effects of the jump (`jump_boost` 0).
 use super::{templates::farm_animal, Change, Def, Section};
-use crate::behaviours::{long_jump, ram, Entry};
+use crate::behaviours::spawn_draw::{Draw, Draws, Kind, Store, When};
+use crate::behaviours::{animal_panic, long_jump, panic, ram, Entry};
 use crate::cow::{SpeciesId, SpeciesTable};
 use crate::goals::with_rng;
+use crate::rules::spawn_draw::Roll;
 use bevy_ecs::prelude::*;
 
 /// `Goat.finalizeSpawn` on a natural spawn: a screaming goat 2 percent of the time (`finalize.rs` `goat_spawn`).
@@ -42,17 +44,35 @@ pub fn is_screaming(w: &World, e: Entity) -> bool {
 }
 
 pub static DEF: Def = Def {
+    load_attrs: &[crate::attr_mod::LoadAttr { name: "attack_damage", base: Some(1.0), when: crate::attr_mod::LoadWhen::Baby }],
     name: "minecraft:goat",
     reference: Some(&farm_animal::DEF),
+    // `GoatAi.initCoreActivity`: `AnimalPanic(2.0)`, the panic of the farm animals' goal swapped for it (100 to 120 ticks, the window of 40).
     changes: &[
+        Change::Remove { module: &panic::MODULE, nth: 0 },
+        Change::Add(Section::Goals, Entry::new(&animal_panic::MODULE, 1, &animal_panic::Params::DEFAULT)),
         Change::Add(Section::Goals, Entry::new(&ram::MODULE, 2, &ram::Params { marked: Some(SCREAMING_RAM), shed: Some(REGULAR_SHED), ..ram::Params::DEFAULT })),
         Change::Add(Section::Goals, Entry::new(&long_jump::MODULE, 2, &long_jump::Params { cooldown: (600, 1200), width: 5, height: 5, preferred: None, swim_rules: false, gated_by_ram: true, ..long_jump::Params::DEFAULT })),
     ],
     rules: &[crate::rules::RuleEntry::new(&crate::behaviours::held_swap::HELD_SWAP, &crate::behaviours::held_swap::SwapParams { from: "minecraft:bucket", to: "minecraft:milk_bucket", adult_only: true, takes_creature: false, sound: "minecraft:entity.goat.milk", alt: Some((is_screaming, "minecraft:entity.goat.screaming.milk")) })],
     screaming: Some(SCREAMING_CHANCE),
     lost_horn: Some(LOST_HORN_CHANCE),
+    draws: Some(&DRAWS),
     ..Def::EMPTY
 };
+
+/// `GoatAi.initMemories`: the long jump's cooldown (600 to 1200 ticks) and the ram's (600 to 6000), both `UniformInt` drawn at the spawn.
+static DRAWS: Draws = Draws {
+    group: None,
+    list: &[
+        Draw { when: When::Before, kind: Kind::Plain(Roll::Between { min: 600, max: 1200 }), store: Store::Call(long_jump::spawn_cooldown) },
+        Draw { when: When::Before, kind: Kind::Plain(Roll::Between { min: 600, max: 6000 }), store: Store::Call(ram_memory) },
+    ],
+};
+
+fn ram_memory(w: &mut World, e: Entity, v: u32) {
+    ram::set_cooldown(w, e, v as i32);
+}
 
 /// `Goat.getBreedOffspring`: the baby screams if the parent a coin toss picks does, or on the chance of its species (drawn only when
 /// that parent does not scream, as the Mob's `||`). A species without the chance gives nothing.

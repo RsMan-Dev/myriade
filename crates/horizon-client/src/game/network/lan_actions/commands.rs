@@ -75,11 +75,9 @@ impl Game<'_> {
         }
         // A native mod's command, for every player its level allows,
         // whether the world allows commands or not (game/modding/native_server.rs).
-        let allowed = self.options.dedicated.is_some() || self.allow_commands();
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        let integrated = host.hub.config.integrated;
         if let Some(level) = self.native_commands.level(command)
             && let Some(permission) = host.hub.guest(conn).map(|g| g.permission)
             && permission >= level
@@ -88,16 +86,13 @@ impl Game<'_> {
                 conn,
                 command: command.to_owned(),
                 permission,
-                integrated,
                 quiet: false,
             });
             return;
         }
-        // An integrated server runs every player's commands at their own
-        // permission level (`CommandSourceStack.permissions`); a LAN world
-        // follows its Allow Commands, and a dedicated server leaves it to
-        // the ops list (the guest's permission level).
-        if !integrated && (!host.settings.guest_commands || !allowed) {
+        // A dedicated server leaves commands to the ops list (the guest's
+        // permission level), and to `guest_commands`.
+        if !host.settings.guest_commands {
             host.hub.send_to(
                 conn,
                 &C::SystemChat(play::SystemChat {
@@ -116,7 +111,6 @@ impl Game<'_> {
             conn,
             command: command.to_owned(),
             permission,
-            integrated,
             quiet: false,
         });
     }
@@ -148,15 +142,24 @@ impl Game<'_> {
         &mut self,
         c: GuestCommand,
     ) -> Option<(bool, Vec<horizon_client::text::Text>)> {
+        self.run_guest_result(c).map(|(_, ok, lines)| (ok, lines))
+    }
+
+    /// `run_guest_command_told` with the command's result: its value (1 for a native command that ran,
+    /// 0 for a failure), whether it succeeded, and the lines it sent the guest.
+    pub(in crate::game) fn run_guest_result(
+        &mut self,
+        c: GuestCommand,
+    ) -> Option<(i32, bool, Vec<horizon_client::text::Text>)> {
         let swap = self.enter_guest(c.conn)?;
         self.chat_capture = Some(Vec::new());
         let level = std::mem::replace(&mut self.session.registries.permission, c.permission);
-        let ok = if self.perform_native_command(c.conn, c.permission, &c.command) {
-            true
+        let (ok, value) = if self.perform_native_command(c.conn, c.permission, &c.command) {
+            (true, 1)
         } else if c.quiet {
-            self.run_command_quietly(&c.command)
+            self.run_command_quietly_value(&c.command)
         } else {
-            self.run_command(&c.command)
+            self.run_command_value(&c.command)
         };
         self.session.registries.permission = level;
         let mut lines = self.chat_capture.take().unwrap_or_default();
@@ -167,15 +170,13 @@ impl Game<'_> {
         if let Some(host) = self.lan.as_mut() {
             host.hub.sync_all_effects();
         }
-        if !c.integrated {
-            // A teleport into another level happens before its feedback is sent.
-            self.run_level_teleports();
-        }
+        // A teleport into another level happens before its feedback is sent.
+        self.run_level_teleports();
         // What the command earned is announced before its feedback.
         self.announce_guest_advancements();
         for line in &lines {
             let Some(host) = self.lan.as_ref() else {
-                return Some((ok, lines));
+                return Some((value, ok, lines));
             };
             host.hub.send_to(
                 c.conn,
@@ -187,7 +188,7 @@ impl Game<'_> {
         }
         // The other operators hear of it; never the player whose command it was.
         self.send_admin_feedback(Some(c.conn));
-        Some((ok, lines))
+        Some((value, ok, lines))
     }
 
     /// The `broadcastToAdmins` lines a command queued (`source`: the guest
@@ -263,11 +264,7 @@ impl Game<'_> {
         // Server players and lists, not the host's registries: a dedicated server has no local player.
         let triggers =
             super::super::scoreboard::trigger_objectives_for(&self.score.board, &player_name);
-        let mut players = if self.options.dedicated.is_some() {
-            Vec::new()
-        } else {
-            self.session.registries.players.clone()
-        };
+        let mut players = Vec::new();
         players.extend(host.hub.online_players().map(|g| g.name.clone()));
         let (ops, banned_players, banned_ips, whitelisted) = match &self.server_lists {
             Some(lists) => {

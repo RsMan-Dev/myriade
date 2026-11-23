@@ -288,7 +288,6 @@ mod tests {
                 allow_flight: true,
                 seed: 0,
                 max_players: 10,
-                integrated: true,
                 levels: game.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };

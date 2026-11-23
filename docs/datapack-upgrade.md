@@ -17,7 +17,7 @@ upgraded copy).
 
 Horizon applies most of a data pack's world generation (biomes, features,
 structures, dimensions; not world presets), so the upgraded pack can also be
-tried in Horizon (see [the mod browser](mod-browser.md)). The checks below run
+tried in Horizon (see the mod browser). The checks below run
 it in vanilla 26.3.
 
 A modpack's mod jars that are only a data pack go through the same upgrade when the launcher

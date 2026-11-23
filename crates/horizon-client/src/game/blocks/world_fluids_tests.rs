@@ -16,7 +16,7 @@ fn with_level(test: impl FnOnce(&mut Game<'_>, LevelRef)) {
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(mod_api::Authority::DedicatedServer);
         let dirt = state(game, "minecraft:dirt");
         for x in 0..5 {
             for z in 0..5 {
@@ -93,9 +93,7 @@ fn a_drop_listener_sees_the_old_block_and_an_abort_undoes_the_loot_it_unpacked()
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        with_level(|game, level| {
-            game.options.dedicated = Some(Vec::new());
-            // A skull with a container's block entity, its loot not yet rolled: breaking it
+        with_level(|game, level| {            // A skull with a container's block entity, its loot not yet rolled: breaking it
             // unpacks the loot into the entity.
             let skull = state(game, "minecraft:skeleton_skull");
             game.world.set(AT[0], AT[1], AT[2], skull).unwrap();
@@ -147,7 +145,6 @@ fn a_cancelled_drop_keeps_the_replacement() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_level(|game, level| {
-            game.options.dedicated = Some(Vec::new());
             let poppy = state(game, "minecraft:poppy");
             game.world.set(AT[0], AT[1], AT[2], poppy).unwrap();
             let items = game.ecs.item_ids().len();

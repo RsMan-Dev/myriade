@@ -69,7 +69,7 @@ impl Params {
     /// The witch (`witch.rs:20-24`): the same goal at 60 ticks, 10 blocks, a thrown potion.
     pub const WITCH: Self = Self { speed: 1.0, min: 60, max: 60, radius: 10.0, flight: Flight::POTION, shot_speed: 0.75, uncertainty: 8.0, start_down: 0.1, aim_down: 1.1, lift: 0.2, witch: true, front: 0.0, aim_fraction: 0.0, marks: false, sound: None, held: None, blue: None };
     /// The drowned's trident (`DrownedTridentAttackGoal`: `RangedAttackGoal(1.0, 40, 10.0)` while a trident is held): speed 1.6, spread `14 - 4 * difficulty` (normal), aimed at a third of the box.
-    pub const TRIDENT: Self = Self { speed: 1.0, min: 40, max: 40, radius: 10.0, flight: Flight::TRIDENT, shot_speed: 1.6, uncertainty: 6.0, start_down: 0.1, aim_down: 0.0, lift: 0.2, witch: false, front: 0.0, aim_fraction: 1.0 / 3.0, marks: false, sound: None, held: Some(crate::species::lists::TRIDENT), blue: None };
+    pub const TRIDENT: Self = Self { speed: 1.0, min: 40, max: 40, radius: 10.0, flight: Flight::TRIDENT, shot_speed: 1.6, uncertainty: -1.0, start_down: 0.1, aim_down: 0.0, lift: 0.2, witch: false, front: 0.0, aim_fraction: 1.0 / 3.0, marks: false, sound: None, held: Some(crate::species::lists::TRIDENT), blue: None };
 }
 /// L'état : le rang de l'entrée, les paramètres, les compteurs du `Mob` et la case où le chemin a été demandé.
 #[derive(Component, Clone, Copy, Debug)]
@@ -243,7 +243,9 @@ fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
     }
     let yd = rules::aim_height(p.aim_fraction, i.bounds.min(Axis::Y), i.bounds.max(Axis::Y), i.eye, p.aim_down);
     let dir = rules::aim_dir(xd, zd, yd, p.lift, start.y);
-    let spread = rules::spread_of(p.uncertainty);
+    // A negative uncertainty is the drowned's unset field (`rangedAttackUncertainty` -1): `14 - 4 * difficulty` of the level.
+    let uncertainty = if p.uncertainty < 0.0 { 14.0 - 4.0 * f64::from(crate::effects::difficulty(w)) } else { p.uncertainty };
+    let spread = rules::spread_of(uncertainty);
     let mut rng = w.get_mut::<Rng>(e).unwrap();
     let v = rules::shot_velocity(dir, spread, p.shot_speed, || rng.next_f64());
     if let Some(name) = p.sound {

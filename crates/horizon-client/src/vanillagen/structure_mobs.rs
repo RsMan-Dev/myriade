@@ -164,6 +164,7 @@ impl FinalizeLevel for Level<'_> {
     fn halloween(&self) -> bool {
         finalize::is_halloween()
     }
+    // TODO(phase 1 Mob): pipeline finalize typé Mob, à brancher sur EcsLevel::spawn_finalized
     fn create(&mut self, kind: &str, _: Reason) -> Option<Mob> {
         if self.difficulty == 0 && !finalize::allowed_in_peaceful(kind) {
             return None;

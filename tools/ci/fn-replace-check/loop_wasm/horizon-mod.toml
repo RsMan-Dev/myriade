@@ -1,7 +1,7 @@
 id = "fnr_loop_wasm"
 name = "Function replacement check: wasm loop"
 version = "0.1.0"
-description = "fn-replace: a wasm package that declares a loop slot, refused by name when the launcher loads it"
+description = "fn-replace: a wasm package that declares a loop slot, refused by name when the game loads it"
 authors = []
 api = "0.2"
 side = "both"

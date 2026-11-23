@@ -2,10 +2,15 @@
 //! `id` are in `nbt::COMMON`. `CREATORS`: a key whose presence poses its component (registered by `nbt::register_creators`). `FIELDS`: a key
 //! that applies only to an entity holding its component. Times stored as a tick are written as the ticks left.
 use crate::behaviours::breed::Love;
+use crate::behaviours::follow_mommy::{Bred, EatingHaystack};
 use crate::behaviours::elder_curse::Silent;
+use crate::behaviours::hurt_by::PlayerCreated;
+use crate::glowing::Glowing;
+use crate::invulnerable::Invulnerable;
 use crate::behaviours::neutral_anger::Anger;
 use crate::cow::{tag, now_of, Burning, Frozen, HurtAt, LastHurtBy, Yaw};
-use crate::despawn::Persistent;
+use crate::custom_name::Johnny;
+use crate::despawn::{FromBucket, Persistent};
 use crate::effects::{self, Effects, Kind, AMBIENT, HIDDEN};
 use crate::nbt::{accept, owner, Field};
 use crate::behaviours::stare_freeze::StareFreeze;
@@ -20,6 +25,7 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("HurtTime"), write: write_hurt_time, read: read_hurt_time, accepts: accept::short, owner: Some(owner::<HurtAt>) },
     Field { key: Cow::Borrowed("HurtByTimestamp"), write: write_hurt_by, read: read_hurt_by, accepts: accept::int, owner: Some(owner::<LastHurtBy>) },
     Field { key: Cow::Borrowed("anger_end_time"), write: write_anger_end, read: read_anger_end, accepts: accept::long, owner: Some(owner::<Anger>) },
+    Field { key: Cow::Borrowed("angry_at"), write: write_angry_at, read: read_angry_at, accepts: is_int_array, owner: Some(owner::<Anger>) },
     Field { key: Cow::Borrowed("home_pos"), write: write_heart_pos, read: read_heart_pos, accepts: is_block_pos, owner: Some(owner::<HeartLink>) },
 ];
 
@@ -31,8 +37,15 @@ pub const CREATORS: &[Field] = &[
     Field { key: Cow::Borrowed("InWaterTime"), write: write_in_water, read: read_in_water, accepts: accept::int, owner: Some(owner::<crate::behaviours::convert_in_water::Soak>) },
     Field { key: Cow::Borrowed("DrownedConversionTime"), write: write_conversion, read: read_conversion, accepts: accept::int, owner: Some(owner::<crate::behaviours::convert_in_water::Soak>) },
     Field { key: Cow::Borrowed("PersistenceRequired"), write: write_persistent, read: read_persistent, accepts: is_byte, owner: None },
+    Field { key: Cow::Borrowed("FromBucket"), write: write_from_bucket, read: read_from_bucket, accepts: is_byte, owner: None },
     Field { key: Cow::Borrowed("Rotation"), write: write_rotation, read: read_rotation, accepts: is_list, owner: Some(owner::<Yaw>) },
     Field { key: Cow::Borrowed("Silent"), write: write_silent, read: read_silent, accepts: is_byte, owner: Some(owner::<Silent>) },
+    Field { key: Cow::Borrowed("Glowing"), write: write_glowing, read: read_glowing, accepts: is_byte, owner: Some(owner::<Glowing>) },
+    Field { key: Cow::Borrowed("Invulnerable"), write: write_invulnerable, read: read_invulnerable, accepts: is_byte, owner: Some(owner::<Invulnerable>) },
+    Field { key: Cow::Borrowed("PlayerCreated"), write: write_player_created, read: read_player_created, accepts: is_byte, owner: Some(owner::<PlayerCreated>) },
+    Field { key: Cow::Borrowed("Johnny"), write: write_johnny, read: read_johnny, accepts: is_byte, owner: Some(owner::<Johnny>) },
+    Field { key: Cow::Borrowed("Bred"), write: write_bred, read: read_bred, accepts: is_byte, owner: Some(owner::<Bred>) },
+    Field { key: Cow::Borrowed("EatingHaystack"), write: write_eating_haystack, read: read_eating_haystack, accepts: is_byte, owner: Some(owner::<EatingHaystack>) },
     Field { key: Cow::Borrowed("home_pos"), write: write_home_pos, read: read_home_pos, accepts: is_block_pos, owner: Some(owner::<Home>) },
     Field { key: Cow::Borrowed("home_radius"), write: write_home_radius, read: read_home_radius, accepts: accept::int, owner: Some(owner::<Home>) },
     Field { key: Cow::Borrowed("active_effects"), write: write_effects, read: read_effects, accepts: is_list, owner: Some(owner::<Effects>) },
@@ -42,7 +55,6 @@ pub const CREATORS: &[Field] = &[
 pub const DEFAULTS: &[(&str, fn() -> Tag)] = &[
     ("Rotation", zero_rotation),
     ("OnGround", zero_byte),
-    ("Invulnerable", zero_byte),
     ("PortalCooldown", zero_int),
     ("fall_distance", zero_double),
     ("Fire", zero_short),
@@ -279,6 +291,23 @@ fn read_persistent(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
+/// `FromBucket`: a byte, written as 1 by a creature out of a bucket (`FromBucket`); 0 takes the marker away.
+fn write_from_bucket(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<FromBucket>(e).is_some() {
+        c.insert("FromBucket".into(), Tag::Byte(1));
+    }
+}
+
+fn read_from_bucket(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v == 0 {
+        w.entity_mut(e).remove::<FromBucket>();
+    } else {
+        w.entity_mut(e).insert(FromBucket);
+    }
+    true
+}
+
 /// The pitch a loaded `Rotation` carried when it is not 0 (a creature's own pitch is not modelled): kept to be written back.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -306,10 +335,108 @@ fn read_rotation(w: &mut World, e: Entity, t: &Tag) -> bool {
 }
 
 /// `Silent`: a byte, 1 while the marker is there.
+/// `IronGolem.addAdditionalSaveData`: `PlayerCreated` as a byte, 1 while the player built the golem.
+fn write_player_created(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<PlayerCreated>(e).is_some() {
+        c.insert("PlayerCreated".into(), Tag::Byte(1));
+    }
+}
+
+fn read_player_created(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    crate::behaviours::hurt_by::set_player_created(w, e, *v != 0);
+    true
+}
+
+/// `Vindicator.addAdditionalSaveData`: `Johnny` as a byte, written only when the vindicator is named Johnny.
+fn write_johnny(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<Johnny>(e).is_some() {
+        c.insert("Johnny".into(), Tag::Byte(1));
+    }
+}
+
+fn read_johnny(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v == 0 {
+        w.entity_mut(e).remove::<Johnny>();
+    } else {
+        w.entity_mut(e).insert(Johnny);
+    }
+    true
+}
+
 fn write_silent(w: &World, e: Entity, c: &mut Compound) {
     if w.get::<Silent>(e).is_some() {
         c.insert("Silent".into(), Tag::Byte(1));
     }
+}
+
+/// `Entity.setGlowingTag`: a byte, 1 while the entity glows.
+fn write_glowing(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<Glowing>(e).is_some() {
+        c.insert("Glowing".into(), Tag::Byte(1));
+    }
+}
+
+fn read_glowing(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v == 0 {
+        w.entity_mut(e).remove::<Glowing>();
+    } else {
+        w.entity_mut(e).insert(Glowing);
+    }
+    true
+}
+
+/// `Entity.invulnerable`: a byte, 1 while the entity is invulnerable.
+fn write_invulnerable(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<Invulnerable>(e).is_some() {
+        c.insert("Invulnerable".into(), Tag::Byte(1));
+    }
+}
+
+fn read_invulnerable(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v == 0 {
+        w.entity_mut(e).remove::<Invulnerable>();
+    } else {
+        w.entity_mut(e).insert(Invulnerable);
+    }
+    true
+}
+
+/// `AbstractHorse.bred`: a byte, 1 once the horse was bred.
+fn write_bred(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<Bred>(e).is_some() {
+        c.insert("Bred".into(), Tag::Byte(1));
+    }
+}
+
+fn read_bred(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v == 0 {
+        w.entity_mut(e).remove::<Bred>();
+    } else {
+        w.entity_mut(e).insert(Bred);
+    }
+    true
+}
+
+/// `AbstractHorse.isEating` (the haystack): a byte, 1 while the foal eats.
+fn write_eating_haystack(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<EatingHaystack>(e).is_some() {
+        c.insert("EatingHaystack".into(), Tag::Byte(1));
+    }
+}
+
+fn read_eating_haystack(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v == 0 {
+        w.entity_mut(e).remove::<EatingHaystack>();
+    } else {
+        w.entity_mut(e).insert(EatingHaystack);
+    }
+    true
 }
 
 fn read_silent(w: &mut World, e: Entity, t: &Tag) -> bool {
@@ -429,6 +556,39 @@ fn read_anger_end(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
+/// `AngryAt`: the uuid of whom the anger is for (`NeutralMob.addPersistentAngerSaveData`): a player's from the table, an entity's from its uuid.
+fn write_angry_at(w: &World, e: Entity, c: &mut Compound) {
+    let Some(a) = w.get::<Anger>(e) else { return };
+    let uuid = match a.at {
+        Some(crate::targeting::Who::Player(id)) => crate::player_uuids::uuid_of(w, id),
+        Some(crate::targeting::Who::Entity(h)) => w.get::<crate::bridge::uuids::EntityUuid>(h).map(|u| u.0),
+        None => None,
+    };
+    if let Some(u) = uuid {
+        c.insert("angry_at".into(), Tag::IntArray(crate::bridge::uuids::to_words(u).to_vec()));
+    }
+}
+/// Reads the uuid back to the player or entity it names; a player who has not joined yet is waited for (`Slot::Anger`).
+fn read_angry_at(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::IntArray(v) = t else { return false };
+    let Ok(words) = <[i32; 4]>::try_from(v.as_slice()) else { return false };
+    let uuid = crate::bridge::uuids::from_words(words);
+    let who = match crate::player_uuids::id_of(w, uuid) {
+        Some(id) => Some(crate::targeting::Who::Player(id)),
+        None => match crate::bridge::uuids::entity_by_uuid(w, words) {
+            Some(h) => Some(crate::targeting::Who::Entity(h)),
+            None => {
+                crate::player_uuids::wait(w, uuid, e, crate::player_uuids::Slot::Anger);
+                None
+            }
+        },
+    };
+    if let Some(mut a) = w.get_mut::<Anger>(e) {
+        a.at = who;
+    }
+    true
+}
+
 /// The effect names of the game, as the NBT `id` takes them.
 fn kind_name(k: Kind) -> &'static str {
     match k {
@@ -449,8 +609,13 @@ fn kind_name(k: Kind) -> &'static str {
         Kind::Glowing => "minecraft:glowing",
         Kind::Weaving => "minecraft:weaving",
         Kind::Strength => "minecraft:strength",
+        Kind::Resistance => "minecraft:resistance",
         Kind::Infested => "minecraft:infested",
         Kind::Absorption => "minecraft:absorption",
+        Kind::HealthBoost => "minecraft:health_boost",
+        Kind::ConduitPower => "minecraft:conduit_power",
+        Kind::BreathOfTheNautilus => "minecraft:breath_of_the_nautilus",
+        Kind::SlowFalling => "minecraft:slow_falling",
     }
 }
 
@@ -475,6 +640,10 @@ fn kind_of(name: &str) -> Option<Kind> {
         Kind::Strength,
         Kind::Infested,
         Kind::Absorption,
+        Kind::HealthBoost,
+        Kind::ConduitPower,
+        Kind::BreathOfTheNautilus,
+        Kind::SlowFalling,
     ]
     .into_iter()
     .find(|&k| kind_name(k) == name)
@@ -491,19 +660,8 @@ fn write_effects(w: &World, e: Entity, c: &mut Compound) {
         .list
         .iter()
         .map(|x| {
-            let mut m: Vec<(&str, Tag)> = vec![("id", Tag::String(kind_name(x.kind).into()))];
-            if x.amp != 0 {
-                m.push(("amplifier", Tag::Byte(x.amp.clamp(0, 255) as u8 as i8)));
-            }
-            m.push(("duration", Tag::Int(i32::try_from(x.ends.saturating_sub(now)).unwrap_or(i32::MAX))));
-            if x.flags & AMBIENT != 0 {
-                m.push(("ambient", Tag::Byte(1)));
-            }
-            if x.flags & HIDDEN != 0 {
-                m.push(("show_particles", Tag::Byte(0)));
-            }
-            m.push(("show_icon", Tag::Byte(1)));
-            Tag::compound(m)
+            let chain: Vec<effects::Effect> = f.hidden.iter().filter(|h| h.kind == x.kind).copied().collect();
+            effect_tag(x.kind, x.amp, ticks_of(x.ends.saturating_sub(now)), x.flags, hidden_tag(&chain))
         })
         .collect();
     c.insert("active_effects".into(), Tag::List(list));
@@ -516,34 +674,79 @@ fn read_effects(w: &mut World, e: Entity, t: &Tag) -> bool {
     let mut list = Vec::with_capacity(items.len());
     for item in items {
         let Tag::Compound(c) = item else { return false };
-        let get = |k: &str| c.get(&JavaString::from(k));
-        let Some(Tag::String(id)) = get("id") else { return false };
-        let Some(kind) = kind_of(&id.to_string_lossy()) else { return false };
-        let amp = match get("amplifier") {
-            None => 0,
-            Some(Tag::Byte(a)) => i32::from(*a as u8),
-            Some(_) => return false,
-        };
-        let Some(Tag::Int(left)) = get("duration") else { return false };
-        let mut flags = 0;
-        if matches!(get("ambient"), Some(Tag::Byte(1))) {
-            flags |= AMBIENT;
-        }
-        if matches!(get("show_particles"), Some(Tag::Byte(0))) {
-            flags |= HIDDEN;
-        }
-        list.push((kind, amp, *left, flags));
+        let Some(chain) = read_chain(c) else { return false };
+        list.push(chain);
     }
     let old: Vec<Kind> = w.get::<Effects>(e).map_or_else(Vec::new, |f| f.list.iter().map(|x| x.kind).collect());
     for k in old {
         effects::remove(w, e, k);
     }
-    for (kind, amp, left, flags) in list {
-        if left > 0 {
-            effects::add_flagged(w, e, kind, amp, left, flags);
+    for chain in list {
+        let mut it = chain.into_iter();
+        let Some((kind, amp, left, flags)) = it.next() else { continue };
+        if left > 0 && effects::add_flagged(w, e, kind, amp, left, flags) {
+            if let Some(mut f) = w.get_mut::<Effects>(e) {
+                f.hidden.extend(it.map(|(kind, amp, left, flags)| effects::Effect { kind, amp, ends: if left < 0 { u64::MAX } else { left as u64 }, next: 0, flags }));
+            }
         }
     }
     true
+}
+
+/// One effect's compound: the hidden part of the same kind goes in `hidden_effect`, nested in it (`MobEffectInstance.Details`).
+fn effect_tag(kind: Kind, amp: i32, duration: i32, flags: u8, hidden: Option<Tag>) -> Tag {
+    let mut m: Vec<(&str, Tag)> = vec![("id", Tag::String(kind_name(kind).into()))];
+    if amp != 0 {
+        m.push(("amplifier", Tag::Byte(amp.clamp(0, 255) as u8 as i8)));
+    }
+    m.push(("duration", Tag::Int(duration)));
+    if flags & AMBIENT != 0 {
+        m.push(("ambient", Tag::Byte(1)));
+    }
+    if flags & HIDDEN != 0 {
+        m.push(("show_particles", Tag::Byte(0)));
+    }
+    m.push(("show_icon", Tag::Byte(1)));
+    if let Some(h) = hidden {
+        m.push(("hidden_effect", h));
+    }
+    Tag::compound(m)
+}
+
+/// The hidden chain of one kind, nested from its first; each time left is frozen, as stored.
+fn hidden_tag(chain: &[effects::Effect]) -> Option<Tag> {
+    let (first, rest) = chain.split_first()?;
+    Some(effect_tag(first.kind, first.amp, ticks_of(first.ends), first.flags, hidden_tag(rest)))
+}
+
+fn ticks_of(v: u64) -> i32 {
+    i32::try_from(v).unwrap_or(i32::MAX)
+}
+
+/// One effect and the hidden ones nested in it, outermost first: (kind, amplifier, ticks left, flags).
+fn read_chain(c: &Compound) -> Option<Vec<(Kind, i32, i32, u8)>> {
+    let get = |k: &str| c.get(&JavaString::from(k));
+    let Some(Tag::String(id)) = get("id") else { return None };
+    let kind = kind_of(&id.to_string_lossy())?;
+    let amp = match get("amplifier") {
+        None => 0,
+        Some(Tag::Byte(a)) => i32::from(*a as u8),
+        Some(_) => return None,
+    };
+    let Some(Tag::Int(left)) = get("duration") else { return None };
+    let mut flags = 0;
+    if matches!(get("ambient"), Some(Tag::Byte(1))) {
+        flags |= AMBIENT;
+    }
+    if matches!(get("show_particles"), Some(Tag::Byte(0))) {
+        flags |= HIDDEN;
+    }
+    let mut chain = vec![(kind, amp, *left, flags)];
+    if let Some(h) = get("hidden_effect") {
+        let Tag::Compound(n) = h else { return None };
+        chain.extend(read_chain(n)?);
+    }
+    Some(chain)
 }
 
 #[cfg(test)]

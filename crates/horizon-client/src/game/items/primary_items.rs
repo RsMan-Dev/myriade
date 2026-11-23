@@ -14,9 +14,6 @@ impl Game<'_> {
     /// client's refresh leaves the server's answers alone. With no such part the snapshot's
     /// answers are retired and selection is vanilla's.
     pub(in crate::game) fn resolve_primary_items(&self) {
-        if !self.is_logical_server() {
-            return;
-        }
         let mut answers = horizon_items::primary_items::PrimaryAnswers::new();
         if mod_api::__private::has_part_hook(mod_api::HookId::IsPrimaryItemFor) {
             let enchantments = &self.stations().enchantments;
@@ -46,10 +43,8 @@ impl Game<'_> {
     /// Leave the world's parts as its world closes (`clear_game_parts`), with what was resolved
     /// from them: this server's `is_primary_item_for` answers are retired. A client holds none.
     pub(in crate::game) fn clear_world_parts(&self) {
-        if self.is_logical_server() {
-            for table in self.primary_answer_tables() {
-                table.clear();
-            }
+        for table in self.primary_answer_tables() {
+            table.clear();
         }
         mod_api::__private::clear_game_parts();
     }

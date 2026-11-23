@@ -68,10 +68,12 @@ pub fn linger(w: &mut World, e: Entity) {
 
 /// `Mob.voice`: `name` at the entity's place with a pitch drawn from its own stream; nothing is heard while it is `Silent`.
 pub fn voice(w: &mut World, e: Entity, name: &'static str) {
+    // `AgeableMob.getVoicePitch`: a baby's voice is raised by half an octave, the same two draws.
+    let base = if w.get::<crate::cow::GrowAt>(e).is_some() { 1.5 } else { 1.0 };
     let pitch = crate::goals::with_rng(w, e, |r| {
         let a = (r.next_u32() >> 8) as f32 / 16_777_216.0;
         let b = (r.next_u32() >> 8) as f32 / 16_777_216.0;
-        (a - b) * 0.2 + 1.0
+        (a - b) * 0.2 + base
     });
     if w.get::<crate::behaviours::elder_curse::Silent>(e).is_none() {
         crate::behaviours::act_phase::sound(w, e, name, 1.0, pitch);

@@ -15,7 +15,7 @@ pub fn vanilla_fits_inside_container_items(stack: &ItemStack) -> bool {
 /// the cost of one table lookup. `context` is the loop the menu or the insert runs in.
 pub fn fits_inside_container_items(context: &LoopContext, stack: &ItemStack) -> bool {
     let mut fits = vanilla_fits_inside_container_items(stack);
-    crate::native_client_hooks::can_fit_inside_container_items(context, stack, &mut fits);
+    crate::native_level_hooks::can_fit_inside_container_items(context, stack, &mut fits);
     fits
 }
 

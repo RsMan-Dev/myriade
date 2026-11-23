@@ -55,6 +55,13 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
     w.entity_mut(e).insert_if_new(Heard::default());
 }
 
+/// A living source the wardens do not notice (`Warden.canTargetEntity` refuses it: an armor stand, another warden). Set by its species' rule.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Unnoticed;
+
+/// The rule that gives a species the `Unnoticed` marker.
+pub static UNNOTICED: crate::rules::Rule = crate::rules::Rule { name: "unnoticed_by_wardens", equip: |w, e, _| { w.entity_mut(e).insert(Unnoticed); }, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
+
 /// Each vibration of the tick goes to the listeners within `RANGE` (the index's columns, then the true distance): each one
 /// that `listens` gets it after as many ticks of its own time as the distance in blocks.
 fn vibration_dispatch(w: &mut World) {
@@ -64,6 +71,11 @@ fn vibration_dispatch(w: &mut World) {
         w.resource::<Index>().for_radius(v.pos[0], v.pos[2], RANGE, |e| near_ids.push(e));
         for e in near_ids {
             if w.get::<Cfg>(e).is_none() || !listens(w, e) {
+                continue;
+            }
+            // `Warden.canReceiveVibration` (VibrationUser): a living source the warden cannot target is not heard.
+            // `Warden.canTargetEntity` also refuses an armor stand and another warden as a living source (the `Unnoticed` marker).
+            if v.source.is_some_and(|s| !targeting::can_target(w, e, s) || matches!(s, Who::Entity(t) if w.get::<Unnoticed>(t).is_some())) {
                 continue;
             }
             let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { continue };

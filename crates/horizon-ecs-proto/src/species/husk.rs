@@ -2,7 +2,7 @@
 use super::{templates::zombie_base, Change, Def, Section};
 use crate::behaviours::{convert_in_water, Entry};
 
-pub static DEF: Def = Def { name: "minecraft:husk", reference: Some(&zombie_base::DEF), rules: &[
+pub static DEF: Def = Def { sound_source: super::SoundCategory::Hostile, load_attrs: zombie_base::LOAD_ATTRS, name: "minecraft:husk", reference: Some(&zombie_base::DEF), rules: &[
         crate::rules::RuleEntry::new(&crate::effects::ON_HIT, &crate::effects::HUSK),
         crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }),
         crate::rules::RuleEntry::new(&crate::loot::BABY_DROPS, &crate::loot::BabyDrops::ZOMBIE),

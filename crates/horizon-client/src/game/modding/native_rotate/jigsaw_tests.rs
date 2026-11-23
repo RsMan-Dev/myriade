@@ -381,7 +381,6 @@ fn assert_connector_reads(
 }
 
 fn publish(game: &mut crate::game::Game<'_>) {
-    game.options.dedicated = Some(Vec::new());
     game.resolve_parts().unwrap();
     let load = LoadContext::new(
         DataLoadOrigin::ServerDataLoad,

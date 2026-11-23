@@ -8,6 +8,7 @@ pub static DEF: Def = Def {
     targets: &[
         Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, ..hurt_by::Params::DEFAULT }),
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER),
+        Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { sounds: false, ..crate::behaviours::move_emission::Params::DEFAULT }),
     ],
     goals: &[
         Entry::new(&float::MODULE, 1, &float::Params::DEFAULT),
@@ -17,5 +18,6 @@ pub static DEF: Def = Def {
         Entry::new(&silverfish_merge::MODULE, 5, &silverfish_merge::Params::DEFAULT),
     ],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

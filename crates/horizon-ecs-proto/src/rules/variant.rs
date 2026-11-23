@@ -37,11 +37,18 @@ pub struct Table {
     pub ids: &'static [u8],
     /// Saved as the string at the value's index in `ids` (`Fox.Type`: red, snow) when not empty, else as an int.
     pub names: &'static [&'static str],
+    /// The serialized names of the data component `minecraft:<species>/variant` (`getSerializedName`), at the `ids` position; not saved.
+    pub component_names: &'static [&'static str],
     pub traits: &'static [Trait],
     /// A spawn into a group that already holds this many members is a baby, with no roll (`Fox.finalizeSpawn`: group size 2 or more).
     pub group_baby: Option<u32>,
     /// How a baby's variant follows its parents (`getBreedOffspring`).
     pub inherit: Inherit,
+}
+/// The component name (`component_names`) of the value `id` of a table.
+pub fn component_name(t: &Table, id: u8) -> Option<&'static str> {
+    let i = t.ids.iter().position(|x| *x == id)?;
+    t.component_names.get(i).copied()
 }
 impl Table {
     /// No draw, nothing saved, no inheritance: the base of a literal (`..Table::EMPTY`).
@@ -54,6 +61,7 @@ impl Table {
         redraw: false,
         ids: &[],
         names: &[],
+        component_names: &[],
         traits: &[],
         group_baby: None,
         inherit: Inherit::None,

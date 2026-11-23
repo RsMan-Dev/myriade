@@ -1,5 +1,5 @@
 //! The "No AI" switch: one setting that hides and turns off every AI feature of Horizon (the
-//! companion, agent control through the control socket, `horizon-ctl`, its MCP server and the
+//! companion, agent control through the control socket, `the control socket`, its MCP server and the
 //! launcher's). The launcher and the game both read and write it here, so they always agree.
 //!
 //! It is the `noAi` line of the game's `horizon-extras.txt`, in the game's home (the folder

@@ -1,5 +1,5 @@
 //! One [`LegacyRandom`] stream shared by several threads that each run their part of a list in list
-//! order (the server's parallel mob tick, `game/mob_islands.rs`): every draw comes out exactly as if
+//! order: every draw comes out exactly as if
 //! the whole list had run on one thread.
 //!
 //! Each thread (a lane) runs a subset of the list's items, in ascending item order, and says which

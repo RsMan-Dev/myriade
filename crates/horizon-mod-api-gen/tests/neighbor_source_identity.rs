@@ -161,7 +161,7 @@ mod game {
             }
         }
     }
-    pub(super) struct GameLevel<'a> { behaviours: &'a Behaviours, native_authoritative: bool, dimension: LevelDimension }
+    pub(super) struct GameLevel<'a> { behaviours: &'a Behaviours, dimension: LevelDimension }
     impl GameLevel<'_> {
         /* METHOD */
         fn native_neighbor_changed(&self, _: &mut Ticks, dimension: LevelDimension, pos: BlockPos, state: BlockStateId, changed: BlockKey, moved: bool) {
@@ -171,14 +171,9 @@ mod game {
     pub(super) fn run() {
         let behaviours = Behaviours { table: Table };
         let dimension = LevelDimension(3);
-        let mut level = GameLevel { behaviours: &behaviours, native_authoritative: false, dimension };
+        let level = GameLevel { behaviours: &behaviours, dimension };
         let mut ticks = Ticks;
         let pos = BlockPos([4, 65, -9]);
-        level.observe_neighbor_changed(&mut ticks, pos, BlockStateId(5), BlockId(2), false);
-        assert_eq!(TABLE.get(), 0, "non-authoritative observation must not resolve a source");
-        assert_eq!(INDEX.get(), 0);
-        assert!(CALLS.with_borrow(|calls| calls.is_empty()));
-        level.native_authoritative = true;
         // A different primary block must not even consult the secondary table/index.
         level.observe_neighbor_changed(&mut ticks, pos, BlockStateId(8), BlockId(2), false);
         assert_eq!(TABLE.get(), 0, "secondary lookup before routing rejection");

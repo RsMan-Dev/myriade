@@ -1,7 +1,6 @@
 //! `player.sees`, `player.ack_block_changes` and `player.show_block` against real LAN guests,
 //! through the public player handle, with a literal test for each refusal.
 
-use super::native_entity_refs::tests::with_client_game;
 use super::native_guest_turn_tests::with_guests;
 use horizon_protocol::packets::play::Clientbound as C;
 use mod_api::{
@@ -285,18 +284,3 @@ fn each_sees_refusal_has_its_own_name() {
     });
 }
 
-/// On a client all three answer `Client`.
-#[test]
-#[ignore = "daily"]
-fn a_client_cannot_ack_show_or_ask_who_sees() {
-    with_client_game(|game| {
-        let ghost = mod_api::__private::game::player_ref(EntityRef::new(WorldEpoch::new(0), 1), 1);
-        let stone = api_state(game, "minecraft:stone");
-        assert_eq!(ghost.ack_block_changes(game, 1), Err(Refusal::Client));
-        assert_eq!(
-            ghost.show_block(game, [1, 70, 1], stone),
-            Err(Refusal::Client)
-        );
-        assert_eq!(ghost.sees(game, ghost), Err(Refusal::Client));
-    });
-}

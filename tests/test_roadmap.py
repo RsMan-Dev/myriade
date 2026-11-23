@@ -123,7 +123,7 @@ class Rules(unittest.TestCase):
                                                                            shipped_in="soon")))
 
     def test_links_are_issues_urls_or_repository_paths(self):
-        self.assertEqual(self.problems(links=["#4", "https://playhorizon.dev", "docs/benchmark.md"]), [])
+        self.assertEqual(self.problems(links=["#4", "https://playhorizon.dev", "docs/parity-workflow.md"]), [])
         self.assertTrue(any("link" in p for p in self.problems(links=["docs/nothing-here.md"])))
         self.assertTrue(any("link" in p for p in self.problems(links=["http://example.com"])))
 
@@ -259,9 +259,8 @@ class Labels(unittest.TestCase):
 
 class Sync(unittest.TestCase):
     def test_family_of_a_change(self):
-        self.assertEqual(roadmap.family(["launcher/src/main.rs"]), "launcher")
         self.assertEqual(roadmap.family(["website/src/main.js"]), "website")
-        self.assertEqual(roadmap.family(["launcher/src/main.rs", "crates/x/src/lib.rs"]), "game")
+        self.assertEqual(roadmap.family(["website/x.js", "crates/x/src/lib.rs"]), "game")
 
     def test_merged_and_released_items_move_to_the_top_of_shipped(self):
         data = tomllib.loads(SAMPLE)

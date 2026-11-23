@@ -20,6 +20,18 @@ impl Trust {
     }
 }
 
+/// `Fox.FoxBreedGoal.breed`: the baby trusts the player who fed the mother into love and, when it is another, the one who fed the father.
+pub fn breeders(mother: Option<u32>, father: Option<u32>) -> Trust {
+    let mut t = Trust::default();
+    if let Some(id) = mother {
+        t.add(Who::Player(id));
+    }
+    if let Some(id) = father.filter(|&id| Some(id) != mother) {
+        t.add(Who::Player(id));
+    }
+    t
+}
+
 /// The player `id` is trusted by `e` (`player_when` of an avoidance: a trusted player is spared). Read with the world.
 pub fn spares_player(w: &World, e: Entity, id: u32) -> bool {
     w.get::<Trust>(e).is_some_and(|t| t.trusts_player(id))

@@ -47,8 +47,7 @@ impl Game<'_> {
         // Listener stores skip binding while their holder is being constructed.
         // A resident part has no separate join callback, so finish its binding
         // here even when construction was triggered by an inspection.
-        if self.native_authoritative()
-            && let Holder::Entity(id) = holder
+        if let Holder::Entity(id) = holder
             && self
                 .entity_attachments
                 .get(&id)

@@ -6,7 +6,7 @@
 `cargo fmt --all` reaches only the modules a `mod` line names, so it misses the gameplay modules the build derives
 (`.game-area`), the API and vocabulary files a build script includes, and the generator's and wire loopback's
 fixtures. Each of those is checked by path as well. Every check runs, so one run names every unformatted file; the
-exit status is 1 if any of them failed. The launcher is a separate workspace with its own check.
+exit status is 1 if any of them failed.
 """
 
 import subprocess

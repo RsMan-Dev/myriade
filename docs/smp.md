@@ -167,7 +167,7 @@ made only when a player acts on a block. Each phase measures a server tick with 
 
 Each is pull requests under ~500 lines, each tested: the hook points here (unit tests, a game test that hooks
 them), the mod in horizon-mods (its crate's tests, and a proof: a dedicated server built with the bundle and real
-clients driven by `horizon-ctl`, in fresh folders).
+clients driven by commands sent over the control socket, in fresh folders).
 
 1. **Economy**: command and player hook points; the mod's ledger, data files and audit log, `/balance`, `/pay`,
    `/baltop`, `/eco`; then the items helpers and the market (`/sell`, `/buy`, `/worth`).

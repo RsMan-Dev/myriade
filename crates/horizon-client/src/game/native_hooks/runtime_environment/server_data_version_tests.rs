@@ -1,12 +1,11 @@
 //! The host's build metadata agrees with the chunk writer, before any world is open.
-use crate::game::execution_role::ExecutionRole;
 use crate::game::native_entity_refs::tests::with_game;
 use horizon_client::chunk::Chunk;
 use horizon_client::save::{LevelShape, SaveDir};
 use horizon_core::nbt::{Limits, Tag};
 use horizon_core::position::ChunkPos;
 use horizon_world::region::RegionFile;
-use mod_api::{ClientHost, Host, ServerHost};
+use mod_api::ServerHost;
 use std::sync::Arc;
 
 #[test]
@@ -38,21 +37,7 @@ fn host_data_version_matches_a_freshly_saved_chunk() {
         assert_eq!(*version, horizon_core::version::DATA_VERSION);
 
         let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);
-        for role in [
-            ExecutionRole::Client,
-            ExecutionRole::IntegratedServer,
-            ExecutionRole::DedicatedServer,
-        ] {
-            game.options.execution_role = role;
-            let host: &dyn Host = if role.is_client() {
-                let client: &dyn ClientHost = game;
-                client
-            } else {
-                let server: &dyn ServerHost = game;
-                server
-            };
-            assert_eq!(host.server_data_version(), *version);
-            assert_eq!(host.server_data_version(), *version);
-        }
+        let server: &dyn ServerHost = game;
+        assert_eq!(server.server_data_version(), *version);
     });
 }

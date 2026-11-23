@@ -105,7 +105,7 @@ pub struct PackedStorage {
 }
 
 impl PackedStorage {
-    /// The heap bytes of the packed words (`horizon-ctl memory`).
+    /// The heap bytes of the packed words (`the control socket's memory command`).
     pub fn heap_bytes(&self) -> usize {
         self.words.capacity() * std::mem::size_of::<u64>()
     }

@@ -26,5 +26,6 @@ pub static DEF: Def = Def {
     changes: &[Change::Set { module: &ranged_bow::MODULE, nth: 0, params: &ranged_bow::Params { interval: 70, effect: Some((Kind::Poison, 0, 100)), ..ranged_bow::Params::DEFAULT } }],
     rules: &[crate::rules::RuleEntry::new(&crate::behaviours::shear::SHEAR, &SHEARING)],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

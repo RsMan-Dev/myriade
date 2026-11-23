@@ -67,7 +67,15 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
 fn stop(w: &mut World, e: Entity, inst: Inst) {
     if w.get::<Showing>(e).is_some_and(|s| s.look > 0) {
         arm(w, e, inst);
+    } else if w.get::<Showing>(e).is_some() {
+        clear_display(w, e);
     }
+}
+
+/// The display is cleared: no item in the main hand, and its drop chance back to the default (`Mob.setDropChance` of the slot).
+fn clear_display(w: &mut World, e: Entity) {
+    crate::goals::set_main_hand(w, e, None);
+    crate::spawn_gear::set_drop_chance(w, e, Slot::Main, crate::equipment_drop::DEFAULT);
 }
 
 /// `findItemsToDisplay`: the offer's first or second cost is the held item (the client compares item kinds; here their ids).
@@ -75,11 +83,12 @@ fn pays(o: &MerchantOffer, held: u32) -> bool {
     item_id(&o.base_cost_a.stack.item) == held || o.cost_b.as_ref().is_some_and(|c| item_id(&c.stack.item) == held)
 }
 
-/// `setItemInHand`: the shown result goes to the main hand (the drop chance is kept at zero).
+/// `setItemInHand`: the shown result goes to the main hand, which never drops it (the drop chance is zero while it shows).
 fn show_result(w: &mut World, e: Entity, offer: usize) {
     let Some(m) = w.get::<Merchant>(e) else { return };
     let Some(result) = m.trade.offers.get(offer).map(|o| o.result.clone()) else { return };
     crate::goals::set_main_hand(w, e, Some(result));
+    crate::spawn_gear::set_drop_chance(w, e, Slot::Main, 0.0);
 }
 
 /// The player's held item changed (`player.main`): the offers it pays for are listed, the cycle starts at the first.
@@ -91,7 +100,7 @@ pub fn show(w: &mut World, e: Entity, player: u32) {
             s.held = 0;
             s.items.clear();
         }
-        crate::goals::set_main_hand(w, e, None);
+        clear_display(w, e);
         return;
     }
     ensure_offers(w, e);
@@ -109,5 +118,7 @@ pub fn show(w: &mut World, e: Entity, player: u32) {
     if let Some(i) = first {
         show_result(w, e, i);
         wake(w, e, &MODULE);
+    } else {
+        clear_display(w, e);
     }
 }

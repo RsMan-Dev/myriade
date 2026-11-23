@@ -7,7 +7,7 @@
 //!   patched  the patched copy installed through the typed installer
 //!   listened an API listener at the function's return, through its injection point
 //!   both     the patched copy, with the API listener around it
-extern crate horizon_mod_host;
+extern crate horizon_game;
 extern crate mod_points;
 use horizon_client::game as g;
 use std::hint::black_box;

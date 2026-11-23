@@ -100,7 +100,6 @@ fn with_cache_mod(name: &str, test: impl FnOnce(&mut super::Game<'_>, mod_api::L
             .prepared()
             .to_owned();
         super::native_entity_refs::tests::with_game_at(root, |game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -314,7 +313,7 @@ fn a_cache_finds_nothing_once_its_level_closes() {
             let mut cache = cache(level);
             assert!(ask(game, &mut cache).0);
             game.native_lifecycle
-                .begin_open(mod_api::Authority::IntegratedServer);
+                .begin_open(mod_api::Authority::DedicatedServer);
             assert!(
                 !ask(game, &mut cache).0,
                 "a closed level's handles are stale"

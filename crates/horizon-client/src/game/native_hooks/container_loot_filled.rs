@@ -53,9 +53,7 @@ impl GameLevel<'_> {
         player: Option<mod_api::PlayerRef>,
         drops: &mut Vec<LootStack>,
     ) {
-        if !self.native_authoritative
-            || !mod_api::__private::listened(mod_api::HookId::ContainerLootFilled)
-        {
+        if !mod_api::__private::listened(mod_api::HookId::ContainerLootFilled) {
             return;
         }
         let dimension = self.dimension.key().id().to_owned();

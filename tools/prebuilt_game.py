@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The prebuilt game (arismoko/horizon#589): horizon-client as a Rust dylib plus every crate's metadata, so the launcher builds
+"""The prebuilt game (arismoko/horizon#589): horizon-client as a Rust dylib plus every crate's metadata, so the installer builds
 native trait mods against it with rustc alone, in seconds, without the game's source or a game build.
 
     python3 tools/prebuilt_game.py build OUT [--server]   # build and collect the folder, write horizon-prebuilt.json
@@ -40,9 +40,9 @@ PROFILE = "release"
 SUFFIXES = (".rmeta", ".so", ".dll", ".dll.a", ".dylib")
 IDENTITY = "horizon-prebuilt.json"
 # The crate the game's library is built from; its build resolves what mods compile against.
-GAME = "horizon-mod-host"
+GAME = "horizon-game"
 LOCK = "Cargo.lock"
-# Where `smoke` installs the executable it builds, as the launcher does, for `start`: beside OUT, never inside it,
+# Where `smoke` installs the executable it builds, as the installer does, for `start`: beside OUT, never inside it,
 # since the archive is OUT alone.
 SMOKE = "prebuilt-smoke"
 # Where `smoke` installs the same executable without selected mods, for `start`.
@@ -55,7 +55,7 @@ NO_RESOURCES = "Horizon's prepared game files are missing"
 MINGW_RUNTIME = ("libgcc_s_seh-1.dll", "libwinpthread-1.dll")
 # Windows' STATUS_DLL_NOT_FOUND, the exit status of a process whose imports could not all be loaded.
 DLL_NOT_FOUND = 0xC0000135
-# The launcher's generated `main.rs` comes from the game it links against.
+# The installer's generated `main.rs` comes from the game it links against.
 TEMPLATE = "native_main.rs.template"
 NATIVE_MODS_TEMPLATE = "native_mod_entry.rs.template"
 API_MAIN = ROOT / "crates/horizon-client/src/native_main.rs.template"
@@ -66,7 +66,7 @@ INPUTS = ROOT / "crates/horizon-mod-package/src/sdk/inputs.json"
 # The crates an API-only mod may name; their closure is the `api` archive.
 API_ROOTS = ("horizon-mod-api", "horizon-mod-points")
 # The game libraries outside the API closure, in the runtime archive.
-GAME_LIBRARIES = ("horizon_mod_host", "horizon_mod_wasm")
+GAME_LIBRARIES = ("horizon_game", "horizon_mod_wasm")
 # Source files the folder carries besides compiler outputs.
 CARRIED = {"Cargo.toml": None, IDENTITY: None, LOCK: ROOT / LOCK, TEMPLATE: ROOT / "crates/horizon-client/src" / TEMPLATE,
            NATIVE_MODS_TEMPLATE: ROOT / "crates/horizon-client/src" / NATIVE_MODS_TEMPLATE}
@@ -76,14 +76,14 @@ LINK_ARG = "cargo:horizon-executable-link-arg="
 # cargo passes their folders to rustc, a plain rustc gets them from here (`-L native=OUT/native`).
 NATIVE = "native"
 NATIVE_SUFFIXES = (".a", ".lib")
-# The game's injection points, listed by the staging pass: the launcher routes mods' point injections by it.
+# The game's injection points, listed by the staging pass: the installer routes mods' point injections by it.
 POINTS = "points.json"
 # The staged internals signatures, checked against a mod's declared access list.
 INTERNALS = "internals.json"
 # The published loops (`#[horizon_loop]`), which a mod's `[[native.loop]]` rows name.
 LOOPS = "loops.json"
 # The function index: where each function a mixin may target is, and whether it takes a replacement; the
-# launcher's patch step reads it instead of walking the game's source. Only the engine route patches functions, so it
+# installer's patch step reads it instead of walking the game's source. Only the engine route patches functions, so it
 # is in the `engine` slice, not with the rest of the build data in `api`.
 FUNCTIONS = "functions.json"
 # The SDK's build data (`point_shape::build_data`): each file opens with `schema` and `build.commit`.
@@ -126,9 +126,9 @@ def package_format(root: Path) -> int:
 
 def tracked_blobs(root: Path, commit: str, paths: tuple[str, ...] = ()):
     """Each regular file `commit` tracks under `paths` (everywhere when empty), with its bytes as the commit holds them:
-    the bytes GitHub's archive of the commit serves, which the launcher downloads and checks against the function
+    the bytes GitHub's archive of the commit serves, which the installer downloads and checks against the function
     index, whatever line endings the working tree was checked out with (Git for Windows' core.autocrlf) and whatever
-    it has that is not committed. Links are left out, as the launcher's download leaves them out."""
+    it has that is not committed. Links are left out, as the installer's download leaves them out."""
     # `git archive` converts line endings as a checkout would (core.autocrlf, core.eol); both are turned off so the
     # bytes are the commit's on every runner.
     with subprocess.Popen(["git", "-c", "core.autocrlf=false", "-c", "core.eol=lf", "archive", "--format=tar",
@@ -370,7 +370,7 @@ def api_route_files() -> set[str]:
 
 
 def holder_mark() -> bytes:
-    """The bytes the launcher looks for in an executable before it runs it under the holder (`holder::capable`),
+    """The bytes the installer looks for in an executable before it runs it under the holder (`holder::capable`),
     read from their one definition, `holder.rs`'s `CAPABILITY`."""
     source = ROOT / "crates/horizon-mod-package/src/holder.rs"
     found = re.search(rb'CAPABILITY: \[u8; \d+\] = \*b"([^"]+)"', source.read_bytes())
@@ -645,7 +645,7 @@ def check(out: Path) -> None:
     ]
     if stray:
         sys.exit(f"prebuilt folder holds files that aren't compiler outputs: {stray}")
-    for crate in ("horizon_mod_wasm", "horizon_mod_host"):
+    for crate in ("horizon_mod_wasm", "horizon_game"):
         if dylib(out / "deps", crate) is None:
             sys.exit(f"prebuilt folder has no {crate.replace('_', '-')} dylib")
 
@@ -686,7 +686,7 @@ def smoke(out: Path) -> None:
     if installed.exists():
         shutil.rmtree(installed)
     installed.mkdir()
-    # The game's libraries load from beside the executable (launcher/src/native_mods/prebuilt.rs `compile`).
+    # The game's libraries load from beside the executable.
     origin = {"linux": ["-Wl,-rpath,$ORIGIN"], "darwin": ["-Wl,-rpath,@executable_path"]}.get(sys.platform, [])
     identity = json.loads((out / IDENTITY).read_text())
     release = next(line.removeprefix("release: ") for line in identity["rustc"].splitlines() if line.startswith("release: "))
@@ -715,7 +715,7 @@ def smoke(out: Path) -> None:
             (scratch / f"{mod}.rs").write_text(source + f'\n#[path = "{mod}_entry.rs"] mod entry;\n')
             library = installed / f"{dylib_prefix()}{mod}{dylib_suffix()}"
             run(["rustc", *common, "-L", f"dependency={installed}", "--crate-type", "dylib", "--crate-name", mod,
-                 *extern("mod_api"), "--extern", f"horizon_mod_host={dylib(deps, 'horizon_mod_host')}", *externs,
+                 *extern("mod_api"), "--extern", f"horizon_game={dylib(deps, 'horizon_game')}", *externs,
                  *(flag for arg in origin for flag in ("-C", f"link-arg={arg}")),
                  "-o", str(library), str(scratch / f"{mod}.rs")])
             records.append({"file": library.name, "sha256": sha256(library), "kind": "mod", "mod": mod,
@@ -755,7 +755,7 @@ pub fn greeting_length() -> usize {
 
 
 def install_package(folder: Path, mod: str, source: str, dependencies: str) -> None:
-    """Mod MOD's package as the launcher leaves it beside the executable, which reads it back at start
+    """Mod MOD's package as the installer leaves it beside the executable, which reads it back at start
     (horizon-mod-package `runtime::Runtime::load`): the starter manifest with its DEPENDENCIES table and its
     [native] pins, and its source."""
     manifest = (ROOT / "crates/cargo-horizon-mod/template/native/horizon-mod.toml").read_text()
@@ -773,7 +773,7 @@ def install_package(folder: Path, mod: str, source: str, dependencies: str) -> N
 
 
 def runtime_libraries(out: Path) -> list[Path]:
-    """What the launcher installs beside the executable (launcher/src/native_mods/prebuilt.rs `runtime_libraries`),
+    """What the installer puts beside the executable,
     by the same rule: every shared library the identity's `runtime` slice records under `deps/`, std, and on Windows
     the MinGW runtime the GNU DLLs import. So `start` fails when the record misses a library the game loads."""
     runtime = json.loads((out / IDENTITY).read_text())["slices"]["runtime"]
@@ -795,7 +795,7 @@ def start(out: Path) -> None:
     each as a dedicated server with no game data: it loads the game's libraries
     and sets up the mods' runtime, then stops at the missing prepared files. Fails on a crash, a hang or any other
     stop, so an archive whose libraries disagree (two allocators, arismoko/horizon#3877) cannot ship. On Windows it runs without
-    MinGW on PATH, as on a player's computer, so a runtime DLL the launcher would not install fails here (arismoko/horizon#3521)."""
+    MinGW on PATH, as on a player's computer, so a runtime DLL the installer would not put there fails here (arismoko/horizon#3521)."""
     # Run as a script, so lab sits on the path beside it; tests import this module without running `start`.
     import lab
 
@@ -804,7 +804,7 @@ def start(out: Path) -> None:
             scratch = Path(scratch)
             # Never a real player's folders, even ones this process inherited: every home is a folder of the scratch.
             homes = {key: scratch / key.lower() for key in
-                     ("HORIZON_HOME", "HORIZON_LAUNCHER_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME")}
+                     ("HORIZON_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME")}
             for home in homes.values():
                 home.mkdir()
             environment = lab.game_env(RUST_BACKTRACE="1")
@@ -820,25 +820,6 @@ def start(out: Path) -> None:
             # A dedicated server stops at an unaccepted EULA before it reaches the prepared files (the EULA is accepted).
             (game / "eula.txt").write_text("eula=true\n")
             executable = installed / EXECUTABLE
-            if sys.platform == "darwin":
-                # Use the launcher's actual bundle preparation, not a second list of libraries.
-                bundle_source = scratch / "bundle.rs"
-                module = json.dumps(str(ROOT / "launcher/src/game_app.rs"))
-                bundle_source.write_text(
-                    'mod i18n { pub fn tr(s: &str) -> &str { s } }\n'
-                    'mod shortcut { pub fn xml(s: &str) -> String { s.to_owned() } }\n'
-                    f'#[path = {module}] mod game_app;\n'
-                    'fn main() { game_app::ensure(std::path::Path::new(&std::env::args().nth(1).unwrap())).unwrap(); }')
-                bundle_tool = scratch / "bundle"
-                run(["rustc", "--edition=2021", str(bundle_source), "-o", str(bundle_tool)])
-                run([str(bundle_tool), str(installed)])
-                bundled = installed / "Horizon.app/Contents/MacOS/horizon-client"
-                executable = bundled
-                probe = subprocess.run([str(bundled), "--launch-api"], cwd=game, env=environment,
-                                       capture_output=True, text=True, timeout=60)
-                if probe.returncode != 0:
-                    sys.exit(f"bundled launch API failed: {probe.stderr}")
-                json.loads(probe.stdout)
             command = [str(executable), "--resources", str(scratch / "no-resources"), "--dedicated", "--nogui"]
             print("+", " ".join(command), flush=True)
             result = subprocess.run(command, cwd=game, env=environment, stdout=subprocess.PIPE,

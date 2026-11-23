@@ -94,15 +94,26 @@ impl Herd {
         level.mw = Mw(w);
         *self.world.resource_mut::<Level>() = level;
     }
-    /// Turns the natural spawning on, with the spawn lists of `biome` (the game's data) and the seed of its random.
-    pub fn enable_spawning(&mut self, biome: &str, seed: i64) {
+    /// The `maxEntityCramming` game rule (`MobWorld.max_entity_cramming`); the world is the same one, read again.
+    pub fn set_max_entity_cramming(&mut self, max: i32) {
+        let mut level = *self.world.resource::<Level>();
+        let w: &'static MobWorld<'static> = Box::leak(Box::new(MobWorld { max_entity_cramming: max, ..level.mw.0.clone() }));
+        level.mw = Mw(w);
+        *self.world.resource_mut::<Level>() = level;
+    }
+    /// The dimension the world is read as (`MobWorld.dimension_type`: its ambient light lifts the brightness, `MobWorld.brightness`); the world is the same one, read again.
+    pub fn set_dimension(&mut self, dimension: &'static horizon_world::dimension_type::DimensionFacts) {
+        let mut level = *self.world.resource::<Level>();
+        let w: &'static MobWorld<'static> = Box::leak(Box::new(MobWorld { dimension_type: dimension, ..level.mw.0.clone() }));
+        level.mw = Mw(w);
+        *self.world.resource_mut::<Level>() = level;
+    }
+    /// Turns the natural spawning on, with the spawn lists of every biome of the world (the game's data, by biome index) and the seed of
+    /// its random. The biome of a position is read from the world, so `_biome` (the harness's one biome) is not used.
+    pub fn enable_spawning(&mut self, _biome: &str, seed: i64) {
         let mw = self.world.resource::<Level>().mw.0;
-        let info = mw.biomes.get(*mw.biomes.index.get(biome).expect("a known biome"));
-        let table = crate::spawning::Table::from_biome(info, &species_table());
-        crate::spawning::ensure(&mut self.world);
-        let mut sp = crate::spawning::Spawner::new(table, seed);
-        sp.biome = biome.to_owned();
-        self.world.insert_resource(sp);
+        // The rules of a harness world: mobs and monsters may spawn (the host writes them when they change).
+        install_spawning(&mut self.world, mw, seed, (true, true), None);
     }
     /// An empty slab of `half` blocks each way with a real surface (grass on dirt on stone down to the bottom of the world) for the
     /// natural spawning (`spawning.rs`): the surface is the block y = 0, the creatures stand at y = 1.
@@ -112,6 +123,9 @@ impl Herd {
         let _guard = BUILDING.lock().unwrap_or_else(|e| e.into_inner());
         crate::spawning::set_kind(kind);
         let mut h = Self::build(0, 1.0, sleep, false, 5, false, 0, Some(half), true);
+        if kind == crate::spawning::Kind::TwoBiomes {
+            crate::spawning::split_biomes(&mut h.world);
+        }
         crate::loot::preload(&mut h.world);
         h
     }
@@ -376,7 +390,7 @@ pub(crate) fn assemble_resources(world: &mut World, level: Level, sleep: bool, p
         read: crate::nbt_tag::read,
     }];
     crate::nbt::begin_declarations(world);
-    for fields in [crate::nbt::COMMON, crate::nbt_fields::common::FIELDS, crate::nbt_fields::hanging::FIELDS, crate::nbt_fields::common::CREATORS, crate::credit::CREATORS, crate::passive::FIELDS, crate::dragon::save::FIELDS, crate::behaviours::trade_offers::FIELDS, crate::behaviours::variant::FIELDS,crate::behaviours::swallow_hold::FIELDS, crate::nbt_fields::owners::FIELDS, crate::nbt_fields::falling::FIELDS, crate::nbt_fields::effect_cloud::FIELDS, crate::nbt_fields::breath_cloud::FIELDS,crate::nbt_fields::creatures::FIELDS, crate::nbt_fields::mount_inventory::FIELDS, crate::firework_burst::FIELDS, crate::cart_state::FIELDS, crate::nbt_fields::living_state::FIELDS, crate::nbt_fields::living_state::CREATORS, crate::behaviours::stew_flower::CREATORS, crate::dispense::CREATORS, crate::nbt_fields::creatures_more::FIELDS, crate::nbt_fields::creatures_more::CREATORS, crate::coating::FIELDS, crate::nbt_fields::rides::FIELDS, crate::nbt_fields::things::FIELDS, &tags[..]] {
+    for fields in [crate::nbt::COMMON, crate::nbt_fields::common::FIELDS, crate::nbt_fields::hanging::FIELDS, crate::nbt_fields::common::CREATORS, crate::credit::CREATORS, crate::passive::FIELDS, crate::dragon::save::FIELDS, crate::behaviours::trade_offers::FIELDS, crate::behaviours::variant::FIELDS,crate::behaviours::swallow_hold::FIELDS, crate::nbt_fields::owners::FIELDS, crate::nbt_fields::falling::FIELDS, crate::nbt_fields::effect_cloud::FIELDS, crate::nbt_fields::breath_cloud::FIELDS,crate::nbt_fields::creatures::FIELDS, crate::nbt_fields::mount_inventory::FIELDS, crate::nbt_fields::item_store::FIELDS, crate::firework_burst::FIELDS, crate::cart_state::FIELDS, crate::nbt_fields::living_state::FIELDS, crate::nbt_fields::living_state::CREATORS, crate::behaviours::stew_flower::CREATORS, crate::dispense::CREATORS, crate::nbt_fields::creatures_more::FIELDS, crate::nbt_fields::creatures_more::CREATORS, crate::coating::FIELDS, crate::nbt_fields::rides::FIELDS, crate::nbt_fields::things::FIELDS, crate::behaviours::food_stock::FIELDS, crate::behaviours::bed::FIELDS, crate::nbt_fields::villager_memories::FIELDS, &tags[..]] {
         crate::nbt::register(world, fields);
     }
     crate::nbt::register_creators(world, crate::nbt_fields::rides::CREATORS);
@@ -417,4 +431,18 @@ pub(crate) fn assemble_resources(world: &mut World, level: Level, sleep: bool, p
     crate::inside_more::insert_resources(world);
     crate::hostile::insert_resources(world);
     world.insert_resource(Index::new(-f64::from(half), (f64::from(2 * half) / CELL) as usize + 2));
+}
+
+/// The natural spawning of a level, as the production level and the harness install it: the biome tables and zoom of `mw` with `seed`, the
+/// rules (`spawn_mobs`, `monsters`) as given, and the structures' host when there is one.
+pub fn install_spawning(w: &mut World, mw: &MobWorld<'_>, seed: i64, rules: (bool, bool), structures: Option<crate::spawn_structures::StructureHost>) {
+    let species = species_table();
+    let tables = mw.biomes.list.iter().map(|info| crate::spawning::Table::from_biome(info, &species)).collect();
+    crate::spawning::ensure(w);
+    w.insert_resource(crate::spawning::Spawner::new(tables, crate::spawn_biome::zoom_of(mw), seed));
+    if let Some(host) = structures {
+        w.insert_resource(host);
+    }
+    let env = &mut *w.get_resource_or_insert_with(crate::spawn_env::SpawnEnv::default);
+    (env.spawn_mobs, env.monsters, env.changed) = (rules.0, rules.1, true);
 }

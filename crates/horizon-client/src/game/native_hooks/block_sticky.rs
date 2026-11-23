@@ -40,22 +40,18 @@ impl GameLevel<'_> {
 }
 
 impl GameLevel<'_> {
-    /// `LevelAccess::adjust_is_slime_block`: the parts of `state` answer on an authoritative
-    /// server, and `vanilla` stands elsewhere.
+    /// `LevelAccess::adjust_is_slime_block`: the parts of `state` answer, once the
+    /// vanilla answer `vanilla` is given.
     pub(in crate::game) fn part_is_slime_block(&self, state: BlockStateId, vanilla: bool) -> bool {
         let mut slime = vanilla;
-        if self.native_authoritative {
-            self.native_is_slime_block(self.dimension, state, &mut slime);
-        }
+        self.native_is_slime_block(self.dimension, state, &mut slime);
         slime
     }
 
     /// `LevelAccess::adjust_is_sticky_block`, as `part_is_slime_block`.
     pub(in crate::game) fn part_is_sticky_block(&self, state: BlockStateId, vanilla: bool) -> bool {
         let mut sticky = vanilla;
-        if self.native_authoritative {
-            self.native_is_sticky_block(self.dimension, state, &mut sticky);
-        }
+        self.native_is_sticky_block(self.dimension, state, &mut sticky);
         sticky
     }
 
@@ -67,9 +63,7 @@ impl GameLevel<'_> {
         vanilla: bool,
     ) -> bool {
         let mut sticks = vanilla;
-        if self.native_authoritative {
-            self.native_can_stick_to(self.dimension, state, other, &mut sticks);
-        }
+        self.native_can_stick_to(self.dimension, state, other, &mut sticks);
         sticks
     }
 }

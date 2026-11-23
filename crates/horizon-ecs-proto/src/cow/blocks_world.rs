@@ -199,6 +199,7 @@ fn species_rows(types: &'static horizon_client_lib::mobs::MobTypes) -> Vec<Speci
             lava_walker: kind.flags.lava_walker,
             water_efficiency: kind.water_efficiency as f32,
             eye_height: kind.eye_height,
+            sound_source: crate::species::registry().by_name(name).unwrap().sound_source,
             name,
             saved: crate::species::registry().by_name(name).unwrap().saved,
             width: kind.width as f32,
@@ -225,8 +226,12 @@ fn species_rows(types: &'static horizon_client_lib::mobs::MobTypes) -> Vec<Speci
             persistent: is_creature && mob.persistent,
             screaming,
             lost_horn,
+            max_scale: crate::species::registry().by_name(name).unwrap().max_scale,
+            load_attrs: crate::species::registry().by_name(name).unwrap().load_attrs,
             llama_strength: crate::species::registry().by_name(name).unwrap().llama_strength,
             random_max_health: crate::species::registry().by_name(name).unwrap().random_max_health,
+            horse_gen: crate::species::registry().by_name(name).unwrap().horse_gen,
+            body_wear: crate::species::registry().by_name(name).unwrap().body_wear,
             not_in_peaceful: crate::species::registry().by_name(name).unwrap().not_in_peaceful,
         });
     }
@@ -368,8 +373,17 @@ pub(crate) fn block_changes(
             );
             let remaining = (path.nodes.len() - path.next) as f64;
             let c = Vec3::new(f64::from(x) + 0.5, f64::from(y) + 0.5, f64::from(z) + 0.5);
-            if c.distance_squared(middle) < remaining * remaining && s.walking && !nav.delayed {
-                commands.entity(e).insert(Recompute);
+            if c.distance_squared(middle) >= remaining * remaining {
+                continue;
+            }
+            if s.walking {
+                if !nav.delayed {
+                    commands.entity(e).insert(Recompute);
+                }
+            } else {
+                // A supplied path (no stroll behind it) that a change touches is dropped, not searched again.
+                nav.path = None;
+                commands.entity(e).remove::<(Following, Moving)>().insert(PathEnded);
             }
         }
     }

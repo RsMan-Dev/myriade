@@ -65,9 +65,7 @@ fn a_farmland_part_answers_fertility_and_hydration() {
             // Not authoritative: no part is asked.
             let (fertile_asked, farmland_asked, ..) = ask(game);
             assert!(!fertile_asked && !farmland_asked);
-            // A dedicated server: the farmland's part answers, stone has none.
-            game.options.dedicated = Some(Vec::new());
-            assert_eq!(
+            // A dedicated server: the farmland's part answers, stone has none.            assert_eq!(
                 ask(game),
                 (true, true, false, true, Some(true), Some(false))
             );

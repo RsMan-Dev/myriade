@@ -72,7 +72,6 @@ fn scene(resources: &mut Option<Arc<crate::game::Resources>>) -> Game<'_> {
             allow_flight: false,
             seed: 0,
             max_players: 2,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         },

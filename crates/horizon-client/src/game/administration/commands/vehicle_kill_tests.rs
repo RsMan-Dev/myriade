@@ -1,7 +1,7 @@
 // Test module extracted without changing its logical path.
 use super::*;
 use crate::game::BlockEntity;
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
+use crate::game::{Options, Progress, Settings, load_resources};
 use horizon_core::nbt::parse_snbt;
 
 #[test]
@@ -16,19 +16,18 @@ fn kill_spills_explicit_vehicle_contents_after_menu_writeback() {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();

@@ -6,8 +6,6 @@
 
 #[path = "stations/anvil.rs"]
 mod anvil;
-#[path = "stations/draw.rs"]
-mod draw;
 use super::Game;
 use horizon_client::{
     brewing,

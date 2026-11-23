@@ -10,7 +10,6 @@ mod help;
 mod misc;
 mod profiler;
 pub(super) mod profiles;
-mod publish;
 mod recipe;
 mod rotate;
 mod sound;

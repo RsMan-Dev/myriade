@@ -173,22 +173,6 @@ fn cache_follows_update_flags_and_direct_block_entity_notifications() {
             "log deduplication must not suppress invalidation"
         );
     });
-    super::native_entity_refs::tests::with_client_game(|game| {
-        let _world = game.mob_world_base(&[]);
-        let calls = std::cell::Cell::new(0);
-        for _ in 0..2 {
-            game.world
-                .cached_path_type(horizon_core::position::BlockPos::new(0, 64, 0), || {
-                    calls.set(calls.get() + 1);
-                    PathType::Open
-                });
-        }
-        assert_eq!(
-            calls.get(),
-            2,
-            "a client mob view must not initialize a server cache"
-        );
-    });
 }
 
 fn with_parts(id: &'static str, hooks: impl Hooks + 'static, test: impl FnOnce(&mut Game<'_>)) {

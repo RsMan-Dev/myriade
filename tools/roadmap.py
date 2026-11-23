@@ -63,7 +63,7 @@ LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")  # a GitHub login
 RESERVED = {"main", "overview", "roadmap", "board", "journal", "contribute", "report", "suggest", "contributors",
             "hub-data", *STATUSES}
 RESERVED_PREFIXES = ("h-", "tab-", "col-", "week-", "journal-")
-RELEASE = re.compile(r"(v\d[\w.]*|launcher@\d[\w.]*|launcher-v\d[\w.]*|website)$")
+RELEASE = re.compile(r"(v\d[\w.]*|website)$")
 MONTHS = ("January|February|March|April|June|July|August|September|October|November|December")
 # Kira's rule: no dates and no promises of when. "Coming soon" is the one allowed phrase.
 # May is left out of MONTHS because lowercase "may" is a verb ("it may land"); only a capitalised "May N"
@@ -408,11 +408,9 @@ def online_problems(data, states, now):
 # --- sync -----------------------------------------------------------------------------------------------------
 
 def family(paths):
-    """Which releases carry a change: the launcher's, the website (deployed when merged) or the game's. The site
+    """Which releases carry a change: the website (deployed when merged) or the game's. The site
     left this repository on 2026-10-26 (horizon-rust/horizon-site), so only older pull requests are website-only;
     an item the site alone ships takes shipped_in = "website" by hand."""
-    if paths and all(path.startswith("launcher/") for path in paths):
-        return "launcher"
     if paths and all(path.startswith("website/") for path in paths):
         return "website"
     return "game"
@@ -424,8 +422,7 @@ def first_release(commit, kind):
         return "website"
     tags = subprocess.run(["git", "tag", "--contains", commit, "--sort=creatordate"], cwd=ROOT,
                           capture_output=True, text=True).stdout.split()
-    wanted = (lambda tag: tag.startswith(("launcher@", "launcher-v"))) if kind == "launcher" else \
-        (lambda tag: re.match(r"v\d", tag))
+    wanted = lambda tag: re.match(r"v\d", tag)
     return next((tag for tag in tags if wanted(tag)), None)
 
 

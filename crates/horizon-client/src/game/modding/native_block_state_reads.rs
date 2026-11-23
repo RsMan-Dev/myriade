@@ -136,16 +136,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_acting_players_tool_rule_reads_the_selected_slot_during_an_off_hand_use() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            use horizon_client::motion::PlayerMotion;
-            use horizon_core::geometry::Vec3;
-
-            game.options.dedicated = Some(Vec::new());
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
-            game.lan_acting_uuid = Some(123);
-            game.lan_acting_entity = Some(0);
-            game.lan_acting_name = Some("Miner".into());
-            game.lan_acting_permission = Some(0);
+        use horizon_core::geometry::Vec3;
+        super::super::native_guest_turn_tests::with_acting_guest(Vec3::new(4.5, 64.0, 4.5), |game| {
             game.inventory[game.selected] = Some(ItemStack::new("minecraft:wooden_pickaxe", 1));
             game.offhand = Some(ItemStack::new("minecraft:stick", 1));
             game.hand = crate::game::Hand::Off;
@@ -170,7 +162,6 @@ mod tests {
             use horizon_client::chunk::Chunk;
             use std::sync::Arc;
 
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

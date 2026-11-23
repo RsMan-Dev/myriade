@@ -23,5 +23,3 @@ cargo doc -p horizon-mod-api --no-deps --open
 
 An item marked **Not on wasm** is unavailable to [WebAssembly mods](../how-to/wasm-mods.md).
 
-[Hook notes](hook-notes.md) holds longer explanations that go with groups of hooks, and
-[NeoForge counterparts](neoforge-counterparts.md) lists each hook's NeoForge event or method.

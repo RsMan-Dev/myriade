@@ -443,7 +443,6 @@ mod tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             with_guests(|game| {
-                game.options.dedicated = Some(Vec::new());
                 let dimension = if death { Dim::Nether } else { Dim::End };
                 game.enter_level(dimension).unwrap();
                 game.session.rules.set(

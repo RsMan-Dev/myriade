@@ -253,7 +253,6 @@ mod tests {
         let mut out = None;
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
                 game.world.chunks.insert(
                     (0, 0),
                     std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),

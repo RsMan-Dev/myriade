@@ -18,7 +18,6 @@ fn game_event_key_registry_data_reload_and_unavailable_sides() {
         crate::game::native_entity_refs::tests::with_game(|game| {
             let root = tempfile::tempdir().unwrap();
             game.world_root = root.path().to_owned();
-            game.options.dedicated = Some(Vec::new());
             let step = game.game_event_key("minecraft:step").unwrap();
             assert_eq!(step.id(game), Ok("minecraft:step".into()));
             assert_eq!(game.game_event_key("test:nope"), None);
@@ -62,12 +61,7 @@ fn game_event_key_registry_data_reload_and_unavailable_sides() {
                     Ok(None)
                 );
             }
-            game.options.dedicated = None;
-            assert_eq!(
-                step.data(game, &Frequencies),
-                Err(DataMapError::Unavailable)
-            );
-            game.options.dedicated = Some(Vec::new());
+            // TODO(phase 2): joueur local retiré — à faire agir par un joueur connecté (as_guest).
             game.world_tables = None;
             assert_eq!(
                 step.data(game, &Frequencies),

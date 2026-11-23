@@ -27,7 +27,7 @@ message Capture {
   repeated CounterDef counter_defs = 10;
   // live: one per second per side.
   repeated CounterSample counters = 11;
-  // live: ticks or frames over the slow threshold.
+  // live: ticks over the slow threshold.
   repeated SlowEvent slow = 12;
   // live: one per block per thread.
   repeated SpanBlock span_blocks = 13;
@@ -41,8 +41,8 @@ message Capture {
   repeated Workers workers = 17;
   // end: the call-tree aggregate of the sampler.
   repeated SampleProfile samples = 18;
-  // end: clients only, one per timer.
-  repeated GpuPasses gpu = 19;
+  reserved 19;
+  reserved "gpu";
   // end: servers, and a client's own bytes.
   repeated NetTraffic net = 20;
   // end: benchmark reports embedded verbatim.
@@ -52,20 +52,22 @@ message Capture {
 
   // end: the side's last field.
   repeated Stop stop = 23;
-  // live: clients only, the GPU timers' timed frames, a block about every second.
-  repeated GpuFrames gpu_frames = 24;
+  reserved 24;
+  reserved "gpu_frames";
 }
 
 enum Side {
   SIDE_UNSPECIFIED = 0;
-  SIDE_CLIENT = 1;
+  reserved 1;
+  reserved "SIDE_CLIENT";
   SIDE_SERVER = 2;
 }
 
 enum Unit {
   UNIT_UNSPECIFIED = 0;
   UNIT_TICK = 1;
-  UNIT_FRAME = 2;
+  reserved 2;
+  reserved "UNIT_FRAME";
 }
 
 // A string that other messages of the same side refer to by id.
@@ -80,15 +82,16 @@ enum Kind {
   KIND_DEDICATED = 1;
   // The single-player server thread.
   KIND_INTEGRATED = 2;
-  KIND_CLIENT = 3;
+  reserved 3;
+  reserved "KIND_CLIENT";
 }
 
 enum Trigger {
   TRIGGER_UNSPECIFIED = 0;
   TRIGGER_CONSOLE = 1;
   TRIGGER_CTL = 2;
-  // F3+O, in captures from before /profiler.
-  TRIGGER_KEY = 3;
+  reserved 3;
+  reserved "TRIGGER_KEY";
   TRIGGER_ENV = 4;
   TRIGGER_BENCHMARK = 5;
   // Requested by a client over horizon:perf.
@@ -150,8 +153,8 @@ message Machine {
   // Set when a cgroup limits the process.
   optional float cgroup_cpu_cores = 8;
   optional uint64 cgroup_memory_mb = 9;
-  // The adapter name; clients only.
-  string gpu = 10;
+  reserved 10;
+  reserved "gpu";
 }
 
 enum ThreadSelection {
@@ -160,23 +163,17 @@ enum ThreadSelection {
   THREAD_SELECTION_ALL = 2;
 }
 
-enum GpuMode {
-  GPU_MODE_UNSPECIFIED = 0;
-  GPU_MODE_OFF = 1;
-  GPU_MODE_PASSES = 2;
-  GPU_MODE_DETAIL = 3;
-}
-
 // The capture's own switches (§4.1).
 message Options {
   // Sampling rate.
   uint32 hz = 1;
   ThreadSelection threads = 2;
-  // --over: only ticks or frames slower than this are sampled.
+  // --over: only ticks slower than this are sampled.
   optional float ticks_over_ms = 3;
   bool wall = 4;
   bool timeline = 5;
-  GpuMode gpu = 6;
+  reserved 6;
+  reserved "gpu";
   bool samples = 7;
   // --seconds; unset when the capture runs until stopped.
   optional double window_s = 8;
@@ -239,14 +236,20 @@ message HealthSample {
   optional float mspt_p50 = 5;
   optional float mspt_p95 = 6;
   optional float mspt_max = 7;
-  // Clients fill fps and frame_*.
-  optional float fps = 8;
-  optional float frame_ms_p50 = 9;
-  optional float frame_ms_p95 = 10;
-  optional float frame_ms_p99 = 11;
-  optional float frame_ms_max = 12;
-  optional float frame_cpu_ms_p50 = 13;
-  optional float frame_gpu_ms_p50 = 14;
+  reserved 8;
+  reserved "fps";
+  reserved 9;
+  reserved "frame_ms_p50";
+  reserved 10;
+  reserved "frame_ms_p95";
+  reserved 11;
+  reserved "frame_ms_p99";
+  reserved 12;
+  reserved "frame_ms_max";
+  reserved 13;
+  reserved "frame_cpu_ms_p50";
+  reserved 14;
+  reserved "frame_gpu_ms_p50";
   // In cores, not percent.
   float cpu_process_cores = 15;
   float cpu_system_cores = 16;
@@ -303,12 +306,12 @@ message CounterSample {
   repeated double values = 4;
 }
 
-// A tick or frame over the slow threshold.
+// A tick over the slow threshold.
 message SlowEvent {
   Side side = 1;
   double t = 2;
   Unit unit = 3;
-  // The tick or frame counter.
+  // The tick counter.
   uint64 counter = 4;
   float wall_ms = 5;
   float cpu_ms = 6;
@@ -339,12 +342,12 @@ enum WarningCode {
   WARNING_CODE_SERVER_DENIED = 2;
   // The server already runs a capture.
   WARNING_CODE_SERVER_ALREADY_RUNNING = 3;
-  // The client disconnected while the server's side was being sent.
-  WARNING_CODE_SERVER_PART_INCOMPLETE = 4;
+  reserved 4;
+  reserved "WARNING_CODE_SERVER_PART_INCOMPLETE";
   // The timeline hit its cap; args: [seconds recorded, bytes written].
   WARNING_CODE_TIMELINE_CAPPED = 5;
-  // GPU timing was asked for but the device or the run gave no pass times.
-  WARNING_CODE_GPU_UNAVAILABLE = 6;
+  reserved 6;
+  reserved "WARNING_CODE_GPU_UNAVAILABLE";
 }
 
 message Warning {
@@ -372,7 +375,7 @@ message Stop {
 // What the capture cost, measured by each producer.
 message Overhead {
   float spans_ms_per_tick = 1;
-  // Share of the tick or frame thread.
+  // Share of the tick thread.
   float spans_share = 2;
   float sampler_share_of_thread = 3;
   float writer_core_share = 4;
@@ -399,7 +402,7 @@ message SpanBlock {
   uint32 block = 3;
   double t0 = 4;
   float block_s = 5;
-  // Ticks or frames in the block.
+  // Ticks in the block.
   uint32 units = 6;
   repeated uint32 span = 7;
   repeated uint32 parent = 8;
@@ -443,7 +446,7 @@ message Histogram {
   repeated uint64 counts = 2;
 }
 
-// A tick or frame kept with its whole span tree, parents before children.
+// A tick kept with its whole span tree, parents before children.
 message WorstUnit {
   double t = 1;
   uint64 counter = 2;
@@ -463,7 +466,7 @@ message SpanSummary {
   // String id of the thread name.
   uint32 thread = 2;
   Unit unit = 3;
-  // Ticks or frames recorded.
+  // Ticks recorded.
   uint64 count = 4;
   repeated SpanTotal spans = 5;
   Histogram histogram = 6;
@@ -495,7 +498,7 @@ message MemorySnapshot {
   double t = 2;
   // String id of the snapshot's name: start, a seconds mark, or stop.
   uint32 label = 3;
-  // String ids of the flattened paths of horizon-ctl memory's reply.
+  // String ids of the flattened paths of the control socket's memory reply.
   repeated uint32 path = 4;
   // Megabytes when the path's last key ends in _mb, otherwise a count.
   repeated double value_mb = 5;
@@ -600,14 +603,14 @@ message SampleKind {
 message SampledThread {
   // String id of the thread name.
   uint32 name = 1;
-  // Ticks or frames the thread ran during the capture.
+  // Ticks the thread ran during the capture.
   uint64 units = 2;
   // Units at or over SampleProfile.slow_over_ms.
   uint64 slow_units = 3;
   Unit unit = 4;
 }
 
-// units[b] is the ticks or frames of threads[thread] that ended in time block b.
+// units[b] is the ticks of threads[thread] that ended in time block b.
 message BlockUnits {
   // Index into SampleProfile.threads.
   uint32 thread = 1;
@@ -654,7 +657,7 @@ message Weights {
   repeated uint32 kind = 3;
   // 0 for a CPU sample, 1 for a wall sample of a running thread, 2 for a wall sample of a waiting one.
   repeated uint32 state = 4;
-  // The sample belongs to a tick or frame at or over slow_over_ms.
+  // The sample belongs to a tick at or over slow_over_ms.
   repeated bool slow = 5;
   // Index into Contexts.
   repeated uint32 context = 6;
@@ -674,132 +677,6 @@ message SampleProfile {
   Nodes nodes = 7;
   Contexts contexts = 8;
   Weights weights = 9;
-  // The duration from which a tick or frame counts as slow.
+  // The duration from which a tick counts as slow.
   float slow_over_ms = 10;
-}
-
-enum GpuBackend {
-  GPU_BACKEND_UNSPECIFIED = 0;
-  GPU_BACKEND_VULKAN = 1;
-  GPU_BACKEND_METAL = 2;
-  GPU_BACKEND_DX12 = 3;
-  GPU_BACKEND_GL = 4;
-  GPU_BACKEND_OTHER = 5;
-}
-
-// How a pass's parts are timed on the device.
-enum GpuPartsMode {
-  GPU_PARTS_MODE_UNSPECIFIED = 0;
-  // One compute pass with a timestamp pair around each part.
-  GPU_PARTS_MODE_INSIDE_PASSES = 1;
-  // A compute pass per part, with pass-boundary stamps.
-  GPU_PARTS_MODE_SEPARATE_PASSES = 2;
-}
-
-// What the fragment counter counts on the device; unspecified when it could not be told.
-enum GpuFragmentUnit {
-  GPU_FRAGMENT_UNIT_UNSPECIFIED = 0;
-  GPU_FRAGMENT_UNIT_PIXEL = 1;
-  // Shaded 2x2 quads: four pixels each.
-  GPU_FRAGMENT_UNIT_QUAD = 2;
-}
-
-// Which timer's passes a GpuPasses holds.
-enum GpuSource {
-  GPU_SOURCE_UNSPECIFIED = 0;
-  // Horizon's own render passes.
-  GPU_SOURCE_HORIZON = 1;
-  // The passes of the running shader pack.
-  GPU_SOURCE_SHADER_PACK = 2;
-}
-
-message GpuDevice {
-  // The adapter name, as Machine.gpu.
-  string adapter = 1;
-  GpuBackend backend = 2;
-  // The driver's name and version text.
-  string driver = 3;
-  GpuPartsMode parts_mode = 4;
-  // Whether pipeline statistics queries exist.
-  bool counters = 5;
-  GpuFragmentUnit fragment_unit = 6;
-  GpuPassSplit pass_split = 7;
-}
-
-// How far inside a render pass the timer sees.
-enum GpuPassSplit {
-  // Captures written before the field existed.
-  GPU_PASS_SPLIT_UNSPECIFIED = 0;
-  // Timestamps inside render passes split them into their draw groups, in every timed frame.
-  GPU_PASS_SPLIT_DRAW_GROUPS = 1;
-  // Only pass boundaries are timed: the device has no timestamps inside passes (Metal).
-  GPU_PASS_SPLIT_PASSES_ONLY = 2;
-}
-
-// A part of a pass, for example one dispatch: median ms per frame.
-message GpuPart {
-  // String id of the part's name.
-  uint32 name = 1;
-  float ms = 2;
-}
-
-message GpuPass {
-  // String id of the pass's name.
-  uint32 name = 1;
-  // Median ms per frame over the capture's timed frames (the last 15 before gpu_frames existed); unset for a pass seen only through its parts.
-  optional float ms = 2;
-  repeated GpuPart parts = 3;
-}
-
-// What a pass or a part of it shaded and sent through the pipeline in one frame.
-message GpuCounts {
-  uint64 vertex_shader_invocations = 1;
-  uint64 clipper_invocations = 2;
-  uint64 clipper_primitives_out = 3;
-  // Pixels or quads, per GpuDevice.fragment_unit.
-  uint64 fragment_shader_invocations = 4;
-}
-
-message GpuPartCounts {
-  // String id of the part's name.
-  uint32 name = 1;
-  GpuCounts counts = 2;
-}
-
-// Medians over the last counted frames of one pass.
-message GpuCounter {
-  // String id of the pass's name.
-  uint32 pass = 1;
-  GpuCounts total = 2;
-  // Pixels of the pass's depth attachment.
-  uint64 pixels = 3;
-  // Present when the pass has two or more segments.
-  repeated GpuPartCounts parts = 4;
-}
-
-// The GPU pass timings of one timer at the end of a capture.
-message GpuPasses {
-  Side side = 1;
-  GpuDevice device = 2;
-  repeated GpuPass passes = 3;
-  repeated GpuCounter counters = 4;
-  GpuSource source = 5;
-}
-
-// One frame a GPU timer timed: its passes' and parts' ms, a name's occurrences in the frame summed.
-message GpuFrame {
-  GpuSource source = 1;
-  // When the frame's commands began recording, on the capture clock.
-  double t = 2;
-  // From the frame's first timestamp to its last; unset when it had no whole pair.
-  optional float total_ms = 3;
-  repeated GpuPass passes = 4;
-}
-
-// The timed frames of one side since its previous block.
-message GpuFrames {
-  Side side = 1;
-  repeated GpuFrame frames = 2;
-  // The CPU's own ms of every frame the window drew since the previous block, timed or not.
-  repeated float cpu_frame_ms = 3;
 }

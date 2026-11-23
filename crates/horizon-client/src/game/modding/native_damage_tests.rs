@@ -2,10 +2,9 @@
 //! hooks: the damage container each hit fills, the hit's level host, and the mob and dragon
 //! hits that fire them.
 use super::entity::damage_level_of;
-use super::native_entity_refs::tests::{bind_local_player, with_game};
+use super::native_entity_refs::tests::with_game;
 use horizon_client::command::args::GameMode;
 use horizon_client::mobs::{Damage, DamageKind, Mob};
-use horizon_client::motion::PlayerMotion;
 use horizon_core::{geometry::Vec3, random::RandomSource};
 use mod_api::{
     self, Hooks, HurtSource, LevelRandomHost, LivingDamagePostEvent, LivingDamagePreEvent,
@@ -191,7 +190,7 @@ fn pre_draws_from_the_level_random_of_the_hit() {
 #[ignore = "daily"]
 fn a_hit_on_the_dragon_fires_pre_and_post() {
     let heard = heard(|game| {
-        game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 225009));
+        game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(), &mut || 225009));
         let _ = game.command_damage_dragon(225009, 6.0, "minecraft:generic", DamageKind::Generic, (None, None, None));
         assert_eq!(game.ecs_living_health(225009), Some(194.0));
     });
@@ -209,7 +208,7 @@ fn mob_and_dragon_post_records_fresh_hit_decision() {
         assert!(pig.damage(damage_level_of!(game), 4.0, source));
         assert!(!pig.damage(damage_level_of!(game), 3.0, source));
         assert_eq!(pig.health, 6.0);
-        game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 225015));
+        game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(), &mut || 225015));
         for amount in [2.0, 4.0, 3.0] {
             let _ = game.command_damage_dragon(225015, amount, "minecraft:generic", DamageKind::Generic, (None, None, None));
         }
@@ -230,32 +229,38 @@ fn mob_and_dragon_post_records_fresh_hit_decision() {
     );
 }
 
-fn survival_player(game: &mut super::Game<'_>, id: u32) {
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-    bind_local_player(game, id, u128::from(id));
-    game.set_game_mode(GameMode::Survival);
+/// Run `f` in guest `id`'s turn, the guest in survival mode.
+fn as_survival_guest(game: &mut super::Game<'_>, id: u32, f: impl FnOnce(&mut super::Game<'_>)) {
+    super::native_guest_turn_tests::open_hub(game);
+    super::native_guest_turn_tests::push_guest(game, id, u128::from(id));
+    game.as_guest(id, |game| {
+        game.set_game_mode(GameMode::Survival);
+        f(game);
+    })
+    .unwrap();
 }
 
 #[test]
 #[ignore = "daily"]
 fn post_fires_for_a_player_hit_that_absorption_took_whole() {
     let heard = heard(|game| {
-        survival_player(game, 227001);
-        // Absorption is cut to `max_absorption`, 0 without a modifier.
-        let player = game.player.as_mut().unwrap();
-        player
-            .set_modifier(
-                "minecraft:max_absorption",
-                "test:absorption",
-                10.0,
-                "add_value",
-                true,
-            )
-            .unwrap();
-        player.set_health(2.0, true).unwrap();
-        assert!(game.hurt_player_from(2.0, None, "minecraft:generic", Some(None), false));
-        let health = &game.player.as_ref().unwrap().health;
-        assert_eq!((health.health(), health.absorption()), (20.0, 0.0));
+        as_survival_guest(game, 227001, |game| {
+            // Absorption is cut to `max_absorption`, 0 without a modifier.
+            let player = game.player.as_mut().unwrap();
+            player
+                .set_modifier(
+                    "minecraft:max_absorption",
+                    "test:absorption",
+                    10.0,
+                    "add_value",
+                    true,
+                )
+                .unwrap();
+            player.set_health(2.0, true).unwrap();
+            assert!(game.hurt_player_from(2.0, None, "minecraft:generic", Some(None), false));
+            let health = &game.player.as_ref().unwrap().health;
+            assert_eq!((health.health(), health.absorption()), (20.0, 0.0));
+        });
     });
     assert_eq!(heard.post_values, [(227001, 0.0, 2.0, 0.0)]);
 }
@@ -264,9 +269,10 @@ fn post_fires_for_a_player_hit_that_absorption_took_whole() {
 #[ignore = "daily"]
 fn post_fires_for_a_player_hit_a_shield_blocked_whole() {
     let heard = heard(|game| {
-        survival_player(game, 227002);
-        game.hurt_player_from(2.0, None, "minecraft:generic", Some(None), false);
-        assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
+        as_survival_guest(game, 227002, |game| {
+            game.hurt_player_from(2.0, None, "minecraft:generic", Some(None), false);
+            assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
+        });
     });
     assert_eq!(heard.post_values, [(227002, 0.0, 0.0, 2.0)]);
 }

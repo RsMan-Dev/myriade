@@ -5,17 +5,9 @@
 //! so a failed lookup leaves the entity's attribute map — and the `attributes`
 //! list `LivingEntity.addAdditionalSaveData` writes — untouched.
 use crate::game::Game;
-use horizon_client::motion::PlayerMotion;
+use crate::game::native_guest_turn_tests::with_acting_guest;
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Tag;
-
-fn with_game(test: impl FnOnce(&mut Game<'_>)) {
-    crate::game::native_entity_refs::tests::with_game(|game| {
-        game.build_registries();
-        game.set_allow_commands(true);
-        test(game);
-    });
-}
 
 /// What a command says, and whether it succeeded.
 fn say(game: &mut Game<'_>, command: &str) -> (bool, String) {
@@ -42,8 +34,9 @@ fn saved_attributes(game: &mut Game<'_>) -> Tag {
 #[test]
 #[ignore = "daily"]
 fn failed_modifier_value_get_leaves_the_attribute_store_and_its_save_alone() {
-    with_game(|game| {
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 4.5)).unwrap());
+    with_acting_guest(Vec3::new(4.5, 100.0, 4.5), |game| {
+        game.build_registries();
+        game.set_allow_commands(true);
         game.reset_entity_residency();
         crate::game::native_entity_refs::tests::bind_local_player(game, 1, 1);
         let key = game

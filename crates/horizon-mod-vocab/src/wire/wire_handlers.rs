@@ -63,7 +63,6 @@ handler!(dyn FluidPart, "FluidPart");
 handler!(dyn ServerReloadListener, "ServerReloadListener");
 handler!(dyn LoadCondition, "LoadCondition");
 handler!(dyn GameTestFunction, "GameTestFunction");
-handler!(dyn ClientReloadListener, "ClientReloadListener");
 handler!(dyn BiomeColorResolver, "BiomeColorResolver");
 handler!(dyn BlockTintSource, "BlockTintSource");
 handler!(dyn Interaction, "Interaction");

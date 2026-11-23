@@ -1888,7 +1888,7 @@ mod vehicle_damage_command_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -1898,13 +1898,12 @@ mod vehicle_damage_command_tests {
             std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
                 .join(format!("h050-{:?}", std::thread::current().id())),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -2045,7 +2044,6 @@ mod vehicle_damage_command_tests {
                 allow_flight: false,
                 seed: 0,
                 max_players: 3,
-                integrated: false,
                 levels: Default::default(),
                 level_seeds: Default::default(),
             },
@@ -2121,6 +2119,7 @@ mod vehicle_damage_command_tests {
         use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
         with_game(|game| {
+            // TODO(phase 2): assertion sur l'hôte : host_uuid = acting_uuid() lié par bind_local_player(uuid 99) (world_cmds.rs:2122)
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 4.5)).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 1, 99);
             game.creative = true;
@@ -2248,6 +2247,7 @@ mod vehicle_damage_command_tests {
         use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
         with_game(|game| {
+            // TODO(phase 2): assertion sur l'hôte : cibles "@s" et UUID 00000052 réglées avec bind_local_player(uuid 99) (world_cmds.rs:2250)
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 200.0, 4.5)).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 1, 99);
             assert!(
@@ -2324,7 +2324,7 @@ mod attribute_modifier_command_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -2336,13 +2336,12 @@ mod attribute_modifier_command_tests {
                 std::thread::current().id()
             )),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -2365,11 +2364,15 @@ mod attribute_modifier_command_tests {
     #[ignore = "daily"]
     fn a_command_modifier_is_saved_with_the_player() {
         with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
             game.reset_entity_residency();
             game.native_lifecycle
-                .begin_open(mod_api::Authority::IntegratedServer);
+                .begin_open(mod_api::Authority::DedicatedServer);
             crate::game::native_entity_refs::tests::bind_local_player(game, 1, 1);
+            crate::game::native_guest_turn_tests::lan_guests_on(game);
+            crate::game::native_guest_turn_tests::with_acting_guest_on(
+                game,
+                Vec3::new(0.5, 64.0, 0.5),
+                |game| {
             assert!(game.run_command(
                 "attribute @s minecraft:step_height modifier add test:a 0.4 add_value"
             ));
@@ -2402,6 +2405,8 @@ mod attribute_modifier_command_tests {
                 back.attribute("minecraft:step_height").unwrap(),
                 1.0,
                 "saved attributes: {saved:?}"
+            );
+                },
             );
         });
     }

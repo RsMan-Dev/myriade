@@ -33,21 +33,6 @@ impl TryIntoEngine<()> for mod_api::FireworkShape {
         })
     }
 }
-impl TryIntoEngine<()> for mod_api::KeyConflictContext {
-    type Engine = horizon_mod_package::mod_list::KeyConflictContext;
-    type Error = Infallible;
-    fn try_into_engine(&self, _: &()) -> Result<Self::Engine, Self::Error> {
-        use horizon_mod_package::mod_list::KeyConflictContext as E;
-        use mod_api::KeyConflictContext as A;
-        Ok(match self {
-            A::Universal => E::Universal,
-            A::InGame => E::InGame,
-            A::Gui => E::Gui,
-            _ => unreachable!("all API conflict contexts are handled"),
-        })
-    }
-}
-
 impl TryIntoApi for horizon_mod_package::manifest::JarInputsError {
     type Api = mod_api::JarInputsError;
     type Error = Infallible;
@@ -88,10 +73,6 @@ mod tests {
             let api = shape.try_into_api().unwrap();
             assert_eq!(api as usize, index);
             assert_eq!(api.try_into_engine(&()).unwrap(), *shape);
-        }
-        use mod_api::KeyConflictContext as K;
-        for (index, context) in [K::Universal, K::InGame, K::Gui].iter().enumerate() {
-            assert_eq!(context.try_into_engine(&()).unwrap() as usize, index);
         }
     }
 }

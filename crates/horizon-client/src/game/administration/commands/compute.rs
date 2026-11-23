@@ -560,7 +560,7 @@ mod tests {
             &root,
             &settings,
             Instant::now(),
-            execution_role::ExecutionRole::IntegratedServer,
+            execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -584,13 +584,12 @@ mod tests {
         std::fs::remove_dir_all(&fixture).unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.fns.store.predicates.insert(

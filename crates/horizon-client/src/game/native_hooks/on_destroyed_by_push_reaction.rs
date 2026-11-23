@@ -28,12 +28,10 @@ impl GameLevel<'_> {
         direction: Direction,
         fluid: horizon_world::fluid::FluidState,
     ) {
-        if !self.native_authoritative
-            || !crate::game::api_values::block_state::block_listens(
-                mod_api::HookId::OnDestroyedByPushReaction,
-                state,
-            )
-        {
+        if !crate::game::api_values::block_state::block_listens(
+            mod_api::HookId::OnDestroyedByPushReaction,
+            state,
+        ) {
             return;
         }
         let Some(fluid) = crate::game::native_world_read::api_fluid_state(fluid) else {

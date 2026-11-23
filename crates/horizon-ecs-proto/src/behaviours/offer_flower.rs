@@ -123,3 +123,48 @@ fn run(mut q: Query<(Entity, &Offer, &mut Offering, &mut Look, Has<Looking>)>, p
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cow::{spawn_species, Herd, Pos, SpeciesTable};
+    use crate::hostile::Daylight;
+
+    /// An iron golem at x 0.5 and a villager at x 4.5 (in reach), and a stone wall at x 2 from z -6 to 8 when `wall`, between y -2 and 6 of the
+    /// golem (the origin's wall). `None` without the test resources.
+    fn world(wall: bool) -> Option<(Herd, Entity)> {
+        std::env::var_os("HORIZON_TEST_RESOURCES")?;
+        let mut h = Herd::with_slab_awake(20, false, false);
+        let table = h.world.resource::<SpeciesTable>().0.clone();
+        let golem = *table.iter().find(|s| s.name == "minecraft:iron_golem").unwrap();
+        let villager = *table.iter().find(|s| s.name == "minecraft:villager").unwrap();
+        let g = spawn_species(&mut h.world, &golem, 0.5, 0.5, 5);
+        spawn_species(&mut h.world, &villager, 4.5, 0.5, 6);
+        h.tick();
+        if wall {
+            let y = h.world.get::<Pos>(g).unwrap().0.y.floor() as i32;
+            for z in -6..=8 {
+                for dy in -2..=6 {
+                    h.set_block(2, y + dy, z, "minecraft:stone");
+                }
+            }
+        }
+        h.world.insert_resource(Daylight(true));
+        Some((h, g))
+    }
+
+    /// `OfferFlowerGoal.canUse`: by day, with the villager in reach and in sight, the poppy is offered; a wall between them, or the night, refuses it.
+    #[test]
+    fn the_poppy_needs_sight_and_a_day() {
+        let inst = Inst { slot: 0, nth: 0 };
+        let Some((mut h, g)) = world(false) else {
+            eprintln!("skipped: HORIZON_TEST_RESOURCES unset");
+            return;
+        };
+        assert!(can_use(&mut h.world, g, inst), "by day, the villager in sight");
+        h.world.insert_resource(Daylight(false));
+        assert!(!can_use(&mut h.world, g, inst), "the night refuses the poppy");
+        let Some((mut walled, gw)) = world(true) else { return };
+        assert!(!can_use(&mut walled.world, gw, inst), "a wall between them: no sight, no poppy");
+    }
+}

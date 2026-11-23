@@ -14,9 +14,13 @@ use crate::goals::*;
 use crate::rules::{no_attrs, params, Rule};
 use crate::pilot::PilotInput;
 use crate::targeting::Who;
+use crate::behaviours::attached_face::Attached;
 use bevy_ecs::prelude::*;
-use crate::rules::mount::{boost_factor, charged_jump, dash_push, dist_sq, drive_forward, repath_due, seat_point, temper_after};
+use crate::rules::attachments::{attachment, camel_attachment, rear_slide, rider_offset, scaled, seat};
+use crate::rules::mount::{boost_factor, charged_jump, dash_push, dist_sq, drive_forward, repath_due, temper_after};
+use crate::rules::posture::transition_ticks;
 use horizon_core::geometry::Vec3;
+use std::borrow::Cow;
 
 /// What the rider asks of its mount this tick (`Rider`: the steering, the look, the jump bar, the sprint, the stick).
 #[derive(Clone, Copy, Debug, Default)]
@@ -76,9 +80,8 @@ pub struct Mount {
     /// `AbstractHorse.isSaddled`: only a saddled mount takes its rider's steering (`getControllingPassenger`).
     pub saddled: bool,
     pub steer: Steer,
-    /// The forward offset of each seat (the first rider's, then the passenger's), and the height of a seat as a fraction of the body.
-    pub seats: &'static [f32],
-    pub seat_height: f32,
+    /// The number of seats (the first rider steers, the others are passengers); their places are `PassengerSeats`.
+    pub capacity: u8,
     /// The own time from which a `Steer::Dash` may dash again.
     pub ready_at: u64,
     /// The creature that rides keeps its distance from its target (a shooter: `ranged_*` goals).
@@ -88,7 +91,7 @@ pub struct Mount {
 }
 impl Default for Mount {
     fn default() -> Self {
-        Self { rider: None, passenger: None, jump_strength: 0.7, max_temper: 0, temper: 0, saddled: false, steer: Steer::Charged, seats: &[0.0], seat_height: 0.75, ready_at: 0, rider_ranged: false, by_player: true }
+        Self { rider: None, passenger: None, jump_strength: 0.7, max_temper: 0, temper: 0, saddled: false, steer: Steer::Charged, capacity: 1, ready_at: 0, rider_ranged: false, by_player: true }
     }
 }
 /// The stick of a pig or strider was used: the boost runs (`elapsed` of `total` own ticks).
@@ -105,6 +108,30 @@ pub struct Riding(pub Entity);
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Ridden;
+/// A creature rider with the `minecraft:non_controlling_rider` tag: it does not steer its vehicle (`Mob.controlsVehicle` is false for it).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct NonControllingRider;
+/// The attribute `minecraft:scale` of an entity as the placement reads it (its written base and modifiers; 1 when unwritten).
+pub(crate) fn scale_of(a: Option<&crate::attr_mod::AttrMods>) -> f64 {
+    a.and_then(|a| a.0.iter().find(|x| x.0 == "minecraft:scale")).map_or(1.0, |x| crate::attr_mod::value(x.1, &x.2))
+}
+/// The passenger attachments of a vehicle, one per seat: the last serves the riders past it. `baby` is taken by a baby (`GrowAt`);
+/// without it the top of the box is the seat. Set at birth from the species (`species::attachments`) or the host's mod data.
+#[derive(Component, Clone, Debug)]
+#[component(storage = "SparseSet")]
+pub struct PassengerSeats {
+    pub adult: Cow<'static, [[f64; 3]]>,
+    pub baby: Option<[f64; 3]>,
+}
+/// A rider's own vehicle attachment: how far below the vehicle's point its feet hang, a baby's and a narrow vehicle's own.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct RiderSeat {
+    pub adult: f64,
+    pub baby: Option<f64>,
+    pub narrow: Option<f64>,
+}
 
 /// The parameters of the riding rule.
 #[derive(Clone, Copy, Debug)]
@@ -112,8 +139,7 @@ pub struct RideParams {
     pub jump_strength: f32,
     pub max_temper: i32,
     pub steer: Steer,
-    pub seats: &'static [f32],
-    pub seat_height: f32,
+    pub capacity: u8,
     pub by_player: bool,
     /// Only a tame mount is boarded by use (`AbstractNautilus.mobInteract`: `isTame`).
     pub needs_tame: bool,
@@ -121,7 +147,7 @@ pub struct RideParams {
     pub not_with: &'static [&'static str],
 }
 impl RideParams {
-    pub const HORSE: Self = Self { jump_strength: 0.7, max_temper: 100, steer: Steer::Charged, seats: &[0.0], seat_height: 0.75, by_player: true, needs_tame: false, not_with: &[] };
+    pub const HORSE: Self = Self { jump_strength: 0.7, max_temper: 100, steer: Steer::Charged, capacity: 1, by_player: true, needs_tame: false, not_with: &[] };
     /// `AbstractNautilus`: one seat, no jump bar (`Steer::Look` drives it), boarded only
     /// when tame and not holding its food (`#nautilus_food`, a tame adult's `isFood`).
     pub const ZOMBIE_NAUTILUS: Self = Self { steer: Steer::ZOMBIE_NAUTILUS, ..Self::NAUTILUS };
@@ -130,8 +156,8 @@ impl RideParams {
     pub const CARRIER: Self = Self { by_player: false, max_temper: 0, ..Self::HORSE };
     pub const PIG: Self = Self { steer: Steer::PIG, max_temper: 0, ..Self::HORSE };
     pub const STRIDER: Self = Self { steer: Steer::STRIDER, max_temper: 0, ..Self::HORSE };
-    /// `Camel`: two seats (`camel.rs:258-281`: the first 0,5 ahead, the second 0,7 behind).
-    pub const CAMEL: Self = Self { steer: Steer::CAMEL, seats: &[0.5, -0.7], ..Self::HORSE };
+    /// `Camel`: two seats (their places are the species' `PassengerSeats`).
+    pub const CAMEL: Self = Self { steer: Steer::CAMEL, capacity: 2, ..Self::HORSE };
     /// `HappyGhast`: one seat (the harness is the saddle), no jump bar. Its steering needs the harness (`ridden_drive`).
     pub const GHAST: Self = Self { steer: Steer::GHAST, jump_strength: 0.0, max_temper: 0, ..Self::HORSE };
     /// `Llama`: the player boards and sits (`AbstractChestedHorse` is steered by no one: its `getControllingPassenger` is the Mob's, and
@@ -141,12 +167,12 @@ impl RideParams {
 pub static RIDE: Rule = Rule { name: "ride", equip, attrs: no_attrs, interact };
 
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(ridden_drive.after(move_control).before(travel));
+    s.add_systems((ridden_drive.after(move_control).before(travel), ridden_float.after(ridden_drive).before(travel)));
 }
 fn equip(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<RideParams>(p);
     if let Some(mut m) = w.get_mut::<Mount>(e) {
-        (m.jump_strength, m.max_temper, m.steer, m.seats, m.seat_height, m.by_player) = (p.jump_strength, p.max_temper, p.steer, p.seats, p.seat_height, p.by_player);
+        (m.jump_strength, m.max_temper, m.steer, m.capacity, m.by_player) = (p.jump_strength, p.max_temper, p.steer, p.capacity, p.by_player);
     }
 }
 /// `AbstractHorse.mobInteract` with an empty hand or an item it does not eat: the player rides an adult with a free seat (a stick
@@ -166,11 +192,17 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
 }
 /// `Entity.startRiding`: `who` takes a seat of `mount` (the first, which steers, or the next free one; false when all are taken).
 pub fn ride(w: &mut World, mount: Entity, who: Who) -> bool {
+    // `Shulker.startRiding`: the lid goes DOWN before the board is decided, so a refused shulker ends lid up too.
+    if let Who::Entity(r) = who
+        && let Some(mut a) = w.get_mut::<Attached>(r)
+    {
+        a.face = 0;
+    }
     let Some(mut m) = w.get_mut::<Mount>(mount) else { return false };
     let first = m.rider.is_none();
     if first {
         m.rider = Some(who);
-    } else if m.seats.len() > 1 && m.passenger.is_none() {
+    } else if m.capacity > 1 && m.passenger.is_none() {
         m.passenger = Some(who);
     } else {
         return false;
@@ -188,7 +220,7 @@ pub fn ride(w: &mut World, mount: Entity, who: Who) -> bool {
         w.entity_mut(mount).insert((Ridden, Moving));
         stop_nav(w, mount);
         crate::targeting::clear_target(w, mount);
-        if matches!(who, Who::Entity(_)) {
+        if matches!(who, Who::Entity(r) if w.get::<NonControllingRider>(r).is_none()) {
             control_flags(w, mount, true);
         }
     }
@@ -255,6 +287,8 @@ pub fn rider_of(w: &World, mount: Entity) -> Option<Who> {
 }
 /// A mount steered by a creature has no movement goal of its own (`Mob.updateControlFlags`: the rider's goals move it).
 fn control_flags(w: &mut World, mount: Entity, steered: bool) {
+    // `Mob.getControllingPassenger` is none under NoAI: the vehicle keeps its own goals.
+    let steered = steered && w.get::<crate::dragon::flight::NoAi>(mount).is_none();
     crate::goals::set_disabled_flags(w, mount, if steered { MOVE | LOOK | JUMP } else { 0 });
 }
 /// The entity whose navigation a creature's goals drive: its mount when it steers it (`Mob.getNavigation` of a rider), else itself.
@@ -287,10 +321,6 @@ pub fn boost(w: &mut World, e: Entity) -> bool {
     let total = boost_min + with_rng(w, e, |r| r.next_int(boost_range)) as u32;
     w.entity_mut(e).insert(Boosted { elapsed: 0, total });
     true
-}
-/// The seat of a rider: where the mount carries it (forward offset along the mount's yaw, a fraction of its height).
-fn seat_at(pos: Vec3, yaw: f32, body: &Body, offset: f32, fraction: f32) -> Vec3 {
-    seat_point(pos, yaw, body.height, offset, fraction)
 }
 /// A creature rider steers by the navigation: the mount goes to the rider's target (`riders::drive`): every 10 ticks or when its walk
 /// is over; a shooter within 8 blocks stops instead.
@@ -356,6 +386,14 @@ pub(crate) fn breath_start(w: &mut World, e: Entity) {
     w.entity_mut(e).insert(Breathing { due: gt });
     breath_due(w, e);
 }
+/// The nautilus's dash in progress (`flag2` of `AbstractNautilus.dash`): set by the jump's dash, cleared by the tick where the cooldown is
+/// under 35. Internal: no synced index is read for it (RELECTURE JAR DUE, `AbstractNautilus` DASH accessor).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct DashActive;
+fn dash_flag_clear_due(w: &mut World, e: Entity) {
+    w.entity_mut(e).remove::<DashActive>();
+}
 /// `AbstractNautilus.applyEffects`: the player rider gets the breath of the nautilus for 60 (amplifier 0, ambient) when it has none, then
 /// on each game time multiple of 40; the deadline stops with the last rider.
 fn breath_due(w: &mut World, e: Entity) {
@@ -379,6 +417,13 @@ fn breath_due(w: &mut World, e: Entity) {
     w.entity_mut(e).insert(Breathing { due: gt + wait });
     after(w, e, wait as i32, breath_due);
 }
+/// The tick after a dash jump: its sound, of the water or of the land (`executeRidersJump` sets the flag, `tickRidden` plays it).
+fn dash_sound_due(w: &mut World, e: Entity) {
+    let Some(Steer::Look { sounds, .. }) = w.get::<Mount>(e).map(|m| m.steer) else { return };
+    let wet = w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.eye_in_water);
+    let at = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
+    w.resource_mut::<Events>().host.sound(sounds[usize::from(!wet)], at, 1.0, 1.0);
+}
 /// The dash is ready again (`AbstractNautilus.tickRidden`: the cooldown reached 0): its sound, of the water or of the land.
 fn dash_ready_due(w: &mut World, e: Entity) {
     let Some(Steer::Look { sounds, .. }) = w.get::<Mount>(e).map(|m| m.steer) else { return };
@@ -389,6 +434,17 @@ fn dash_ready_due(w: &mut World, e: Entity) {
 /// Each tick, the ridden mounts: the rider's steering is the mount's input (`AbstractHorse.tickRidden` and `getRiddenInput`, `Pig` and
 /// `Camel`: see `Steer`), its jump, its yaw; the riders stay at their seats; a creature rider steers by the navigation.
 #[allow(clippy::type_complexity)]
+/// `LivingEntity.floatInLiquidWhileRidden`: a ridden mount of the tag, deeper in water than its jump threshold, gains 0.04 up a tick,
+/// whether or not the rider jumps.
+fn ridden_float(mut q: Query<(&mut Vel, &FluidState, Option<&FluidParams>), (With<Ridden>, With<crate::cow::FloatsWhileRidden>)>) {
+    for (mut v, fs, fp) in &mut q {
+        let threshold = if fp.map_or(0.0, |p| p.eye_height) < 0.4 { 0.0 } else { 0.4 };
+        if fs.in_water && fs.water > threshold {
+            v.0.y += 0.04;
+        }
+    }
+}
+
 fn ridden_drive(
     clock: Res<Clock>,
     mut q: Query<(Entity, &mut Mount, &mut Drive, &mut Yaw, &Contact, &Body, &Pos, &mut Vel, Option<&mut Boosted>, (Option<&crate::behaviours::posture::Posture>, Has<crate::behaviours::harness_worn::Harness>, Option<&crate::behaviours::still_under_riders::StillUntil>, Has<crate::behaviours::still_under_riders::Above>, Option<&crate::locomotion::fly::FlyParams>, Option<&mut Head>)), With<Ridden>>,
@@ -506,6 +562,11 @@ fn ridden_drive(
                             let block = crate::block_factor::speed(level.mw.0, [pos.0.x, pos.0.y, pos.0.z]);
                             vel.0 = crate::rules::mount::look_dash(vel.0, r.yaw, r.pitch, if wet { dash_water } else { dash_land }, r.jump, body.speed, block);
                             m.ready_at = now + cooldown;
+                            commands.entity(e).insert(DashActive);
+                            // `flag2` goes at the tick where the cooldown (40 at the dash) is under 35: the 7th tick after the jump.
+                            commands.queue(move |w: &mut World| after(w, e, cooldown as i32 - 33, dash_flag_clear_due));
+                            // `executeRidersJump`'s dash sound (the water or the land one) is played by the tick after the jump.
+                            commands.queue(move |w: &mut World| after(w, e, 1, dash_sound_due));
                             commands.queue(move |w: &mut World| after(w, e, cooldown as i32, dash_ready_due));
                         }
                         if let Ok(mut p) = pilots.get_mut(e) {
@@ -544,14 +605,44 @@ fn ridden_drive(
 /// riders' cells are read again by the next tick's `reindex`.
 #[allow(clippy::type_complexity)]
 pub(crate) fn seats(
-    q: &Query<(Entity, &Mount, &Yaw, &Body, &Pos), With<Ridden>>,
+    q: &Query<
+        (Entity, &Mount, &Yaw, &Body, &Pos, Option<&PassengerSeats>, Option<&GrowAt>, Option<&crate::attr_mod::AttrMods>, Option<&crate::behaviours::posture::Posture>, Option<&crate::behaviours::random_stand::StandAnim>),
+        With<Ridden>,
+    >,
     riders: &mut Query<(&mut Pos, Option<&mut Yaw>), (With<Riding>, Without<Ridden>)>,
+    rider_seats: &Query<(&Body, Option<&RiderSeat>, Option<&GrowAt>, Option<&crate::attr_mod::AttrMods>)>,
+    now: i64,
     on: &mut Online,
     commands: &mut Commands,
 ) {
-    for (e, m, yaw, body, pos) in q.iter() {
+    for (e, m, yaw, body, pos, passenger_seats, grow, scale_attr, posture, stand) in q.iter() {
+        let vehicle_scale = scale_of(scale_attr);
+        let baby = grow.is_some();
+        let count = [m.rider, m.passenger].iter().flatten().count();
         for (k, who) in [m.rider, m.passenger].into_iter().enumerate() {
-            let at = seat_at(pos.0, yaw.0, body, m.seats.get(k).copied().unwrap_or(0.0), m.seat_height);
+            // The camel's seats (`Camel.getPassengerAttachmentPoint`), else the species' list; a rearing horse slides its rider back.
+            let base = match (posture, passenger_seats) {
+                (Some(p), _) => {
+                    let elapsed = now - p.since;
+                    let moving = (elapsed < transition_ticks(p.sitting, p.sit_down, p.stand_up)).then_some(elapsed as f32);
+                    camel_attachment(body.height, baby, k, count, matches!(who, Some(Who::Entity(_))), p.sitting, moving)
+                }
+                (None, Some(s)) => attachment(&s.adult, s.baby, baby, k),
+                (None, None) => [0.0, f64::from(body.height), 0.0],
+            };
+            let slide = stand.map_or([0.0; 3], |a| rear_slide(a.last, baby));
+            let at_attachment = [base[0] + slide[0], base[1] + slide[1], base[2] + slide[2]];
+            let offset = match who {
+                Some(Who::Entity(rid)) => rider_seats
+                    .get(rid)
+                    .ok()
+                    .and_then(|(rb, rs, rg, ra)| rs.map(|rs| rider_offset(*rs, f64::from(body.width), f64::from(rb.width), rg.is_some(), scale_of(ra))))
+                    .unwrap_or(0.0),
+                // `Player`'s own seat (0,6), in the player's scale (1: a player's attribute is read by its own host).
+                Some(Who::Player(_)) => crate::species::attachments::rider_seat("minecraft:player").map_or(0.0, |rs| rs.adult),
+                None => 0.0,
+            };
+            let at = seat(scaled(at_attachment, vehicle_scale), offset, pos.0, yaw.0);
             match who {
                 Some(Who::Player(id)) => {
                     if let Some(p) = on.get(id)

@@ -35,13 +35,11 @@ class PolicyFiles(unittest.TestCase):
         return str(stopped.exception.code)
 
     def test_rows_come_from_every_topic_file_in_name_order(self):
-        self.write("gpu.txt", "# adapters\npkg b::test adapter gpu\n")
         self.write("flaky.txt", "pkg a::test #1 flaky # a note\n\npkg c::test #2\n")
         self.write("README.md", "pkg ignored::row #3\n")
         self.assertEqual(ignored_tests.listed_entries(), [
             ignored_tests.Row("pkg", "a::test", "#1", "flaky", "tools/ci/ignored-tests/flaky.txt"),
             ignored_tests.Row("pkg", "c::test", "#2", None, "tools/ci/ignored-tests/flaky.txt"),
-            ignored_tests.Row("pkg", "b::test", "adapter", "gpu", "tools/ci/ignored-tests/gpu.txt"),
         ])
 
     def test_a_manual_row_says_who_runs_it_and_why(self):

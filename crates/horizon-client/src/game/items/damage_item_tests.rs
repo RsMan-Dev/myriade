@@ -94,6 +94,21 @@ pub(in crate::game) fn with_wear_part(
     });
 }
 
+/// `with_wear_part`, with the body run as guest 12 standing at `feet`: the acting player is that guest.
+pub(in crate::game) fn with_wear_part_acting_guest(
+    item: &'static str,
+    rule: Rule,
+    feet: horizon_core::geometry::Vec3,
+    test: impl FnOnce(&mut Game<'_>, &Wear),
+) {
+    with_wear_part(item, rule, |game, wear| {
+        crate::game::native_guest_turn_tests::lan_guests_on(game);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(game, feet, |game| {
+            test(game, wear)
+        })
+    });
+}
+
 /// Uses `tool` once for `points` on the player, and the damage it has afterwards.
 fn used(game: &mut Game<'_>, tool: &str, points: u32) -> u32 {
     game.creative = false;
@@ -139,47 +154,44 @@ fn a_part_changes_the_wear_of_its_own_tool_on_the_player() {
 #[test]
 #[ignore = "daily"]
 fn part_amount_boundaries_and_threshold_crossing() {
-    with_wear_part("minecraft:iron_pickaxe", Rule::Set(0), |game, wear| {
-        for amount in [i32::MIN, -1, 0] {
-            wear.set(Rule::Set(amount));
-            assert_eq!(used(game, "minecraft:iron_pickaxe", 1), 0);
+    with_wear_part_acting_guest(
+        "minecraft:iron_pickaxe",
+        Rule::Set(0),
+        horizon_core::geometry::Vec3::new(0.0, 64.0, 0.0),
+        |game, wear| {
+            for amount in [i32::MIN, -1, 0] {
+                wear.set(Rule::Set(amount));
+                assert_eq!(used(game, "minecraft:iron_pickaxe", 1), 0);
+                assert_eq!(wear.take_asked(), [1]);
+            }
+            for amount in [250, i32::MAX] {
+                game.guest_equipment_breaks.clear();
+                let broken_before = game.stats.get("broken", "minecraft:iron_pickaxe");
+                wear.set(Rule::Set(amount));
+                assert_eq!(used(game, "minecraft:iron_pickaxe", 1), u32::MAX);
+                assert_eq!(wear.take_asked(), [1]);
+                assert_eq!(game.guest_equipment_breaks, [47]);
+                assert_eq!(
+                    game.stats.get("broken", "minecraft:iron_pickaxe"),
+                    broken_before + 1
+                );
+                game.damage_held(1);
+                assert!(wear.take_asked().is_empty());
+                assert_eq!(game.guest_equipment_breaks, [47]);
+                assert_eq!(
+                    game.stats.get("broken", "minecraft:iron_pickaxe"),
+                    broken_before + 1
+                );
+            }
+            wear.set(Rule::Set(249));
+            assert_eq!(used(game, "minecraft:iron_pickaxe", 1), 249);
             assert_eq!(wear.take_asked(), [1]);
-        }
-        game.player = Some(
-            horizon_client::motion::PlayerMotion::new(
-                game.motion,
-                horizon_core::geometry::Vec3::new(0.0, 64.0, 0.0),
-            )
-            .unwrap(),
-        );
-        game.lan_acting = Some(1);
-        for amount in [250, i32::MAX] {
-            game.guest_equipment_breaks.clear();
-            let broken_before = game.stats.get("broken", "minecraft:iron_pickaxe");
-            wear.set(Rule::Set(amount));
-            assert_eq!(used(game, "minecraft:iron_pickaxe", 1), u32::MAX);
-            assert_eq!(wear.take_asked(), [1]);
-            assert_eq!(game.guest_equipment_breaks, [47]);
-            assert_eq!(
-                game.stats.get("broken", "minecraft:iron_pickaxe"),
-                broken_before + 1
-            );
+            wear.set(Rule::Set(1));
             game.damage_held(1);
-            assert!(wear.take_asked().is_empty());
-            assert_eq!(game.guest_equipment_breaks, [47]);
-            assert_eq!(
-                game.stats.get("broken", "minecraft:iron_pickaxe"),
-                broken_before + 1
-            );
-        }
-        wear.set(Rule::Set(249));
-        assert_eq!(used(game, "minecraft:iron_pickaxe", 1), 249);
-        assert_eq!(wear.take_asked(), [1]);
-        wear.set(Rule::Set(1));
-        game.damage_held(1);
-        assert!(game.inventory[0].is_none());
-        assert_eq!(wear.take_asked(), [1]);
-    });
+            assert!(game.inventory[0].is_none());
+            assert_eq!(wear.take_asked(), [1]);
+        },
+    );
 }
 
 /// The part is asked with what Unbreaking leaves, not the points the use asked for: a pickaxe of
@@ -227,28 +239,25 @@ fn a_part_is_asked_after_unbreaking() {
 #[test]
 #[ignore = "daily"]
 fn a_part_breaks_its_tool_now() {
-    with_wear_part("minecraft:iron_pickaxe", Rule::Break, |game, wear| {
-        game.player = Some(
-            horizon_client::motion::PlayerMotion::new(
-                game.motion,
-                horizon_core::geometry::Vec3::new(0.0, 64.0, 0.0),
-            )
-            .unwrap(),
-        );
-        game.lan_acting = Some(1);
-        game.guest_equipment_breaks.clear();
-        let broken_before = game.stats.get("broken", "minecraft:iron_pickaxe");
-        assert_eq!(used(game, "minecraft:iron_pickaxe", 1), u32::MAX);
-        assert_eq!(wear.take_asked(), [1]);
-        assert_eq!(game.guest_equipment_breaks, [47]);
-        assert_eq!(
-            game.stats.get("broken", "minecraft:iron_pickaxe"),
-            broken_before + 1
-        );
-        let player = game
-            .native_lifecycle
-            .epoch()
-            .map(|_| game.own_entity_id() as u32);
-        assert_eq!(wear.take_worn_by(), [player]);
-    });
+    with_wear_part_acting_guest(
+        "minecraft:iron_pickaxe",
+        Rule::Break,
+        horizon_core::geometry::Vec3::new(0.0, 64.0, 0.0),
+        |game, wear| {
+            game.guest_equipment_breaks.clear();
+            let broken_before = game.stats.get("broken", "minecraft:iron_pickaxe");
+            assert_eq!(used(game, "minecraft:iron_pickaxe", 1), u32::MAX);
+            assert_eq!(wear.take_asked(), [1]);
+            assert_eq!(game.guest_equipment_breaks, [47]);
+            assert_eq!(
+                game.stats.get("broken", "minecraft:iron_pickaxe"),
+                broken_before + 1
+            );
+            let player = game
+                .native_lifecycle
+                .epoch()
+                .map(|_| game.own_entity_id() as u32);
+            assert_eq!(wear.take_worn_by(), [player]);
+        },
+    );
 }

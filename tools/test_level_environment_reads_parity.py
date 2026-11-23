@@ -68,8 +68,7 @@ def main():
     executable = executables.pop()
     with tempfile.TemporaryDirectory(prefix='horizon-level-reads-') as scratch:
         env = integration_env.game_environment(os.environ, scratch)
-        for key in ('XDG_CACHE_HOME', 'HORIZON_LAUNCHER_TRASH', 'HORIZON_LAUNCHER_CLIPBOARD',
-                    'HORIZON_LAUNCHER_DESKTOP', 'TMPDIR'):
+        for key in ('XDG_CACHE_HOME', 'TMPDIR'):
             directory = Path(scratch) / key
             directory.mkdir()
             env[key] = str(directory)

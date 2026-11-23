@@ -28,10 +28,6 @@ mod tests {
                     event.entity.position(h).unwrap(),
                     event.entity.data(h).unwrap(),
                 ),
-                HostSide::Client(h) => (
-                    event.entity.position(h).unwrap(),
-                    event.entity.data(h).unwrap(),
-                ),
             };
             let Some(mod_api::Tag::Int(count)) = data.get(&"count".into()) else {
                 panic!("saved count missing")
@@ -83,7 +79,6 @@ mod tests {
                 with_game(|game| {
                     mod_api::__private::resolve_block_entity_types(["test:holder"], |_| Some(()))
                         .unwrap();
-                    game.options.dedicated = Some(Vec::new());
                     game.world
                         .chunks
                         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

@@ -71,12 +71,11 @@ fn a_mods_global_answer_replaces_vanillas_dispense_and_no_answer_keeps_it() {
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_game(|game: &mut Game<'_>| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             game.native_lifecycle
-                .begin_open(mod_api::Authority::IntegratedServer);
+                .begin_open(mod_api::Authority::DedicatedServer);
             let stone = game
                 .pack
                 .assets

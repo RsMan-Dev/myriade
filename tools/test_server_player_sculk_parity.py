@@ -1,108 +1,115 @@
 #!/usr/bin/env python3
 """Both players' ordinary walking activates a sculk sensor on the server.
 
-Exercise Entity.move movement emission through real client input, alongside
-sculk's deterministic vanilla oracle. The host's world runs on its server
-thread; the guest uses the same server-player path.
+Exercise Entity.move movement emission through bot input (`move` each tick), alongside
+sculk's deterministic vanilla oracle. The host's world runs on the dedicated server; the
+guest uses the same server-player path. The sensor is read from the server (`block`).
 """
-import json
 import math
 import subprocess
-import threading
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import lab  # noqa: E402
+from bot_lab import Bot  # noqa: E402
+from server_lab import Server  # noqa: E402
+
+HOST, GUEST = 'Alpha', 'Beta'
+WALK_TICKS, IDLE_TICKS, STEP = 15, 85, 0.2
 
 
-def until(game, observe, predicate, ticks=100):
+def until(bot, observe, predicate, ticks=100):
     value = observe()
     for _ in range(ticks):
         if predicate(value):
             return value
-        game.wait(1)
+        bot.wait_ticks(1)
         value = observe()
     assert predicate(value), value
     return value
 
 
-def wait_for_quiet_sensor(host, phase, ticks=100):
+def phase(server, sensor):
+    """The sensor's phase, read twice through the server's control socket: `block`, then `blocks` over the sensor's
+    own box. The server is the witness; the two reads must agree."""
+    by_block = server.block(*sensor)['properties'].get('sculk_sensor_phase')
+    by_box = server.blocks(*sensor, *sensor)[0]['properties'].get('sculk_sensor_phase')
+    assert by_block == by_box, (by_block, by_box)
+    return by_block
+
+
+def server_player(server, name):
+    return next(p['pos'] for p in server.entities_server()['players'] if p['name'] == name)
+
+
+def wait_for_quiet_sensor(host, server, sensor, ticks=100):
     # Inactive does not mean idle: a selected vibration still has to travel to
     # the sensor. Require a quiet window longer than its eight-block range,
     # letting any setup vibration finish its active and cooldown phases first.
     quiet = 0
     state = None
     for _ in range(ticks):
-        host.wait(1)
-        state = phase(host)
-        quiet = quiet + 1 if 'sculk_sensor_phase=inactive' in state else 0
+        host.wait_ticks(1)
+        state = phase(server, sensor)
+        quiet = quiet + 1 if state == 'inactive' else 0
         if quiet == 10:
             return
     raise AssertionError(f'sensor did not settle during setup: {state}')
 
 
-def check_walk(host, guest, out, role):
-    import lan_e2e as lan
-
+def check_walk(server, host, guest, role):
     player = host if role == 'host' else guest
-    hx, y, hz = (math.floor(v) for v in lan.pos_of(host))
+    name = HOST if role == 'host' else GUEST
+    hx, y, hz = (math.floor(v) for v in host.state()['position'])
     x, z = hx + 6, hz + (-8 if role == 'host' else 8)
     sensor = (x + 3, y, z + 1)
-    player('command', command='gamemode survival')
-    host('command', command=f'fill {x - 2} {y - 1} {z - 2} {x + 5} {y - 1} {z + 5} minecraft:stone')
-    host('command', command=f'fill {x - 2} {y} {z - 2} {x + 5} {y + 3} {z + 5} minecraft:air')
+    player.command('gamemode survival')
+    host.command(f'fill {x - 2} {y - 1} {z - 2} {x + 5} {y - 1} {z + 5} minecraft:stone')
+    host.command(f'fill {x - 2} {y} {z - 2} {x + 5} {y + 3} {z + 5} minecraft:air')
     start = (x + 0.5, y, z + 0.5)
-    player('command', command=f'tp @s {start[0]} {start[1]} {start[2]} 0 0')
-    until(player, lambda: lan.pos_of(player), lambda p: math.dist(p, start) < 0.1)
-    player.raw('look', 0, 0)
-    player.wait(2)
-    host('command', command=f'setblock {sensor[0]} {sensor[1]} {sensor[2]} minecraft:sculk_sensor')
-    phase = lambda game: game.raw('getblock', *sensor)['block']
+    player.command(f'tp @s {start[0]} {start[1]} {start[2]} 0 0')
+    until(player, lambda: player.state()['position'], lambda p: math.dist(p, start) < 0.1)
+    player.look(0, 0)
+    player.wait_ticks(2)
+    host.command(f'setblock {sensor[0]} {sensor[1]} {sensor[2]} minecraft:sculk_sensor')
     try:
-        wait_for_quiet_sensor(host, phase)
-        # The sensor stays active 30 ticks. Each client samples it every tick from inside one ctl script, so a
-        # runner that answers control requests slowly (frames drawn on the CPU) can't miss that window between
-        # separate requests; the other client samples alongside the walk.
-        probe = f'getblock {sensor[0]} {sensor[1]} {sensor[2]}'
-        other = guest if player is host else host
-        seen = {}
-
-        def watch(viewer, lines):
-            seen[viewer.name] = [r['block'] for r in viewer.script(lines, every=True) if 'block' in r]
-        watcher = threading.Thread(target=watch, args=(other, ['wait 1', probe] * 100))
-        watcher.start()
-        try:
-            watch(player, ['key w down', *['wait 1', probe] * 15, 'key w up', *['wait 1', probe] * 85])
-        finally:
-            player.raw('key', 'w', 'up')
-            watcher.join()
-        moved = {'client': math.dist(lan.pos_of(player), start),
-                 'server': math.dist(lan.server_player(host, player)['position'], start)}
+        wait_for_quiet_sensor(host, server, sensor)
+        # The sensor stays active 30 ticks: the server's sensor is sampled every tick while the player walks
+        # forward (one `move` per tick), then stands still.
+        samples = []
+        for i in range(WALK_TICKS):
+            player.move(start[0], start[1], start[2] + STEP * (i + 1))
+            player.wait_ticks(1)
+            samples.append(phase(server, sensor))
+        for _ in range(IDLE_TICKS):
+            player.wait_ticks(1)
+            samples.append(phase(server, sensor))
+        moved = {'client': math.dist(player.state()['position'], start),
+                 'server': math.dist(server_player(server, name), start)}
         assert all(d > 1 for d in moved.values()), moved
-        active = {name: next((i for i, s in enumerate(states) if 'sculk_sensor_phase=active' in s), None)
-                  for name, states in seen.items()}
-        assert len(active) == 2 and all(i is not None for i in active.values()), f'sensor never active: {seen}'
+        active = next((i for i, s in enumerate(samples) if s == 'active'), None)
+        assert active is not None, f'sensor never active: {samples}'
         return {'moved': moved, 'first_active_sample': active}
     finally:
-        player.raw('key', 'w', 'up')
-        host('command', command=f'fill {x - 2} {y} {z - 2} {x + 5} {y + 3} {z + 5} minecraft:air')
+        host.command(f'fill {x - 2} {y} {z - 2} {x + 5} {y + 3} {z + 5} minecraft:air')
 
 
 def main():
-    import lab
-    import lan_e2e as lan
-
     subprocess.run(['cargo', 'build', '--locked', '--profile', 'fast', '-p', 'horizon-game', '-p', 'horizon-client-lib',
-                    '--bin', 'horizon-client', '--bin', 'horizon-ctl'], cwd=lab.ROOT, check=True)
-    metadata = json.loads(subprocess.check_output(
-        ['cargo', 'metadata', '--format-version', '1', '--no-deps'], cwd=lab.ROOT, text=True))
-    ctl = lab.binary(lab.ROOT / metadata['target_directory'] / 'fast', 'horizon-ctl')
-    checks = ['sculk-walk-host', 'sculk-walk-guest']
-    for role, name in zip(('host', 'guest'), checks):
-        lan.CHECK_FNS[name] = lambda h, g, o, role=role: check_walk(h, g, o, role)
-    # Use the runner's current display (xvfb on Linux), with fresh isolated homes.
-    lan.game_env = lambda _screen, home: lab.game_env(
-        HORIZON_HOME=home)
+                    '--bin', 'horizon-client'], cwd=lab.ROOT, check=True)
+    bins = Path(lab.cargo_target()) / 'fast'
     out = lab.LOCAL / 'server-player-sculk-parity'
     out.mkdir(parents=True, exist_ok=True)
-    # lan.Game launches each client with lab.game_env and private scratch homes.
-    report = lan.run(ctl, out, lab.RESOURCES.resolve(), checks)
+    report = {}
+    with Server(bins, out / 'server', lab.RESOURCES.resolve(), {'level-seed': '42', 'view-distance': '4'}) as server, \
+            Bot() as host, Bot() as guest:
+        server.command(f'op {HOST}')
+        server.command(f'op {GUEST}')
+        host.join('127.0.0.1', server.port, HOST)
+        guest.join('127.0.0.1', server.port, GUEST)
+        for role in ('host', 'guest'):
+            report[f'sculk-walk-{role}'] = {'pass': True, **check_walk(server, host, guest, role)}
     lab.write_json(out / 'report.json', report)
     assert all(r['pass'] for r in report.values()), report
 

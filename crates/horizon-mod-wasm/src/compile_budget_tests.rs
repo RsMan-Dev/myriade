@@ -128,21 +128,12 @@ fn installed_settings_refusal_worker() {
         return;
     };
     let root = Path::new(&root);
-    let dedicated = std::env::var("HORIZON_TEST_SETTINGS_SIDE").unwrap() == "server";
     let value = std::env::var("HORIZON_TEST_SETTINGS_VALUE").unwrap();
-    let player = root.join("player");
-    let mut args = vec!["--game-dir".to_owned(), "game".to_owned()];
-    if dedicated {
-        args.push("--dedicated".to_owned());
-        args.push("nogui".to_owned());
-    } else {
-        args.push("--player-dir".to_owned());
-        args.push(player.to_str().unwrap().to_owned());
-    }
+    let args = ["--game-dir", "game", "--dedicated", "nogui"].map(str::to_owned);
     let launch =
         horizon_mod_package::selection::LaunchArguments::parse(args.into_iter(), root, root, None)
             .unwrap();
-    let loaded = crate::load_installed(&launch, &player);
+    let loaded = crate::load_installed(&launch);
     let expected =
         crate::Refusal::CompileSetting(crate::compile_budget::SettingError::InvalidValue(value));
     assert!(loaded.mods.is_empty());
@@ -157,69 +148,53 @@ fn installed_settings_refusal_worker() {
 
 #[test]
 #[ignore = "daily"]
-fn invalid_startup_settings_publish_and_report_refusals_on_both_sides() {
+fn invalid_startup_settings_publish_and_report_refusals() {
     use std::fs;
-    for side in ["client", "server"] {
-        for value in ["0", "not-a-number"] {
-            let dir = tempfile::tempdir().unwrap();
-            let game = dir.path().join("game");
-            let player = dir.path().join("player");
-            let package = game.join("horizon-mods/example");
-            fs::create_dir_all(&package).unwrap();
-            fs::create_dir_all(&player).unwrap();
-            let module = wat::parse_str(
-                r#"(module
-                (@custom "dylink.0" "\01\04\00\00\00\00")
-                (func (export "horizon_layout"))
-                (func (export "horizon_in"))
-                (func (export "horizon_hook")))"#,
-            )
+    for value in ["0", "not-a-number"] {
+        let dir = tempfile::tempdir().unwrap();
+        let game = dir.path().join("game");
+        let package = game.join("horizon-mods/example");
+        fs::create_dir_all(&package).unwrap();
+        let module = wat::parse_str(
+            r#"(module
+            (@custom "dylink.0" "\01\04\00\00\00\00")
+            (func (export "horizon_layout"))
+            (func (export "horizon_in"))
+            (func (export "horizon_hook")))"#,
+        )
+        .unwrap();
+        fs::write(package.join("mod.wasm"), &module).unwrap();
+        fs::write(package.join("horizon-mod.toml"), format!(
+            "id='example'\nname='Example'\nversion='1'\napi='0.2'\ncapabilities=['registries']\n[wasm]\nsha512='{}'\ntoolchain='test'\nbuilt_with='test'\n",
+            horizon_mod_package::manifest::sha512_of(&module),
+        )).unwrap();
+        fs::write(game.join("horizon-mods.txt"), "mod.example:true\n").unwrap();
+        // The client's options.txt is no longer read: a valid value there must not hide the refusal.
+        fs::write(game.join("options.txt"), "wasm.compile_timeout_secs:120\n").unwrap();
+        fs::write(
+            game.join("server.properties"),
+            format!("wasm.compile_timeout_secs={value}\n"),
+        )
+        .unwrap();
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--include-ignored",
+                "--exact",
+                "compile_budget_tests::installed_settings_refusal_worker",
+                "--nocapture",
+            ])
+            .env("HORIZON_TEST_SETTINGS_ROOT", dir.path())
+            .env("HORIZON_TEST_SETTINGS_VALUE", value)
+            .output()
             .unwrap();
-            fs::write(package.join("mod.wasm"), &module).unwrap();
-            fs::write(package.join("horizon-mod.toml"), format!(
-                "id='example'\nname='Example'\nversion='1'\napi='0.2'\ncapabilities=['registries']\n[wasm]\nsha512='{}'\ntoolchain='test'\nbuilt_with='test'\n",
-                horizon_mod_package::manifest::sha512_of(&module),
-            )).unwrap();
-            fs::write(game.join("horizon-mods.txt"), "mod.example:true\n").unwrap();
-            // Distinct settings locations make either accidental fallback observable.
-            fs::write(game.join("options.txt"), "wasm.compile_timeout_secs:120\n").unwrap();
-            fs::write(
-                player.join("options.txt"),
-                format!(
-                    "wasm.compile_timeout_secs:{}\n",
-                    if side == "client" { value } else { "120" },
-                ),
-            )
-            .unwrap();
-            fs::write(
-                game.join("server.properties"),
-                format!(
-                    "wasm.compile_timeout_secs={}\n",
-                    if side == "server" { value } else { "120" },
-                ),
-            )
-            .unwrap();
-            let output = Command::new(std::env::current_exe().unwrap())
-                .args([
-                    "--include-ignored",
-                    "--exact",
-                    "compile_budget_tests::installed_settings_refusal_worker",
-                    "--nocapture",
-                ])
-                .env("HORIZON_TEST_SETTINGS_ROOT", dir.path())
-                .env("HORIZON_TEST_SETTINGS_SIDE", side)
-                .env("HORIZON_TEST_SETTINGS_VALUE", value)
-                .output()
-                .unwrap();
-            assert!(
-                output.status.success(),
-                "{}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-            let console = String::from_utf8(output.stdout).unwrap();
-            assert!(console.contains("wasm.compile_timeout_secs"), "{console}");
-            assert!(console.contains("example"), "{console}");
-            assert!(console.contains(value), "{console}");
-        }
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let console = String::from_utf8(output.stdout).unwrap();
+        assert!(console.contains("wasm.compile_timeout_secs"), "{console}");
+        assert!(console.contains("example"), "{console}");
+        assert!(console.contains(value), "{console}");
     }
 }

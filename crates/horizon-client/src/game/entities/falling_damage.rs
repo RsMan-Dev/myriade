@@ -328,6 +328,7 @@ mod tests {
     }
     /// A new player in `helmet`, and a log with no answers: a hit of 8 wears 2 points.
     fn start(game: &mut Game<'_>, log: &Mutex<Log>, helmet: Option<ItemStack>) {
+        // TODO(phase 2): lan_acting_entity simulé sur l'hôte (falling_damage.rs:322-327) ; start pose game.player hors tour (falling_damage.rs:331)
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         game.armor[0] = helmet;
         game.apply_equipment();
@@ -432,6 +433,3 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-#[path = "falling_damage/helmet_tests.rs"]
-mod helmet_tests;

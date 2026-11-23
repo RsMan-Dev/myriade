@@ -10,9 +10,6 @@ impl Game<'_> {
         entity: EntityRef,
         viewer: PlayerRef,
     ) -> Result<(u128, u128), Refusal> {
-        if !self.is_logical_server() {
-            return Err(Refusal::Client);
-        }
         let epoch = self.native_lifecycle.epoch();
         if epoch != Some(viewer.entity().epoch()) {
             return Err(Refusal::Stale);

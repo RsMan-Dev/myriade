@@ -107,15 +107,13 @@ pub(super) struct GuestPlay {
 }
 
 /// A guest's command waiting for the hub (`LanHost::commands`).
-pub(super) struct GuestCommand {
-    pub(super) conn: u32,
-    pub(super) command: String,
-    pub(super) permission: u8,
-    /// An integrated server's: no level teleports (yet).
-    pub(super) integrated: bool,
+pub(in crate::game) struct GuestCommand {
+    pub(in crate::game) conn: u32,
+    pub(in crate::game) command: String,
+    pub(in crate::game) permission: u8,
     /// A mod's quiet command (game/network/lan_quiet.rs): its output suppressed, as
     /// `CommandSourceStack.withSuppressedOutput` does.
-    pub(super) quiet: bool,
+    pub(in crate::game) quiet: bool,
 }
 
 /// Why a guest's turn didn't start (`as_guest_at`).
@@ -156,7 +154,6 @@ pub(super) struct GuestSwap {
     xp: Experience,
     level_up_sound: horizon_client::entities::LevelUpSound,
     host_sneak: bool,
-    screen: Screen,
     host_command_block: Option<super::command_blocks::CommandBlockScreen>,
     host_mount_menu: crate::game::mount_menu::MountMenu,
     craft_size: usize,
@@ -591,7 +588,7 @@ mod tests {
         }
         let mods: Mods = vec![ModEntry::new("menu_rules", Box::new(Mod))].into();
         crate::game::api_values::install_parts(&mods).unwrap();
-        crate::entry::install_client_hooks();
+        crate::entry::install_level_hooks();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_guest_turn_tests::with_guests(|game| {
                 game.world
@@ -992,9 +989,7 @@ mod tests {
         use horizon_client::chunk::Chunk;
         use mod_api::BlockUpdateFlags;
         use std::sync::Arc;
-        super::super::native_guest_turn_tests::with_guests(|game| {
-            game.options.dedicated = Some(Vec::new());
-            game.world
+        super::super::native_guest_turn_tests::with_guests(|game| {            game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let level = game.level("minecraft:overworld").unwrap();
@@ -1107,9 +1102,7 @@ mod tests {
         use horizon_client::{chunk::Chunk, lan::guest::GuestKind};
         use mod_api::BlockUpdateFlags;
         use std::sync::Arc;
-        super::super::native_guest_turn_tests::with_guests(|game| {
-            game.options.dedicated = Some(Vec::new());
-            game.world
+        super::super::native_guest_turn_tests::with_guests(|game| {            game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let level = game.level("minecraft:overworld").unwrap();
@@ -1292,9 +1285,7 @@ mod tests {
         .into();
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
-                game.world
+            with_game(|game| {                game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 let state = |name| game.pack.assets.registry.default_state(name).unwrap();
@@ -1324,9 +1315,7 @@ mod tests {
                     dimension: game.dim.id().to_owned(),
                     allow_flight: true,
                     seed: 0,
-                    max_players: 2,
-                    integrated: true,
-                    levels: game.level_shapes,
+                    max_players: 2,                    levels: game.level_shapes,
                     level_seeds: game.levels.runtime.seeds(),
                 };
                 game.lan_host(settings, net, config).unwrap();
@@ -1861,9 +1850,7 @@ mod tests {
         .into();
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
-                game.world
+            with_game(|game| {                game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 let registry = game.pack.assets.registry;
@@ -1928,9 +1915,7 @@ mod tests {
         .into();
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
-                game.world
+            with_game(|game| {                game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 let note = game
@@ -1962,14 +1947,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn fake_body_does_not_count_toward_sleep() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(
-                horizon_client::motion::PlayerMotion::new(
-                    game.motion,
-                    horizon_core::geometry::Vec3::ZERO,
-                )
-                .unwrap(),
-            );
+        crate::game::native_guest_turn_tests::with_acting_guest(horizon_core::geometry::Vec3::ZERO, |game| {
             game.lan_acting_fake = false;
             let real = game.sleep_counts();
             assert_eq!(real.0, 1);
@@ -2237,9 +2215,7 @@ mod respawn_position_tests {
         let mods = vec![ModEntry::new("east", Box::new(East(heard.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
-                open_to_lan(game);
-                game.options.dedicated = Some(Vec::new());
-                game.world
+                open_to_lan(game);                game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 let mut player = guest(1);
@@ -2291,9 +2267,7 @@ mod respawn_position_tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
-                open_to_lan(game);
-                game.options.dedicated = Some(Vec::new());
-                game.world
+                open_to_lan(game);                game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 let mut player = guest(1);
@@ -2392,19 +2366,18 @@ mod respawn_world_point_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         let scratch = std::env::temp_dir().join(format!(
@@ -2441,9 +2414,7 @@ mod respawn_world_point_tests {
                 dimension: "minecraft:overworld".into(),
                 allow_flight: false,
                 seed: 0,
-                max_players: 2,
-                integrated: false,
-                levels: Default::default(),
+                max_players: 2,                levels: Default::default(),
                 level_seeds: Default::default(),
             },
         )
@@ -2542,7 +2513,7 @@ mod swing_echo_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -2551,13 +2522,12 @@ mod swing_echo_tests {
         options.game_dir = Some(
             std::env::temp_dir().join(format!("horizon-swing-echo-unit-{}", std::process::id())),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -2602,9 +2572,7 @@ mod swing_echo_tests {
                 dimension: "minecraft:overworld".into(),
                 allow_flight: false,
                 seed: 0,
-                max_players: 2,
-                integrated: false,
-                levels: Default::default(),
+                max_players: 2,                levels: Default::default(),
                 level_seeds: Default::default(),
             },
         )
@@ -2782,19 +2750,18 @@ mod guest_close_listener_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -2832,9 +2799,7 @@ mod guest_close_listener_tests {
                 dimension: "minecraft:overworld".into(),
                 allow_flight: false,
                 seed: 0,
-                max_players: 4,
-                integrated: false,
-                levels: Default::default(),
+                max_players: 4,                levels: Default::default(),
                 level_seeds: Default::default(),
             },
         )
@@ -3038,7 +3003,7 @@ mod item_on_block_cooldown_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -3047,13 +3012,12 @@ mod item_on_block_cooldown_tests {
         options.game_dir = Some(
             std::env::temp_dir().join(format!("horizon-use-cooldown-unit-{}", std::process::id())),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -3096,9 +3060,7 @@ mod item_on_block_cooldown_tests {
                 dimension: "minecraft:overworld".into(),
                 allow_flight: false,
                 seed: 0,
-                max_players: 2,
-                integrated: false,
-                levels: Default::default(),
+                max_players: 2,                levels: Default::default(),
                 level_seeds: Default::default(),
             },
         )

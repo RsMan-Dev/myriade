@@ -22,6 +22,10 @@ pub static DEF: Def = Def {
     ],
     spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
     not_in_peaceful: true,
-    rules: &[crate::rules::RuleEntry::new(&crate::ignite::IGNITE, &crate::ignite::IgniteParams::CREEPER)],
+    rules: &[
+        crate::rules::RuleEntry::new(&crate::ignite::IGNITE, &crate::ignite::IgniteParams::CREEPER),
+        crate::rules::RuleEntry::new(&crate::fall_by_health::FALL_BY_HEALTH, &()),
+    ],
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

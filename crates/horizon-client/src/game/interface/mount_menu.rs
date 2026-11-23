@@ -1,7 +1,7 @@
 //! The horse inventory's server state (`HorseInventoryMenu`): the saddle, body armour and
 //! chest slots of the mount the window's player opened. A server's players get theirs from
 //! game/network/lan_mount_menu.rs.
-use super::{Game, Screen};
+use super::Game;
 use horizon_client::{
     items::ItemStack,
     mobs::{Species, equine, llama, nautilus},
@@ -70,10 +70,6 @@ fn body_armor_fits(species: Species, item: &str) -> bool {
 }
 
 impl Game<'_> {
-    /// Whether the mount menu is the open screen.
-    pub(in crate::game) fn mount_active(&self) -> bool {
-        self.screen == Screen::Inventory && self.mount_menu.open.is_some()
-    }
     /// `AbstractHorse.openCustomInventoryScreen` for a tamed adult mount.
     pub(in crate::game) fn open_mount_menu(&mut self, id: u32) {
         let Some(species) = self.creature_species(id) else {
@@ -100,9 +96,6 @@ impl Game<'_> {
         self.show_mount_menu();
     }
     fn show_mount_menu(&mut self) {
-        if self.lan_acting.is_none() {
-            self.carried = None;
-        }
         self.station = None;
         self.container = None;
         self.craft_size = 2;
@@ -222,31 +215,6 @@ impl Game<'_> {
         } else if saddle_off || body_off {
             self.mob_equip_event(id, pos, false);
         }
-    }
-    pub(in crate::game) fn mount_slots(&self) -> Option<Vec<usize>> {
-        let open = self
-            .mount_menu
-            .open
-            .as_ref()
-            .filter(|_| self.mount_active())?;
-        let mut v: Vec<usize> = (0..36).collect();
-        if open.show_saddle {
-            v.push(SADDLE);
-        }
-        if open.show_armor {
-            v.push(ARMOR);
-        }
-        v.extend((0..open.columns * 3).map(|i| CHEST + i));
-        Some(v)
-    }
-    /// How many slots `mount_slots` lists, counted without building it.
-    pub(in crate::game) fn mount_slot_count(&self) -> Option<usize> {
-        let open = self
-            .mount_menu
-            .open
-            .as_ref()
-            .filter(|_| self.mount_active())?;
-        Some(36 + usize::from(open.show_saddle) + usize::from(open.show_armor) + open.columns * 3)
     }
     pub(in crate::game) fn mount_slot(&self, i: usize) -> &Option<ItemStack> {
         match self.mount_menu.open.as_ref() {

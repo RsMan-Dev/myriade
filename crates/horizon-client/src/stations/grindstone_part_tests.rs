@@ -2,7 +2,7 @@
 //! library's installed test callbacks, which answer from the `item_parts` setting.
 use super::*;
 use crate::enchant::tests::{sample, sample_items};
-use crate::native_client_hooks::test_hooks::{answering, install, item_asks};
+use crate::native_level_hooks::test_hooks::{answering, install, item_asks};
 
 const HOOK: &str = "can_grindstone_repair";
 

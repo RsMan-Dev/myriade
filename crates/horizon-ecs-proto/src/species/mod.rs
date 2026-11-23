@@ -10,7 +10,9 @@ use crate::behaviours::{self, Cap, Entry, Module, Pred};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+pub mod attachments;
 pub mod lists;
+pub mod swim;
 pub mod sync_a_table;
 pub mod sync_b_table;
 pub mod variants;
@@ -235,6 +237,24 @@ pub enum Change {
 }
 /// One species or template: what it inherits, its own sections (used when it has no `reference`; with one they are
 /// empty) and its changes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SoundCategory {
+    #[default]
+    Neutral,
+    Hostile,
+    Ambient,
+}
+
+/// `Horse`, `SkeletonHorse`, `ZombieHorse` `randomizeAttributes`: the speed and jump strength drawn at the birth, with their formulas.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum HorseGen {
+    #[default]
+    None,
+    Horse,
+    Skeleton,
+    Zombie,
+}
+
 pub struct Def {
     pub name: &'static str,
     pub reference: Option<&'static Def>,
@@ -258,16 +278,28 @@ pub struct Def {
     pub saved: bool,
     /// Whether the type is subject to gravity (`LivingEntity.getGravity`): false drops the `Gravity` component.
     pub gravity: bool,
+    /// `Entity.getSoundSource` of the type: the category its sounds play in (`Neutral` unless the type overrides it).
+    pub sound_source: SoundCategory,
     /// `Goat`'s screaming chance at birth (`species::goat::SCREAMING_CHANCE`): `None` for a species that has none.
     pub screaming: Option<f64>,
+    /// The instances the species gets at load (`attr_mod::apply_load`).
+    pub load_attrs: &'static [crate::attr_mod::LoadAttr],
     /// `Goat.finalizeSpawn`'s horn chance (`species::goat::LOST_HORN_CHANCE`): `None` for a species that has none.
     pub lost_horn: Option<f64>,
     /// `Llama.finalizeSpawn`: the strength drawn at the pose (`LlamaStrength`, the `Strength` key), for a llama and a trader's llama.
     pub llama_strength: bool,
     /// `AbstractHorse.randomizeAttributes`: the max health is drawn at the birth (`spawn_declared`), for a horse, a donkey, a mule and a llama.
     pub random_max_health: bool,
+    /// The speed and jump strength drawn at the birth (`HorseGen`), for the horse family that has them.
+    pub horse_gen: HorseGen,
+    /// `Horse.hurtArmor` and `Wolf.hurtArmor`: the body piece wears when hurt; the species poses `equipment_wear::BodyWear` at the birth. Not inherited.
+    pub body_wear: bool,
     /// `EntityType.notInPeaceful`: `Mob.checkDespawn` discards it in peaceful difficulty (`peaceful::NotInPeaceful`).
     pub not_in_peaceful: bool,
+    /// `Monster.updateNoActionTime` with a constant light value of 1 (a blaze, a vex): the count is 3 a tick in any light (`despawn::LightRated`).
+    pub light_lit: bool,
+    /// `LivingEntity.sanitizeScale`: the most `minecraft:scale` the species takes (`cow::model_scale`). 16, the attribute's max, for none.
+    pub max_scale: f32,
     /// The variant drawn at a spawn (`rules::variant::Table`, `Variant`): `None` for a species with no such draw.
     pub variant: Option<&'static crate::rules::variant::Table>,
     /// The sound variants of the species (`minecraft:classic` first), drawn at a spawn after `variant`: `None` for a species with none.
@@ -280,6 +312,10 @@ pub struct Def {
     pub merchant: bool,
     /// Whether a made or loaded creature takes no portal (`Entity.canUsePortal`: `WitherBoss.canUsePortal` is false).
     pub no_portal: bool,
+    /// The despawn delay a made or loaded creature starts (`WanderingTrader` 48000, `TraderLlama` 47999), `None` for none.
+    pub despawn_delay: Option<u64>,
+    /// Whether the creature holds its leashed llamas back until its own delay (`WanderingTrader`, `TraderLlama.maybeDespawn`).
+    pub leads_llamas: bool,
 }
 pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion];
 /// `ALL_CAPS` for a species of `EntityType.fireImmune` (blaze, magma cube, zoglin, zombified piglin).
@@ -288,11 +324,13 @@ pub const FIRE_IMMUNE_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Ca
 pub const POISON_IMMUNE_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::PoisonImmune];
 pub const WEAKNESS_IMMUNE_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::WeaknessImmune];
 /// The wither skeleton: fire immune and refusing the wither effect.
+/// `ALL_CAPS` for a species that the powder snow never freezes (`FREEZE_IMMUNE` tag, `Skeleton.canFreeze` false).
+pub const FREEZE_IMMUNE_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FreezeImmune];
 pub const FIRE_WITHER_IMMUNE_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune, Cap::WitherImmune];
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
 const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform), (Cap::Rideable, Cap::Body), (Cap::Stand, Cap::Living), (Cap::Projectile, Cap::Transform), (Cap::Passive, Cap::Transform), (Cap::Hanging, Cap::Transform)];
 impl Def {
-    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, gravity: true, screaming: None, lost_horn: None, llama_strength: false, random_max_health: false, not_in_peaceful: false, variant: None, sounds: None, sound_on_breed: false, draws: None, merchant: false, no_portal: false };
+    pub const EMPTY: Def = Def { load_attrs: &[], name: "", reference: None, sound_source: SoundCategory::Neutral, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, gravity: true, screaming: None, lost_horn: None, llama_strength: false, random_max_health: false, horse_gen: HorseGen::None, body_wear: false, not_in_peaceful: false, light_lit: false, max_scale: 16.0, variant: None, sounds: None, sound_on_breed: false, draws: None, merchant: false, no_portal: false, despawn_delay: None, leads_llamas: false };
     fn all_rules(&self) -> Vec<crate::rules::RuleEntry> {
         let mut v = self.reference.map_or_else(Vec::new, Def::all_rules);
         v.extend_from_slice(self.rules);
@@ -355,10 +393,14 @@ pub struct Resolved {
     pub saved: bool,
     /// `Def::gravity`.
     pub gravity: bool,
+    /// `Entity.getSoundSource` of the type: the category its sounds play in.
+    pub sound_source: SoundCategory,
     /// `Def::screaming`.
     pub screaming: Option<f64>,
     /// `Def::lost_horn`.
     pub lost_horn: Option<f64>,
+    /// `Def::load_attrs`.
+    pub load_attrs: &'static [crate::attr_mod::LoadAttr],
     /// `Def::variant`.
     pub variant: Option<&'static crate::rules::variant::Table>,
     /// `Def::sounds`.
@@ -371,12 +413,24 @@ pub struct Resolved {
     pub merchant: bool,
     /// `Def::no_portal`.
     pub no_portal: bool,
+    /// `Def::despawn_delay`.
+    pub despawn_delay: Option<u64>,
+    /// `Def::leads_llamas`.
+    pub leads_llamas: bool,
     /// `Def::llama_strength`.
     pub llama_strength: bool,
     /// `Def::random_max_health`.
     pub random_max_health: bool,
+    /// `Def::horse_gen`.
+    pub horse_gen: HorseGen,
+    /// `Def::body_wear`.
+    pub body_wear: bool,
     /// `Def::not_in_peaceful`.
     pub not_in_peaceful: bool,
+    /// `Def::light_lit`.
+    pub light_lit: bool,
+    /// `Def::max_scale`.
+    pub max_scale: f32,
 }
 
 /// Why the registry could not be built: it names the source, the species and the change.
@@ -404,7 +458,9 @@ impl Registry {
     /// module nobody carries is zero). `REGISTER_ALL=1` registers every module (to measure what the guarantee saves).
     pub fn carried(&self, module: usize) -> bool {
         // The unit tests of a module inject their own configuration into the library under test: every module is inscribed there.
+        // The mod goals' family is carried by whichever entity holds a mod goal (`mod_goals`), not by a species' configuration.
         cfg!(test)
+            || crate::mod_goals::FAMILY.iter().any(|f| behaviours::same(f, self.modules[module]))
             || EVERY_MODULE.load(std::sync::atomic::Ordering::Relaxed)
             || std::env::var_os("REGISTER_ALL").is_some()
             || self.species.iter().any(|s| s.config.entries.iter().chain(s.modes.iter().map(|m| &m.1)).any(|e| self.module_id(e.module) == Some(module)))
@@ -438,7 +494,7 @@ impl Builder {
         for (n, f) in predicates::BUILTIN {
             b.predicates.push(("base", n, *f));
         }
-        for m in behaviours::TABLE.iter().chain(crate::locomotion::TABLE) {
+        for m in behaviours::TABLE.iter().chain(crate::locomotion::TABLE).chain(crate::mod_goals::FAMILY.iter()) {
             b.modules.push(m);
         }
         for d in BUILTIN {
@@ -488,7 +544,7 @@ impl Builder {
             let (list, targets) = resolve(src, d, &self.modules)?;
             by_name.insert(d.name, species.len());
             lists.push((list, targets));
-            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))), saved: d.saved, gravity: d.gravity,screaming: d.screaming, lost_horn: d.lost_horn, llama_strength: d.llama_strength, random_max_health: d.random_max_health, not_in_peaceful: d.not_in_peaceful, variant: d.variant, sounds: d.sounds, sound_on_breed: d.sound_on_breed, draws: d.draws, merchant: d.merchant, no_portal: d.no_portal });
+            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))), saved: d.saved, gravity: d.gravity, sound_source: d.sound_source, screaming: d.screaming, lost_horn: d.lost_horn, load_attrs: d.load_attrs, llama_strength: d.llama_strength, random_max_health: d.random_max_health, horse_gen: d.horse_gen, body_wear: d.body_wear, not_in_peaceful: d.not_in_peaceful, light_lit: d.light_lit, max_scale: d.max_scale, variant: d.variant, sounds: d.sounds, sound_on_breed: d.sound_on_breed, draws: d.draws, merchant: d.merchant, no_portal: d.no_portal, despawn_delay: d.despawn_delay, leads_llamas: d.leads_llamas });
         }
         for (src, name, changes) in &self.alters {
             let Some(&i) = by_name.get(name) else {
@@ -644,6 +700,11 @@ pub fn registry() -> &'static Registry {
 /// The configuration of a species by its type name; an unknown name is an error, not a default.
 pub fn config(name: &str) -> Config {
     registry().by_name(name).unwrap_or_else(|e| panic!("{e}")).config
+}
+/// The variant names of a species (`Table::names`), the values its group's variant indexes; empty for a species that saves ints or
+/// has no variant. An unknown name has none.
+pub fn variant_names(name: &str) -> &'static [&'static str] {
+    registry().by_name(name).ok().and_then(|r| r.variant).map_or(&[], |t| t.names)
 }
 /// Every species of the process, by `SpeciesId`.
 pub fn names() -> Vec<&'static str> {

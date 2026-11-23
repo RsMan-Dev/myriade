@@ -95,7 +95,7 @@ fn bite(w: &mut World, e: Entity) {
         .filter(|&c| by != Some(Who::Entity(c)) && w.get::<Health>(c).is_some_and(|h| h.0 > 0.0) && !allied(w, by, c))
         .collect();
     for v in victims {
-        w.resource_mut::<DamageQueue>().0.push(Hit { target: v, amount: 6.0, cause: Cause::Magic, damage: if by.is_some() { "indirect_magic" } else { "magic" }, from, by, direct: false, power: None, projectile: None });
+        w.resource_mut::<DamageQueue>().0.push(Hit { target: v, amount: 6.0, cause: Cause::Magic, damage: if by.is_some() { "indirect_magic" } else { "magic" }, from, by, direct: false, power: None, extra: None, projectile: None });
     }
     let tick = w.resource::<Clock>().0;
     for id in players_in(w, b) {

@@ -15,7 +15,6 @@ pub mod block_contact;
 pub mod block_entity_render;
 pub mod block_sounds;
 pub mod item_damage;
-pub mod packet_source;
 pub mod parallel;
 pub mod particles;
 pub mod powder_snow;
@@ -24,12 +23,12 @@ mod test_log;
 #[cfg(any(test, feature = "proto"))]
 mod test_resources;
 pub use horizon_client_render::{
-    assets, auth, biome, block_edit, block_entities, block_entity_anim, block_states, brewing, chunk,
+    assets, auth, biome, block_edit, block_entities, block_entity_anim, brewing, chunk,
     chunk_map, collisions, command_block, containers, crash, datapack, effects, environment,
     fast_hash, jigsaw_block, level_loading, light, lod, logging, mod_chunk_tickets, mod_list,
     pack_meta, poi_sections,
     potent_sulfur, providers, random_source, sculk, section_mask, signs, skins, sound_events,
-    spans, streaming, structure_block, test_block, test_instance_block, testgen, vault, weather,
+    spans, streaming, structure_block, test_block, test_instance_block, testgen, vault,
     world, worldborder,
 };
 pub mod attack_strength;
@@ -52,7 +51,6 @@ pub mod cushion;
 pub mod data_cmd;
 pub mod datapack_net;
 pub mod debugworld;
-pub mod desktop;
 pub mod dialog;
 pub mod enchantment_levels;
 pub mod end_crystal;
@@ -63,14 +61,9 @@ pub mod entity_rules;
 pub mod falling_block;
 pub mod flatgen;
 pub mod furnace;
-pub mod game_mode_switcher;
 pub mod gossip;
-pub mod gui_layers;
 pub mod health;
-pub mod hotbar;
 pub mod hunger;
-pub mod inv_sort;
-pub mod item_activation;
 pub mod item_attributes;
 pub mod item_names;
 pub mod item_sync;
@@ -83,7 +76,6 @@ pub mod legacy_combat;
 pub mod living_attributes;
 pub mod map_decoration_types;
 pub mod menu;
-pub mod menu_extra_net;
 pub mod merchant;
 pub mod mobs;
 pub mod mod_content;
@@ -95,9 +87,7 @@ pub mod nether_portal;
 pub mod offline_name;
 pub mod old_world;
 pub mod patrol;
-pub mod perf_net;
 pub mod pick_item;
-pub mod player_sync;
 pub mod portal_sections;
 pub mod pose;
 pub mod pregen;
@@ -116,12 +106,9 @@ pub mod carrier_store;
 #[cfg(test)]
 mod carrier_store_tests;
 pub mod scoreboard_cmd;
-pub mod screen_layout;
 pub use horizon_server_files as server;
-pub mod server_packs;
 pub mod server_perf;
 pub mod spear;
-pub mod splashes;
 pub mod sprint;
 pub mod stand_up;
 pub mod stations;
@@ -132,9 +119,8 @@ pub mod test_fixtures;
 pub mod text_display;
 pub mod tick_chunk_membership;
 pub mod ticket_levels;
+pub mod trial_config;
 pub mod vanillagen;
-pub mod viewed_levels_net;
-pub mod world_primitives;
 pub mod world_spawn;
 pub use horizon_client_core::Result;
 pub use horizon_client_core::block_entity_nbt;
@@ -164,6 +150,6 @@ mod brewing_speed_load_tests;
 
 pub mod control;
 pub mod landing;
-pub mod native_client_hooks;
+pub mod native_level_hooks;
 pub mod net;
 pub mod lod_net;

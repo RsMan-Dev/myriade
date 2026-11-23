@@ -1,8 +1,6 @@
 //! Startup shared by the gameplay library and its executable.
-#[path = "horizon_look.rs"]
-mod horizon_look;
 use crate::{crash, game, logging};
-use horizon_mod_package::selection::{Argument, LaunchArguments};
+use horizon_mod_package::selection::LaunchArguments;
 pub(crate) mod dedicated_arguments;
 pub(crate) mod runtime_environment;
 
@@ -115,26 +113,8 @@ pub fn start<G>(
     horizon_client::spans::startup::init(std::time::Instant::now());
     logging::set_game_home(launch.context.home.clone());
     // The dedicated server logs in its own folder, as vanilla's does; the game in its home.
-    let (home, side, thread) = if launch
-        .rest
-        .iter()
-        .any(|arg| matches!(arg, Argument::Dedicated(_)))
-    {
-        (launch.context.game_dir.clone(), "server", "Server thread")
-    } else {
-        // A player's own log stays separate; crash reports follow the shared home.
-        if let Some(dir) = launch.rest.iter().find_map(|arg| match arg {
-            Argument::Value(name, value) if name == "--player-dir" => Some(value),
-            _ => None,
-        }) {
-            logging::set_player_dir(std::path::absolute(dir).unwrap_or_else(|_| dir.into()));
-        }
-        (launch.context.home.clone(), "client", "Render thread")
-    };
-    logging::init(
-        logging::player_dir_override().unwrap_or(home.as_path()),
-        thread,
-    );
+    let (home, side, thread) = (launch.context.game_dir.clone(), "server", "Server thread");
+    logging::init(home.as_path(), thread);
     // The log's first line names the build, so a bug report that carries the log says which one it was.
     log::info!("Horizon {}", crash::version());
     // Mod loading emits refusals; both client and dedicated logs must exist first.
@@ -197,7 +177,7 @@ pub fn start<G>(
     {
         log::warn!("The enchantment level hook is already installed; keeping the first");
     }
-    install_client_hooks();
+    install_level_hooks();
     raise_open_file_limit();
     if let Err(error) = game::run_with(options, native) {
         // A bad command line is the caller's mistake, not a crash: no report.
@@ -228,9 +208,9 @@ pub fn start<G>(
     logging::flush();
 }
 
-pub(crate) fn install_client_hooks() {
+pub(crate) fn install_level_hooks() {
     game::api_values::install_stack_hooks();
-    if !crate::native_client_hooks::install(crate::native_client_hooks::NativeClientHooks {
+    if !crate::native_level_hooks::install(crate::native_level_hooks::NativeLevelHooks {
         menu_still_valid: game::api_values::menu_still_valid,
         menu_still_valid_listens: |menu| {
             mod_api::__private::menu_listens(mod_api::HookId::MenuStillValid, menu)

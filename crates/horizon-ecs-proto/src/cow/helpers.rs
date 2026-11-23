@@ -27,9 +27,11 @@ pub fn base_max_health(w: &World, e: Entity) -> f32 {
 /// without a species keeps its current health.
 pub fn max_health(w: &World, e: Entity) -> f32 {
     let base = base_max_health(w, e);
-    match w.get::<crate::attr_mod::AttrMods>(e).and_then(|m| m.0.iter().find(|x| x.0 == "max_health")) {
-        Some(x) if w.get::<SpeciesId>(e).is_some() => (crate::attr_mod::value(f64::from(base), &x.2) as f32).clamp(1.0, 1024.0),
-        _ => base,
+    let mut mods = w.get::<crate::attr_mod::AttrMods>(e).and_then(|m| m.0.iter().find(|x| x.0 == "max_health")).map_or(Vec::new(), |x| x.2.clone());
+    mods.extend(crate::effects::attribute_modifiers(w, e, "max_health"));
+    match w.get::<SpeciesId>(e) {
+        Some(_) => crate::attr_mod::sanitize(crate::attr_mod::value(f64::from(base), &mods), 1.0, 1024.0) as f32,
+        None => base,
     }
 }
 
@@ -38,9 +40,137 @@ pub fn count_others_of(w: &World, e: Entity, types: &[&str], area: Aabb) -> usiz
     creatures_in(w, area, e).into_iter().filter(|&c| w.get::<TypeName>(c).is_some_and(|n| types.contains(&n.0))).count()
 }
 
-/// The scale of the body. The bench keeps no scale per entity (the server's `minecraft:scale` is not read), so every body is 1.
-pub fn model_scale(_: &World, _: Entity) -> f32 {
-    1.0
+/// `LivingEntity.getScale`: the `minecraft:scale` attribute (base 1, its modifiers, then the range 0.0625 to 16 of `RangedAttribute`), capped by
+/// the species (`sanitizeScale`). Without a written scale the body is 1.
+pub fn model_scale(w: &World, e: Entity) -> f32 {
+    let Some((_, base, mods)) = w.get::<crate::attr_mod::AttrMods>(e).and_then(|m| m.0.iter().find(|x| x.0 == "scale")) else { return 1.0 };
+    let base = if base.is_nan() { 1.0 } else { *base };
+    let v = crate::attr_mod::value(base, mods).clamp(0.0625, 16.0) as f32;
+    let cap = w.get::<SpeciesId>(e).and_then(|s| w.get_resource::<SpeciesTable>().map(|t| t.0[s.0 as usize].max_scale)).unwrap_or(f32::MAX);
+    v.min(cap)
+}
+
+/// `Entity.refreshDimensions`, run by the events that move a body's box: the `scale` attribute (`attr_mod::touched`), a growth up
+/// (`wheel`), a bed (`Sleeping`'s hook). The box is the species' (a sized body's, or a baby's `Sizes.baby`, which holds the age scale)
+/// times `model_scale`, and the eyes move with it. Asleep: the fixed 0.2 box and eyes, unscaled (`SLEEPING_DIMENSIONS`).
+pub fn refresh_box(w: &mut World, e: Entity) {
+    let Some(sizes) = w.get::<crate::cow::Sizes>(e).copied() else { return };
+    let (width, height, eye) = if w.get::<crate::behaviours::bed::Sleeping>(e).is_some() {
+        (0.2, 0.2, 0.2)
+    } else {
+        let scale = model_scale(w, e);
+        let mut age = 1.0;
+        let (width, height) = match w.get::<crate::size::SizeRule>(e).copied() {
+            Some(r) => crate::rules::size::box_of(r.base, w.get::<crate::size::Size>(e).map_or(1, |s| s.0) as f32),
+            None if w.get::<crate::cow::GrowAt>(e).is_some() => {
+                // `Entity.getDefaultDimensions`: the baby's type dimensions scaled by `getAgeScale` (0.5), eyes included.
+                age = 0.5;
+                sizes.baby
+            }
+            None => sizes.adult,
+        };
+        let eye = w.get::<SpeciesId>(e).and_then(|s| w.get_resource::<SpeciesTable>().map(|t| t.0[s.0 as usize].eye_height)).unwrap_or(0.0);
+        (width * scale, height * scale, eye * age * f64::from(scale))
+    };
+    if let Some(mut b) = w.get_mut::<crate::cow::Body>(e) {
+        (b.width, b.height) = (width, height);
+    }
+    if let Some(at) = w.get::<Pos>(e).map(|p| p.0)
+        && let Some(mut bounds) = w.get_mut::<crate::cow::Bounds>(e)
+    {
+        bounds.0 = crate::cow::box_at(at, width, height);
+    }
+    if let Some(mut f) = w.get_mut::<crate::cow::FluidParams>(e) {
+        f.eye_height = eye;
+    }
+    if let Some(mut t) = w.get_mut::<crate::targeting::Eye>(e) {
+        t.0 = eye;
+    }
+    w.entity_mut(e).insert(crate::cow::Recheck);
+    crate::behaviours::contact_damage::widen(w, e);
+}
+
+/// One attribute's value into the component the mechanism reads (`touched`, never per tick): the written base (else the species' one),
+/// the written modifiers and the effects' ones, in `attr_mod::value`, in the attribute's range (`RangedAttribute`).
+/// `LivingEntity.maxUpStep` (step_height), `getSpeed` (movement_speed), `getFollowRange`, `getGravity`, the jump strength, the landing's
+/// safe distance and multiplier, the block speed's movement efficiency. `Body.fall_factor` (the hen's glide) is not the attribute.
+pub fn refresh_attr(w: &mut World, e: Entity, name: &str) {
+    let Some(sp) = w.get::<SpeciesId>(e).and_then(|s| w.get_resource::<SpeciesTable>().map(|t| t.0[s.0 as usize])) else { return };
+    let v = |species: f64, lo: f64, hi: f64| crate::attr_mod::read(w, e, name, species).clamp(lo, hi);
+    match name {
+        "step_height" => {
+            let v = v(f64::from(sp.step_height), 0.0, 10.0) as f32;
+            if let Some(mut b) = w.get_mut::<crate::cow::Body>(e) {
+                b.step_height = v;
+            }
+        }
+        "movement_speed" => {
+            let v = v(sp.speed, 0.0, 1024.0);
+            if let Some(mut b) = w.get_mut::<crate::cow::Body>(e) {
+                b.speed = v;
+            }
+        }
+        "follow_range" => {
+            let v = v(f64::from(sp.follow_range), 0.0, 2048.0);
+            if let Some(mut f) = w.get_mut::<crate::targeting::FollowRange>(e) {
+                f.0 = v;
+            }
+        }
+        "gravity" => {
+            let v = v(0.08, -1.0, 1.0);
+            if let Some(mut g) = w.get_mut::<crate::cow::Gravity>(e) {
+                g.0 = v;
+            }
+        }
+        "tempt_range" => {
+            // `TemptGoal` reads the live `TEMPT_RANGE` (jar default 10) at each search; the goal's ranges take it here.
+            let v = v(10.0, 0.0, 2048.0);
+            if let Some(mut ts) = w.get_mut::<crate::behaviours::tempt::Tempts>(e) {
+                ts.0.iter_mut().for_each(|t| t.range = v);
+            }
+        }
+        "water_movement_efficiency" => {
+            let v = v(f64::from(sp.water_efficiency), 0.0, 1.0) as f32;
+            if let Some(mut f) = w.get_mut::<crate::cow::FluidParams>(e) {
+                f.water_efficiency = v;
+            }
+        }
+        "flying_speed" => {
+            let v = v(sp.flying_speed, 0.0, 1024.0);
+            if let Some(mut f) = w.get_mut::<crate::locomotion::fly::FlyParams>(e) {
+                f.flying_speed = v;
+            }
+        }
+        "oxygen_bonus" => {
+            let v = v(0.0, 0.0, 1024.0);
+            w.entity_mut(e).insert(crate::cow::fluids::OxygenBonus(v));
+        }
+        "safe_fall_distance" => {
+            let v = v(3.0, -1024.0, 1024.0);
+            if let Some(mut b) = w.get_mut::<crate::cow::Body>(e) {
+                b.safe_fall = v;
+            }
+        }
+        "fall_damage_multiplier" => {
+            let v = v(1.0, 0.0, 100.0);
+            if let Some(mut b) = w.get_mut::<crate::cow::Body>(e) {
+                b.fall_mult = v;
+            }
+        }
+        "movement_efficiency" => {
+            let v = v(0.0, 0.0, 1.0) as f32;
+            if let Some(mut b) = w.get_mut::<crate::cow::Body>(e) {
+                b.movement_efficiency = v;
+            }
+        }
+        "jump_strength" => {
+            let v = v(0.42, 0.0, 32.0) as f32;
+            if let Some(mut m) = w.get_mut::<crate::mount::Mount>(e) {
+                m.jump_strength = v;
+            }
+        }
+        _ => {}
+    }
 }
 
 /// The lowest block y of the world.

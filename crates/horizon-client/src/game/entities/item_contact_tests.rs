@@ -56,9 +56,8 @@ fn the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entit
 fn the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entity_isolated() {
     use crate::game::native_entity_refs::tests::with_game;
     let prepare = |game: &mut Game<'_>| {
-        game.options.dedicated = Some(Vec::new());
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(mod_api::Authority::DedicatedServer);
         game.world = World::new(game.res.facts().air, 1);
         game.world
             .chunks

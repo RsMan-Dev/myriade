@@ -29,7 +29,7 @@ fn default_attack_reach() -> f64 {
 }
 
 /// The vanilla registry names of the effects this crate models, with their kind.
-const NAMES: [(&str, Kind); 19] = [
+const NAMES: [(&str, Kind); 22] = [
     ("minecraft:speed", Kind::Speed),
     ("minecraft:slowness", Kind::Slowness),
     ("minecraft:weakness", Kind::Weakness),
@@ -47,8 +47,13 @@ const NAMES: [(&str, Kind); 19] = [
     ("minecraft:glowing", Kind::Glowing),
     ("minecraft:weaving", Kind::Weaving),
     ("minecraft:strength", Kind::Strength),
+    ("minecraft:resistance", Kind::Resistance),
     ("minecraft:infested", Kind::Infested),
     ("minecraft:absorption", Kind::Absorption),
+    ("minecraft:health_boost", Kind::HealthBoost),
+    ("minecraft:conduit_power", Kind::ConduitPower),
+    ("minecraft:breath_of_the_nautilus", Kind::BreathOfTheNautilus),
+    ("minecraft:slow_falling", Kind::SlowFalling),
 ];
 
 /// The kind of the effect named `name` (`minecraft:poison`); None for any other name, a mod's effect included.
@@ -131,7 +136,7 @@ impl EcsWorld {
             "armor" => w.get::<Armor>(e).map_or(0.0, |a| f64::from(a.armor)),
             "armor_toughness" => w.get::<Armor>(e).map_or(0.0, |a| f64::from(a.toughness)),
             "movement_speed" => w.get::<Body>(e)?.speed,
-            "fall_damage_multiplier" => 1.0,
+            "fall_damage_multiplier" => w.get::<Body>(e)?.fall_mult,
             _ => return None,
         })
     }
@@ -168,17 +173,32 @@ impl EcsWorld {
     }
     /// Whether `e` can freeze: it is not in `minecraft:freeze_immune_entity_types`.
     pub fn can_freeze(&self, e: Entity) -> bool {
-        !type_tags::named(self.world(), "freeze_immune_entity_types", e)
+        can_freeze(self.world(), e)
     }
     /// Whether `e` breathes under water (`can_breathe_under_water`).
     pub fn breathes_water(&self, e: Entity) -> bool {
-        type_tags::is::<CanBreatheUnderWater>(self.world(), e)
+        breathes_water(self.world(), e)
     }
     /// `Mob.isWithinMeleeAttackRange` for a held item without `ATTACK_RANGE`: the box of `e` grown by the default reach on x and z
     /// (`getAttackBoundingBox`, no vertical growth) meets `target`.
     pub fn melee_reaches(&self, e: Entity, target: Aabb) -> bool {
-        let Some(b) = self.world().get::<Bounds>(e) else { return false };
-        let r = default_attack_reach();
-        b.0.inflate(Vec3::new(r, 0.0, r)).intersects(target)
+        melee_reaches(self.world(), e, target)
     }
+}
+
+/// Whether `e` can freeze: it is not in `minecraft:freeze_immune_entity_types`. See `EcsWorld::can_freeze`.
+pub fn can_freeze(w: &World, e: Entity) -> bool {
+    !type_tags::named(w, "freeze_immune_entity_types", e)
+}
+
+/// Whether `e` breathes under water. See `EcsWorld::breathes_water`.
+pub fn breathes_water(w: &World, e: Entity) -> bool {
+    type_tags::is::<CanBreatheUnderWater>(w, e)
+}
+
+/// `Mob.isWithinMeleeAttackRange`: the box of `e` grown by the default reach meets `target`. See `EcsWorld::melee_reaches`.
+pub fn melee_reaches(w: &World, e: Entity, target: Aabb) -> bool {
+    let Some(b) = w.get::<Bounds>(e) else { return false };
+    let r = default_attack_reach();
+    b.0.inflate(Vec3::new(r, 0.0, r)).intersects(target)
 }

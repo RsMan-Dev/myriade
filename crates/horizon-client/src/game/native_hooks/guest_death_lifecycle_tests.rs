@@ -45,7 +45,7 @@ impl Hooks for Probe {
 }
 
 fn lifecycle(heal: bool) {
-    crate::entry::install_client_hooks();
+    crate::entry::install_level_hooks();
     let seen = Arc::new(Mutex::new(Seen::default()));
     mod_platform::testing::with_mods(
         vec![ModEntry::new(

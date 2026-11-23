@@ -125,7 +125,6 @@ mod tests {
     #[ignore = "daily"]
     fn sensor_receives_context_source_and_affected_state_at_requested_position() {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.sculk_prepare();
             game.world
                 .chunks

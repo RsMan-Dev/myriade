@@ -186,3 +186,19 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
         arm_now(w, e);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `RandomStrollGoal.trigger` during a walk only sets the flag, which the walk's end keeps; no spot is picked now.
+    #[test]
+    fn a_trigger_during_a_walk_only_sets_the_flag() {
+        let mut w = bevy_ecs::world::World::new();
+        let stroll = Stroll { walking: true, scheduled: false, tx: 0.0, tz: 0.0, ty: 0, horizontal_range: 10, vertical_range: 7, interval: 120, plain: 0.0, force: false };
+        let e = w.spawn(stroll).id();
+        trigger(&mut w, e);
+        assert!(w.get::<Stroll>(e).unwrap().force);
+        assert!(w.get::<Stroll>(e).unwrap().walking);
+    }
+}

@@ -1,5 +1,5 @@
 //! `SkeletonHorse` (`mobs/equine.rs:232`): no float, no mount panic, no tempt (it sinks), and no food tag (no breeding item).
-use super::Def;
+use super::{Def, HorseGen};
 use crate::mount::{RideParams, RIDE};
 use crate::rules::RuleEntry;
 use crate::behaviours::{run_around_like_crazy, Cap, breed, follow_parent, look_at_player, random_look, random_stand, stroll, Entry};
@@ -15,7 +15,8 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
         Entry::new(&random_stand::MODULE, 9, &random_stand::Params::DEFAULT),
     ],
-    rules: &[RuleEntry::new(&RIDE, &RideParams::HORSE), RuleEntry::new(&crate::spring_trap::RULE, &crate::spring_trap::Params::SKELETON_TRAP)],
+    rules: &[crate::rules::RuleEntry::new(&crate::rules::pushable::UNPUSHABLE, &()), crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&RIDE, &RideParams::HORSE),RuleEntry::new(&crate::spring_trap::RULE, &crate::spring_trap::Params::SKELETON_TRAP), RuleEntry::new(&crate::leash::QUAD_LEASHEE, &crate::leash::QuadParams { front: 0.04, front_back: 0.52, left_right: 0.23, up: 0.87 })],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable, Cap::Rideable]),
+    horse_gen: HorseGen::Skeleton,
     ..Def::EMPTY
 };

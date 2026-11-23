@@ -56,7 +56,7 @@ with only machine-specific transport values redacted, was:
 HORIZON_BENCH_BIN=/path/to/horizon-release-bin \
 python3 tools/server_bench.py --servers horizon,vanilla,paper,fabric --bots 1,10,25,50 --behaviour mixed \
   --explore-speed 0.8 --warmup 300 --nice 19 \
-  --bots-via 'ssh bots-machine' --bots-bin /path/to/horizon-bots \
+  --bots-via 'ssh bots-machine' --bots-bin /path/to/myriade-bot \
   --connect server-address --out four-way.json
 ```
 

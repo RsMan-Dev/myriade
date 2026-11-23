@@ -710,23 +710,21 @@ mod tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = execution_role::ExecutionRole::DedicatedServer;
         let res = loaded.resources;
         let mut game = Game::new(
             &res,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
-        game.options.dedicated = Some(Vec::new());
         game.world.chunks.insert(
             (0, 0),
             std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
@@ -859,7 +857,7 @@ mod conduit_target_tests {
     //! `Target` reaches every window through `sendBlockUpdated`; the window
     //! then spits a nautilus particle at the mob.
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, execution_role, load_resources};
+    use crate::game::{Options, Progress, Settings, execution_role, load_resources};
     use horizon_client::chunk::Chunk;
     use std::sync::Arc;
 
@@ -894,7 +892,6 @@ mod conduit_target_tests {
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -918,7 +915,7 @@ mod conduit_target_tests {
 
     /// A level of a server.
     fn game(resources: &mut Option<Arc<crate::game::Resources>>) -> Game<'_> {
-        let mut game = game_with(resources, execution_role::ExecutionRole::IntegratedServer);
+        let mut game = game_with(resources, execution_role::ExecutionRole::DedicatedServer);
         setup(&mut game);
         game
     }

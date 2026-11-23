@@ -44,7 +44,10 @@ impl EcsWorld {
 
     /// The weather changed (rain or none): the hooks in the water read their fish's speed again.
     pub fn weather_changed(&mut self, mw: &MobWorld<'_>) {
-        self.lent(mw, fishing_hook::weather_changed)
+        self.lent(mw, |w| {
+            fishing_hook::weather_changed(w);
+            crate::behaviours::shake_off_water::weather_changed(w)
+        })
     }
 
     /// A block changed at `c`: the hooks under it read their fish's speed again (their sky).

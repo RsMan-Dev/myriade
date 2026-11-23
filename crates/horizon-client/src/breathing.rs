@@ -41,7 +41,7 @@ pub fn native_living_breathe(
     consume: &mut i32,
     refill: &mut i32,
 ) {
-    crate::native_client_hooks::living_breathe(context, entity, kind, can_breathe, consume, refill);
+    crate::native_level_hooks::living_breathe(context, entity, kind, can_breathe, consume, refill);
 }
 
 /// `vanilla`'s breathing after the mods have had their say.
@@ -79,7 +79,7 @@ pub fn native_living_drown(
     bubble_count: &mut i32,
     cancel: &mut bool,
 ) {
-    crate::native_client_hooks::living_drown(
+    crate::native_level_hooks::living_drown(
         context,
         entity,
         kind,

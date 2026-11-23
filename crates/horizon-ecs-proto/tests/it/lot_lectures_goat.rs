@@ -108,7 +108,7 @@ fn about_one_goat_in_ten_is_born_with_a_single_horn() {
     if !have_data() || wrong_species(&["minecraft:goat"]) {
         return;
     }
-    let (_r, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let sp = *species();
     const BORN: u64 = 5000;
     let single = (0..BORN).filter(|&seed| {

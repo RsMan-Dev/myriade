@@ -17,9 +17,8 @@ Starting a process on a loaded machine can take ten times its measured time (car
 Limits (tools/ci/rust_tests.py reads the source, it does not compile it): calls are matched by name, so a
 same-file helper `new` that starts a process also matches another type's `new(` in that file; a helper in another
 file is followed only through the list, and a call through a trait object, a stored closure or a macro is not
-followed. A Windows-only test (`#[cfg(windows)]`) is not checked: `verify` runs on Linux, the Windows jobs run it. The
-launcher (its own workspace) is not read: its process-starting `tests/` targets run in its Windows jobs. Builds
-nothing.
+followed. A Windows-only test (`#[cfg(windows)]`) is not checked: `verify` runs on Linux, the Windows jobs run it.
+Builds nothing.
 
 Usage: check_process_tests.py [--list]   (--list: tab-separated `path line test packages how` of every offender)
 """

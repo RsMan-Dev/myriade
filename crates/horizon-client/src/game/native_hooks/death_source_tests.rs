@@ -108,7 +108,7 @@ impl Hooks for Probe {
 }
 
 fn observed(cancel: bool, heal: bool, check: impl FnOnce(&mut Game<'_>, &Arc<Mutex<Seen>>)) {
-    crate::entry::install_client_hooks();
+    crate::entry::install_level_hooks();
     let seen = Arc::new(Mutex::new(Seen::default()));
     mod_platform::testing::with_mods(
         vec![ModEntry::new(

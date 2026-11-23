@@ -96,7 +96,6 @@ fn with_state_mod(name: &str, test: impl FnOnce(&mut Game<'_>)) {
         let base = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
         let root = super::mods::content_root(&base, &Default::default()).unwrap();
         super::native_entity_refs::tests::with_game_at(root.prepared().to_owned(), |game| {
-            game.options.dedicated = Some(Vec::new());
             game.native_level_opened(Dim::Overworld);
             game.world
                 .chunks
@@ -552,7 +551,6 @@ fn native_and_compiled_wasm_part_state_count_ticks() {
                 std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
             let root = super::mods::content_root(&base, &Default::default()).unwrap();
             super::native_entity_refs::tests::with_game_at(root.prepared().to_owned(), |game| {
-                game.options.dedicated = Some(Vec::new());
                 let (key, pos) = ((80, 80), (1283, 100, 1283));
                 game.streaming.paused = false;
                 assert!(game.streaming.set_forced(key.0, key.1, true));

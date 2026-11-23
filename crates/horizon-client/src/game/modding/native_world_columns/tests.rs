@@ -9,7 +9,6 @@ const OVERWORLD: &str = "minecraft:overworld";
 #[ignore = "daily"]
 fn terrain_columns_are_the_generators_own_surface_and_load_no_chunk() {
     with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
         // A world whose biome table is not the base one (a data pack adds biomes before the vanilla
         // ones): the generator's ids are this table's, and names are read through it.
         let mut world_biomes = (**game.res.biomes()).clone();

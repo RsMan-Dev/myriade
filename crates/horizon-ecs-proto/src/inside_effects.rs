@@ -98,6 +98,22 @@ impl InsideKinds {
 #[component(storage = "SparseSet")]
 pub struct IgnoresBerryBush;
 
+/// The stuck kinds its class does not apply (`WitherBoss`: all; `Spider`: the web kinds), one bit per kind (`1 << kind`).
+/// Its fall is not reset by those blocks either. Put at creation, from the species' capabilities.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct NeverStuck(pub u16);
+impl NeverStuck {
+    pub const ALL: u16 = u16::MAX;
+    pub const WEBS: u16 = 1 << K_WEB | 1 << K_WEB_WEAVING;
+}
+
+/// `Entity.wasInPowderSnow`: the creature was in powder snow at its last move, so the sun does not light it one tick more. Only while it
+/// is in powder snow or has just left it.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct WasInPowder;
+
 /// Where a creature in a bush last was (centre x, z): the move since then decides the prick. Only while it is in a bush.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -113,7 +129,23 @@ pub fn insert_resources(w: &mut World) {
 }
 
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(moved_effects.after(crate::cow::reindex));
+    s.add_systems((moved_effects.after(crate::cow::reindex), living_lava));
+}
+
+/// `LivingEntity.baseTick`: a creature standing in lava (not fire immune) is hit for 4 and set on fire for 300 ticks, each tick; the
+/// invulnerable time of the hit keeps the next one off until it runs down (`DamageQueue`). Reads the fluid state of the tick before.
+fn living_lava(q: Query<(Entity, &crate::cow::FluidState), With<Health>>, mut commands: Commands) {
+    for (e, f) in &q {
+        if f.in_lava {
+            commands.queue(move |w: &mut World| {
+                if w.get::<crate::cow::Immune>(e).is_some_and(|i| i.has(crate::effects::IMMUNE_FIRE)) {
+                    return;
+                }
+                set_on_fire(w, e, LAVA_IGNITE_TICKS);
+                w.resource_mut::<DamageQueue>().add(e, LAVA_HURT, Cause::Lava);
+            });
+        }
+    }
 }
 
 /// What the cells a box reaches into hold.
@@ -126,6 +158,10 @@ struct Found {
     campfire: f32,
     cauldron: bool,
     cactus: u32,
+    /// The powder snow cell a living creature stands in: `PowderSnowBlock.entityInside` breaks it when it burns.
+    powder: Option<[i32; 3]>,
+    /// Any powder snow cell the box reaches.
+    in_powder: bool,
 }
 
 fn scan(level: &Level, kinds: &mut InsideKinds, b: &Aabb, living: bool, weaving: bool) -> Found {
@@ -144,7 +180,15 @@ fn scan(level: &Level, kinds: &mut InsideKinds, b: &Aabb, living: bool, weaving:
                         f.berry = true;
                         f.pricks |= mw.prop(x, y, z, "age") != Some("0");
                     }
-                    K_POWDER if !living || [x, y, z] == own => f.stuck = K_POWDER,
+                    K_POWDER => {
+                        f.in_powder = true;
+                        if !living || [x, y, z] == own {
+                            f.stuck = K_POWDER;
+                            if living {
+                                f.powder = Some([x, y, z]);
+                            }
+                        }
+                    }
                     K_ROSE => f.rose = true,
                     k @ (K_CAMPFIRE | K_SOUL_CAMPFIRE) if mw.prop(x, y, z, "lit") == Some("true") => {
                         f.campfire += if k == K_CAMPFIRE { CAMPFIRE_DAMAGE } else { SOUL_CAMPFIRE_DAMAGE };
@@ -176,6 +220,16 @@ fn apply(f: &Found, e: Entity, living: bool, rose_due: bool, dmg: &mut DamageQue
             });
         }
     }
+    if let Some(p) = f.powder {
+        // The EXTINGUISH effect: a burning creature breaks the powder snow (no drop) when mobs may grief, and is put out.
+        commands.queue(move |w: &mut World| {
+            let burning = w.get::<crate::cow::Burning>(e).is_some_and(|b| b.until > crate::cow::now_of(w, e) as i64);
+            if burning && crate::goals::mob_griefing(w) {
+                crate::level::break_block(w, p, false, None, Some(e));
+                w.entity_mut(e).remove::<crate::cow::Burning>();
+            }
+        });
+    }
     if f.cauldron {
         commands.queue(move |w: &mut World| set_on_fire(w, e, LAVA_IGNITE_TICKS));
         dmg.add(e, LAVA_HURT, Cause::Lava);
@@ -190,14 +244,20 @@ fn moved_effects(
     mut dmg: ResMut<DamageQueue>,
     mut commands: Commands,
     mut q: Query<
-        (Entity, &Bounds, Option<&mut Contact>, Has<Health>, Has<Item>, Has<Orb>, Has<IgnoresBerryBush>, Option<&mut BerryTrail>, Has<Soaking>, Option<&Effects>),
+        (Entity, &Bounds, Option<&mut Contact>, Has<Health>, Has<Item>, Has<Orb>, Has<IgnoresBerryBush>, Option<&mut BerryTrail>, Has<Soaking>, Option<&Effects>, Option<&NeverStuck>),
         (Changed<Bounds>, Without<IgnoresTriggers>),
     >,
+    was: Query<(), With<WasInPowder>>,
 ) {
-    for (e, b, contact, health, item, orb, no_berry, trail, soaking, effects) in &mut q {
+    for (e, b, contact, health, item, orb, no_berry, trail, soaking, effects, never) in &mut q {
         let living = health && !item && !orb;
         let f = scan(&level, &mut kinds, &b.0, living, effects.is_some_and(|f| f.list.iter().any(|x| x.kind == Kind::Weaving)));
-        let stuck = if f.stuck == K_BERRY && no_berry { 0 } else { f.stuck };
+        if f.in_powder {
+            commands.entity(e).insert(WasInPowder);
+        } else if was.contains(e) {
+            commands.queue(move |w: &mut World| crate::cow::after(w, e, 1, forget_powder));
+        }
+        let stuck = if never.is_some_and(|n| (n.0 >> f.stuck) & 1 != 0) || (f.stuck == K_BERRY && no_berry) { 0 } else { f.stuck };
         if let Some(mut c) = contact {
             if c.stuck != stuck {
                 c.stuck = stuck;
@@ -268,9 +328,18 @@ fn soak_due(w: &mut World, e: Entity) {
         w.entity_mut(e).insert(Soaking(now + ROSE_REFRESH));
     }
     let mut queue = bevy_ecs::world::CommandQueue::default();
-    w.resource_scope(|w, mut dmg: Mut<DamageQueue>| apply(&Found { stuck: 0, berry: false, pricks: false, cauldron: false, ..f }, e, true, due, &mut dmg, &mut Commands::new(&mut queue, w)));
+    w.resource_scope(|w, mut dmg: Mut<DamageQueue>| apply(&Found { stuck: 0, berry: false, pricks: false, cauldron: false, powder: None, ..f }, e, true, due, &mut dmg, &mut Commands::new(&mut queue, w)));
     queue.apply(w);
     crate::cow::after(w, e, SOAK_PERIOD, soak_due);
+}
+
+/// The tick after a creature left powder snow: the memory goes, unless it is back in one by then.
+fn forget_powder(w: &mut World, e: Entity) {
+    let Some(b) = w.get::<Bounds>(e).map(|b| b.0) else { return };
+    let f = w.resource_scope(|w, mut kinds: Mut<InsideKinds>| scan(w.resource::<Level>(), &mut kinds, &b, true, false));
+    if !f.in_powder {
+        w.entity_mut(e).remove::<WasInPowder>();
+    }
 }
 
 /// `PointedDripstoneBlock.fallOn`: a landing on an up-pointing tip counts the distance plus 2.5 and doubles the damage (modifier 2.0);
@@ -286,7 +355,12 @@ pub fn fall_on(level: &Level, feet: Vec3, fall: f64) -> Option<f32> {
 
 /// `LivingEntity.calculateFallDamage`: floor of (distance + 1e-6 - safe distance 3) x modifier, never negative.
 pub fn fall_damage(distance: f64, modifier: f64) -> f32 {
-    ((distance + 1.0e-6 - SAFE_FALL) * modifier).floor().max(0.0) as f32
+    fall_damage_safe(distance, SAFE_FALL, modifier)
+}
+
+/// `calculateFallDamage` with the entity's own safe fall distance (`Attributes.SAFE_FALL_DISTANCE`).
+pub fn fall_damage_safe(distance: f64, safe: f64, modifier: f64) -> f32 {
+    ((distance + 1.0e-6 - safe) * modifier).floor().max(0.0) as f32
 }
 
 /// `Entity.remainingFireTicks` of a projectile, as the own tick it ends at (sparse; only a burning projectile has it). `AbstractArrow.onHitEntity`

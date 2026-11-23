@@ -120,7 +120,6 @@ mod tests {
     #[ignore = "daily"]
     fn item_handles_preserve_stacks_and_distinguish_target_from_thrower() {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.ecs = game.test_ecs_level();
             let mut stack = ItemStack {
                 item: "minecraft:diamond_pickaxe".into(),

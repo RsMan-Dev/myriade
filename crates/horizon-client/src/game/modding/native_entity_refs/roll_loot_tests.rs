@@ -3,9 +3,10 @@
 //! `/loot … fish <table> <pos> <tool>` (whose `loot` path the loot harnesses hold to
 //! vanilla 26.3).
 use crate::game::{
-    Audio, Game, Options, Progress, Settings, execution_role, functions, load_resources,
+    Game, Options, Progress, Settings, execution_role, functions, load_resources,
 };
-use horizon_client::{chunk::Chunk, motion::PlayerMotion};
+use crate::game::native_guest_turn_tests::{open_hub, push_guest};
+use horizon_client::chunk::Chunk;
 use horizon_core::{
     geometry::Vec3,
     position::ChunkPos,
@@ -73,28 +74,28 @@ fn game<'a>(
         &root,
         &settings,
         std::time::Instant::now(),
-        execution_role::ExecutionRole::IntegratedServer,
+        execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::DedicatedServer;
     let res = resources.insert(loaded.resources);
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();
     game.set_allow_commands(true);
     game.native_lifecycle
-        .begin_open(Authority::IntegratedServer);
-    // The player the command's `@s` is.
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 100.0, 8.5)).unwrap());
+        .begin_open(Authority::DedicatedServer);
+    // Guest 12 is the player the command's `@s` is, in its turn.
+    open_hub(&mut game);
+    push_guest(&mut game, 12, 12);
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -183,6 +184,8 @@ fn count_of(stacks: &[ItemStack], item: &str) -> Vec<u32> {
 fn a_roll_is_the_engines_own_roll_for_the_same_seed_and_tool() {
     let mut resources = None;
     let (mut game, level) = game(&mut resources, "same");
+    game.as_guest(12, |game| {
+        game.player.as_mut().unwrap().position = Vec3::new(8.5, 100.0, 8.5);
     for (tool, command_tool) in [
         (shovel(false), COMMAND_SHOVEL),
         (shovel(true), COMMAND_FORTUNE_SHOVEL),
@@ -213,6 +216,8 @@ fn a_roll_is_the_engines_own_roll_for_the_same_seed_and_tool() {
             assert_eq!(rolled, by_command, "seed {seed}, tool {command_tool}");
         }
     }
+    })
+    .unwrap();
 }
 
 #[test]
@@ -220,6 +225,8 @@ fn a_roll_is_the_engines_own_roll_for_the_same_seed_and_tool() {
 fn weighted_pools_conditions_and_functions_roll_as_the_table_says() {
     let mut resources = None;
     let (mut game, level) = game(&mut resources, "table");
+    game.as_guest(12, |game| {
+        game.player.as_mut().unwrap().position = Vec3::new(8.5, 100.0, 8.5);
     let (shovel, fortune) = (shovel(false), shovel(true));
     let (mut extra_pool, mut picks, mut flint_picks) = (0, 0, 0);
     let mut gravel_counts = std::collections::BTreeSet::new();
@@ -270,6 +277,8 @@ fn weighted_pools_conditions_and_functions_roll_as_the_table_says() {
     assert!((90..=150).contains(&extra_pool), "{extra_pool}");
     let share = flint_picks as f64 / picks as f64;
     assert!((0.8..0.92).contains(&share), "{share}");
+    })
+    .unwrap();
 }
 
 #[test]
@@ -277,6 +286,8 @@ fn weighted_pools_conditions_and_functions_roll_as_the_table_says() {
 fn a_table_with_a_random_sequence_draws_from_it_not_the_level() {
     let mut resources = None;
     let (mut game, level) = game(&mut resources, "sequence");
+    game.as_guest(12, |game| {
+        game.player.as_mut().unwrap().position = Vec3::new(8.5, 100.0, 8.5);
     let sequences = game.rand_sequences.clone();
     *game.world.random = LegacyRandom::new(7);
     let rolled = game
@@ -295,6 +306,8 @@ fn a_table_with_a_random_sequence_draws_from_it_not_the_level() {
         lines(&rolled),
         command_roll(&mut game, "test:sequence", "minecraft:stick")
     );
+    })
+    .unwrap();
 }
 
 #[test]
@@ -302,13 +315,15 @@ fn a_table_with_a_random_sequence_draws_from_it_not_the_level() {
 fn a_missing_table_and_a_stale_handle_are_none() {
     let mut resources = None;
     let (mut game, level) = game(&mut resources, "none");
+    game.as_guest(12, |game| {
+        game.player.as_mut().unwrap().position = Vec3::new(8.5, 100.0, 8.5);
     assert_eq!(
         game.level_roll_loot(level, "test:nothing_here", ORIGIN, None, None),
         None
     );
     // A handle of an earlier open.
     game.native_lifecycle
-        .begin_open(Authority::IntegratedServer);
+        .begin_open(Authority::DedicatedServer);
     assert_eq!(
         game.level_roll_loot(level, "test:sift", ORIGIN, None, None),
         None
@@ -318,6 +333,8 @@ fn a_missing_table_and_a_stale_handle_are_none() {
         game.level_roll_loot(level, "test:sift", ORIGIN, None, None)
             .is_some()
     );
+    })
+    .unwrap();
 }
 
 #[test]
@@ -325,8 +342,12 @@ fn a_missing_table_and_a_stale_handle_are_none() {
 fn component_stack_capacity_is_preserved_on_every_split() {
     let mut resources = None;
     let (mut game, level) = game(&mut resources, "component-split");
+    game.as_guest(12, |game| {
+        game.player.as_mut().unwrap().position = Vec3::new(8.5, 100.0, 8.5);
     let stacks = game
         .level_roll_loot(level, "test:small", ORIGIN, None, None)
         .unwrap();
     assert_eq!(count_of(&stacks, "minecraft:ender_pearl"), [8, 8, 8, 8, 8]);
+    })
+    .unwrap();
 }

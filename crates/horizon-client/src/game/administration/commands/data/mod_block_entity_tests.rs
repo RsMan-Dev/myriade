@@ -1,7 +1,7 @@
 //! Actual command execution with prepared resources. Canonical membership is
 //! installed only in a fresh process; no native mod bundle or trait hooks are used.
 use super::*;
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
+use crate::game::{Options, Progress, Settings, load_resources};
 use horizon_client::{
     chunk::Chunk,
     containers::{ModBlockEntity, ModRevision},
@@ -109,19 +109,18 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
         &base,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.world = World::new(game.res.facts().air, 1);

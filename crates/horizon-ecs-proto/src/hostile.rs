@@ -73,6 +73,8 @@ pub struct PlayerHit {
 pub struct PlayerState {
     pub health: Vec<f32>,
     pub hits: Vec<PlayerHit>,
+    /// The second knockback of a blow (`causeExtraKnockback`): the player, (x, z, power) as `Hit.extra`, and the creature that dealt it.
+    pub pushes: Vec<(u32, (f64, f64, f64), Entity)>,
     pub immortal: bool,
     /// Players that cannot be targeted (creative, spectator), and the visibility of a player to the monsters (1 by default;
     /// invisible, sneaking and armour scale the range of sight).
@@ -82,6 +84,8 @@ pub struct PlayerState {
     /// Sneaking, the helmet worn (an item id, 0 none), the view vector (what the player looks at), by
     /// player: what the creatures read of a player beyond where it is. `peaceful`: the difficulty (monsters do not target).
     pub sneaking: Vec<bool>,
+    /// The players standing in water (`isInWater`, read by the animals' anger search).
+    pub water: Vec<bool>,
     pub helmet: Vec<u32>,
     pub gaze: Vec<[f64; 3]>,
     /// The players whose view vector changed since the last tick (drained into `Events.gaze_changed`).
@@ -112,6 +116,16 @@ impl PlayerState {
     }
     pub fn sneaking(&self, id: u32) -> bool {
         self.sneaking.get(id as usize).copied().unwrap_or(false)
+    }
+    pub fn in_water(&self, id: u32) -> bool {
+        self.water.get(id as usize).copied().unwrap_or(false)
+    }
+    pub fn set_in_water(&mut self, id: u32, on: bool) {
+        let i = id as usize;
+        if self.water.len() <= i {
+            self.water.resize(i + 1, false);
+        }
+        self.water[i] = on;
     }
     pub fn helmet(&self, id: u32) -> u32 {
         self.helmet.get(id as usize).copied().unwrap_or(0)
@@ -188,6 +202,10 @@ impl PlayerState {
         self.health[i] = health_after(self.health[i], amount, self.immortal);
         self.hits.push(PlayerHit { tick, player, amount, from, by });
     }
+    /// The extra push of the blow just dealt to `player` (`Hit.extra`), drained by the host with the hits.
+    pub(crate) fn push(&mut self, player: u32, extra: (f64, f64, f64), by: Entity) {
+        self.pushes.push((player, extra, by));
+    }
 }
 /// The creatures hurt this step by a player or a creature: (victim, attacker), written by `apply_damage`.
 #[derive(Resource, Default)]
@@ -211,6 +229,12 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 pub struct NotEnemy;
 pub static NOT_ENEMY: crate::rules::Rule = crate::rules::Rule { name: "not_enemy", equip: |w, e, _| { w.entity_mut(e).insert(NotEnemy); }, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
 pub static SUN_BURN: crate::rules::Rule = crate::rules::Rule { name: "sun_burn", equip: equip_sun_burn, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
+/// The equipment slot whose stack keeps the monster from the sun (`Mob.sunProtectionSlot`): absent, the head (slot 2).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct SunSlot(pub usize);
+/// The rule `sun_body`: the body slot keeps the monster from the sun, as `ZombieHorse.sunProtectionSlot` (BODY, slot 6).
+pub static SUN_BODY: crate::rules::Rule = crate::rules::Rule { name: "sun_body", equip: |w, e, _| { w.entity_mut(e).insert(SunSlot(6)); }, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
 fn equip_sun_burn(world: &mut World, e: Entity, _: &'static (dyn std::any::Any + Sync)) {
     let eye = world.get::<FluidParams>(e).map_or(0.0, |f| f.eye_height);
     world.entity_mut(e).insert(BurnsInDay { eye, block: (i32::MIN, 0, 0), flee: false });
@@ -352,8 +376,13 @@ pub fn melee_run(
     mut cmd: Commands,
     gear: Option<Res<crate::melee_gear::MeleeGear>>,
     held: Query<&crate::equip_stack::Equipment>,
+    main: Query<&crate::goals::Equipment>,
     kinds: Query<&SpeciesId>,
     species: Res<SpeciesTable>,
+    restricted: Query<&crate::behaviours::move_towards_restriction::Restriction>,
+    riding: Query<&crate::mount::Riding>,
+    boxes: Query<&Bounds>,
+    prototype: Option<Res<crate::rules::melee_attack::PrototypeRange>>,
 ) {
     for ((e, pos, mut look, looking, _following, _asked), bounds, mut a, g, mut rng, baby, quits, busy) in &mut q {
         // `Ravager.isImmobile`: the goals do not tick while it lasts, so the strike cooldown stands still.
@@ -381,6 +410,13 @@ pub fn melee_run(
             reqs.0.push(Req::End(e, a.melee_slot));
             continue;
         };
+        // `MeleeAttackGoal.canContinueToUse` when it follows the target unseen: the target out of the home, or a creative or spectator player, ends it.
+        let out_of_home = restricted.get(e).is_ok_and(|r| r.radius != -1 && !crate::rules::move_towards_restriction::within_home(r.center, r.radius, [i.pos.x, i.pos.y, i.pos.z]));
+        let barred = matches!(g.who, Who::Player(p) if tg.ps.creative(p) || tg.ps.spectator(p));
+        if a.follow_unseen && (out_of_home || barred) {
+            reqs.0.push(Req::End(e, a.melee_slot));
+            continue;
+        }
         let at = i.pos;
         aim(&mut cmd, e, &mut look, looking, [at.x, i.eye, at.z], Some(30.0));
         a.recalc = (a.recalc - 1).max(0);
@@ -394,7 +430,10 @@ pub fn melee_run(
         }
         a.until = (a.until - 1).max(0);
         let ready = if a.follow_unseen { clock.0 >= a.next_strike } else { a.until <= 0 };
-        if ready && g.seen && bounds.0.inflate(Vec3::new(a.reach, 0.0, a.reach)).intersects(i.bounds) {
+        let vehicle = riding.get(e).ok().and_then(|r| boxes.get(r.0).ok()).map(|b| b.0);
+        let held_stack = held.get(e).ok().and_then(|q| q.slots[0].as_ref());
+        let proto = held_stack.and_then(|s| prototype.as_ref().and_then(|p| (p.0)(&s.item)));
+        if ready && g.seen && crate::rules::melee_attack::within_strike(bounds.0, vehicle, i.bounds, held_stack, proto.as_ref()) {
             let interval = if baby { a.interval_baby.unwrap_or(a.interval) } else { a.interval };
             a.until = interval;
             a.next_strike = clock.0 + interval as u64;
@@ -405,7 +444,9 @@ pub fn melee_run(
             if let Some(f) = a.on_blow {
                 cmd.queue(move |w: &mut World| f(w, e));
             }
-            let damage = if a.spread { spread_damage(a.damage, |n| rng.next_int(n)) } else { a.damage };
+            // `LivingEntity.doHurtTarget` reads ATTACK_DAMAGE, which the held item's modifier adds to the species' base.
+            let base = a.damage + crate::items::attack_damage_of(main.get(e).map_or(0, |q| q.main)) as f32;
+            let damage = if a.spread { spread_damage(base, |n| rng.next_int(n)) } else { base };
             // `EnchantmentHelper.modifyDamage` of the held weapon, by the host's table, once per blow.
             let damage = match (gear.as_deref(), held.get(e).ok().and_then(|q| q.slots[0].as_ref())) {
                 (Some(gear), Some(stack)) => {
@@ -444,7 +485,7 @@ pub fn landed(w: &mut World, e: Entity, who: Who, dealt: f32) {
     crate::effects::hit_effects(w, e, who);
     ignite_on_hit(w, e, who);
     // The weapon's enchantments: the knockback (`getKnockback`) and Fire Aspect (`doPostAttackEffects`), from the host's table.
-    let base_knockback = w.get::<SpeciesId>(e).map_or(0.0, |s| w.resource::<SpeciesTable>().0[s.0 as usize].attack_knockback as f32);
+    let base_knockback = w.get::<SpeciesId>(e).map_or(0.0, |s| crate::attr_mod::read(w, e, "attack_knockback", w.resource::<SpeciesTable>().0[s.0 as usize].attack_knockback) as f32);
     let blow = crate::melee_gear::blow(w, e, who, crate::melee_gear::Blow { damage: dealt, knockback: base_knockback, ignite_seconds: 0.0 });
     extra_knockback(w, e, who, f64::from(blow.knockback));
     if blow.ignite_seconds > 0.0 {
@@ -462,6 +503,11 @@ pub fn landed(w: &mut World, e: Entity, who: Who, dealt: f32) {
     }
     if w.get::<crate::behaviours::contact_damage::ContactDamage>(e).is_some() {
         crate::behaviours::contact_damage::attack_sound(w, e);
+    }
+    if let Some(bite) = w.get::<crate::rules::bite_sound::BiteSound>(e).map(|b| b.0) {
+        if w.get::<crate::behaviours::elder_curse::Silent>(e).is_none() {
+            crate::behaviours::act_phase::sound(w, e, bite, 1.0, 1.0);
+        }
     }
 }
 /// `Zombie.doHurtTarget`: a burning attacker with an empty hand sets its target on fire with a chance of 0.3 per point of the effective
@@ -638,23 +684,33 @@ fn sun_burn(
     mut fired: ResMut<SunFired>,
     mut wheel: ResMut<Wheel>,
     mut events: ResMut<crate::goals::Events>,
-    mut q: Query<(&Exposed, &BurnsInDay, &FluidState, Option<&Burning>, &mut Rng)>,
+    mut q: Query<(&Exposed, &BurnsInDay, &FluidState, Option<&Burning>, &mut Rng, Has<crate::inside_effects::WasInPowder>)>,
     bodies: Query<(&Pos, &Body)>,
+    slots: Query<&SunSlot>,
+    worn: Query<&crate::equip_stack::Equipment>,
     mut cmd: Commands,
 ) {
     for e in std::mem::take(&mut fired.0) {
-        let Ok((x, b, fs, burning, mut rng)) = q.get_mut(e) else { continue };
+        let Ok((x, b, fs, burning, mut rng, was_in_powder)) = q.get_mut(e) else { continue };
         let now = clock.of(e);
         if x.token != now {
             continue;
         }
+        // `Mob.sunProtectionSlot`: the head unless the species names another slot.
+        let shield = slots.get(e).map_or(2, |s| s.0);
+        let wet = was_in_powder || bodies.get(e).is_ok_and(|(p, bd)| wet_by_weather(level.mw.0, p.0, bd));
         if b.flee {
             // Not done: the gate of 600 ticks since the target was taken (`targetChangeTime`).
             cmd.queue(move |w: &mut World| {
                 crate::targeting::clear_target(w, e);
                 crate::behaviours::ender_teleport::random(w, e);
             });
-        } else if !fs.in_water && !bodies.get(e).is_ok_and(|(p, bd)| wet_by_weather(level.mw.0, p.0, bd)) {
+        } else if !fs.in_water && !wet && worn.get(e).is_ok_and(|q| q.slots[shield].is_some()) {
+            // `Mob.burnUndead`: the stack in the protection slot takes one point of wear and the monster does not burn.
+            cmd.queue(move |w: &mut World| {
+                crate::equip_stack::damage(w, e, shield, 1);
+            });
+        } else if !fs.in_water && !wet {
             let until = now as i64 + 160;
             match burning {
                 None => {

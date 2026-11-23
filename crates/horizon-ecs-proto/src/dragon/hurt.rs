@@ -5,9 +5,10 @@ use super::data::*;
 use super::parts::{part_box, Parts};
 use super::perch;
 use super::phases::{set_phase, PhaseId};
+use crate::bridge::teams::blocks_damage;
 use crate::area::{creature_xz, creatures_in, hurt_creature, hurt_player, player_xz, players_in, push_creature, push_player};
 use super::flight::DragonRng;
-use crate::cow::{Cause, Clock, Health, Pos, Vel};
+use crate::cow::{Cause, Clock, Health, LastHurtBy, Pos, Vel};
 use crate::explosion::blast_damage;
 use crate::goals::{Ev, Events};
 use crate::hostile::PlayerState;
@@ -151,7 +152,7 @@ pub fn hurt(w: &mut World, e: Entity, b: Blow) -> Hurt {
         };
         if let Some(id) = w.get::<crate::bridge::ids::NetId>(e).map(|n| n.0) {
             let name = crate::cow::cause_name(b.cause, b.by);
-            w.resource_mut::<Events>().host.hurt(id, name, cause, b.by.is_some() && !b.arrow, at);
+            w.resource_mut::<Events>().host.hurt(id, name, cause, b.by.is_some() && !b.arrow, at, None);
         }
         w.resource_mut::<Events>().host.sound("minecraft:entity.ender_dragon.hurt", at, 5.0, 1.0);
     }
@@ -225,48 +226,83 @@ fn zones(parts: &Parts) -> ([Aabb; 2], [Aabb; 2], Aabb) {
 }
 
 /// `EnderDragon.aiStep`'s contacts (`dragon_contacts`, DC): the wings push and hurt, the head and neck hurt, the players and the
-/// creatures alike. Nothing while the dragon was hurt lately (`hurt_time`). Team rules are not read (see the notes).
+/// creatures alike. Nothing while the dragon was hurt lately (`hurt_time`). A team member of the dragon is pushed but not hurt
+/// (`Entity.doTeamsAllowDamage`, the damage branches only).
 pub fn contacts(w: &mut World, e: Entity) {
     let clock = w.get::<DragonHurt>(e).copied().unwrap_or_default();
     if clock.time > 0 {
         return;
     }
-    let sitting = is_sitting(phase_of(w, e));
-    let (wings, heads, body) = match w.get::<Parts>(e) {
-        Some(parts) => zones(parts),
+    let (wings, heads) = match w.get::<Parts>(e) {
+        Some(parts) => {
+            let (wings, heads, _) = zones(parts);
+            (wings, heads)
+        }
         None => return,
     };
+    for zone in wings {
+        let targets = zone_targets(w, zone, e);
+        wing_rule(w, e, &targets);
+    }
+    for zone in heads {
+        let targets = zone_targets(w, zone, e);
+        head_rule(w, e, &targets);
+    }
+}
+
+/// The players then the creatures in `zone`, the targets of a wing or head of `e`.
+fn zone_targets(w: &World, zone: Aabb, e: Entity) -> Vec<Who> {
+    players_in(w, zone).into_iter().map(Who::Player).chain(creatures_in(w, zone, e).into_iter().map(Who::Entity)).collect()
+}
+
+/// `EnderDragon.knockBack` on `targets`: each is pushed away from the body, and the wings hurt those that may be hurt (not while
+/// the dragon sits, not a player or creature hurt lately, not a team member).
+pub fn wing_rule(w: &mut World, e: Entity, targets: &[Who]) {
+    let sitting = is_sitting(phase_of(w, e));
+    let Some(parts) = w.get::<Parts>(e) else { return };
+    let (_, _, body) = zones(parts);
     let (bc, bz) = rule::centre_xz(body);
     let now = w.resource::<Clock>().0;
-    for zone in wings {
-        for id in players_in(w, zone) {
-            if w.resource::<PlayerState>().creative(id) || w.resource::<PlayerState>().spectator(id) {
-                continue;
+    for &t in targets {
+        match t {
+            Who::Player(id) => {
+                if w.resource::<PlayerState>().creative(id) || w.resource::<PlayerState>().spectator(id) {
+                    continue;
+                }
+                let (x, z) = player_xz(w, id);
+                push_player(w, id, rule::push_from(x, z, bc, bz));
+                let hurt_lately = w.resource::<PlayerState>().hurt_by.get(id as usize).copied().flatten().is_some_and(|(_, at)| at + 2 >= now);
+                if !sitting && !hurt_lately && !blocks_damage(w, Who::Entity(e), t) {
+                    hurt_player(w, id, WING_DAMAGE, e);
+                }
             }
-            let (x, z) = player_xz(w, id);
-            let push = rule::push_from(x, z, bc, bz);
-            push_player(w, id, push);
-            let hurt_lately = w.resource::<PlayerState>().hurt_by.get(id as usize).copied().flatten().is_some_and(|(_, at)| at + 2 >= now);
-            if !sitting && !hurt_lately {
-                hurt_player(w, id, WING_DAMAGE, e);
-            }
-        }
-        for c in creatures_in(w, zone, e) {
-            let (x, z) = creature_xz(w, c);
-            push_creature(w, c, rule::push_from(x, z, bc, bz));
-            if !sitting {
-                hurt_creature(w, c, e, WING_DAMAGE);
+            Who::Entity(c) => {
+                let (x, z) = creature_xz(w, c);
+                push_creature(w, c, rule::push_from(x, z, bc, bz));
+                let hurt_lately = w.get::<LastHurtBy>(c).is_some_and(|l| l.at + 2 >= now);
+                if !sitting && !hurt_lately && !blocks_damage(w, Who::Entity(e), t) {
+                    hurt_creature(w, c, e, WING_DAMAGE);
+                }
             }
         }
     }
-    for zone in heads {
-        for id in players_in(w, zone) {
-            if !w.resource::<PlayerState>().creative(id) && !w.resource::<PlayerState>().spectator(id) {
-                hurt_player(w, id, HEAD_DAMAGE, e);
+}
+
+/// `EnderDragon.hurt(ServerLevel, List)` on `targets`: the head and neck hurt those that may be hurt (not a team member).
+pub fn head_rule(w: &mut World, e: Entity, targets: &[Who]) {
+    for &t in targets {
+        match t {
+            Who::Player(id) => {
+                let hurts = !w.resource::<PlayerState>().creative(id) && !w.resource::<PlayerState>().spectator(id);
+                if hurts && !blocks_damage(w, Who::Entity(e), t) {
+                    hurt_player(w, id, HEAD_DAMAGE, e);
+                }
             }
-        }
-        for c in creatures_in(w, zone, e) {
-            hurt_creature(w, c, e, HEAD_DAMAGE);
+            Who::Entity(c) => {
+                if !blocks_damage(w, Who::Entity(e), t) {
+                    hurt_creature(w, c, e, HEAD_DAMAGE);
+                }
+            }
         }
     }
 }

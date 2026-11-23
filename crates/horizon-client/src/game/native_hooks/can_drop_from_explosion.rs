@@ -25,11 +25,10 @@ impl Game<'_> {
         state: BlockStateId,
         explosion: &ExplosionStart<'_>,
     ) -> Option<bool> {
-        if !self.is_logical_server()
-            || !crate::game::api_values::block_state::block_listens(
-                mod_api::HookId::CanDropFromExplosion,
-                state,
-            )
+        if !crate::game::api_values::block_state::block_listens(
+            mod_api::HookId::CanDropFromExplosion,
+            state,
+        )
         {
             return None;
         }

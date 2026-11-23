@@ -16,16 +16,16 @@ impl Game<'_> {
     }
     /// `PlayerList.setViewDistance` on a dedicated server; the tickets read the settings.
     pub(super) fn server_set_view_distance(&mut self, distance: i32) -> bool {
-        if !(2..=32).contains(&distance) || self.options.dedicated.is_none() || self.lan.is_none() {
+        if !(2..=32).contains(&distance) || self.lan.is_none() {
             return false;
         }
         self.set_view_distance(distance);
-        self.settings.render_distance = distance;
+        self.settings.view_distance = distance;
         true
     }
     /// `PlayerList.setSimulationDistance` on a dedicated server.
     pub(super) fn server_set_simulation_distance(&mut self, distance: i32) -> bool {
-        if !(2..=32).contains(&distance) || self.options.dedicated.is_none() || self.lan.is_none() {
+        if !(2..=32).contains(&distance) || self.lan.is_none() {
             return false;
         }
         self.set_simulation_distance(distance);
@@ -55,7 +55,6 @@ mod tests {
             assert_eq!(game.server_view_distance(), Some(2));
             assert_eq!(game.server_simulation_distance(), Some(2));
             assert!(!game.server_set_view_distance(6), "an integrated server");
-            game.options.dedicated = Some(Vec::new());
             assert!(game.server_set_view_distance(6));
             assert!(game.server_set_simulation_distance(5));
             assert!(!game.server_set_view_distance(1));

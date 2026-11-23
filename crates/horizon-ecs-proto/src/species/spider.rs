@@ -20,6 +20,9 @@ pub const TARGETS: &[Entry] = &[
 pub const ARMADILLO: Entry = Entry::new(&avoid_entity::MODULE, 2, &avoid_entity::Params { what: avoid_entity::Avoid::Named(&["minecraft:armadillo"]), max_dist: 6.0, walk: 1.0, sprint: 1.2, ..avoid_entity::Params::DEFAULT });
 pub const ATTACK: Entry = Entry::new(&melee::MODULE, 4, &melee::Params { follow_unseen: true, quit_in_light: Some(100), ..melee::Params::DEFAULT }).when(&NO_RIDER);
 
+/// `Spider.SpiderEffectsGroupData.setRandomEffect`'s four effects, in the order its draw indexes them (`mobs/spawning.rs`).
+pub const EFFECTS: [&str; 4] = ["minecraft:speed", "minecraft:strength", "minecraft:regeneration", "minecraft:invisibility"];
+
 pub static DEF: Def = Def {
     name: "minecraft:spider",
     targets: TARGETS,
@@ -34,8 +37,9 @@ pub static DEF: Def = Def {
     ],
     locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params { climber: true, ..walk::Params::DEFAULT }))],
     rules: &[RuleEntry::new(&RIDE, &RideParams::CARRIER)],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Rideable, Cap::PoisonImmune]),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Rideable, Cap::PoisonImmune, Cap::NoWebStick]),
     spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

@@ -85,7 +85,6 @@ fn with_jar(jar: &Jar, test: impl FnOnce(&mut super::Game<'_>, LevelRef)) {
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

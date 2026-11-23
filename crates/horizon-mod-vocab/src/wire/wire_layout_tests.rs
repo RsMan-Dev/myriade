@@ -375,10 +375,6 @@ fn snapshot_and_reload_records_have_declared_field_bytes() {
         crate::world::reload::ReloadFiles::new(files.clone()),
     ));
     assert_eq!(server.0, files);
-    let (client,): (crate::world::reload::ReloadFiles,) = decode(ClientReloadContext::new(
-        crate::world::reload::ReloadFiles::new(files.clone()),
-    ));
-    assert_eq!(client.0, files);
     fields(
         AttachmentPolicy {
             copy_on_death: true,

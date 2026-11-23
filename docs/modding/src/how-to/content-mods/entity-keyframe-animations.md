@@ -115,7 +115,7 @@ Looping animations wrap elapsed time by their length.
 Do not look up, clone or bake the animation every frame: those steps copy or allocate data.
 Playback uses the retained child-index paths and channels without allocating or searching
 bone names. Pose application alone does not draw anything; submit your model through its
-renderer, alongside the [resolved-model drawing](../client/model-drawing.md) facilities.
+renderer,.
 
 ## Registered targets and interpolations
 

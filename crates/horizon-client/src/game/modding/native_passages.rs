@@ -331,7 +331,7 @@ fn form(id: PassageId, p: &Passage) -> PassageForm {
 pub(in crate::game) mod tests {
     use super::{Message, PassageForm, Refused, check};
     use crate::game::Dim;
-    use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+    use crate::game::native_entity_refs::tests::with_game;
     use crate::game::native_guest_turn_tests::with_guests;
     use horizon_client::chunk::Chunk;
     use horizon_protocol::packets::play::Clientbound;
@@ -526,15 +526,6 @@ pub(in crate::game) mod tests {
                 game.level_register_passage(level, in_chunk(0, 10)),
                 Err(Refused::NoIdsLeft)
             );
-        });
-        with_client_game(|game| {
-            let epoch = game.native_lifecycle.epoch().unwrap();
-            let level = LevelRef::new(epoch, game.dim.key());
-            assert_eq!(
-                game.level_register_passage(level, doorway()),
-                Err(Refused::Unavailable)
-            );
-            assert!(!game.level_remove_passage(level, PassageId::from_raw(1)));
         });
     }
 
@@ -791,7 +782,6 @@ pub(in crate::game) mod tests {
                 allow_flight: true,
                 seed: 0,
                 max_players: 2,
-                integrated: true,
                 levels: game.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };

@@ -175,6 +175,8 @@ pub fn refresh_prices(w: &mut World, e: Entity) {
 /// but se terminent.
 pub fn close(w: &mut World, e: Entity) {
     let Some(t) = w.entity_mut(e).take::<Trading>() else { return };
+    // `WanderingTrader.maybeDespawn`: its delay does not run while it trades, so the trade's length is added to its deadline.
+    crate::despawn_delay::trade_ended(w, e, t.since);
     if let Some(mut m) = w.get_mut::<Merchant>(e) {
         m.trade.offers = t.session.offers;
         m.trade.xp = t.session.xp;

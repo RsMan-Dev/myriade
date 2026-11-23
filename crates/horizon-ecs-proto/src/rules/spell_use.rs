@@ -5,9 +5,10 @@ pub fn recheck_in(wait: u64) -> i32 {
     (wait.div_ceil(2) * 2).max(2) as i32
 }
 
-/// A sheep is in the wololo box: within 16 blocks sideways and 4 vertically (`d2` is the squared distance).
-pub fn near_sheep(dx: f64, dy: f64, dz: f64, d2: f64) -> bool {
-    dx.abs() <= 16.0 && dy.abs() <= 4.0 && dz.abs() <= 16.0 && d2 <= 256.0
+/// A sheep is in the wololo box: within `reach` blocks sideways and 4 vertically (`d2` is the squared distance; `reach` is the
+/// `forNonCombat().range(16)` scaled by the sheep's visibility).
+pub fn near_sheep(dx: f64, dy: f64, dz: f64, d2: f64, reach: f64) -> bool {
+    dx.abs() <= reach && dy.abs() <= 4.0 && dz.abs() <= reach && d2 <= reach * reach
 }
 
 /// The spot of one summoned vex: the caster's block shifted by `dx` and `dz`, a block up.

@@ -89,3 +89,26 @@ pub fn split_on_death(w: &mut World, e: Entity) {
         w.resource_mut::<crate::goals::Entered>().0.push(child);
     }
 }
+/// `EntityEvent.Size`: a mod's `entity_size` answer, asked in `pose` (its `PoseOverride` id, 0 standing) and for vanilla's box
+/// `vanilla` (width, height). It replaces the box while both still hold; a change to either goes back to vanilla's.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct SizeAnswer {
+    pub pose: u8,
+    pub vanilla: [f32; 2],
+    pub size: Option<[f32; 2]>,
+}
+/// Keeps the answer of the host for `e`.
+pub fn answer_size(w: &mut World, e: Entity, answer: SizeAnswer) {
+    w.entity_mut(e).insert(answer);
+}
+/// The box (width, height) of `e`: the answer's while it holds, else vanilla's from `Body`; `None` without a body.
+pub fn held_box(w: &World, e: Entity) -> Option<[f32; 2]> {
+    let body = w.get::<Body>(e)?;
+    let vanilla = [body.width, body.height];
+    let pose = w.get::<crate::pose_state::PoseOverride>(e).map_or(0, |p| p.0);
+    match w.get::<SizeAnswer>(e) {
+        Some(a) if a.pose == pose && a.vanilla == vanilla => a.size.or(Some(vanilla)),
+        _ => Some(vanilla),
+    }
+}

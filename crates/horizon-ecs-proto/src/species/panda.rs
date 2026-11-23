@@ -43,7 +43,7 @@ pub static DEF: Def = Def {
 
 /// `Panda.getRandom`: one `nextInt(16)`: 0 lazy, 1 worried, 2 playful, 3 weak, 4 aggressive, 5-8 weak, 9-10 brown, else normal (gene ids of
 /// `spawn_draw::gene_of`). Main then hidden, then `setAttributes`; a fresh group has a 20 % baby chance.
-const GENE: crate::rules::spawn_draw::Roll = crate::rules::spawn_draw::Roll::Cuts { bound: 16, cuts: &[(1, 1), (2, 2), (3, 3), (4, 5), (5, 6), (9, 5), (11, 4)], last: 0 };
+pub const GENE: crate::rules::spawn_draw::Roll = crate::rules::spawn_draw::Roll::Cuts { bound: 16, cuts: &[(1, 1), (2, 2), (3, 3), (4, 5), (5, 6), (9, 5), (11, 4)], last: 0 };
 static DRAWS: crate::behaviours::spawn_draw::Draws = crate::behaviours::spawn_draw::Draws {
     group: Some(crate::spawn_finalize::Group::Ageable { should_baby: true, size: 0, chance: 0.2, variant: None }),
     list: &[

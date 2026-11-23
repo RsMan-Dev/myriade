@@ -16,6 +16,7 @@ static AVOID: avoid_entity::Params = avoid_entity::Params { what: Avoid::Player,
 
 pub static DEF: Def = Def {
     name: "minecraft:cat",
+    despawn: Some(crate::despawn::DespawnDef { removable: crate::despawn::Removable::UntamedAfter(2400), ..crate::despawn::DespawnDef::MOB }),
     sounds: Some(&["minecraft:classic", "minecraft:royal"]),
     variant: Some(&super::variants::CAT),
     reference: None,
@@ -26,7 +27,7 @@ pub static DEF: Def = Def {
     goals: &[
         Entry::new(&float::MODULE, 1, &float::Params::DEFAULT),
         Entry::new(&panic::MODULE, 1, &panic::Params { speed: 1.5, environmental: true, ..panic::Params::DEFAULT }),
-        Entry::new(&sit_when_ordered::MODULE, 2, &()),
+        Entry::new(&sit_when_ordered::MODULE, 2, &sit_when_ordered::Params::DEFAULT),
         Entry::new(&cat_relax_on_owner::MODULE, 3, &cat_relax_on_owner::Params::DEFAULT),
         Entry::new(&tempt::MODULE, 4, &tempt::Params { speed: 0.6, items: FOOD, ..tempt::Params::DEFAULT }).when(&WILD),
         Entry::new(&cat_lie_on_block::MODULE, 5, &cat_lie_on_block::Params::DEFAULT),
@@ -39,7 +40,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 12, &look_at_player::Params { range: 10.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&avoid_entity::MODULE, 4, &AVOID).when(&WILD),
     ],
-    rules: &[RuleEntry::new(&crate::dye::DYE,&crate::dye::DyeParams::CAT), RuleEntry::new(&TAME, &TAME_CAT), RuleEntry::new(&crate::hiss::HISSES, &crate::hiss::CAT_HISS)],
+    rules: &[RuleEntry::new(&crate::walk_paces::PACES, &()), RuleEntry::new(&crate::dye::DYE,&crate::dye::DyeParams::CAT), RuleEntry::new(&TAME, &TAME_CAT), RuleEntry::new(&crate::hiss::HISSES, &crate::hiss::CAT_HISS)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable]),
     ..Def::EMPTY
 };

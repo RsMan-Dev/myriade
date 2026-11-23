@@ -1,5 +1,5 @@
 use crate::game::commands::items::Slot;
-use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+use crate::game::{Game, Options, Progress, Settings, load_resources};
 
 fn with_game(check: impl FnOnce(&mut Game<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
@@ -12,20 +12,19 @@ fn with_game(check: impl FnOnce(&mut Game<'_>)) {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.game_dir = Some(scratch.path().to_path_buf());
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();

@@ -98,10 +98,8 @@ impl Game<'_> {
         }
         // Consumable.onConsume applies these entries on the logical server only;
         // the client's listener, particles and sounds above still run there.
-        if self.is_logical_server() {
-            for effect in &consumable.effects {
-                self.apply_consume_effect(stack, effect, None);
-            }
+        for effect in &consumable.effects {
+            self.apply_consume_effect(stack, effect, None);
         }
         let event = if consumable.animation == UseAnimation::Drink {
             "minecraft:drink"
@@ -663,11 +661,80 @@ impl EmissionWorld for HeldEater<'_> {
 }
 
 #[cfg(test)]
+mod held_eat_tests {
+    use super::*;
+    use crate::game::ecs::test_support::ecs_game_with;
+    use horizon_client::chunk::Chunk;
+    use horizon_client::mobs::MobEvent;
+    use horizon_ecs_proto::goals::Slot;
+    use horizon_ecs_proto::host_out::HostEvent;
+    use horizon_world::registry::BlockStateId;
+    use std::sync::Arc;
+
+    /// The sound of an apple's eating as a fox at `at` emits it (seed 7), with its sound name, heard or silent.
+    fn eat_events(silent: bool) -> (String, Vec<MobEvent>) {
+        let (g, _) = ecs_game_with("minecraft:fox", [0.0, 64.0, 0.0]);
+        let apple = ItemStack::new("minecraft:apple", 1);
+        let consumable = g.consumable(&apple).expect("an apple is food");
+        let at = [0.0, 64.0, 0.0];
+        let mut rng = LegacyRandom::new(7);
+        let mut events = Vec::new();
+        let _ = consumable.emit(&mut HeldEater { rng: &mut rng, at, silent, events: &mut events }, (), apple, 16);
+        (consumable.sound.clone(), events)
+    }
+
+    #[test]
+    fn a_fox_eating_plays_one_eat_sound_at_its_place_with_vanillas_draws_and_a_silent_one_plays_none() {
+        let (sound, heard) = eat_events(false);
+        // `Consumable.emit`: the volume is a coin flip (0.5 or 1.0), then the pitch is a triangle around 1.0 (0.2 wide).
+        let mut draws = LegacyRandom::new(7);
+        let volume = if draws.next_boolean() { 0.5 } else { 1.0 };
+        let pitch = draws.triangle_float(1.0, 0.2);
+        assert_eq!(heard.len(), 1);
+        assert!(matches!(&heard[0], MobEvent::SoundId(s, at, v, p) if *s == sound && *at == [0.0, 64.0, 0.0] && *v == volume && *p == pitch));
+        assert!(eat_events(true).1.is_empty());
+    }
+
+    #[test]
+    fn an_ecs_fox_eats_the_apple_in_its_mouth_and_keeps_the_rest() {
+        let (mut g, id) = ecs_game_with("minecraft:fox", [0.0, 64.0, 0.0]);
+        let apple = ItemStack::new("minecraft:apple", 2);
+        g.ecs_set_slot(id, Slot::Main, &apple);
+        assert!(g.apply_held_consumption_ecs(id, &apple, 7, true));
+        assert_eq!(g.ecs_hand_stack(id, false).map(|s| s.count), Some(1));
+    }
+
+    /// Loads the four chunks around the origin and lays stone over columns -8..=7 for y 56..=63: every chorus target
+    /// (a 16-block cube around the fox at y 64) finds the ground, so the first of its 16 tries lands.
+    fn chorus_floor(g: &mut Game<'_>) {
+        for cx in -1..=0 {
+            for cz in -1..=0 {
+                g.world.chunks.insert((cx, cz), Arc::new(Chunk::empty(cx, cz)));
+            }
+        }
+        let events = (56..=63)
+            .flat_map(|y| (-8..=7).flat_map(move |x| (-8..=7).map(move |z| HostEvent::SetBlock { pos: [x, y, z], state: BlockStateId(1) })))
+            .collect();
+        g.host_events(events).unwrap();
+    }
+
+    #[test]
+    fn a_chorus_fruit_in_an_ecs_foxs_mouth_moves_it_and_is_eaten() {
+        let (mut g, id) = ecs_game_with("minecraft:fox", [0.0, 64.0, 0.0]);
+        chorus_floor(&mut g);
+        let chorus = ItemStack::new("minecraft:chorus_fruit", 1);
+        g.ecs_set_slot(id, Slot::Main, &chorus);
+        assert!(g.apply_held_consumption_ecs(id, &chorus, 7, true));
+        assert_ne!(g.ecs_vec3(id), Some([0.0, 64.0, 0.0]));
+        assert!(g.ecs_hand_stack(id, false).is_none());
+    }
+}
+
+#[cfg(test)]
 mod teleport_hook_tests {
     use super::*;
     use crate::game::api_values::test_snapshot;
     use crate::game::native_entity_refs::tests::with_game;
-    use horizon_client::motion::PlayerMotion;
     use mod_api::{Flow, Hooks, ItemConsumptionTeleportEvent, ModEntry, ServerHost};
     use std::sync::{
         Arc, Mutex,
@@ -716,16 +783,8 @@ mod teleport_hook_tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 let at = Vec3::new(0.0, 65.0, 0.0);
-                game.player = Some(PlayerMotion::new(game.motion, at).unwrap());
-                // This body belongs to the guest record installed below, never
-                // to a separately admitted local player with the same runtime ID.
-                game.player.as_mut().unwrap().entity_id = 2;
-                game.lan_acting = Some(12);
-                game.lan_acting_uuid = Some(7);
-                game.lan_acting_name = Some("ConsumedStackTest".into());
-                game.lan_acting_entity = Some(2);
-                game.lan_acting_permission = Some(4);
-                crate::game::native_entity_refs::tests::bind_acting_guest(game);
+                crate::game::native_guest_turn_tests::lan_guests_on(game);
+                crate::game::native_guest_turn_tests::with_acting_guest_on(game, at, |game| {
                 game.creative = false;
                 let mut consumed = ItemStack::new("minecraft:chorus_fruit", 7);
                 consumed.damage = 3;
@@ -788,6 +847,7 @@ mod teleport_hook_tests {
                     "a listener's direct move invalidates the consumption target"
                 );
                 assert_eq!(game.world.random.next_long(), expected_random.next_long());
+                });
             })
         });
     }

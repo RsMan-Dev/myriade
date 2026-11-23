@@ -365,15 +365,11 @@ mod tests {
     /// Runs `test` on a game with the cobbler's part installed, given what it counted.
     fn with_cobbler(test: impl FnOnce(&mut Game<'_>, &AtomicUsize)) {
         installed(|asked| {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                // The player in place, admitted as a joined one is, so its handle resolves.
-                let at = horizon_core::geometry::Vec3::new(0.5, 64.0, 0.5);
-                let mut body = horizon_client::motion::PlayerMotion::new(game.motion, at).unwrap();
-                body.entity_id = 7;
-                game.player = Some(body);
-                game.bind_local_player_residency();
-                test(game, asked)
-            });
+            // The acting guest's body, admitted as a joined one is, so its handle resolves.
+            crate::game::native_guest_turn_tests::with_acting_guest(
+                horizon_core::geometry::Vec3::new(0.5, 64.0, 0.5),
+                |game| test(game, asked),
+            );
         });
     }
 
@@ -382,7 +378,7 @@ mod tests {
         let part = FeetOnly::default();
         let cobbler = mod_api::ModEntry::new("cobbler", Box::new(Cobbler(part.clone())));
         let mods: mod_api::Mods = vec![cobbler].into();
-        crate::entry::install_client_hooks();
+        crate::entry::install_level_hooks();
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || test(&part.0));
     }
@@ -606,7 +602,6 @@ mod tests {
     fn missing_despawned_and_readmitted_entities_refuse_but_no_listener_keeps_data() {
         use horizon_client::mobs::equip::EquipInput;
         with_cobbler(|game, asked| {
-            game.options.dedicated = Some(Vec::new());
             game.ecs = game.test_ecs_level();
             let at = [6.5, 64.0, 5.5];
             crate::game::ecs::test_support::place_test_mob(game, 21, "minecraft:zombie", at).expect("a zombie");

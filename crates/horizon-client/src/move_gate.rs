@@ -14,7 +14,7 @@ use horizon_world::block_collision_scan::BlockCollisionWorld;
 use horizon_world::collision_context::CollisionContext;
 use horizon_world::entity_move::MoverType;
 use horizon_world::move_gate::MoveGate;
-use horizon_world::native_load_context::{LoopContext, LoopSide};
+use horizon_world::native_load_context::LoopContext;
 use horizon_world::world_movement::EntityMovementWorld;
 use mod_api::MoveCause;
 use std::borrow::Cow;
@@ -78,9 +78,6 @@ pub fn arm_with<'k>(
     // armed first, the decision replaced only by a result that passes
     // validation — the request stays what `overridden` measures against.
     gate.arm(cause, delta);
-    if context.side() != LoopSide::Server {
-        return;
-    }
     if !mod_api::__private::listened(mod_api::HookId::EntityMove) {
         return;
     }

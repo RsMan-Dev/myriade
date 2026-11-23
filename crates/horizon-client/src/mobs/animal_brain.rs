@@ -412,28 +412,6 @@ pub fn init(m: &mut Mob, shuffle_seed: i64) {
         Kind::CopperGolem => copper_golem_package(shuffle_seed),
         Kind::Tadpole => tadpole_package(shuffle_seed),
     };
-    // The parts' behaviors join before the sort, so each lands after
-    // vanilla's of its priority (arismoko/horizon#824); the stable sort keeps vanilla's own
-    // hand-written order. Nothing joins a type no part attached to, and
-    // nothing is asked or built then.
-    let before = b.list.len();
-    attach_behaviors(&m.kind.id, &mut b.list);
-    if b.list.len() > before {
-        b.list.sort_by_key(|e| {
-            (
-                e.prio,
-                match e.act {
-                    Act::Core => 1,
-                    Act::Dig => 3,
-                    Act::Idle => 5,
-                    Act::Sniff => 6,
-                    Act::Fight => 14,
-                    Act::PlayDead => 15,
-                    Act::Panic => 15,
-                },
-            )
-        });
-    }
     if let Some(c) = cooldown {
         b.mem.transport_items_cooldown_ticks.set(c);
     }
@@ -455,23 +433,14 @@ pub fn set_transport_cooldown(m: &mut Mob, ticks: i32) {
 
 /// The happy ghast grew up (`adultGhastSetup`): every running behaviour
 /// stops (`Brain.stopAll`) and the memories are cleared; the brain no
-/// longer ticks. A running mod behavior stops with its `stop` callback,
-/// as `Brain.stopAll` reaches every running behavior's (arismoko/horizon#824); the
-/// vanilla entries keep the port's own state reset.
-pub fn grown_up(m: &mut Mob, w: &MobWorld<'_>) {
+/// longer ticks. The entries keep the port's own state reset.
+pub fn grown_up(m: &mut Mob, _w: &MobWorld<'_>) {
     let Some(b) = m.extra.animal_brain.as_deref_mut() else {
         return;
     };
     let mut list = std::mem::take(&mut b.list);
     for e in list.iter_mut() {
-        if let B::Mod(mod_e) = &mut e.b {
-            if mod_e.running() {
-                mod_e.do_stop(m, w);
-            }
-            mod_e.reset();
-        } else {
-            e.b.reset();
-        }
+        e.b.reset();
     }
     let b = m.extra.animal_brain.as_deref_mut();
     let Some(b) = b else { return };
@@ -989,8 +958,6 @@ enum B {
         running: bool,
         player: bool,
     },
-    /// A mod's behavior (arismoko/horizon#824), wrapped by `mod_behaviors`.
-    Mod(super::mod_behaviors::ModBehavior),
     Gate(Box<Gate>),
     /// `CountDownCooldownTicks(GAZE_COOLDOWN_TICKS)` and
     /// `(TRANSPORT_ITEMS_COOLDOWN_TICKS)`.
@@ -1037,9 +1004,7 @@ impl B {
             | B::WalkToLookTarget { running, .. }
             | B::LookAtPlayer(running)
             | B::Stroll { running, .. }
-            | B::FollowAdult { running, .. } => *running,
-            B::Mod(e) => e.running(),
-            B::Gate(g) => g.running,
+            | B::FollowAdult { running, .. } => *running,            B::Gate(g) => g.running,
         }
     }
     /// Stopped without its stop effects (the memories they would touch are
@@ -1072,9 +1037,7 @@ impl B {
                 for k in &mut g.kids {
                     k.0.reset();
                 }
-            }
-            B::Mod(e) => e.reset(),
-            _ => self.set_one_shot(false),
+            }            _ => self.set_one_shot(false),
         }
     }
     /// A one-shot (`OneShot`) runs only until its first tick.
@@ -1114,9 +1077,7 @@ impl B {
         }
         let now = cx.now;
         match self {
-            B::Gate(g) => g.try_start(m, cx),
-            B::Mod(e) => e.try_start(m, cx.w, cx.level.random(), cx.now),
-            B::PlayDead(t) => {
+            B::Gate(g) => g.try_start(m, cx),            B::PlayDead(t) => {
                 if !m.fluids.in_water
                     || !mem(m).play_dead_ticks.present()
                     || !mem(m).hurt_by_entity.present()
@@ -1543,9 +1504,7 @@ impl B {
                     self.do_stop(m, cx);
                 }
             }
-            B::Gate(g) => g.tick_or_stop(m, cx),
-            B::Mod(e) => e.tick_or_stop(m, cx.w, cx.now),
-            B::Swim(t) => {
+            B::Gate(g) => g.tick_or_stop(m, cx),            B::Swim(t) => {
                 if t.timed_out(now) || !swim_condition(m) {
                     self.do_stop(m, cx);
                 } else if m.random.next_float() < 0.8 {
@@ -1794,9 +1753,7 @@ impl B {
         match self {
             B::AxolotlAction { .. } => {}
             B::PlayDead(t) => t.running = false,
-            B::Gate(g) => g.do_stop(m, cx),
-            B::Mod(e) => e.do_stop(m, cx.w),
-            B::Swim(t) | B::DoNothing(t) => t.running = false,
+            B::Gate(g) => g.do_stop(m, cx),            B::Swim(t) | B::DoNothing(t) => t.running = false,
             B::AnimalPanic { t, .. } => {
                 t.running = false;
                 mem(m).is_panicking.clear();
@@ -2789,61 +2746,6 @@ fn tadpole_package(seed: i64) -> Vec<Entry> {
         // Priority 3.
         e(3, Core, B::CountDownTemptation(Timed::new(60, 60))),
     ]
-}
-
-// ---- Mod behaviors ------------------------------------------------------
-
-/// The parts' behaviors for this brain (arismoko/horizon#824): each joins the list with its
-/// activity and priority, refused where this brain has no such activity.
-fn attach_behaviors(mob_id: &str, list: &mut Vec<Entry>) {
-    struct Reg<'a> {
-        list: &'a mut Vec<Entry>,
-        mob_id: &'a str,
-    }
-    impl mod_api::BehaviorRegistrarBackend for Reg<'_> {
-        fn add_behavior(
-            &mut self,
-            r: mod_api::RegisteredBehavior,
-        ) -> Result<(), mod_api::BehaviorRefusal> {
-            let act = act_of(r.activity)?;
-            self.list.push(Entry {
-                prio: r.priority,
-                act,
-                b: B::Mod(super::mod_behaviors::ModBehavior::new(r)),
-            });
-            Ok(())
-        }
-        fn mob_id(&self) -> &str {
-            self.mob_id
-        }
-    }
-    super::mod_behaviors::attach(mob_id, &mut Reg { list, mob_id });
-}
-
-/// This brain's slot for a mod-api activity.
-fn act_of(activity: mod_api::Activity) -> Result<Act, mod_api::BehaviorRefusal> {
-    use mod_api::Activity as A;
-    Ok(match activity {
-        A::Core => Act::Core,
-        A::Idle => Act::Idle,
-        A::Fight => Act::Fight,
-        A::PlayDead => Act::PlayDead,
-        A::Sniff => Act::Sniff,
-        A::Dig => Act::Dig,
-        A::Panic => Act::Panic,
-        other => return Err(mod_api::BehaviorRefusal::UnknownActivity(other)),
-    })
-}
-
-/// The list's `(prio, activity, is a mod's)` keys, in `Brain.tick`'s start
-/// order — the inspection the goal selector's `entries` gives goals' tests.
-pub fn entry_keys(m: &Mob) -> Option<Vec<(i32, Act, bool)>> {
-    brain(m).map(|b| {
-        b.list
-            .iter()
-            .map(|e| (e.prio, e.act, matches!(e.b, B::Mod(_))))
-            .collect()
-    })
 }
 
 fn axolotl_package(seed: i64) -> Vec<Entry> {

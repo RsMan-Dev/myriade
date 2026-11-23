@@ -91,18 +91,11 @@ impl Game<'_> {
     }
 
     fn registry_datapacks(&self, registry: &str) -> Option<Arc<mod_api::DatapackRegistrySet>> {
-        if self.is_logical_server() {
-            self.mods.datapack_registries.clone()
-        } else {
-            None
-        }
+        self.mods.datapack_registries.clone()
     }
 
     fn registry_sync(&self) -> Option<Arc<SyncData>> {
         self.native_lifecycle.epoch()?;
-        if !self.is_logical_server() {
-            return None;
-        }
         self.lan
             .as_ref()
             .map(|host| host.hub.lan.shared.sync())
@@ -133,7 +126,7 @@ impl Game<'_> {
     }
 
     fn registry_has_entry(&self, registry: &str, id: &str) -> bool {
-        if !self.is_logical_server() || self.native_lifecycle.epoch().is_none() {
+        if self.native_lifecycle.epoch().is_none() {
             return false;
         }
         if self
@@ -149,7 +142,7 @@ impl Game<'_> {
             return self.level(id).is_some();
         }
         if registry == "minecraft:trial_spawner" {
-            return horizon_client::mobs::trial_spawner::registry_contains(id).unwrap_or(false);
+            return horizon_client::trial_config::registry_contains(id).unwrap_or(false);
         }
         if let Some(found) = self
             .res
@@ -183,9 +176,6 @@ impl Game<'_> {
     /// `HolderLookup.listElements`, from the same owners used by `registry_entry`.
     pub(super) fn registry_entries(&self, registry: &str) -> Option<Vec<Identifier>> {
         let registry = normalized(registry);
-        if !self.is_logical_server() {
-            return None;
-        }
         {
             self.native_lifecycle.epoch()?;
         }
@@ -204,7 +194,7 @@ impl Game<'_> {
             );
         }
         if registry == "minecraft:trial_spawner" {
-            return identifiers(horizon_client::mobs::trial_spawner::registry_ids()?);
+            return identifiers(horizon_client::trial_config::registry_ids()?);
         }
         if let Some(entries) = self.res.behaviours().live_features().and_then(|features| {
             features

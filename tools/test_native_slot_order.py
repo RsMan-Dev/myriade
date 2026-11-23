@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dedicated native slot regression, called by the ignored launcher source-server test."""
+"""Dedicated native slot regression."""
 import argparse
 import os
 from pathlib import Path
@@ -22,8 +22,7 @@ def main():
     args = parser.parse_args()
     scratch = Path(tempfile.mkdtemp(prefix='slot-order-', dir=args.scratch))
     env = os.environ.copy()
-    for key in ['HORIZON_HOME', 'HORIZON_LAUNCHER_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME',
-                'HORIZON_LAUNCHER_TRASH', 'HORIZON_LAUNCHER_CLIPBOARD', 'HORIZON_LAUNCHER_DESKTOP']:
+    for key in ['HORIZON_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME']:
         env[key] = tempfile.mkdtemp(prefix=key.lower(), dir=scratch)
     env = lab.game_env(env)
     sysroot = subprocess.check_output(['rustc', '--print', 'sysroot'], text=True).strip()

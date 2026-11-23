@@ -44,7 +44,7 @@ DISCLOSURE = "> 🤖 Filed by the daily run."
 # daily.yml's leg jobs (each a called workflow), and the called workflows' own routing jobs, which test nothing.
 LEGS = ("shards", "wasm-mods", "fn-replace-check", "linkage", "windows-runtime-leases")
 HELPERS = ("plan", "route", "fresh", "gate")
-# Jobs of a called workflow that the daily run does not use: launcher-windows-check's push and pull-request tests,
+# Jobs of a called workflow that the daily run does not use: windows-runtime-leases' push and pull-request test,
 # and the wasm fixture, which needs the vanilla data and runs by dispatch only (wasm-mods.yml).
 NOT_DAILY = ("windows-runtime-leases / test", "wasm-mods / fixture")
 MAX_PAGES = 100

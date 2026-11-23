@@ -9,9 +9,6 @@ use horizon_client::block_pattern::{
     SNOW_GOLEM_BASE, SNOW_GOLEM_FULL,
 };
 
-#[cfg(test)]
-#[path = "tests/copper_golem_tests.rs"]
-mod copper_golem_tests;
 
 impl Game<'_> {
     fn golem_block(&self, p: [i32; 3]) -> &str {
@@ -102,7 +99,9 @@ impl Game<'_> {
         ];
         let id = self.create_triggered(kind, at, 0.0);
         // CarvedPumpkinBlock.trySpawnGolem: setPlayerCreated(true) on the iron golem.
-        // RESTE-SANS-ECS: `setPlayerCreated(true)` on the iron golem has no ECS write.
+        if let Some(id) = id.filter(|_| kind == "minecraft:iron_golem") {
+            self.ecs.set_player_created(id, true);
+        }
         self.trigger_summoned(id, 5.0);
         self.update_pattern_blocks(&blocks)
     }
@@ -397,3 +396,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "tests/copper_golem_tests.rs"]
+mod copper_golem_tests;

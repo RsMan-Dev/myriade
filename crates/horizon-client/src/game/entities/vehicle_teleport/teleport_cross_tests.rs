@@ -1,6 +1,6 @@
 //! `/tp` of hanging entities (`BlockAttachedEntity.setPos`) and of any entity
 //! kind into another dimension (`Entity.teleportCrossDimension`).
-use crate::game::{Audio, Dim, Game, Options, Progress, Settings, execution_role, load_resources};
+use crate::game::{Dim, Game, Options, Progress, Settings, execution_role, load_resources};
 use horizon_client::chunk::Chunk;
 use horizon_core::position::ChunkPos;
 use std::sync::Arc;
@@ -18,25 +18,24 @@ fn game() -> Game<'static> {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::DedicatedServer;
     let res: &'static _ = Box::leak(Box::new(loaded.resources));
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.reset_entity_residency();
     game.native_lifecycle
-        .begin_open(mod_api::Authority::IntegratedServer);
+        .begin_open(mod_api::Authority::DedicatedServer);
     game.build_registries();
     game.set_allow_commands(true);
     game.world

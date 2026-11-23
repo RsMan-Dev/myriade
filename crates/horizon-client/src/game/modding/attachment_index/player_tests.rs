@@ -34,7 +34,6 @@ fn snapshot(
 fn saved_placement_respawn_removal_and_reconnect_publish_player_rows() {
     with_guests(|game| {
         game.world_root = game.save.root.clone();
-        game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         let guests = &mut game.lan.as_mut().unwrap().hub.guests;
         VALUE
@@ -100,7 +99,6 @@ fn saved_placement_respawn_removal_and_reconnect_publish_player_rows() {
 #[ignore = "daily"]
 fn first_stores_bind_once_and_guest_turns_preserve_the_registration() {
     with_guests(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         let host: &mut dyn ServerHost = game;
         VALUE.set(host, Holder::Player(12), 7).unwrap();
@@ -140,7 +138,6 @@ fn first_stores_bind_once_and_guest_turns_preserve_the_registration() {
 #[ignore = "daily"]
 fn travel_moves_rows_before_guest_callbacks_and_keeps_captured_values() {
     with_guests(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         let host: &mut dyn ServerHost = game;
         VALUE.set(host, Holder::Player(12), 17).unwrap();
@@ -179,7 +176,6 @@ fn travel_moves_rows_before_guest_callbacks_and_keeps_captured_values() {
 #[ignore = "daily"]
 fn queued_level_teleport_moves_the_player_row_and_later_writes_stay_in_the_destination() {
     with_guests(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         let host: &mut dyn ServerHost = game;
         VALUE.set(host, Holder::Player(12), 21).unwrap();

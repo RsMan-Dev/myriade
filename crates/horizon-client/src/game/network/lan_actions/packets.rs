@@ -16,8 +16,7 @@ impl Game<'_> {
 
     pub(in crate::game) fn spawn_protection_for(&self, host: &LanHost, uuid: u128) -> Option<i32> {
         let radius = host.hub.spawn_protection;
-        (self.is_dedicated_server()
-            && radius > 0
+        (radius > 0
             && !host.hub.ops.is_empty()
             && !host.hub.ops.contains_key(&uuid))
         .then_some(radius)
@@ -930,9 +929,6 @@ impl Game<'_> {
                                     overlay: false,
                                 }));
                             }
-                        }
-                        if self.options.dedicated.is_none() && self.allow_commands() {
-                            self.system_message(message);
                         }
                     }
                 }

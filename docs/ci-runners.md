@@ -106,7 +106,7 @@ git push origin --delete try/<name>                           # when done
   the folder, 15 for the launcher's tests.
 - **Windows x64** (`-f windows=true`, `windows-x64`, on `windows-latest` as the release build): the game built as
   `game-build.yml` builds it, uploaded as the artifact `horizon-windows-x64` (kept 3 days): `horizon-client.exe`,
-  `horizon-ctl.exe`, `horizon-prepare.exe`, `horizon-server.exe`, `horizon-wasm-std.wasm` and DXC. No exporters (they
+  `horizon-prepare.exe`, `horizon-server.exe`, `horizon-wasm-std.wasm` and DXC. No exporters (they
   are compiled from Minecraft's jars on the Mac mini), so point it at resources an installed Horizon already prepared
   (`--resources`). Then the launcher's tests. It builds from scratch, with no Rust cache read or saved. The repository
   is public: anyone signed in to GitHub can download the artifact for its 3 days, so a try run is no private channel.

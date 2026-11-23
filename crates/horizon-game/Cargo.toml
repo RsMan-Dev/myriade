@@ -4,14 +4,22 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "The game as the platform runs it: the engine's entry with the platform's parts registered, for an executable to start (docs/layers.md)"
+description = "The dedicated server executable (`horizon-client`): the engine's entry with the platform's parts registered"
 
 [dependencies]
 horizon-guest-stack = { path = "../horizon-guest-stack" }
 horizon-client = { path = "../horizon-client", default-features = false }
 horizon-mod-package = { path = "../horizon-mod-package", default-features = false, features = ["index"] }
 
-horizon-mod-host = { path = "../horizon-mod-host", default-features = false }
+horizon-engine-slots = { path = "../horizon-engine-slots" }
+mod-points = { package = "horizon-mod-points", path = "../horizon-mod-points" }
+horizon-mod-wasm = { path = "../horizon-mod-wasm" }
+mod-api = { package = "horizon-mod-api", path = "../horizon-mod-api" }
+
+libloading = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
 
 [lints]
 workspace = true
@@ -24,22 +32,13 @@ path = "src/main.rs"
 test = false
 
 [features]
-# horizon-client/client-lib-default: one build of the game whether or not horizon-client-lib is also named.
-default = ["audio", "controllers", "horizon-extras", "horizon-client/client-lib-default"]
-audio = ["horizon-client/audio"]
-controllers = ["horizon-client/controllers"]
-horizon-extras = ["horizon-client/horizon-extras"]
+# horizon-client/client-lib-default: one build of the server whether or not horizon-client-lib is also named.
+default = ["horizon-client/client-lib-default"]
 testing = ["horizon-client/testing"]
-friends = ["horizon-client/friends"]
 rng-trace = ["horizon-client/rng-trace"]
 system-allocator = ["horizon-client/system-allocator"]
 alloc-census = ["horizon-client/alloc-census"]
 alloc-count = ["horizon-client/alloc-count"]
-windows-mimalloc = ["horizon-client/windows-mimalloc"]
-windows-segment-heap = ["horizon-client/windows-segment-heap"]
-
-[build-dependencies]
-winresource = "0.1"
 
 [dev-dependencies]
 horizon-protocol = { path = "../horizon-protocol" }

@@ -20,11 +20,8 @@ except ImportError:
 def child_env(scratch, resources=None):
     env = dict(os.environ)
     env.pop("HORIZON_TEST_RESOURCES", None)
-    for key, child in [("HORIZON_HOME", "home"), ("HORIZON_LAUNCHER_HOME", "launcher"),
-                       ("XDG_DATA_HOME", "xdg-data"), ("XDG_CONFIG_HOME", "xdg-config"),
-                       ("HORIZON_LAUNCHER_TRASH", "trash"),
-                       ("HORIZON_LAUNCHER_CLIPBOARD", "clipboard"),
-                       ("HORIZON_LAUNCHER_DESKTOP", "desktop")]:
+    for key, child in [("HORIZON_HOME", "home"),
+                       ("XDG_DATA_HOME", "xdg-data"), ("XDG_CONFIG_HOME", "xdg-config")]:
         env[key] = str(scratch / child)
     env = lab.game_env(env)
     if resources is not None:
@@ -33,7 +30,7 @@ def child_env(scratch, resources=None):
 
 
 def main():
-    resources = Path(os.environ.get("HORIZON_TEST_RESOURCES", lab.RESOURCES)).resolve()
+    resources =Path(os.environ.get("HORIZON_TEST_RESOURCES", lab.RESOURCES)).resolve()
     if not (resources / "movement-properties.nbt").exists():
         raise RuntimeError("Set HORIZON_TEST_RESOURCES to prepared pinned resources")
     build = lab.LOCAL / "tnt-portal-state-parity"

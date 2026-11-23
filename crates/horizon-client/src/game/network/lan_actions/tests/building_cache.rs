@@ -29,20 +29,19 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let res = resources.insert(loaded.resources);
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();
@@ -56,6 +55,7 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
             .unwrap();
     }
     assert!(game.run_command("fill 0 99 0 31 99 15 stone"));
+    // TODO(phase 2): la fixture ouvre son propre hub par lan_host après la pose (building_cache.rs:58) ; lan_guests_on en ouvrirait un second
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 100.0, 2.5)).unwrap());
     let net = NetConfig {
         announce: false,
@@ -79,7 +79,6 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
             allow_flight: false,
             seed: 0,
             max_players: 3,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         },

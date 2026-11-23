@@ -1,10 +1,10 @@
 //! Level reads for the block-breaking and trampling modules. Blocks come from the Mob's `MobWorld` (`blocks::world_of`), the
 //! flags from `Level` and `goals::mob_griefing`. A write is an event (`blocks::set_state`), applied at the next step.
 use crate::IFloor as _;
-use crate::blocks::{set_state, world_of};
-use crate::cow::{Bounds, Contact, Level, Vel};
+use crate::blocks::world_of;
+use crate::cow::{Bounds, Contact, Level, Pos, Vel};
 use crate::goals::mob_griefing;
-use crate::rules::level::{full_face_of, jump_speed};
+use crate::rules::level::{full_face_of, JUMP_POWER};
 use bevy_ecs::prelude::*;
 use horizon_client_render::collisions::projectile_can_stand_on;
 use horizon_core::geometry::{Aabb, Vec3};
@@ -58,9 +58,29 @@ pub fn is_on_ground(w: &World, e: Entity) -> bool {
     w.get::<Contact>(e).is_some_and(|c| c.on_ground)
 }
 pub fn jump(w: &mut World, e: Entity) {
-    if let Some(mut v) = w.get_mut::<Vel>(e) {
-        v.0.y = jump_speed(v.0.y);
+    let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };
+    let mw = w.resource::<Level>().mw.0;
+    // `Entity.getBlockJumpFactor`: the block at the feet, else the one 0.500001 below when the feet's is 1.
+    let feet = crate::block_factor::jump(mw, [p.x, p.y, p.z]);
+    let factor = if feet == 1.0 { crate::block_factor::jump(mw, [p.x, p.y - 0.500001, p.z]) } else { feet };
+    // `LivingEntity.getJumpPower`: 0.42 x the block factor, plus 0.1 x (level + 1) of jump boost (0 without the effect).
+    let boost = w
+        .get::<crate::effects::Effects>(e)
+        .and_then(|f| f.list.iter().find(|x| x.kind == crate::effects::Kind::JumpBoost))
+        .map_or(0.0, |x| f64::from(0.1_f32 * (x.amp + 1) as f32));
+    let power = JUMP_POWER * f64::from(factor) + boost;
+    // `jumpFromGround`: nothing when the power is not above 1e-5; else the vertical speed is the larger of the power and the current one.
+    if power <= 1e-5 {
+        return;
     }
+    if let Some(mut v) = w.get_mut::<Vel>(e) {
+        v.0.y = power.max(v.0.y);
+    }
+}
+/// The bounce restitution the block at `p` gives (`Block.getBounceRestitution`, from the data): 0 outside the loaded blocks.
+pub fn bounce_restitution(w: &World, p: BlockPos) -> f32 {
+    let mw = w.resource::<Level>().mw.0;
+    mw.movement.get(mw.world.block(p.x, p.y, p.z)).map_or(0.0, |m| m.coefficients.bounce_restitution)
 }
 /// The cells a creature asked the host to break, whose answer comes with the host's writes: `kept_check` jumps if none became air.
 #[derive(Component, Clone, Debug)]
@@ -81,18 +101,20 @@ fn kept_check(w: &mut World, e: Entity) {
         jump(w, e);
     }
 }
-/// Asks for the block at `p` to become air. The drop and the names of the breaker are not sent: no output for them yet. While a mod hears
-/// `LivingDestroyBlockEvent`, a creature's break goes to the host (`MiscEvent::DestroyAsk`), which writes the air unless a mod cancels.
-pub fn break_block(w: &mut World, p: [i32; 3], _drop: bool, _by: Option<Entity>, breaker: Option<Entity>) {
+/// `Level.destroyBlock(p, drop, breaker)`, done by the host (`HostEvent::BlockBreak`), which still reads the block broken. While a mod
+/// hears `LivingDestroyBlockEvent`, a creature's break is asked first (`MiscEvent::DestroyAsk`): the host breaks unless a mod cancels.
+pub fn break_block(w: &mut World, p: [i32; 3], drop: bool, _by: Option<Entity>, breaker: Option<Entity>) {
     if let Some(breaker) = breaker
         && asks_living_destroy_block(w)
     {
         w.get_resource_or_insert_with(crate::colony_register::MiscOut::default)
             .0
-            .push(crate::host_out_misc::MiscEvent::DestroyAsk { breaker, pos: p });
+            .push(crate::host_out_misc::MiscEvent::DestroyAsk { breaker, pos: p, drop });
         return;
     }
-    set_state(w, p, "minecraft:air", &[]);
+    if let Some(mut ev) = w.get_resource_mut::<crate::goals::Events>() {
+        ev.host.block_break(p, drop, breaker);
+    }
 }
 pub fn asks_living_destroy_block(w: &World) -> bool {
     world_of(w).asks_living_destroy_block

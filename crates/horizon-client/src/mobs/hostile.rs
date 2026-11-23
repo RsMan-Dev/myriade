@@ -215,7 +215,7 @@ impl Goal for SilverfishMergeWithStone {
                 (m.position.y + 0.5).floor() as i32 + d[1],
                 m.position.z.floor() as i32 + d[2],
             ];
-            if super::spawn_selection::infested_host(cx.w.block_name(pos[0], pos[1], pos[2])) {
+            if super::spawn_place::infested_host(cx.w.block_name(pos[0], pos[1], pos[2])) {
                 self.merge = Some(pos);
                 return true;
             }
@@ -230,7 +230,7 @@ impl Goal for SilverfishMergeWithStone {
         let Some(pos) = self.merge else {
             return self.stroll.start(m, cx);
         };
-        if super::spawn_selection::infested_host(cx.w.block_name(pos[0], pos[1], pos[2])) {
+        if super::spawn_place::infested_host(cx.w.block_name(pos[0], pos[1], pos[2])) {
             cx.events.push(MobEvent::Infest {
                 pos,
                 infested: true,

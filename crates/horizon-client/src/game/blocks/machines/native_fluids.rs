@@ -182,9 +182,6 @@ impl Game<'_> {
     /// What holds fluids at `pos` in the level in place: a mod block's tanks (its block
     /// entity's, and not the placeholder standing in while it ticks), or a cauldron.
     fn native_fluid_at(&self, pos: [i32; 3]) -> Option<FluidAt> {
-        if !self.native_simulates() {
-            return None;
-        }
         let key = (pos[0], pos[1], pos[2]);
         let state = self.world.block(pos[0], pos[1], pos[2]);
         if let Some(tanks) = self.world.block_entities.mod_fluids(state.0) {
@@ -547,7 +544,6 @@ mod tests {
         use horizon_client::chunk::Chunk;
         use mod_api::{BlockUpdateFlags, FLUIDS, move_resources};
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -664,7 +660,6 @@ mod tests {
                 .prepared()
                 .to_path_buf();
             with_game_at(root, |game| {
-                game.options.dedicated = Some(Vec::new());
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1056,7 +1051,6 @@ mod tests {
                 .prepared()
                 .to_path_buf();
             with_game_at(root, |game| {
-                game.options.dedicated = Some(Vec::new());
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

@@ -229,6 +229,20 @@ fn facts(world: &World, e: Entity) -> Option<LootEntity> {
         let id = if name.contains(':') { (*name).to_owned() } else { format!("minecraft:{name}") };
         (this.frog_variant, this.chicken_variant) = (Some(id.clone()), Some(id));
     }
+    let component = match this.kind.as_str() {
+        "minecraft:mooshroom" => Some(&crate::species::variants::MUSHROOM),
+        "minecraft:horse" => Some(&crate::species::variants::HORSE),
+        "minecraft:llama" | "minecraft:trader_llama" => Some(&crate::species::variants::LLAMA),
+        _ => None,
+    };
+    if let Some(name) = component.and_then(|t| crate::rules::variant::component_name(t, drawn)) {
+        let id = Some(format!("minecraft:{name}"));
+        match this.kind.as_str() {
+            "minecraft:mooshroom" => this.mooshroom_variant = id,
+            "minecraft:horse" => this.horse_variant = id,
+            _ => this.llama_variant = id,
+        }
+    }
     this.cube_size = world.get::<crate::size::Size>(e).map(|s| s.0);
     this.powered = world.get::<crate::explosion::Charged>(e).is_some();
     // `Raider.isCaptain`: the ominous banner on its head.
@@ -361,7 +375,9 @@ pub fn on_death(world: &mut World, e: Entity) -> Vec<&'static str> {
     if let Some(h) = world.get::<crate::goals::HandStack>(e).and_then(|h| h.0.clone()) {
         out.push(h);
     }
-    out.extend(crate::mount_inventory::death_stacks(world, e));
+    let table = tables(world).then(|| world.resource::<LootTables>().0.clone());
+    // `dropEquipment`: a stack the table prevents from dropping (a vanishing curse) stays with the mount.
+    out.extend(crate::mount_inventory::death_stacks(world, e).into_iter().filter(|s| !table.as_ref().is_some_and(|t| t.prevents_equipment_drop(&loot_stack(s)))));
     let uid = world.get::<crate::goals::Uid>(e).map_or(0, |u| u.0 as i32);
     let mut r = LegacyRandom::new(death_seed(seed, uid));
     // `shouldDropLoot`: the table and `dropCustomDeathLoot` (the equipment) need an adult (or a species that keeps its babies' loot) and
@@ -386,6 +402,8 @@ pub fn on_death(world: &mut World, e: Entity) -> Vec<&'static str> {
         let damage = damage_of(world, e);
         out.extend(roll_params(world, EntityLootParams { this: this.clone(), damage: damage.clone(), player: killer, luck }, seed));
         out.extend(equipment_stacks(world, e, this, damage, &mut r));
+        // `Piglin.dropCustomDeathLoot` (inside `shouldDropLoot`): the inventory goes whole, after the table.
+        out.extend(crate::item_store::death_stacks(world, e));
     }
     let mut names = Vec::with_capacity(out.len());
     for stack in out {

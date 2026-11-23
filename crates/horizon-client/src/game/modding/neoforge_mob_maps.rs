@@ -183,9 +183,6 @@ impl Game<'_> {
     /// Generation workers pin one world-owned snapshot per finalization, not
     /// a process-global last-loaded world. In-flight work retains its snapshot.
     pub(in crate::game) fn share_mob_maps(&self) {
-        if !self.options.execution_role.is_logical_server() {
-            return;
-        }
         let snapshot = self.mob_map_snapshot();
         if let Some(terrain) = self.end.locator() {
             terrain.set_mob_maps(snapshot);

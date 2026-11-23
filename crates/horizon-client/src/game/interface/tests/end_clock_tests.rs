@@ -1,6 +1,6 @@
 //! `/time` addresses the clock the End runs on: the one `World.end_clock`
 //! ticks and `world_clocks.dat` saves (`ServerClockManager.getInstance`).
-use crate::game::{Audio, Dim, Game, Options, Progress, Settings, execution_role, load_resources};
+use crate::game::{Dim, Game, Options, Progress, Settings, execution_role, load_resources};
 use crate::save::Level;
 
 fn game() -> Game<'static> {
@@ -16,20 +16,19 @@ fn game() -> Game<'static> {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::DedicatedServer;
     let res: &'static _ = Box::leak(Box::new(loaded.resources));
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();

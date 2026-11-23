@@ -17,31 +17,14 @@ struct Endpoint {
 impl Forward for Endpoint {
     fn forward(&self, id: u32, host: PointHost<'_>, record: &mut dyn mod_api::wire::Record) {
         let mut frame = Frame::default();
-        let mut side = None;
         match host {
             PointHost::Read(host) => frame.set_host(host),
             PointHost::Server(host) => frame.set_server_host_mut(host),
             PointHost::Client(host) => frame.set_client_host_mut(host),
-            PointHost::Side(mod_api::HostSide::Server(host)) => {
-                side = Some(true);
-                frame.set_server_host_mut(host);
-            }
-            PointHost::Side(mod_api::HostSide::Client(host)) => {
-                side = Some(false);
-                frame.set_client_host_mut(host);
-            }
+            PointHost::Side(mod_api::HostSide::Server(host)) => frame.set_server_host_mut(host),
             PointHost::None => {}
         }
-        self.invoke(
-            frame,
-            id,
-            |out| {
-                if let Some(server) = side {
-                    out.put(&server);
-                }
-            },
-            record,
-        );
+        self.invoke(frame, id, record);
     }
 }
 
@@ -50,7 +33,6 @@ impl Endpoint {
         &self,
         frame: Frame,
         id: u32,
-        prefix: impl FnOnce(&mut mod_api::wire::Writer),
         record: &mut dyn mod_api::wire::Record,
     ) {
         let record = RefCell::new(record);
@@ -61,7 +43,6 @@ impl Endpoint {
             None,
             |out| {
                 out.put(&self.listener);
-                prefix(out);
                 record.borrow().encode(out);
             },
             |input| {

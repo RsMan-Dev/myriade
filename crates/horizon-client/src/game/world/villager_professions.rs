@@ -86,6 +86,7 @@ impl Game<'_> {
                         .join("; ")
                 )
             })?;
+        candidate.add_secondary_tags(&items.block_tags);
         if !declarations.is_empty() {
             candidate.workstation_pois = (0..self.pack.assets.registry.len())
                 .map(|index| {

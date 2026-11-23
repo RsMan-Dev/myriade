@@ -12,6 +12,8 @@
 # HORIZON_SDK_TRUSTED_KEY, which only a launcher built with debug_assertions trusts (horizon_release_sign::sdk_keys_for);
 # a published release needs no key. With RESOURCES (a prepared `horizon-client/26.3` folder), the server starts, takes `/tick` commands
 # and stops; every mixin helper prints a line starting `fnr:`.
+echo "fn_replace_check: le lanceur (native-build) n'existe plus ; à rebrancher sur l'outil de construction des mods natifs du serveur" >&2
+exit 1
 set -euo pipefail
 launcher=$(realpath "$1")
 sdk_base=$(realpath "$2")
@@ -61,7 +63,7 @@ for mod in ${FNR_MODS:-alpha beta}; do
   cp -r "${FNR_MOD_ROOT:-$root/tools/ci/fn-replace-check}/$mod" "$mods/fnr_$mod"
   sed -i "s/^horizon = \"HEAD\"$/horizon = \"$revision\"/; s/^mixins = \"MIXINS\"$/mixins = \"$mixins\"/" "$mods/fnr_$mod/horizon-mod.toml"
 done
-# The game library (libhorizon_mod_host.so / .dylib, or horizon_mod_host.dll on Windows): its SHA-256 in the SDK's
+# The game library (libhorizon_game.so / .dylib, or horizon_game.dll on Windows): its SHA-256 in the SDK's
 # runtime archive for this side, which the unpacked copy must still match once the mods are built.
 game_hash=$(python3 - "$release" "$side" <<'PYGAME'
 import hashlib, os, sys, tarfile
@@ -74,17 +76,16 @@ if target:
     archives = [a for a in archives if a.name == f"runtime-{target}{suffix}.tar.xz"]
 assert len(archives) == 1, f"one runtime archive for {target or 'the host'}/{side}, found {[a.name for a in archives]}; set FNR_TARGET when using a complete SDK"
 with tarfile.open(archives[0], "r:xz") as tar:
-    names = [m for m in tar.getmembers() if m.isfile() and Path(m.name).name.endswith(("horizon_mod_host.so", "horizon_mod_host.dylib", "horizon_mod_host.dll"))]
+    names = [m for m in tar.getmembers() if m.isfile() and Path(m.name).name.endswith(("horizon_game.so", "horizon_game.dylib", "horizon_game.dll"))]
     assert len(names) == 1, f"one game library, found {[m.name for m in names]}"
     print(hashlib.sha256(tar.extractfile(names[0]).read()).hexdigest())
 PYGAME
 )
-game_library() { find "$data/native/prebuilt/$revision"-* -type f \( -name '*horizon_mod_host.so' -o -name '*horizon_mod_host.dylib' -o -name '*horizon_mod_host.dll' \) | head -1; }
+game_library() { find "$data/native/prebuilt/$revision"-* -type f \( -name '*horizon_game.so' -o -name '*horizon_game.dylib' -o -name '*horizon_game.dll' \) | head -1; }
 
-env_vars=(HORIZON_HOME="$scratch/home" HORIZON_LAUNCHER_HOME="$data" XDG_DATA_HOME="$scratch/data"
-  XDG_CONFIG_HOME="$scratch/config" HORIZON_LAUNCHER_NO_SELF_UPDATE=1 HORIZON_NO_AUDIO=1
-  HORIZON_LAUNCHER_TRASH="$scratch/trash" HORIZON_LAUNCHER_CLIPBOARD="$scratch/clipboard"
-  HORIZON_LAUNCHER_DESKTOP="$scratch/desktop" HORIZON_NATIVE_CARGO_TIMINGS=1 HORIZON_SDK_BASE="$sdk_base")
+env_vars=(HORIZON_HOME="$scratch/home" XDG_DATA_HOME="$scratch/data"
+  XDG_CONFIG_HOME="$scratch/config" HORIZON_NO_AUDIO=1
+  HORIZON_NATIVE_CARGO_TIMINGS=1 HORIZON_SDK_BASE="$sdk_base")
 started=$(date +%s.%N)
 output_args=()
 if [ -n "${FNR_MIXINS_FROM_SOURCE:-}" ]; then

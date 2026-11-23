@@ -610,7 +610,7 @@ impl Section {
     }
 }
 /// The heap bytes of a set of columns by what holds them (`Chunk::census`,
-/// `horizon-ctl memory`).
+/// `the control socket's memory command`).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ColumnCensus {
     pub columns: usize,

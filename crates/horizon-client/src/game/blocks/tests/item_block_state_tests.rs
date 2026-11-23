@@ -32,6 +32,7 @@ fn property(game: &Game<'_>, pos: [i32; 3], key: &str) -> Option<String> {
         .and_then(|s| s.properties.get(key).cloned())
 }
 
+// TODO(phase 2): joueur local retiré — à faire agir par un joueur connecté (as_guest).
 /// The component's write runs with flag 2, so the powered lever it leaves does
 /// not light the lamp beside it; the ordinary placement that follows (flag 11)
 /// does, which is what tells the two writes apart.
@@ -42,7 +43,6 @@ fn a_block_state_component_does_not_update_neighbours() {
     const BESIDE: [i32; 3] = [2, 4, 1];
     let mut resources = None;
     let mut game = server_game(&mut resources);
-    game.options.dedicated = None;
     game.set_mode(GameMode::Creative);
     let lamp = game
         .pack

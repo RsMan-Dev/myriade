@@ -47,8 +47,7 @@ impl Game<'_> {
         if self.entity_ids_exhausted() {
             return false;
         }
-        if (self.serving.is_none() && self.options.dedicated.is_none())
-            || dimension != self.dim.id()
+        if dimension != self.dim.id()
             || self.pack.assets.registry.state(state).is_none()
             || self.res.facts().is_air(state)
             || self.ecs.species_count("minecraft:falling_block") >= NATIVE_FALLING_MAX

@@ -894,7 +894,7 @@ impl Game<'_> {
     /// so a killed entity and a later summon of the same UUID can both be
     /// in it; the one the level still holds is the entity.
     pub(in crate::game) fn target_with_uuid(&self, uuid: [i32; 4]) -> Option<Target> {
-        if is_player_in_place(uuid, self.lan_acting_uuid, self.level.player_uuid) {
+        if is_player_in_place(uuid, self.lan_acting_uuid) {
             if self.native_command_filter {
                 return self
                     .player(horizon_client::lan::playerdata::ints_uuid(uuid))
@@ -1258,17 +1258,10 @@ impl Game<'_> {
     }
 }
 
-/// Whether `uuid` is the player in place (`Target::Player`): during a guest's turn that is the guest, not the
-/// level's own player (the world owner), whom `Level.getEntity(UUID)` finds only while they are in the level.
-fn is_player_in_place(
-    uuid: [i32; 4],
-    acting: Option<u128>,
-    level_player: Option<[i32; 4]>,
-) -> bool {
-    match acting {
-        Some(guest) => horizon_client::lan::playerdata::ints_uuid(uuid) == guest,
-        None => Some(uuid) == level_player,
-    }
+/// Whether `uuid` is the player in place (`Target::Player`): during a guest's turn that is the guest,
+/// and outside one nobody is (a dedicated server has no player of its own).
+fn is_player_in_place(uuid: [i32; 4], acting: Option<u128>) -> bool {
+    acting.is_some_and(|guest| horizon_client::lan::playerdata::ints_uuid(uuid) == guest)
 }
 
 #[cfg(test)]
@@ -1282,19 +1275,17 @@ mod tests {
     /// A owns the world, B is a guest: the sequence of one command each way.
     #[test]
     fn the_owners_uuid_is_not_the_guest_in_place() {
-        // A's own command, or the single-player one: no guest in place, the level's player is.
-        assert!(is_player_in_place(OWNER, None, Some(OWNER)));
-        assert!(!is_player_in_place(GUEST, None, Some(OWNER)));
+        // Outside a turn, no guest is in place, the owner included.
+        assert!(!is_player_in_place(OWNER, None));
+        assert!(!is_player_in_place(GUEST, None));
         // B's turn: only B is in place, the owner's UUID names someone else.
         let b = Some(ints_uuid(GUEST));
-        assert!(is_player_in_place(GUEST, b, Some(OWNER)));
-        assert!(!is_player_in_place(OWNER, b, Some(OWNER)));
+        assert!(is_player_in_place(GUEST, b));
+        assert!(!is_player_in_place(OWNER, b));
         // A's own turn as a guest of an integrated server.
         let a = Some(ints_uuid(OWNER));
-        assert!(is_player_in_place(OWNER, a, Some(OWNER)));
-        assert!(!is_player_in_place(GUEST, a, Some(OWNER)));
-        // No level player at all (a dedicated server): nobody is in place without a guest.
-        assert!(!is_player_in_place(OWNER, None, None));
+        assert!(is_player_in_place(OWNER, a));
+        assert!(!is_player_in_place(GUEST, a));
     }
 }
 
@@ -1505,7 +1496,7 @@ mod passenger_relation_tests {
 #[cfg(test)]
 mod terminal_fork_tests {
     use super::Game;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use horizon_client::chunk::Chunk;
     use horizon_core::position::ChunkPos;
     use std::sync::Arc;
@@ -1536,20 +1527,19 @@ mod terminal_fork_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.game_dir = Some(std::env::current_dir().unwrap().join("game"));
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();

@@ -1,15 +1,14 @@
-//! Local control socket: lets a script or `horizon-ctl` drive a running game.
+//! Local control socket: lets the supervisor and scripts drive a running server.
 //!
 //! Each connection sends commands as text lines and receives one JSON line per
-//! command. Commands are executed on the game thread between frames; replies
-//! that depend on a later frame (screenshots, benchmarks) arrive when ready.
+//! command. Commands are executed on the game thread between ticks; replies
+//! that depend on a later tick arrive when ready.
 //!
 //! Two transports carry the same lines. On Linux and macOS the endpoint is a
 //! Unix domain socket. Where those don't exist (Windows), or when the endpoint
 //! path ends in `.json`, the game listens on a random localhost TCP port and
 //! writes `{"transport":"tcp","port":N,"token":"..."}` to the path, readable
 //! only by its user; a client's first line must then be `auth TOKEN`.
-use horizon_threads::alloc_count::{Counts, ON};
 use std::{
     io::{self, BufRead, BufReader, Read, Write},
     net::{Ipv4Addr, TcpListener, TcpStream},
@@ -20,7 +19,6 @@ use std::{
         mpsc,
     },
     thread,
-    time::Instant,
 };
 
 #[cfg(unix)]
@@ -143,7 +141,7 @@ pub struct Server {
     path: PathBuf,
     requests: mpsc::Receiver<Request>,
     sender: mpsc::Sender<Request>,
-    /// Clients connected now (an MCP server keeps one open; horizon-ctl one per command).
+    /// Clients connected now.
     clients: Arc<AtomicUsize>,
     /// Set when the server is dropped: the listener stops accepting and exits.
     closed: Arc<AtomicBool>,
@@ -170,7 +168,7 @@ pub fn default_path() -> PathBuf {
 /// Without `$XDG_RUNTIME_DIR` (containers, some WSL and minimal setups), when the temporary
 /// directory is shared by every user (`/tmp`), a folder of this user's own in it,
 /// `horizon-<uid>`: a fixed name there let another user bind the socket first, so that
-/// `--control` failed and `horizon-ctl` talked to theirs. [`private_dir`] checks it before the
+/// `--control` failed and a client talked to theirs. [`private_dir`] checks it before the
 /// socket is made or reached. A temporary directory of the user's own (macOS's `$TMPDIR`) is
 /// used as it is. The launcher finds the endpoint the same way (`game_tools.rs`).
 fn fallback_dir() -> Option<PathBuf> {
@@ -310,18 +308,6 @@ impl Server {
             closed,
             port: tcp_port,
         })
-    }
-    /// Commands from inside the process only (`--benchmark` without `--control`).
-    pub fn local() -> Self {
-        let (sender, requests) = mpsc::channel();
-        Self {
-            path: PathBuf::new(),
-            requests,
-            sender,
-            clients: Arc::default(),
-            closed: Arc::default(),
-            port: None,
-        }
     }
     /// How many clients are connected.
     pub fn clients(&self) -> usize {
@@ -498,7 +484,6 @@ mod tests {
     }
 
     use super::*;
-    use std::time::Duration;
 
     /// The check agrees with the system at every length around its limit.
     #[cfg(unix)]
@@ -536,7 +521,7 @@ mod tests {
     #[ignore = "daily"]
     fn tcp_endpoint_round_trip() {
         let path =
-            std::env::temp_dir().join(format!("horizon-ctl-test-{}.json", std::process::id()));
+            std::env::temp_dir().join(format!("horizon-control-test-{}.json", std::process::id()));
         let server = Server::start(&path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("\"tcp\""));
@@ -562,7 +547,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_request_longer_than_the_limit_is_refused() {
         let path =
-            std::env::temp_dir().join(format!("horizon-ctl-long-{}.json", std::process::id()));
+            std::env::temp_dir().join(format!("horizon-control-long-{}.json", std::process::id()));
         let server = Server::start(&path).unwrap();
         let client = connect(&path).unwrap();
         let mut writing = client.try_clone().unwrap();
@@ -591,7 +576,7 @@ mod tests {
     #[ignore = "daily"]
     fn tcp_refuses_a_wrong_token() {
         let path =
-            std::env::temp_dir().join(format!("horizon-ctl-bad-{}.json", std::process::id()));
+            std::env::temp_dir().join(format!("horizon-control-bad-{}.json", std::process::id()));
         let _server = Server::start(&path).unwrap();
         let (port, _) = read_endpoint(&path).unwrap();
         let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
@@ -606,298 +591,5 @@ mod tests {
         assert_ne!(random_token(), random_token());
         assert_eq!(random_token().len(), 32);
         assert!(same_token("abc", "abc") && !same_token("abc", "abd") && !same_token("a", "ab"));
-    }
-
-    #[test]
-    fn the_series_cover_every_frame_the_summary_counts() {
-        let mut stats = FrameStats::default();
-        for ms in [4.0, 5.0, 6.0] {
-            stats.record(ms);
-            stats.record_cpu(ms / 2.0);
-        }
-        let mut summary = stats.summary();
-        assert!(summary.get("frame_ms").is_none());
-        stats.add_series(&mut summary);
-        assert_eq!(summary["frame_ms"], serde_json::json!([4.0, 5.0, 6.0]));
-        assert_eq!(summary["cpu_ms"], serde_json::json!([2.0, 2.5, 3.0]));
-        assert_eq!(summary["gpu_ms"], serde_json::json!([]));
-        assert_eq!(summary["frames"], 3);
-    }
-
-    fn counts(allocs: u64, bytes: u64, frees: u64, freed: u64) -> Counts {
-        Counts {
-            allocs,
-            bytes,
-            frees,
-            freed,
-        }
-    }
-
-    #[test]
-    fn allocations_are_summarized_per_frame_and_per_second() {
-        let mut stats = FrameStats::default();
-        let start = Instant::now();
-        for (i, a) in [100u64, 200, 300, 400, 1000].into_iter().enumerate() {
-            // Window: 10 blocks kept; process: twice the blocks, 1 MiB per 100, 20 blocks and 1 MiB kept.
-            let window = counts(a, a * 1024, a - 10, 0);
-            let all = counts(
-                2 * a,
-                (2 * a / 100) << 20,
-                2 * a - 20,
-                ((2 * a / 100) - 1) << 20,
-            );
-            stats.record_allocs(window, all, start + Duration::from_millis(100 * i as u64));
-        }
-        let alloc = stats.alloc_summary();
-        let window = &alloc["window_thread"];
-        assert_eq!(window["allocs_per_frame"]["avg"], 400.0);
-        assert_eq!(window["allocs_per_frame"]["p50"], 300.0);
-        assert_eq!(window["allocs_per_frame"]["p95"], 1000.0);
-        assert_eq!(window["allocs_per_frame"]["max"], 1000.0);
-        assert_eq!(window["kib_per_frame"]["p50"], 300.0);
-        assert_eq!(window["frees_per_frame_avg"], 390.0);
-        // The first frame only starts the clock: the rates cover the four after it, 0.4 s.
-        let process = &alloc["process"];
-        assert_eq!(process["allocs_per_s"], 9500.0);
-        assert_eq!(process["frees_per_s"], 9300.0);
-        assert_eq!(process["mib_per_s"], 95.0);
-        assert_eq!(process["net_mib"], 4.0);
-        assert_eq!(stats.alloc_counts(), [100, 200, 300, 400, 1000]);
-    }
-
-    #[test]
-    fn one_frame_has_counts_but_no_rate() {
-        let mut stats = FrameStats::default();
-        stats.record_allocs(counts(5, 64, 5, 64), counts(9, 99, 9, 99), Instant::now());
-        let alloc = stats.alloc_summary();
-        assert_eq!(alloc["window_thread"]["allocs_per_frame"]["max"], 5.0);
-        assert!(alloc["process"]["allocs_per_s"].is_null());
-        assert!(FrameStats::default().alloc_summary().is_null());
-    }
-
-    #[test]
-    fn the_summary_has_alloc_only_when_the_game_counts() {
-        let mut stats = FrameStats::default();
-        stats.record(10.0);
-        stats.record_allocs(counts(5, 64, 5, 64), Counts::default(), Instant::now());
-        assert_eq!(stats.summary()["alloc"].is_null(), !ON);
-        stats.reset();
-        assert!(stats.alloc_counts().is_empty() && stats.alloc_summary().is_null());
-    }
-}
-
-/// Frame durations since the last reset, summarized like the Java recorder,
-/// with the CPU part of each frame and GPU times from timestamp queries.
-#[derive(Default)]
-pub struct FrameStats {
-    millis: Vec<f32>,
-    cpu: Vec<f32>,
-    gpu: Vec<f32>,
-    /// Milliseconds per frame phase (`PHASES`), one entry per rendered frame.
-    phases: Vec<[f32; PHASES.len()]>,
-    /// Window-thread allocations and bytes of each rendered frame (`alloc-count` builds).
-    allocs: Vec<u32>,
-    alloc_bytes: Vec<u64>,
-    /// Window-thread frees summed over the frames in `allocs`.
-    alloc_frees: u64,
-    /// When the first and the last frame since the reset were recorded.
-    alloc_span: Option<(Instant, Instant)>,
-    /// All threads' counts over the frames after the first, the time base of the rates.
-    alloc_process: Counts,
-}
-
-/// The parts of a frame's CPU time: world streaming and uploads, game ticks,
-/// building the frame's geometry and HUD, and the renderer's own work.
-pub const PHASES: [&str; 4] = ["update", "tick", "prepare", "render"];
-
-fn percentiles(values: &[f32]) -> serde_json::Value {
-    let mut sorted = values.to_vec();
-    sorted.sort_by(f32::total_cmp);
-    let n = sorted.len();
-    if n == 0 {
-        return serde_json::Value::Null;
-    }
-    let total: f64 = sorted.iter().map(|&m| f64::from(m)).sum();
-    let percentile = |p: f64| sorted[((n as f64 * p).ceil() as usize).clamp(1, n) - 1];
-    serde_json::json!({
-        "avg_ms": total / n as f64,
-        "p50_ms": percentile(0.5),
-        "p95_ms": percentile(0.95),
-        "p99_ms": percentile(0.99),
-        "max_ms": sorted[n - 1],
-    })
-}
-
-impl FrameStats {
-    const LIMIT: usize = 1 << 20;
-    pub fn record(&mut self, millis: f32) {
-        if self.millis.len() < Self::LIMIT {
-            self.millis.push(millis);
-        }
-    }
-    /// The frame's own work: its duration minus waits for the GPU, the
-    /// display and the frame limiter.
-    pub fn record_cpu(&mut self, millis: f32) {
-        if self.cpu.len() < Self::LIMIT {
-            self.cpu.push(millis);
-        }
-    }
-    pub fn record_phases(&mut self, millis: [f32; PHASES.len()]) {
-        if self.phases.len() < Self::LIMIT {
-            self.phases.push(millis);
-        }
-    }
-    /// Average milliseconds per phase over the frames whose CPU time is at
-    /// least `min_cpu` (all frames for 0): where the slow frames go.
-    fn phase_average(&self, min_cpu: f32) -> serde_json::Value {
-        let mut sums = [0.0f64; PHASES.len()];
-        let mut n = 0;
-        for (i, phases) in self.phases.iter().enumerate() {
-            if self.cpu.get(i).is_some_and(|&c| c >= min_cpu) {
-                for (sum, m) in sums.iter_mut().zip(phases) {
-                    *sum += f64::from(*m);
-                }
-                n += 1;
-            }
-        }
-        PHASES
-            .iter()
-            .zip(sums)
-            .map(|(name, sum)| (name.to_string(), (sum / f64::from(n.max(1))).into()))
-            .collect::<serde_json::Map<_, _>>()
-            .into()
-    }
-    pub fn record_gpu(&mut self, millis: &[f32]) {
-        if self.gpu.len() < Self::LIMIT {
-            self.gpu.extend_from_slice(millis);
-        }
-    }
-    /// Adds every frame's time (`frame_ms`, `cpu_ms`, `gpu_ms`) to a summary.
-    pub fn add_series(&self, summary: &mut serde_json::Value) {
-        summary["frame_ms"] = self.millis.clone().into();
-        summary["cpu_ms"] = self.cpu.clone().into();
-        summary["gpu_ms"] = self.gpu.clone().into();
-    }
-    /// One frame's allocations: this thread's since the last frame, all threads' since then.
-    pub fn record_allocs(&mut self, window: Counts, process: Counts, now: Instant) {
-        if self.allocs.len() < Self::LIMIT {
-            self.allocs
-                .push(u32::try_from(window.allocs).unwrap_or(u32::MAX));
-            self.alloc_bytes.push(window.bytes);
-            self.alloc_frees += window.frees;
-        }
-        match &mut self.alloc_span {
-            None => self.alloc_span = Some((now, now)),
-            Some((_, last)) => {
-                *last = now;
-                let sum = &mut self.alloc_process;
-                sum.allocs += process.allocs;
-                sum.bytes += process.bytes;
-                sum.frees += process.frees;
-                sum.freed += process.freed;
-            }
-        }
-    }
-    /// Window-thread allocations of every recorded frame, in order.
-    pub fn alloc_counts(&self) -> &[u32] {
-        &self.allocs
-    }
-    /// Window-thread bytes allocated in every recorded frame, in order.
-    pub fn alloc_bytes(&self) -> &[u64] {
-        &self.alloc_bytes
-    }
-    /// The `alloc` object of [`summary`](Self::summary), `null` before a frame was recorded.
-    fn alloc_summary(&self) -> serde_json::Value {
-        let n = self.allocs.len();
-        if n == 0 {
-            return serde_json::Value::Null;
-        }
-        let round = |v: f64| (v * 10.0).round() / 10.0;
-        let stats = |mut values: Vec<f64>| {
-            values.sort_by(f64::total_cmp);
-            let pick = |p: f64| values[((n as f64 * p).ceil() as usize).clamp(1, n) - 1];
-            serde_json::json!({
-                "avg": round(values.iter().sum::<f64>() / n as f64),
-                "p50": round(pick(0.5)),
-                "p95": round(pick(0.95)),
-                "max": round(values[n - 1]),
-            })
-        };
-        let per_second =
-            |amount: u64, seconds: f64| (seconds > 0.0).then(|| round(amount as f64 / seconds));
-        let seconds = self.alloc_span.map_or(0.0, |(first, last)| {
-            last.duration_since(first).as_secs_f64()
-        });
-        let mib = |bytes: u64| bytes as f64 / 1048576.0;
-        let process = &self.alloc_process;
-        serde_json::json!({
-            "window_thread": {
-                "allocs_per_frame": stats(self.allocs.iter().map(|&a| f64::from(a)).collect()),
-                "kib_per_frame": stats(self.alloc_bytes.iter().map(|&b| b as f64 / 1024.0).collect()),
-                "frees_per_frame_avg": round(self.alloc_frees as f64 / n as f64),
-            },
-            "process": {
-                "allocs_per_s": per_second(process.allocs, seconds),
-                "mib_per_s": (seconds > 0.0).then(|| round(mib(process.bytes) / seconds)),
-                "frees_per_s": per_second(process.frees, seconds),
-                "net_mib": round(mib(process.bytes) - mib(process.freed)),
-            },
-        })
-    }
-    pub fn reset(&mut self) {
-        self.millis.clear();
-        self.cpu.clear();
-        self.gpu.clear();
-        self.phases.clear();
-        self.allocs.clear();
-        self.alloc_bytes.clear();
-        self.alloc_frees = 0;
-        self.alloc_span = None;
-        self.alloc_process = Counts::default();
-    }
-    pub fn summary(&self) -> serde_json::Value {
-        let mut sorted = self.millis.clone();
-        sorted.sort_by(f32::total_cmp);
-        let n = sorted.len();
-        if n == 0 {
-            return serde_json::json!({ "frames": 0 });
-        }
-        let total: f64 = sorted.iter().map(|&m| f64::from(m)).sum();
-        let percentile = |p: f64| sorted[((n as f64 * p).ceil() as usize).clamp(1, n) - 1];
-        // Average frame time of the slowest 1% (0.1%) of frames, as frames per second.
-        let low = |per: usize| {
-            let slowest = n.div_ceil(per);
-            let slow: f64 = sorted[n - slowest..]
-                .iter()
-                .map(|&m| f64::from(m))
-                .sum::<f64>()
-                / slowest as f64;
-            1000.0 / slow
-        };
-        // Where the slowest 1% of frames by CPU time go.
-        let slow_phases = {
-            let mut cpu = self.cpu.clone();
-            cpu.sort_by(f32::total_cmp);
-            let p99 = cpu
-                .get(cpu.len().saturating_sub(cpu.len().div_ceil(100)))
-                .copied();
-            p99.map_or(serde_json::Value::Null, |p| self.phase_average(p))
-        };
-        serde_json::json!({
-            "frames": n,
-            "seconds": total / 1000.0,
-            "avg_fps": n as f64 * 1000.0 / total,
-            "low_1pct_fps": low(100),
-            "low_01pct_fps": low(1000),
-            "p50_ms": percentile(0.5),
-            "p95_ms": percentile(0.95),
-            "p99_ms": percentile(0.99),
-            "max_ms": sorted[n - 1],
-            "cpu": percentiles(&self.cpu),
-            "gpu": percentiles(&self.gpu),
-            "phases_avg_ms": self.phase_average(0.0),
-            "slow_phases_avg_ms": slow_phases,
-                                                                                                "alloc": if ON { self.alloc_summary() } else { serde_json::Value::Null },
-        })
     }
 }

@@ -149,7 +149,6 @@ mod tests {
                 let registry = game.pack.assets.registry;
                 let transforms = game.state_transforms().unwrap();
                 // A server resolves its parts against its tags and publishes them.
-                game.options.dedicated = Some(Vec::new());
                 game.resolve_parts().unwrap();
                 let index = native_worldgen_parts::index().unwrap();
                 *OTHER.lock().unwrap_or_else(PoisonError::into_inner) = index

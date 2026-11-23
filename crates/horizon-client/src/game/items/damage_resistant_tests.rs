@@ -1,7 +1,8 @@
 //! The effective damage-resistant component at its actual item-damage callers.
 use super::*;
-use crate::game::native_entity_refs::tests::{with_game, with_game_at};
-use horizon_client::{chunk::Chunk, motion::PlayerMotion};
+use crate::game::native_entity_refs::tests::with_game;
+use crate::game::native_guest_turn_tests::{with_acting_guest, with_acting_guest_on, with_guests_at};
+use horizon_client::chunk::Chunk;
 use horizon_core::{geometry::Vec3, position::BlockPos};
 
 fn stack(input: &str) -> ItemStack {
@@ -29,13 +30,11 @@ fn stack(input: &str) -> ItemStack {
     stack
 }
 
-fn prepare(game: &mut Game<'_>) {
-    game.options.dedicated = Some(Vec::new());
+fn prepare_terrain(game: &mut Game<'_>) {
     game.world = World::new(game.res.facts().air, 1);
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 70.0, 8.5)).unwrap());
     game.update_chunk_tickets();
     assert!(game.entity_ticking_area()(4, 4));
 }
@@ -115,8 +114,8 @@ fn effective_resistance_matches_the_six_stack_five_damage_table() {
 #[test]
 #[ignore = "daily"]
 fn removed_netherite_resistance_dies_on_the_second_lava_hurt() {
-    with_game(|game| {
-        prepare(game);
+    with_acting_guest(Vec3::new(8.5, 70.0, 8.5), |game| {
+        prepare_terrain(game);
         lava(game);
         let id = drop_stack(game, "netherite_sword[!damage_resistant]", [4.5, 64.0, 4.5]);
         assert_eq!(game.ecs.item_views()[0].health, 5.0);
@@ -132,8 +131,8 @@ fn removed_netherite_resistance_dies_on_the_second_lava_hurt() {
 #[test]
 #[ignore = "daily"]
 fn environmental_tag_stone_keeps_five_health_for_forty_lava_ticks() {
-    with_game(|game| {
-        prepare(game);
+    with_acting_guest(Vec3::new(8.5, 70.0, 8.5), |game| {
+        prepare_terrain(game);
         lava(game);
         let id = drop_stack(
             game,
@@ -187,8 +186,9 @@ fn a_mod_items_default_cactus_resistance_keeps_five_health_for_ten_ticks() {
         serde_json::to_vec(&registries).unwrap(),
     )
     .unwrap();
-    with_game_at(root.path().to_path_buf(), |game| {
-        prepare(game);
+    with_guests_at(root.path().to_path_buf(), |game| {
+        with_acting_guest_on(game, Vec3::new(8.5, 70.0, 8.5), |game| {
+        prepare_terrain(game);
         let cactus = game
             .pack
             .assets
@@ -214,14 +214,15 @@ fn a_mod_items_default_cactus_resistance_keeps_five_health_for_ten_ticks() {
             assert_eq!(game.ecs.item_views()[0].health, 5.0);
         }
         assert_eq!(game.ecs.item_views()[0].age, 10);
+        });
     });
 }
 
 #[test]
 #[ignore = "daily"]
 fn damage_command_uses_effective_item_resistance() {
-    with_game(|game| {
-        prepare(game);
+    with_acting_guest(Vec3::new(8.5, 70.0, 8.5), |game| {
+        prepare_terrain(game);
         game.build_registries();
         for (input, damage, expected_health) in [
             ("netherite_sword", "lava", 5),

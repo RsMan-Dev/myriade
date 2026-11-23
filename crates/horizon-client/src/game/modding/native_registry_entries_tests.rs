@@ -1,5 +1,5 @@
 //! Real server/client Game owners, world publication and negotiated client registry limits.
-use super::native_entity_refs::tests::{with_client_game, with_game};
+use super::native_entity_refs::tests::with_game;
 use mod_api::{
     DatapackField, DatapackFieldKind, DatapackRegistrySync, Hooks, ModEntry, Registrar,
     RegistrationContext,

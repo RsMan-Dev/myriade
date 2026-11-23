@@ -1,7 +1,7 @@
 //! `ItemPart::is_combine_repairable` in `RepairItemRecipe.canCombine`, through the library's
 //! installed test callbacks, which answer from the `item_parts` setting.
 use super::*;
-use crate::native_client_hooks::test_hooks::{answering, install, item_asks};
+use crate::native_level_hooks::test_hooks::{answering, install, item_asks};
 
 const HOOK: &str = "is_combine_repairable";
 

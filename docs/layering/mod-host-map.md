@@ -29,7 +29,7 @@ The checker's canonical-path membership is case-sensitive by design.
 ## Strands and their proposals
 
 **Loading (phase 1): move.** `mod_list.rs`, package reading (`horizon-mod-package`), the wasm start
-(`horizon-mod-wasm`) and the dependency order go to `horizon-mod-host`. `entry::main_with` mixes them with engine
+(`horizon-mod-wasm`) and the dependency order go to `horizon-game`. `entry::main_with` mixes them with engine
 startup and takes `ModEntry`, `NativeSlot` and `BuiltMod`: it splits into an engine start that takes what the host
 loaded through one registration call, and the host's load step that runs before it. The engine keeps one start call.
 

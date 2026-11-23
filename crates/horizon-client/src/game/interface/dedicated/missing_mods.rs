@@ -151,7 +151,6 @@ mod tests {
         let before = std::fs::read(dir.join("level.dat")).unwrap();
         crate::game::native_entity_refs::tests::with_game_role(
             std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap()),
-            crate::game::execution_role::ExecutionRole::DedicatedServer,
             |game| {
                 let refused = game
                     .check_missing_mods(&dir, false)

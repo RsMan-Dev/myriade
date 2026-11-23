@@ -2,13 +2,32 @@
 //! sent as an event (`set_team`, `clear_team`), never read per tick; `allied` is a hash lookup for the rules that choose a target.
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// The teams by name (their members) and the team of each member.
 #[derive(Resource, Default)]
 pub struct Teams {
     pub members: HashMap<String, Vec<Who>>,
     of: HashMap<Who, String>,
+    /// The teams whose `allowFriendlyFire` is off (vanilla's default is on).
+    no_friendly_fire: HashSet<String>,
+}
+
+/// `Entity.doTeamsAllowDamage` refused: `a` and `b` are in one team and that team has friendly fire off (the flag is read in the
+/// allied branch of `doTeamsAllowDamage`, which the dragon's damage branches call).
+pub fn blocks_damage(w: &World, a: Who, b: Who) -> bool {
+    w.get_resource::<Teams>().is_some_and(|t| allied_in(t, a, b) && t.of.get(&a).is_some_and(|n| t.no_friendly_fire.contains(n)))
+}
+
+/// Sets the team `name`'s friendly fire (`Team.setAllowFriendlyFire`).
+pub fn set_friendly_fire(world: &mut World, name: &str, on: bool) {
+    world.init_resource::<Teams>();
+    let t = world.resource_mut::<Teams>().into_inner();
+    if on {
+        t.no_friendly_fire.remove(name);
+    } else {
+        t.no_friendly_fire.insert(name.to_owned());
+    }
 }
 
 /// Whether `a` and `b` are in the same team (`Entity.isAlliedTo` for the team part of the rule).

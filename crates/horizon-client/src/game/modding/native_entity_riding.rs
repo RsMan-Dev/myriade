@@ -657,9 +657,7 @@ mod tests {
         use super::super::{
             InteractTarget,
         };
-        use horizon_client::motion::PlayerMotion;
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+        super::super::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
             game.yaw = 10.0;
             let boat = game.spawn_boat_ecs("oak", false, [0.0; 3], 45.0).unwrap();
             assert!(game.interact_boat(Some(InteractTarget {
@@ -684,9 +682,7 @@ mod tests {
         use super::super::{
             InteractTarget,
         };
-        use horizon_client::motion::PlayerMotion;
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+        super::super::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
             assert!(game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:minecart", [0.0; 3], 0.0, &mut || 61)).is_some());
             assert!(game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:minecart", [0.0; 3], 0.0, &mut || 62)).is_some());
             let chest_boat = game.spawn_boat_ecs("oak", true, [0.0; 3], 0.0).unwrap();

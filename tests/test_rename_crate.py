@@ -56,7 +56,7 @@ fn horizon_mods_test_name() {}
 let folder = "horizon-mods";
 let registry = "https://github.com/horizon-rust/horizon-mods";
 '''
-        self.assertEqual(rename.rewrite("launcher/src/native_mods/prebuilt.rs", source), expected)
+        self.assertEqual(rename.rewrite("crates/horizon-mod-registry/src/prebuilt.rs", source), expected)
 
     def test_generated_manifest_packages_do_not_rename_player_or_negative_strings(self):
         source = '''for name in [
@@ -65,14 +65,7 @@ let registry = "https://github.com/horizon-rust/horizon-mods";
 let folder = "horizon-mods";
 assert!(!dependencies.contains_key("horizon-mods"));
 '''
-        expected = '''for name in [
-    "horizon-mod-package",
-] { let dependency = path_dep(&format!("../{name}")); }
-let folder = "horizon-mods";
-assert!(!dependencies.contains_key("horizon-mods"));
-'''
-        self.assertEqual(rename.rewrite("launcher/src/native_mods/api.rs", source), expected)
-        self.assertEqual(rename.rewrite("launcher/src/export.rs", source), source)
+        self.assertEqual(rename.rewrite("crates/horizon-mod-registry/src/api.rs", source), source)
 
     @unittest.skipUnless(shutil.which("rustfmt"), "requires rustfmt")
     def test_verify_rejects_an_unchanged_file_that_still_needs_the_mapping(self):

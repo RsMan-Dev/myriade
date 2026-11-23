@@ -45,6 +45,7 @@ fn click_sign(
     // North of the sign, looking south at its front
     // (`SignBlockEntity.getSlotPlayerIsFacing`): a wall hanging sign facing
     // north and a ceiling one at rotation 8 both show it towards -Z.
+    // TODO(phase 2): helper sans tour : il rend un Option (`?`) et lit yaw/pitch de l'hôte pour la face du panneau (sign_chain_tests.rs:48)
     game.player = Some(
         horizon_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 70.0, -0.5)).ok()?,
     );

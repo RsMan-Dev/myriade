@@ -230,6 +230,7 @@ fn prepare_breaker(game: &mut Game<'_>) {
     game.world
         .chunks
         .insert((0, 0), Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));
+    // TODO(phase 2): prepare_breaker pose l'hôte ; son appel hôte (stat_award_tests.rs:272, lan_acting_uuid=123) n'est pas un tour d'invité (stat_award_tests.rs:233)
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
     game.set_mode(GameMode::Survival);
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:diamond_pickaxe", 1));

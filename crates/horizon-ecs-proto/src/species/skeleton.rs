@@ -24,7 +24,9 @@ pub static DEF: Def = Def {
             Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:turtle"], predicate: Some("baby"), must_see: true, interval: 10, ..nearest_target::Params::DEFAULT }),
         ),
     ],
+    caps: Some(super::FREEZE_IMMUNE_CAPS),
     rules: &[RuleEntry::new(&crate::hostile::SUN_BURN, &()), RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::SKELETON)],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

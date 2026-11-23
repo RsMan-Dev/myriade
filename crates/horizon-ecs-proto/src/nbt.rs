@@ -268,7 +268,6 @@ fn distribute(w: &mut World, e: Entity, c: &Compound) -> (usize, Vec<String>) {
     let fields: Vec<Field> = w.get_resource::<NbtFields>().map_or_else(Vec::new, |reg| idx.iter().map(|&i| reg.fields[i].0.clone()).collect());
     let mut refused = 0;
     let mut taken = BTreeSet::new();
-    eprintln!("PROBE idx={:?} fields={:?} keys={:?}", idx.to_vec(), fields.iter().map(|f| f.key.to_string()).collect::<Vec<_>>(), c.keys().map(|k| k.to_string_lossy()).collect::<Vec<_>>());
     for f in fields {
         let Some(v) = c.get(&JavaString::from(f.key.as_ref())) else { continue };
         taken.insert(f.key.to_string());
@@ -318,6 +317,7 @@ fn send(w: &mut World, e: Entity, keys: Vec<String>) {
 pub fn load(w: &mut World, e: Entity, c: &Compound) -> Option<usize> {
     if w.get::<Saved>(e).is_none() { return None; }
     let (refused, changed) = distribute(w, e, c);
+    crate::attr_mod::apply_load(w, e);
     crate::bridge::leash_save::load(w, e, c);
     // `Entity.load` poses `OnGround` as the contact (the mirror of `save`).
     if let Some(Tag::Byte(on)) = c.get(&JavaString::from("OnGround")) && let Some(mut k) = w.get_mut::<crate::cow::Contact>(e) {
@@ -841,6 +841,8 @@ fn restore_one(w: &mut World, c: &Compound) -> Option<Entity> {
             w.entity_mut(e).insert(crate::cow::Yaw(0.0)).remove::<crate::nbt_fields::common::Pitch>();
         }
         load(w, e, c);
+        // `createState` counts the loaded creature as a wild one (a persistent one is not counted), with its biome's charge.
+        crate::spawn_cost::count(w, e);
         // The saved `UUID` names the entity in the table of `entity_by_uuid` (a summon or a load of a mob).
         if let Some(Tag::IntArray(v)) = c.get(&JavaString::from("UUID"))
             && let Ok(words) = <[i32; 4]>::try_from(v.as_slice())

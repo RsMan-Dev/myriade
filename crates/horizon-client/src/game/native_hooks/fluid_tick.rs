@@ -49,7 +49,6 @@ mod tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_guest_turn_tests::with_guests(|game| {
-                game.options.dedicated = Some(Vec::new());
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));
@@ -65,7 +64,6 @@ mod tests {
                     .unwrap();
                 game.world.set(pos.x, pos.y, pos.z, flowing).unwrap();
                 game.with_level(|behaviours, level, ticks| {
-                    level.native_authoritative = true;
                     assert!(!horizon_world::level::LevelAccess::allow_fluid_tick(
                         level, pos, "water"
                     ));
@@ -76,17 +74,9 @@ mod tests {
                         before,
                         "cancel adds no scheduled tick"
                     );
-                    level.native_authoritative = false;
-                    assert!(horizon_world::level::LevelAccess::allow_fluid_tick(
-                        level, pos, "water"
-                    ));
                 });
                 assert_eq!(game.world.block(pos.x, pos.y, pos.z), flowing);
-                assert_eq!(
-                    heard.load(Ordering::SeqCst),
-                    2,
-                    "non-authoritative call never fires"
-                );
+                assert_eq!(heard.load(Ordering::SeqCst), 2);
             });
         });
     }

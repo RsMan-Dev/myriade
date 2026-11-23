@@ -4,7 +4,7 @@
 pub use crate::species::sync_a_table::TABLE;
 use super::sync::SyncValue;
 use super::uuids::EntityUuid;
-use crate::behaviours::{beg::Begging, convert_timer::Converting, posture, variant::Variant};
+use crate::behaviours::{beg::Begging, convert_timer::Converting, sit_when_ordered::SitPose, variant::Variant};
 use crate::farm::Wool;
 use crate::size::Size;
 use crate::tame::Owner;
@@ -36,6 +36,30 @@ pub(crate) fn dancing(w: &World, e: Entity) -> Option<SyncValue> {
 /// AbstractCubeMob.ID_SIZE: sent above 1, the default.
 pub(crate) fn size(w: &World, e: Entity) -> Option<SyncValue> {
     w.get::<Size>(e).filter(|s| s.0 > 1).map(|s| SyncValue::Int(s.0))
+}
+
+/// Goat.DATA_IS_SCREAMING_GOAT (index 18, default false): sent as true on the screaming goat.
+pub(crate) fn screaming_goat(w: &World, e: Entity) -> Option<SyncValue> {
+    w.get::<crate::species::goat::Screaming>(e).map(|_| SyncValue::Bool(true))
+}
+
+/// Goat.DATA_HAS_LEFT_HORN (index 19) and DATA_HAS_RIGHT_HORN (index 20), default true: sent as false once the horn is lost.
+pub(crate) fn left_horn(w: &World, e: Entity) -> Option<SyncValue> {
+    w.get::<crate::behaviours::ram::Shed>(e).filter(|s| s.0 & 1 != 0).map(|_| SyncValue::Bool(false))
+}
+
+pub(crate) fn right_horn(w: &World, e: Entity) -> Option<SyncValue> {
+    w.get::<crate::behaviours::ram::Shed>(e).filter(|s| s.0 & 2 != 0).map(|_| SyncValue::Bool(false))
+}
+
+/// Phantom.DATA_ID_SIZE (index 16, default 0): sent when not 0.
+pub(crate) fn phantom_size(w: &World, e: Entity) -> Option<SyncValue> {
+    w.get::<Size>(e).filter(|s| s.0 != 0).map(|s| SyncValue::Int(s.0))
+}
+
+/// Camel.DATA_LAST_POSE_TICK (index 20, a long, default 0): the game time of the last change of pose, sent when not 0.
+pub(crate) fn last_pose(w: &World, e: Entity) -> Option<SyncValue> {
+    crate::behaviours::posture::last_pose_tick(w, e).filter(|&t| t != 0).map(SyncValue::Long)
 }
 
 /// Fox.DATA_TYPE_ID, Rabbit.DATA_TYPE_ID (the default variant is id 0) and MushroomCow.DATA_TYPE: the variant, sent when not 0.
@@ -70,9 +94,9 @@ pub(crate) fn collar(w: &World, e: Entity) -> Option<SyncValue> {
     w.get::<crate::dye::Collar>(e).map(|c| SyncValue::Int(i32::from(c.0)))
 }
 
-/// TamableAnimal.DATA_FLAGS_ID (index 18 after AgeableMob's 17): sitting 0x01, tame 0x04 (the tame state is `Owner`).
+/// TamableAnimal.DATA_FLAGS_ID (index 18 after AgeableMob's 17): sitting 0x01 (the pose, `SitPose`), tame 0x04 (the tame state is `Owner`).
 pub(crate) fn tame_flags(w: &World, e: Entity) -> Option<SyncValue> {
-    let bits = i8::from(posture::is_sitting(w, e)) | i8::from(w.get::<Owner>(e).is_some_and(|o| o.0.is_some())) << 2;
+    let bits = i8::from(w.get::<SitPose>(e).is_some()) | i8::from(w.get::<Owner>(e).is_some_and(|o| o.0.is_some())) << 2;
     (bits != 0).then_some(SyncValue::Byte(bits))
 }
 
@@ -101,3 +125,19 @@ pub(crate) fn is_active(w: &World, e: Entity) -> Option<SyncValue> {
     w.get::<crate::behaviours::stare_freeze::Roused>(e).map(|_| SyncValue::Bool(true))
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::behaviours::sit_when_ordered::SitPose;
+
+    /// `TamableAnimal.DATA_FLAGS_ID`: a tame animal standing sends 0x04, and 0x05 once it is in the sitting pose (not the order).
+    #[test]
+    fn the_sitting_pose_sets_the_first_flag_bit() {
+        let mut w = World::new();
+        let e = w.spawn(Owner(Some(Who::Player(1)))).id();
+        assert!(matches!(tame_flags(&w, e), Some(SyncValue::Byte(4))));
+        w.entity_mut(e).insert(SitPose);
+        assert!(matches!(tame_flags(&w, e), Some(SyncValue::Byte(5))));
+    }
+}

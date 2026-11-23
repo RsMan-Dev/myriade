@@ -229,7 +229,9 @@ fn avoid_target(w: &World, e: Entity, a: &Avoider, pos: Vec3, found: &mut Option
             w.resource::<Online>().for_near(pos.x, pos.z, r, |p| {
                 let d = d2(pos, Vec3::new(p.x, p.y, p.z));
                 let near = (p.y - pos.y).abs() <= a.max_dist + 3.0 && d <= r * r;
-                let wanted = a.player_when.is_none_or(|f| f(w.resource::<crate::hostile::PlayerState>(), &p));
+                // `forCombat()`: a player that cannot be targeted (creative, spectator, Peaceful) is never run from.
+                let wanted = w.get_resource::<crate::hostile::PlayerState>().is_none_or(|s| s.targetable(p.id))
+                    && a.player_when.is_none_or(|f| f(w.resource::<crate::hostile::PlayerState>(), &p));
                 if near && wanted && best.is_none_or(|b| d < b.0) && sees(Vec3::new(p.x, p.eye(), p.z)) {
                     best = Some((d, p));
                 }

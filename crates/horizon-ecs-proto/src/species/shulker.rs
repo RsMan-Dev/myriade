@@ -1,6 +1,9 @@
 //! `Shulker`: a body fixed to a face of a block, `no_gravity`, that opens, shoots homing projectiles and teleports. The behaviours are generic;
 //! every number and sound name of the shulker is here.
 use super::Def;
+use bevy_ecs::prelude::{Entity, World};
+use crate::behaviours::spawn_draw::{Draw, Draws, Store, When};
+use crate::rules::spawn_draw::Roll;
 use crate::behaviours::{Cap, Entry, attached_face, hurt_by, homing_projectile, homing_shot, look_at_player, nearest_target, peek, random_look, teleport_on};
 use crate::effects::Kind;
 use crate::projectile::{Damage, Flight, OnHit, Order};
@@ -25,13 +28,14 @@ pub const SHOT: homing_projectile::Config = homing_projectile::Config {
 
 pub static DEF: Def = Def {
     name: "minecraft:shulker",
+    max_scale: 3.0,
     gravity: false,
     targets: &[
         Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, alert_types: SHELLS, ..hurt_by::Params::DEFAULT }),
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params { attach_reach: Some(4.5), ..nearest_target::Params::PLAYER }),
     ],
     goals: &[
-        Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { events: false, ..crate::behaviours::move_emission::Params::DEFAULT }),
+        Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { events: false, sounds: false, ..crate::behaviours::move_emission::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 1, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&homing_shot::MODULE, 4, &homing_shot::Params {
             reach_sq: 400.0,
@@ -67,5 +71,16 @@ pub static DEF: Def = Def {
     ],
     rules: &[RuleEntry::new(&attached_face::RULE, &attached_face::Params { colour: 16, covered: true })],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::FireImmune, Cap::Collidable]),
+    sound_source: super::SoundCategory::Hostile,
+    draws: Some(&DRAWS),
     ..Def::EMPTY
 };
+
+/// `Shulker.finalizeSpawn`: `setYRot(0)` before the golem's finalize, no draw. The spawn's random yaw is overwritten here.
+static DRAWS: Draws = Draws { group: None, list: &[Draw { when: When::Before, kind: crate::behaviours::spawn_draw::Kind::Plain(Roll::Const(0)), store: Store::Call(face_zero) }] };
+
+fn face_zero(w: &mut World, e: Entity, _: u32) {
+    if let Some(mut y) = w.get_mut::<crate::cow::Yaw>(e) {
+        y.0 = 0.0;
+    }
+}

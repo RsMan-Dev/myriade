@@ -3,7 +3,7 @@
 
 - `{{#sdk-assets}}`: the files of an `sdk-<build id>` release, from the list the publish job refuses to release
   without (`tools/ci/nightly.py`, `SDK_ASSETS`).
-- `{{#sdk-routes}}`: which compiled slices each launcher route fetches, from the SDK's input list
+- `{{#sdk-routes}}`: which compiled slices each route fetches, from the SDK's input list
   (`crates/horizon-mod-package/src/sdk/inputs.json`).
 - `{{#sdk-hosts}}`: the computers an SDK is built for, from the packing legs (`nightly.py`, `SDK_LEGS`).
 - `{{#sdk-surface}}`: the record kinds of `surface.json`, each with its id form and how many this commit has, from

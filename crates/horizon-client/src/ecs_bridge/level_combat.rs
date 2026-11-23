@@ -174,6 +174,11 @@ impl EcsLevel {
             teams::set_team(w.world_mut(), name, members);
         }
     }
+    pub fn set_team_friendly_fire(&mut self, name: &str, on: bool) {
+        if let Some(w) = self.ecs_mut() {
+            teams::set_friendly_fire(w.world_mut(), name, on);
+        }
+    }
     pub fn clear_team(&mut self, name: &str) {
         if let Some(w) = self.ecs_mut() {
             teams::clear_team(w.world_mut(), name);

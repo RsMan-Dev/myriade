@@ -13,7 +13,7 @@ use horizon_client::{
     Result,
     containers::BlockEntity,
     mobs::{
-        Mob, Who,
+        Who,
         spawner::{SpawnDataExt, Spawner, SpawnerAdded, SpawnerEvent, SpawnerExt, SpawnerSpawn},
         trial_spawner::{TrialSpawnerExt, TrialState},
     },
@@ -23,15 +23,32 @@ use horizon_core::{
     geometry::Vec3,
     random::{LegacyRandom, LevelRandom},
 };
+use horizon_ecs_proto::spawn_sheet::SpawnSheet;
 use std::collections::{HashMap, HashSet};
 
 type Pos = (i32, i32, i32);
 
+/// The box a standing adult of a kind of `width` by `height` takes at `at` (`Entity.makeBoundingBox`), before the mob is made.
+fn kind_bounds(width: f64, height: f64, at: Vec3) -> horizon_core::geometry::Aabb {
+    let w = width / 2.0;
+    horizon_core::geometry::Aabb::new(
+        Vec3::new(at.x - w, at.y, at.z - w),
+        Vec3::new(at.x + w, at.y + height, at.z + w),
+    )
+}
+
 /// What a spawner tick decided to add, created once the level is free.
 pub(super) enum Planned {
-    /// `finalizeSpawn` ran on a fresh mob (its provisional id in `Mob::id`);
-    /// the spawn data's `equipment`.
-    Finalized(Mob, Option<Tag>),
+    /// A fresh mob, its spawn sheet made by the hooks and the spawn data's `equipment`; `special` is None when its finalize was skipped.
+    Finalized {
+        kind: String,
+        at: [f64; 3],
+        yaw: f32,
+        sheet: SpawnSheet,
+        reason: SpawnReason,
+        special: Option<f32>,
+        key: u32,
+    },
     /// A mob loaded from the spawn data (with its passengers) and its
     /// `equipment`; the provisional id its events carry.
     Loaded(Tag, Option<Tag>, u32),
@@ -44,9 +61,6 @@ pub(super) struct SpawnerState {
     entity_types: Option<HashSet<String>>,
     /// Dimensions from the same loaded entity-type registry, not a second loader.
     entity_dimensions: HashMap<String, [f32; 2]>,
-    /// The mob shown in each spawner and the id it was made for
-    /// (`getOrCreateDisplayEntity`).
-    displays: HashMap<Pos, (String, Mob)>,
 }
 
 impl Game<'_> {
@@ -107,26 +121,22 @@ impl Game<'_> {
         let source = cart
             .is_none()
             .then(|| mod_api::SpawnSource::Block(mod_api::BlockPos::new(key.0, key.1, key.2)));
-        let extras = {
+        let rides = {
             let mut level = self.natural_level();
             // A minecart spawner has no block to tell the spawn checks of.
             level.spawner = cart.is_none().then_some(mod_api::Spawner::Block {
                 pos: mod_api::BlockPos::new(key.0, key.1, key.2),
             });
-            let mut spawn = |l: &super::natural_spawning::GameLevel,
-                             rng: &mut LevelRandom,
+            let mut spawn = |l: &super::spawn_level::GameLevel,
+                             _rng: &mut LevelRandom,
                              r: &SpawnerSpawn| {
-                l.game.plan_spawner_mob(l, r, source, &mut planned, rng)
+                l.game.plan_spawner_mob(l, r, source, &mut planned)
             };
             spawner.server_tick(&level, &mut random, pos, &mut spawn, &mut events);
-            (
-                std::mem::take(&mut *level.spawned.borrow_mut()),
-                std::mem::take(&mut *level.rides.borrow_mut()),
-            )
+            std::mem::take(&mut *level.rides.borrow_mut())
         };
         self.world.random = random;
-        let (created, rides) = extras;
-        let ids = self.add_planned(planned, created, rides);
+        let ids = self.add_planned(planned, rides);
         self.apply_spawner_events(key, events, &ids, cart)
     }
     /// Creates the mobs a spawner tick planned; their provisional ids
@@ -135,18 +145,21 @@ impl Game<'_> {
     pub(super) fn add_planned(
         &mut self,
         planned: Vec<Planned>,
-        created: Vec<Mob>,
         _rides: Vec<(u32, u32)>,
     ) -> HashMap<u32, u32> {
         // The planned mobs go into the ECS level, in spawn order; the map gives each provisional id its network id. The
-        // equipment table and the rides are not carried yet (no ECS call for them).
+        // rides are not carried yet (no ECS call for them).
         let mut ids = HashMap::new();
         for plan in planned {
             match plan {
-                Planned::Finalized(mob, _equipment) => {
-                    let at = [mob.position.x, mob.position.y, mob.position.z];
-                    if let Some(id) = self.ecs_spawn(&mob.kind.id, at, None) {
-                        ids.insert(mob.id, id);
+                Planned::Finalized { kind, at, yaw, sheet, reason, special, key } => {
+                    let finalize = special.map(|special| (special, sheet.group));
+                    if let Some((id, _)) = self.ecs_spawn_sheet(&kind, at, None, reason, finalize, &sheet) {
+                        // The spawner's `moveTo(..., yaw)`: the template holds only the id, so the yaw is all it places.
+                        if let Some(e) = self.ecs.entity_of(id) {
+                            self.ecs.set_rotation(e, yaw, 0.0);
+                        }
+                        ids.insert(key, id);
                     }
                 }
                 Planned::Loaded(Tag::Compound(tag), _equipment, key) => {
@@ -157,72 +170,45 @@ impl Game<'_> {
                 Planned::Loaded(..) => {}
             }
         }
-        for mob in created {
-            let at = [mob.position.x, mob.position.y, mob.position.z];
-            self.ecs_spawn(&mob.kind.id, at, None);
-        }
         ids
     }
     /// The spawner's `loadEntityRecursive` and `tryAddFreshEntityWithPassengers`:
     /// the mob it will add (created after the tick) and its box.
     pub(super) fn plan_spawner_mob(
         &self,
-        l: &super::natural_spawning::GameLevel,
+        l: &super::spawn_level::GameLevel,
         r: &SpawnerSpawn,
         source: Option<mod_api::SpawnSource>,
         planned: &mut Vec<Planned>,
-        random: &mut horizon_core::random::LegacyRandom,
     ) -> Option<SpawnerAdded> {
         let kind = self.res.mob_types().get(r.id)?.clone();
         let [x, y, z] = r.position;
         let at = Vec3::new(x, y, z);
         let (bounds, key) = if r.finalize {
-            // The mob a listened position check created, else a new one.
-            let mut mob = l
-                .take_checked(r.id, r.position, r.yaw)
-                .unwrap_or_else(|| Mob::new(l.provisional_id(), kind, at, r.yaw));
+            // The sheet a listened position check made, else a new one; the spawn data's equipment goes in first, then the hooks' edits.
             let reason = if r.trial {
                 SpawnReason::TrialSpawner
             } else {
                 SpawnReason::Spawner
             };
+            let mut sheet = l.take_checked(r.id, r.position, r.yaw).unwrap_or_default();
             // TrialSpawner.spawnMob: setPersistenceRequired.
-            mob.persistent = r.trial;
-            let mut group = None;
-            match self.finalize_spawn_event(&mut mob, reason, source, &mut group) {
-                (Finalized::Cancelled, _) => return None,
-                (outcome, difficulty) => {
-                    if outcome == Finalized::Done {
-                        let mut level = super::natural_spawning::PassLevel::new(l);
-                        let mut cx = horizon_client::mobs::finalize::Ctx {
-                            level: &mut level,
-                            random,
-                            difficulty,
-                            created: Vec::new(),
-                            jockey_rider: None,
-                        };
-                        horizon_client::mobs::finalize::finalize(&mut cx, &mut mob, reason, group);
-                        for m in cx.created {
-                            let bounds = m.bounds();
-                            l.pending.borrow_mut().push(bounds);
-                            l.pending_ids.borrow_mut().push((m.kind.id.clone(), bounds));
-                            l.spawned.borrow_mut().push(m);
-                        }
+            sheet.persistent = r.trial;
+            if let Some(eq) = r.equipment {
+                for (slot, stack) in horizon_items::equipment::Equipment::read(eq).iter().enumerate() {
+                    if let Some(stack) = stack {
+                        sheet.set_equipment(slot, Some(stack.clone()));
                     }
                 }
             }
-            // Shulker.finalizeSpawn faces it south.
-            if mob.species() == horizon_client::mobs::Species::Shulker {
-                mob.yaw = 0.0;
-                mob.previous_yaw = 0.0;
-                mob.body_yaw = 0.0;
-                mob.previous_body_yaw = 0.0;
-                mob.head_yaw = 0.0;
-                mob.previous_head_yaw = 0.0;
-            }
-            let bounds = mob.bounds();
-            let key = mob.id;
-            planned.push(Planned::Finalized(mob, r.equipment.cloned()));
+            let special = match self.finalize_spawn_event(r.id, [x, y, z], reason, source, &mut sheet) {
+                (Finalized::Cancelled, _) => return None,
+                (Finalized::Skipped, _) => None,
+                (Finalized::Done, difficulty) => Some(difficulty.special()),
+            };
+            let key = l.provisional_id();
+            let bounds = kind_bounds(kind.width, kind.height, at);
+            planned.push(Planned::Finalized { kind: r.id.to_owned(), at: [x, y, z], yaw: r.yaw, sheet, reason, special, key });
             (bounds, key)
         } else {
             // A UUID already in the level is refused.
@@ -251,13 +237,7 @@ impl Game<'_> {
             // EntityType.loadEntityRecursive applies the spawner's placement
             // callback to every passenger as well as the root.
             super::commands::place_summoned(&mut tag, r.position);
-            let mob = horizon_client::entity_nbt::mob_from_nbt(
-                &tag,
-                self.res.mob_types(),
-                0,
-                Some(self.pack.assets.registry),
-            )?;
-            let bounds = mob.bounds();
+            let bounds = kind_bounds(kind.width, kind.height, at);
             let key = l.provisional_id();
             planned.push(Planned::Loaded(tag, r.equipment.cloned(), key));
             (bounds, key)
@@ -318,7 +298,6 @@ impl Game<'_> {
         if let Some(BlockEntity::Spawner(s)) = self.world.block_entities.get_mut(&key) {
             s.client_loaded();
         }
-        self.spawners.displays.remove(&key);
         if let Some(log) = self.world.block_log.as_mut() {
             log.push(key);
         }
@@ -330,41 +309,6 @@ impl Game<'_> {
             return;
         };
         self.lan_entity_event(id as i32, 20, at);
-    }
-    /// `getOrCreateDisplayEntity`: the mob shown in the spawner, made again
-    /// when its type changes. False when there is none.
-    pub(super) fn update_spawner_display(&mut self, key: Pos) -> bool {
-        let Some(kind) = self.spawner_display_kind(key) else {
-            self.spawners.displays.remove(&key);
-            return false;
-        };
-        if self
-            .spawners
-            .displays
-            .get(&key)
-            .is_none_or(|(k, _)| *k != kind)
-        {
-            let Some(t) = self.res.mob_types().get(&kind).cloned() else {
-                return false;
-            };
-            let mob = Mob::new(u32::MAX, t, Vec3::ZERO, 0.0);
-            self.spawners.displays.insert(key, (kind, mob));
-        }
-        true
-    }
-    /// The type of the mob a spawner shows: its next data's id, when the game
-    /// knows the mob.
-    /// A trial spawner shows one only in the states with a spinning mob.
-    fn spawner_display_kind(&self, key: Pos) -> Option<String> {
-        let id = match self.world.block_entities.get(&key)? {
-            BlockEntity::Spawner(s) => s.next_data()?.id()?,
-            BlockEntity::TrialSpawner(s) => {
-                self.trial_spawner_block(key)?.0.spinning_mob_speed()?;
-                s.next_spawn_data.as_ref()?.id()?
-            }
-            _ => return None,
-        };
-        self.res.mob_types().contains_key(&id).then_some(id)
     }
     /// `SpawnEggItem.useOn` on a spawner: the egg sets its mob, and an op's
     /// egg its entity `data` too (`block_entity_item::spawn_egg_on_spawner`).
@@ -420,7 +364,6 @@ impl Game<'_> {
         }
         // sendBlockUpdated(3) and the player's block_change game event.
         self.spawner_block_updated(key);
-        self.update_spawner_display(key);
         self.post_block_game_event("minecraft:block_change", pos, Some(Who::Player), None);
         Some(true)
     }

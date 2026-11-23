@@ -19,8 +19,7 @@ impl Game<'_> {
     /// for a stale handle, a client or an entity that is no projectile.
     pub(super) fn native_ecs_projectile(&self, entity: EntityRef) -> Option<u32> {
         let id = entity.id();
-        (self.is_logical_server()
-            && self.native_lifecycle.epoch() == Some(entity.epoch())
+        (self.native_lifecycle.epoch() == Some(entity.epoch())
             && !self.held_out.contains(&id)
             && self.ecs.projectile_kind(id).is_some())
         .then_some(id)
@@ -210,9 +209,6 @@ impl Game<'_> {
 
     /// The network id of an arrow handle; the error names what refuses it.
     fn native_arrow_id(&self, projectile: ProjectileRef) -> Result<u32, PierceLevelError> {
-        if !self.is_logical_server() {
-            return Err(PierceLevelError::WrongSide);
-        }
         let id = self.native_projectile_backing(projectile).ok_or(PierceLevelError::Stale)?;
         if self.ecs.projectile_is_arrow(id) {
             Ok(id)

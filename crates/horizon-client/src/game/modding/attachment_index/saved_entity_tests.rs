@@ -24,7 +24,6 @@ static PROJECTILE_VALUE: AttachmentType<i32> = AttachmentType {
 #[ignore = "daily"]
 fn saved_spit_and_bullet_query_before_access_and_round_trip() {
     with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         let contents = Tag::compound([(
             "saved_projectile",
@@ -110,7 +109,6 @@ static VALUE: AttachmentType<i32> = AttachmentType {
 #[ignore = "daily"]
 fn saved_entity_loaders_publish_and_retire_the_authoritative_owner() {
     with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         for (n, kind) in [
             "armor_stand",

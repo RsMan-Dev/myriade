@@ -14,7 +14,7 @@ const PLATE: &str = "minecraft:stone_pressure_plate";
 
 /// A world with a plate at (5, 1, 0), the table armed on its state, and a cow at (0.5, 1, 0.5) that has settled.
 fn plate_and_cow() -> (Herd, Entity) {
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     h.set_block(5, 1, 0, PLATE);
     let e = ecs_cow(&mut h, 0.5, 1.0, 0.5, 4100);
     let state = h.world.resource::<Level>().mw.0.registry.default_state(PLATE).expect("the plate").0 as usize;

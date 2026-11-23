@@ -225,7 +225,7 @@ fn local_index(x: i32, y: i32, z: i32) -> usize {
 pub(crate) type ColumnBounds = [i32; HeightmapType::ALL.len()];
 
 impl<'r, B: TerrainBlockStates> TerrainChunk<'r, B> {
-    /// Its heap bytes by part (`horizon-ctl memory`; scheduled ticks not
+    /// Its heap bytes by part (the control socket's `memory`; scheduled ticks not
     /// counted): packed block storage, the sections' palettes and lists,
     /// heightmaps, and the rest (post-processing marks, non-air counts).
     pub fn heap_bytes(&self) -> [usize; 4] {

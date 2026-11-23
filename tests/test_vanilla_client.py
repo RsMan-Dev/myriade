@@ -112,8 +112,6 @@ class BinaryTests(unittest.TestCase):
                 self.assertEqual(lab.binary(folder, "horizon-client"), folder / "horizon-client.exe")
                 (folder / "horizon-client").touch()
                 self.assertEqual(lab.binary(folder, "horizon-client"), folder / "horizon-client")
-            with mock.patch.object(lab, "os", SimpleNamespace(name="posix")):
-                self.assertEqual(lab.binary(folder, "horizon-ctl"), folder / "horizon-ctl")
 
 
 if __name__ == "__main__":

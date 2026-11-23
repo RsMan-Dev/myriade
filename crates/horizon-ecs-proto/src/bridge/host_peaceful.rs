@@ -4,16 +4,46 @@
 use crate::bridge::host::EcsWorld;
 use bevy_ecs::prelude::*;
 
+/// The natural spawning's inputs from the host, made with their defaults the first time.
+fn spawn_env(w: &mut World) -> Mut<'_, crate::spawn_env::SpawnEnv> {
+    w.get_resource_or_insert_with(crate::spawn_env::SpawnEnv::default)
+}
+
 /// A creature of a `Def::not_in_peaceful` species (zero-size, sparse: only these carry it).
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct NotInPeaceful;
 
 impl EcsWorld {
-    /// Whether monsters may spawn (`ServerLevel.isSpawningMonsters`: the `spawn_mobs` and `spawn_monsters` rules both on); read by the
-    /// reinforcements a hurt creature calls. Written when either rule changes.
-    pub fn set_monster_spawning(&mut self, on: bool) {
-        self.world_mut().insert_resource(crate::reinforcements::MonsterSpawning(on));
+    /// `SPAWN_MOBS` and `SPAWN_MONSTERS` (`ServerLevel.isSpawningMonsters`): read by the natural spawning and the reinforcements a hurt
+    /// creature calls. Written when one changes.
+    pub fn set_spawn_rules(&mut self, spawn_mobs: bool, monsters: bool) {
+        let mut env = spawn_env(self.world_mut());
+        if env.spawn_mobs != spawn_mobs || env.monsters != monsters {
+            env.spawn_mobs = spawn_mobs;
+            env.monsters = monsters;
+        }
+    }
+    /// A chunk enters (`on`) or leaves the chunks that may take a creature: ticking and not held back by a ticket. Written when it changes.
+    pub fn set_chunk_spawnable(&mut self, cx: i32, cz: i32, on: bool) {
+        let mut env = spawn_env(self.world_mut());
+        let moved = if on { env.spawnable.insert((cx, cz)) } else { env.spawnable.remove(&(cx, cz)) };
+        env.changed |= moved;
+    }
+    /// The world border `[min_x, min_z, max_x, max_z]`, if any. Written when it changes.
+    pub fn set_world_border(&mut self, border: Option<[f64; 4]>) {
+        let mut env = spawn_env(self.world_mut());
+        if env.border != border {
+            env.border = border;
+            env.changed = true;
+        }
+    }
+    /// The world spawn, the origin of the 24 blocks a creature may not be born in. Written when it changes.
+    pub fn set_world_spawn(&mut self, at: [i32; 3]) {
+        let mut env = spawn_env(self.world_mut());
+        if env.world_spawn != at {
+            env.world_spawn = at;
+        }
     }
     /// Alerts the entities that guard something within reach of `player` (`PiglinAi.angerNearbyPiglins`): the ones at rest turn on it, and
     /// with `only_if_seen` only those with a line of sight. Returns how many were alerted.

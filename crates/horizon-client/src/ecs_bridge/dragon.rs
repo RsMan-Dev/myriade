@@ -7,13 +7,14 @@ use horizon_ecs_proto::dragon::{
     fight::{FightSave, FightView},
     hurt::{Blow, Hurt},
 };
+use horizon_ecs_proto::spawn_sheet::SpawnSheet;
 use horizon_ecs_proto::targeting::Who;
 
 impl EcsLevel {
     /// `EcsWorld::summon_dragon`: a dragon at `at`; its network id (0 when the level is inert).
-    pub fn summon_dragon(&mut self, mw: &MobWorld<'_>, at: [f64; 3], yaw: f32, seed: i64, phase: u8, alloc: &mut dyn FnMut() -> u32) -> u32 {
+    pub fn summon_dragon(&mut self, mw: &MobWorld<'_>, at: [f64; 3], yaw: f32, seed: i64, phase: u8, sheet: &SpawnSheet, alloc: &mut dyn FnMut() -> u32) -> u32 {
         let Some(w) = self.ecs_mut() else { return 0 };
-        let e = w.summon_dragon(mw, at, yaw, seed, phase);
+        let e = w.summon_dragon(mw, at, yaw, seed, phase, sheet);
         w.id_for(e, alloc)
     }
 
@@ -63,6 +64,27 @@ impl EcsLevel {
         let Some(e) = self.entity_of(id) else { return Hurt::Refused };
         let Some(w) = self.ecs_mut() else { return Hurt::Refused };
         w.hurt_dragon(mw, e, b)
+    }
+
+    /// `EnderDragon.knockBack` of dragon `id` on the targets `who`; nothing when it is not there.
+    pub fn dragon_wing(&mut self, id: u32, who: &[Who]) {
+        let Some(e) = self.entity_of(id) else { return };
+        let Some(w) = self.ecs_mut() else { return };
+        horizon_ecs_proto::dragon::hurt::wing_rule(w.world_mut(), e, who);
+    }
+
+    /// `EnderDragon.hurt(ServerLevel, List)` of dragon `id` on the targets `who`; nothing when it is not there.
+    pub fn dragon_head(&mut self, id: u32, who: &[Who]) {
+        let Some(e) = self.entity_of(id) else { return };
+        let Some(w) = self.ecs_mut() else { return };
+        horizon_ecs_proto::dragon::hurt::head_rule(w.world_mut(), e, who);
+    }
+
+    /// `LastHurtBy` of entity `id`: its last attacker `who` at tick `at` (`setLastHurtByMob`); nothing when it is not there.
+    pub fn set_last_hurt_by(&mut self, id: u32, who: Who, at: u64) {
+        let Some(e) = self.entity_of(id) else { return };
+        let Some(w) = self.ecs_mut() else { return };
+        w.world_mut().entity_mut(e).insert(horizon_ecs_proto::cow::LastHurtBy { who, at });
     }
 
     /// `EcsWorld::blast_dragon` of dragon `id`: the blast's hits, then its push.

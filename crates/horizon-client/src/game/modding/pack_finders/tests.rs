@@ -82,14 +82,6 @@ impl Fixture {
     fn data_id(&self) -> String {
         format!("mod/packmod:{DATA_PACK}")
     }
-    fn replace_asset(&mut self) {
-        self.files
-            .iter_mut()
-            .find(|(name, _)| name == &format!("{ASSET_PACK}/{ASSET}"))
-            .unwrap()
-            .1 = br#"{"packmod.optional":"second"}"#.to_vec();
-        self.publish();
-    }
     fn add_feature_flag(&mut self) {
         let file = self
             .files
@@ -118,7 +110,6 @@ struct Finder {
 impl Hooks for Finder {
     fn add_pack_finders(&self, _host: HostSide<'_>, event: &mut AddPackFindersEvent<'_>) {
         for (kind, path) in [
-            (PackType::ClientResources, ASSET_PACK),
             (PackType::ServerData, DATA_PACK),
         ] {
             let mut pack = PackRegistration::new(
@@ -155,65 +146,6 @@ fn with_finder_hidden(feature: bool, required: bool, hidden: bool, test: impl Fn
         )]
         .into(),
         test,
-    );
-}
-
-#[test]
-fn rediscovery_opens_the_new_archive_without_changing_old_readers() {
-    let mut fixture = Fixture::new(true);
-    let sources = fixture.sources();
-    with_finder(|| {
-        let old = discover(PackType::ClientResources, &sources);
-        fixture.replace_asset();
-        let new = discover(PackType::ClientResources, &sources);
-        assert_eq!(
-            old[0].source.read(ASSET).unwrap(),
-            br#"{"packmod.optional":"first"}"#
-        );
-        assert_eq!(
-            new[0].source.read(ASSET).unwrap(),
-            br#"{"packmod.optional":"second"}"#
-        );
-        assert!(!fixture.root.join("packmod").exists());
-    });
-}
-
-#[test]
-fn refused_registrations_leave_the_repository_unchanged() {
-    let fixture = Fixture::new(false);
-    let mut registry = Registry::new(PackType::ClientResources, fixture.sources());
-    let entry = |path: &str| {
-        PackRegistration::new(
-            Identifier::parse(path).unwrap(),
-            PackType::ClientResources,
-            mod_api::Text::translate("packmod.optional.title", vec![]),
-        )
-    };
-    let valid = format!("packmod:{ASSET_PACK}");
-    registry.add_pack_finders(entry(&valid)).unwrap();
-    let mut refused = entry("packmod:missing");
-    let mut title = mod_api::Text::literal("leaf");
-    for _ in 1..513 {
-        title = mod_api::Text::literal("parent").append(title);
-    }
-    refused.title = title;
-    assert_eq!(
-        registry.add_pack_finders(refused),
-        Err(PackFinderError::Text(mod_api::TextFormError::TooDeep))
-    );
-    assert_eq!(registry.packs.len(), 1);
-    for (path, error) in [
-        (valid.as_str(), PackFinderError::Duplicate),
-        ("packmod:../outside", PackFinderError::InvalidPath),
-        ("absent:optional", PackFinderError::MissingPackage),
-        ("packmod:missing", PackFinderError::InvalidMetadata),
-    ] {
-        assert_eq!(registry.add_pack_finders(entry(path)), Err(error));
-        assert_eq!(registry.packs.len(), 1);
-    }
-    assert_eq!(
-        registry.packs[0].source.read(ASSET).unwrap(),
-        br#"{"packmod.optional":"first"}"#
     );
 }
 

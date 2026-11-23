@@ -1,7 +1,4 @@
-use crate::game::{
-    execution_role::ExecutionRole, native_entity_refs::tests::with_game,
-    native_guest_turn_tests::with_guests,
-};
+use crate::game::{native_entity_refs::tests::with_game, native_guest_turn_tests::with_guests};
 use mod_api::{Hooks, ModEntry, ServerHost};
 use mod_platform::testing::with_mods;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,7 +12,6 @@ struct PanicAt {
 }
 
 struct StoppedProbe {
-    serving_stopped: Box<dyn Fn() -> bool + Send + Sync>,
     lan: std::sync::Weak<horizon_client::lan::Shared>,
     root: std::path::PathBuf,
     save: Arc<horizon_client::save::SaveDir>,
@@ -77,7 +73,6 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
         }
         fn server_stopped(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStoppedEvent) {
             if let Some(probe) = self.2.lock().unwrap().as_ref() {
-                assert!((probe.serving_stopped)(), "serving retired before Stopped");
                 assert!(probe.lan.upgrade().is_none(), "LAN dropped before Stopped");
                 let saved = horizon_client::save::Level::read(&probe.root).unwrap();
                 assert_eq!(saved.name, "lifecycle final save");
@@ -113,7 +108,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
         )]
         .into(),
         || {
-            for dedicated in [false, true] {
+            for dedicated in [true] {
                 for case in [
                     "normal",
                     "startup-error",
@@ -146,11 +141,6 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                         .store(config_panic, Ordering::Relaxed);
                     *stopped_probe.lock().unwrap() = None;
                     let run_case = |game: &mut crate::game::Game<'_>| {
-                        game.options.execution_role = if dedicated {
-                            ExecutionRole::DedicatedServer
-                        } else {
-                            ExecutionRole::IntegratedServer
-                        };
                         let root = std::env::temp_dir().join(format!(
                             "server-lifecycle-{}-{dedicated}-{case}",
                             std::process::id()
@@ -193,26 +183,15 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 .unwrap();
                             game.world.set(1, 64, 1, stone).unwrap();
                             assert!(game.save.raw_chunk(0, 0).is_none());
-                            let serving_stopped = if dedicated {
-                                Box::new(|| true) as Box<dyn Fn() -> bool + Send + Sync>
-                            } else {
-                                // Cover both a published and an unpublished integrated
-                                // server. Neither may merely unpublish on shutdown.
-                                Box::new(super::super::integrated::tests::install_serving(
-                                    game,
-                                    case == "config-unloading-save-panic",
-                                ))
-                            };
                             let lan = Arc::downgrade(&game.lan.as_ref().unwrap().hub.lan.shared);
                             *stopped_probe.lock().unwrap() = Some(StoppedProbe {
-                                serving_stopped,
                                 lan,
                                 root: root.clone(),
                                 save: game.save.clone(),
                             });
                             game.native_configs_server_start(&root, dedicated);
                         }
-                        let result = game.run_server_lifecycle(dedicated, |game, began| {
+                        let result = game.run_server_lifecycle(|game, began| {
                             if case == "before-start" {
                                 return Err("before startup".into());
                             }
@@ -279,7 +258,6 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                         assert_eq!(*log.lock().unwrap(), expected, "{dedicated} {case}");
                         assert!(game.session_lock.is_none(), "storage released after {case}");
                         assert!(!game.world_adopted, "adoption cleared after {case}");
-                        assert!(game.serving.is_none(), "serving retired after {case}");
                         assert!(game.lan.is_none(), "LAN dropped after {case}");
                         if config_panic {
                             let registry = &game.pack.assets.registry;

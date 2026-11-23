@@ -2,7 +2,6 @@
   "routes": {
     "package": {
       "program": [
-        "horizon-ctl",
         "horizon-prepare",
         "horizon-server",
         "horizon-wasm-std.wasm"
@@ -36,7 +35,6 @@
     }
   },
   "how": {
-    "horizon-ctl": "cargo build PROFILE -p horizon-client-lib --bin horizon-ctl",
     "horizon-prepare": "cargo build PROFILE -p horizon-prepare",
     "horizon-server": "cargo build PROFILE -p horizon-server",
     "horizon-wasm-std.wasm": "cargo run --locked -p cargo-horizon-mod -- wasm-std PROGRAM_FOLDER/horizon-wasm-std.wasm",
@@ -49,7 +47,7 @@
     "runtime": [
       "horizon-prebuilt.json",
       "bin/@program:horizon-client",
-      "deps/@dylib:horizon_mod_host",
+      "deps/@dylib:horizon_game",
       "deps/@dylib:horizon_mod_wasm",
       "deps/@dylib:mod_api",
       "deps/@dylib:mod_vocab",

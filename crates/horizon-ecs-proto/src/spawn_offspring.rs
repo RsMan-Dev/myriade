@@ -44,6 +44,7 @@ pub(crate) fn interact(w: &mut World, e: Entity, _: &'static (dyn std::any::Any 
     }
     w.entity_mut(baby).insert(Yaw(0.0));
     make_baby(w, baby, age);
+    crate::attr_mod::apply_load(w, baby);
     // `applyComponentsFromItemStack`: the custom name of the egg (the only one the jar carries over besides `custom_data`).
     if let Some(name) = crate::used_stack::of(w, i.item).and_then(|u| u.stack.custom_name()) {
         crate::custom_name::set(w, baby, Some(name));

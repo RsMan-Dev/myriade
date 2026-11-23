@@ -64,7 +64,7 @@ impl Game<'_> {
     /// `HostEvent::TargetChanged` with no target: `living_change_target` hears the clear (not a brain's). A refusal puts `previous` back,
     /// a replacement is written as the new target; both go through `set_target`, whose `Some` event has no handler for an ECS mob.
     pub(in crate::game) fn ecs_target_cleared(&mut self, e: Entity, previous: Option<Who>) {
-        if !self.native_authoritative() || !mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
+        if !mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
             return;
         }
         let Some(epoch) = self.native_lifecycle.epoch() else { return };
@@ -123,9 +123,42 @@ impl Game<'_> {
         }
     }
 
-    /// `HostEvent::Spawned`: the mods are told of a mob that joined the level.
+    /// `HostEvent::TargetAsk`: `living_change_target` decides the target a brain proposed (held only while a mod hears it); the answer
+    /// goes back through `resolve_target`. A player proposal reaches the hook as no target (its `LivingRef` is not built here).
+    pub(in crate::game) fn ecs_target_asked(&mut self, e: Entity, proposed: Option<Who>) {
+        use horizon_ecs_proto::brain::behaviours::start_attacking::TargetAnswer;
+        let answer = match self.native_lifecycle.epoch() {
+            None => TargetAnswer::Keep,
+            Some(epoch) => {
+                let id = self.entity_id(e);
+                let mob = mod_api::MobRef::new(mod_api::EntityRef::new(epoch, id));
+                let original = match proposed {
+                    Some(Who::Entity(t)) => Some(mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, self.entity_id(t)))),
+                    _ => None,
+                };
+                match self.native_mob_target_event(mob, original, false) {
+                    None => TargetAnswer::Keep,
+                    Some(None) => TargetAnswer::Set(None),
+                    Some(Some(new)) => {
+                        let new_id = new.entity().id();
+                        let who = match self.ecs.entity_of(new_id) {
+                            Some(t) => Some(Who::Entity(t)),
+                            None => self.with_player(new_id, |_| ()).map(|_| Who::Player(new_id)),
+                        };
+                        TargetAnswer::Set(who)
+                    }
+                }
+            }
+        };
+        self.ecs.resolve_target(e, answer);
+    }
+
+    /// `HostEvent::Spawned`: the mods are told of a mob that joined the level, and its mod goals are attached (every spawn path announces).
     pub(in crate::game) fn ecs_spawned_event(&mut self, e: Entity, natural: bool) {
         let id = self.entity_id(e);
+        if let (Some(kind), Some(w)) = (self.ecs.kind(id), self.ecs.ecs_mut()) {
+            horizon_client::ecs_bridge::mod_goals::attach(w.world_mut(), e, kind);
+        }
         self.native_ecs_joined(id, natural);
     }
 

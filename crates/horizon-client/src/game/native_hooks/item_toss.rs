@@ -93,7 +93,6 @@ mod item_toss_tests {
         let mods = vec![ModEntry::new("toss_probe", Box::new(Tosser(heard.clone())))];
         with_mods(mods.into(), || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
                 game.player = Some(
                     horizon_client::motion::PlayerMotion::new(
                         game.motion,
@@ -197,7 +196,6 @@ mod item_toss_tests {
         )];
         with_mods(mods.into(), || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
                 game.player = Some(
                     horizon_client::motion::PlayerMotion::new(
                         game.motion,

@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{
     Game,
-    execution_role::ExecutionRole,
     scheduled_tasks::{ScheduledTasks, run_all},
 };
 use mod_api::{ScheduleError, TaskId};
@@ -208,11 +207,7 @@ impl NativeLifecycle {
 impl Game<'_> {
     /// The role is fixed at construction; a mirror `Game` is remote whatever it is.
     fn native_lifecycle_authority(&self) -> Authority {
-        match self.options.execution_role {
-            ExecutionRole::Client => Authority::LocalAuthoritative,
-            ExecutionRole::IntegratedServer => Authority::IntegratedServer,
-            ExecutionRole::DedicatedServer => Authority::DedicatedServer,
-        }
+        Authority::DedicatedServer
     }
 
     pub(super) fn native_lifecycle_open_started(&mut self) {
@@ -261,7 +256,6 @@ impl Game<'_> {
     /// After the final save, before the lock release. Client epochs retire
     /// without dispatching server lifecycle hooks.
     pub(super) fn native_lifecycle_world_closed(&mut self) {
-        self.instance_groups.borrow_mut().clear();
         // Each server level closes after the final save (`LevelEvent.Unload`).
         {
             self.native_levels_closing();
@@ -411,7 +405,7 @@ mod tests {
         assert!(lifecycle.tasks.pop_due().is_none());
         lifecycle.begin_close();
         lifecycle.world_close_final();
-        lifecycle.begin_open(Authority::IntegratedServer);
+        lifecycle.begin_open(Authority::DedicatedServer);
         lifecycle.world_open_ready();
         lifecycle.server_tick_start(true);
         assert!(lifecycle.tasks.pop_due().is_none());
@@ -420,14 +414,14 @@ mod tests {
     /// A lifecycle mid-open on the server thread.
     fn opening() -> NativeLifecycle {
         let mut lifecycle = NativeLifecycle::default();
-        lifecycle.begin_open(Authority::IntegratedServer);
+        lifecycle.begin_open(Authority::DedicatedServer);
         lifecycle
     }
 
     #[test]
     fn block_reads_require_the_current_hook_scope() {
         let mut life = NativeLifecycle::default();
-        life.begin_open(Authority::IntegratedServer);
+        life.begin_open(Authority::DedicatedServer);
         let ready = life.world_open_ready().unwrap();
         assert!(!life.permits_read(&ready));
         let (tick, _) = life.server_tick_start(true).unwrap();
@@ -439,7 +433,7 @@ mod tests {
         life.server_tick_end(false).unwrap();
         life.begin_close();
         life.world_close_final().unwrap();
-        life.begin_open(Authority::IntegratedServer);
+        life.begin_open(Authority::DedicatedServer);
         life.world_open_ready().unwrap();
         life.read_scope = true;
         assert!(!life.permits_read(&tick));
@@ -449,7 +443,7 @@ mod tests {
     fn world_ready_fires_once_per_epoch() {
         let mut lifecycle = opening();
         let context = lifecycle.world_open_ready().expect("the first ready fires");
-        assert_eq!(context.authority, Authority::IntegratedServer);
+        assert_eq!(context.authority, Authority::DedicatedServer);
         assert!(context.epoch.get() >= 1, "the epoch is globally allocated");
         assert!(lifecycle.world_open_ready().is_none(), "at most once");
     }
@@ -461,7 +455,7 @@ mod tests {
         let failed_epoch = context.epoch;
         assert!(lifecycle.world_open_ready().is_none(), "the epoch is gone");
         assert!(lifecycle.server_tick_start(true).is_none());
-        lifecycle.begin_open(Authority::IntegratedServer);
+        lifecycle.begin_open(Authority::DedicatedServer);
         let context = lifecycle.world_open_ready().expect("the retry opens fresh");
         assert!(context.epoch.get() > failed_epoch.get(), "a fresh epoch");
     }

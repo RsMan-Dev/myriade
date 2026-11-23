@@ -368,7 +368,6 @@ impl Game<'_> {
             self.container == Some(open) && self.open_container_size() < slots
         }) {
             self.close_container();
-            self.screen = super::Screen::Playing;
             return;
         }
         let range = self.reach() + 4.0;
@@ -473,7 +472,7 @@ mod tests {
 #[cfg(test)]
 mod reach_tests {
     use super::super::game_tests::tests::server_game;
-    use horizon_client::{containers::BlockEntity, motion::PlayerMotion};
+    use horizon_client::containers::BlockEntity;
     use horizon_core::geometry::Vec3;
 
     /// `Container.stillValidBlockEntity` for a double chest (`CompoundContainer`
@@ -484,9 +483,11 @@ mod reach_tests {
     fn breaking_the_other_half_closes_the_open_double_chest() {
         let mut resources = None;
         let mut game = server_game(&mut resources);
-        game.player = Some(
-            PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).expect("a player position"),
-        );
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(
+            &mut game,
+            Vec3::new(8.5, 64.0, 8.5),
+            |game| {
         let registry = game.pack.assets.registry;
         let half = |kind: &str| {
             let mut state = registry
@@ -519,6 +520,8 @@ mod reach_tests {
         assert_eq!(
             game.container, None,
             "the open double chest kept a menu after its other half broke"
+        );
+            },
         );
     }
 }

@@ -48,7 +48,7 @@ fn creature_at(h: &mut Herd, feet: Vec3) -> Entity {
         .spawn((
             Pos(feet),
             Vel(Vec3::ZERO),
-            Body { width: w, height: hgt, step_height: 0.0, speed: 0.0, fall_factor: 1.0, object: false, orb: false, tnt: false, lava_walker: false },
+            Body { width: w, height: hgt, step_height: 0.0, speed: 0.0, fall_factor: 1.0, safe_fall: 3.0, fall_mult: 1.0, movement_efficiency: 0.0, object: false, orb: false, tnt: false, lava_walker: false },
             Gravity(0.04),
             Bounds(Aabb::new(
                 Vec3::new(feet.x - 0.125, feet.y, feet.z - 0.125),
@@ -71,7 +71,7 @@ fn a_free_rocket_flies_and_goes_off_as_the_jar_s_does() {
     if !have_data() {
         return;
     }
-    let (_r, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let at = Vec3::new(0.5, 10.0, 0.5);
     let e = launch_with(&mut h.world, shot(at), &mut LegacyRandom::new(SEED));
     let mut model = Model::new(at, i32::from(FLIGHT), &mut LegacyRandom::new(SEED));
@@ -102,7 +102,7 @@ fn the_blast_hurts_a_creature_as_the_jar_s_does() {
         probe.step();
     }
     let boom = probe.pos;
-    let (_r, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     launch_with(&mut h.world, shot(at), &mut LegacyRandom::new(SEED));
     for _ in 0..life {
         h.tick();

@@ -102,7 +102,6 @@ fn a_block_part_hears_a_piston_destroy_it_before_the_move_overwrites_its_cells()
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));
@@ -131,17 +130,12 @@ fn a_block_part_hears_a_piston_destroy_it_before_the_move_overwrites_its_cells()
                     .map(|(_, m)| m.moved_state)
             };
             // A powered piston facing east at (2, 64, z), `ahead` east of it, then a torch.
-            let extend = |game: &mut super::Game<'_>, z, ahead: &[BlockStateId], client| {
+            let extend = |game: &mut super::Game<'_>, z, ahead: &[BlockStateId]| {
                 game.with_level(|b, level, ticks| {
                     level.set_raw(BlockPos::new(1, 64, z), power);
                     level.set_raw(BlockPos::new(2, 64, z), piston);
                     for (i, state) in ahead.iter().chain([&torch_state]).enumerate() {
                         level.set_raw(BlockPos::new(3 + i as i32, 64, z), *state);
-                    }
-                    if client {
-                        // A client replays the server's move with no hooks.
-                        level.client_side = true;
-                        level.native_authoritative = false;
                     }
                     b.client_block_event(
                         level,
@@ -160,7 +154,7 @@ fn a_block_part_hears_a_piston_destroy_it_before_the_move_overwrites_its_cells()
             };
             // Heard once, with the torch's cell and the push direction; the torch has dropped
             // and its cell then holds the arm's moving block.
-            extend(game, 2, &[], false);
+            extend(game, 2, &[]);
             assert_eq!(
                 *torch.heard.lock().unwrap(),
                 [(BlockPos::new(3, 64, 2), Direction::East)]
@@ -169,11 +163,11 @@ fn a_block_part_hears_a_piston_destroy_it_before_the_move_overwrites_its_cells()
             assert!(is_moving(game, 3, 2));
             // Stone written into its own cell is overwritten by the move.
             torch.write.store(1, Ordering::Relaxed);
-            extend(game, 5, &[], false);
+            extend(game, 5, &[]);
             assert!(is_moving(game, 3, 5));
             // Dirt written into the cell of the stone pushed ahead of it: the stone moves.
             torch.write.store(2, Ordering::Relaxed);
-            extend(game, 8, &[stone], false);
+            extend(game, 8, &[stone]);
             assert_eq!(
                 torch.heard.lock().unwrap().last(),
                 Some(&(BlockPos::new(4, 64, 8), Direction::East))
@@ -182,17 +176,14 @@ fn a_block_part_hears_a_piston_destroy_it_before_the_move_overwrites_its_cells()
             assert_ne!(game.world.block(3, 64, 8), dirt);
             // Stone written above the move stays.
             torch.write.store(3, Ordering::Relaxed);
-            extend(game, 11, &[], false);
+            extend(game, 11, &[]);
             assert_eq!(game.world.block(3, 65, 11), stone);
             assert_eq!(torch.heard.lock().unwrap().len(), 4);
-            // A move piston_pre cancels, and a client's replay, are not heard.
+            // A move piston_pre cancels, and is not heard.
             torch.write.store(0, Ordering::Relaxed);
             cancel.store(true, Ordering::Relaxed);
-            extend(game, 14, &[], false);
+            extend(game, 14, &[]);
             assert_eq!(game.world.block(3, 64, 14), torch_state);
-            cancel.store(false, Ordering::Relaxed);
-            extend(game, 14, &[], true);
-            assert!(is_moving(game, 3, 14));
             assert_eq!(torch.heard.lock().unwrap().len(), 4);
         })
     });

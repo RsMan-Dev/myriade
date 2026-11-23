@@ -239,6 +239,33 @@ pub(crate) fn comfortable_fall_distance(f: f32) -> i32 {
     (f + 3.0).ifloor()
 }
 
+/// `GroundPathNavigation.findSurfacePosition`: the spot a path target stands on, searched within the build range (`min_y` and `max_y`
+/// kept). From above, the search goes down to the first non-air block; from inside a solid block, up to the first non-solid one.
+pub fn surface_search(min_y: i32, max_y: i32, air: impl Fn([i32; 3]) -> bool, solid: impl Fn([i32; 3]) -> bool, mut p: [i32; 3]) -> [i32; 3] {
+    if air(p) {
+        let mut q = [p[0], (p[1] - 1).min(max_y), p[2]];
+        while q[1] >= min_y && air(q) {
+            q[1] -= 1;
+        }
+        if q[1] >= min_y {
+            return [q[0], q[1] + 1, q[2]];
+        }
+        q[1] = (p[1] + 1).max(min_y);
+        while q[1] <= max_y && air(q) {
+            q[1] += 1;
+        }
+        p = q;
+    }
+    if !solid(p) {
+        return p;
+    }
+    let mut q = [p[0], p[1] + 1, p[2]];
+    while q[1] <= max_y && solid(q) {
+        q[1] += 1;
+    }
+    q
+}
+
 /// `PathNavigation.createPath` + `moveTo` for the spot a stroll picked: Horizon's real path finder. Only the cows
 /// that asked for a path are visited, in parallel when asked; what follows (the next module, the end of the walk)
 /// is a command.
@@ -249,10 +276,10 @@ pub(crate) fn pathfind(
     level: Res<Level>,
     day: Res<crate::hostile::Daylight>,
     mut par: crate::cow::OrdCmds,
-    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>, Has<crate::locomotion::climb::Climber>, Has<crate::behaviours::restrict_sun::AvoidSun>, Option<&crate::locomotion::swim::SwimParams>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
+    mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>, Has<crate::locomotion::climb::Climber>, Has<crate::behaviours::restrict_sun::AvoidSun>, Option<&crate::locomotion::swim::SwimParams>, Has<crate::mount::Riding>, Option<(&crate::fall_by_health::FallByHealth, &crate::cow::Health, Has<crate::targeting::Target>)>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
-    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, _vel: &Vel, sp: &NavParams, lava: bool, climber: bool, sunless: bool, swp: Option<&crate::locomotion::swim::SwimParams>| {
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, _vel: &Vel, sp: &NavParams, lava: bool, climber: bool, sunless: bool, swp: Option<&crate::locomotion::swim::SwimParams>, riding: bool, fall: Option<(&crate::fall_by_health::FallByHealth, &crate::cow::Health, bool)>| {
         let now = clock.of(e);
         let mw = level.mw.0;
         let pm = PathMob {
@@ -262,7 +289,7 @@ pub(crate) fn pathfind(
             on_ground: c.on_ground,
             in_water: false,
             max_up_step: body.step_height,
-            max_fall_distance: comfortable_fall_distance(0.0),
+            max_fall_distance: crate::fall_by_health::path_max_fall(fall.map(|f| f.1.0), fall.is_some_and(|f| f.2)),
             malus: sp.malus,
             can_float: sp.can_float,
             can_open_doors: sp.can_open_doors,
@@ -273,7 +300,14 @@ pub(crate) fn pathfind(
         // `PathNavigation.getMaxPathLength`: max(follow range, `requiredPathLength` = 16): a vindicator (12) searches as far as a cow.
         let max_len = sp.follow_range.max(16.0);
         let max_visited = (max_len * 16.0).ifloor();
-        let target = [s.tx.ifloor(), s.ty, s.tz.ifloor()];
+        let shape = mw.world.shape;
+        let target = surface_search(
+            shape.min_y,
+            shape.max_y() - 1,
+            |p| !shape.contains_y(p[1]) || mw.facts.is_air(mw.world.block(p[0], p[1], p[2])),
+            |p| shape.contains_y(p[1]) && mw.solid(p[0], p[1], p[2]),
+            [s.tx.ifloor(), s.ty, s.tz.ifloor()],
+        );
         // `GroundPathNavigation.canUpdatePath`: no path is made in the air (on the ground, in a liquid, riding).
         // The amphibious navigation (`AmphibiousPathNavigation`) serves both media: its evaluator, in the water and out of it.
         let amph = swp.and_then(|p| p.amphibious);
@@ -281,7 +315,7 @@ pub(crate) fn pathfind(
             Some(prefers_shallow) => Evaluator::Amphibious { prefers_shallow },
             None => Evaluator::Walk,
         };
-        let path = (c.on_ground || fluid || amph.is_some())
+        let path = (c.on_ground || fluid || amph.is_some() || riding)
             .then(|| {
                 nav.searches += 1;
                 crate::pathsearch::probe!(crate::goals::FINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
@@ -341,18 +375,18 @@ pub(crate) fn pathfind(
         let mut chosen: Vec<Entity> = if cfg.path_budget > 0 { q.iter().map(|x| x.0).take(left).collect() } else { Vec::new() };
         chosen.sort_unstable();
         let (limited, chosen) = (cfg.path_budget > 0, &chosen);
-        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl, u, w)| {
+        q.par_iter_mut().for_each(|(e, p, b, c, mut s, mut n, f, v, i, l, cl, u, w, r, fa)| {
             if !limited || chosen.binary_search(&e).is_ok() {
-                one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u, w);
+                one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u, w, r, fa);
             }
         });
     } else {
-        for (e, p, b, c, mut s, mut n, f, v, i, l, cl, u, w) in &mut q {
+        for (e, p, b, c, mut s, mut n, f, v, i, l, cl, u, w, r, fa) in &mut q {
             if left == 0 {
                 break;
             }
             left -= 1;
-            one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u, w);
+            one(e, p, b, c, &mut s, &mut n, f, v, i, l, cl, u, w, r, fa);
         }
     }
     par.flush();
@@ -447,6 +481,7 @@ pub(crate) fn path_ended(q: Query<(Entity, &crate::goals::GoalSet, Option<&crate
             crate::goals::path_ended(r, rg, &mut reqs);
         }
         commands.entity(e).remove::<PathEnded>();
+        commands.queue(move |w: &mut World| crate::walk_paces::pace(w, e, 0.0));
     }
 }
 

@@ -4,6 +4,7 @@
 //! the `Mob`'s: the host's refusal of a block is not reported back.
 use horizon_client_lib::items::ItemStack;
 use horizon_world::registry::BlockStateId;
+use std::borrow::Cow;
 use crate::targeting::Who;
 
 /// One output, one for one with the `MobEvent` of the same name.
@@ -11,8 +12,11 @@ use crate::targeting::Who;
 pub enum HostEvent {
     SetBlock { pos: [i32; 3], state: BlockStateId },
     /// `source`: the sound category index (`SoundSource`); None is the event's own default.
-    Sound { name: &'static str, at: [f64; 3], volume: f32, pitch: f32, source: Option<usize> },
+    /// A block's sound names are read from its state (`Cow::Owned`); a literal is `Cow::Borrowed`.
+    Sound { name: Cow<'static, str>, at: [f64; 3], volume: f32, pitch: f32, source: Option<usize> },
     Particles { kind: &'static str, at: [f64; 3], spread: [f64; 3], speed: f64, count: u32 },
+    /// `BlockParticleOption(state)`: the dust a landing throws up from the block under a mob (`MobEvent::LandingDust`).
+    BlockParticles { state: BlockStateId, at: [f64; 3], count: i32, speed: f64 },
     /// A velocity added to a player (`MobEvent::Push`).
     /// `MobEvent::EntityEvent`: the client's entity event code (animation, sound).
     EntityEvent { entity: bevy_ecs::entity::Entity, code: u8 },
@@ -37,6 +41,10 @@ pub enum HostEvent {
     /// A game event the entity makes while it moves (`Entity.gameEvent`: the source is the context): `ground` adds the block under it as the
     /// affected state (step, hit_ground), `sneaking` is `isSteppingCarefully`, `dampens` is `dampensVibrations`.
     GameEventBy { entity: bevy_ecs::entity::Entity, name: &'static str, at: [f64; 3], ground: bool, sneaking: bool, dampens: bool },
+    /// `block_place` posted by an entity at the block's centre, with the state placed (`MobEvent::GameEvent` with a source and a state).
+    BlockPlace { entity: bevy_ecs::entity::Entity, at: [f64; 3], state: BlockStateId },
+    /// A block broken by `level::break_block`: `drop` is the drop, `breaker` the entity that breaks it (`None` for none).
+    BlockBreak { at: [i32; 3], drop: bool, breaker: Option<bevy_ecs::entity::Entity> },
     /// Experience dropped as orbs.
     Xp { at: [f64; 3], amount: u32 },
     /// A player's ender pearl landed: teleport the player to `to`, hurt it by `damage` (a fall), and spawn an endermite where it stood if `endermite`.
@@ -67,7 +75,8 @@ pub enum HostEvent {
     /// `ServerLevel.broadcastDamageEvent` of a hit that went through without killing the followed entity `id`: `damage` is the damage
     /// type's name, `cause` the network id of who struck (0: none), `direct` is set when that one struck with its own hand (not a
     /// projectile); `at` is where the victim stands. Ids are resolved here: the entities may be gone when the host reads it.
-    Hurt { id: u32, damage: &'static str, cause: u32, direct: bool, at: [f64; 3] },
+    /// `attacker` is who the hurt names as its last attacker (`resolveMobResponsibleForDamage`): None for a no-anger blow (a ram).
+    Hurt { id: u32, damage: &'static str, cause: u32, direct: bool, at: [f64; 3], attacker: Option<bevy_ecs::entity::Entity> },
     /// `LivingEntity.die` of the followed entity `id` (`broadcastEntityEvent(3)`): the clients around play its death animation.
     DeathAnimation { id: u32, at: [f64; 3] },
     /// `LivingEntity.tickDeath`'s end (`broadcastEntityEvent(60)`, then `remove(KILLED)`): the smoke of the followed entity `id`, whose box
@@ -78,14 +87,17 @@ pub enum HostEvent {
     ConversionAsk { entity: bevy_ecs::entity::Entity, into: &'static str },
     /// The target of `entity` is now `target` (`None`: no target); `previous` is the one it had.
     TargetChanged { entity: bevy_ecs::entity::Entity, target: Option<Who>, previous: Option<Who> },
+    /// `LivingChangeTargetEvent` (only while a mod hears it): the brain of `entity` proposes `proposed`; the host answers with
+    /// `resolve_target` (keep, or set another target).
+    TargetAsk { entity: bevy_ecs::entity::Entity, proposed: Option<Who> },
     /// A creature appeared in the world.
     /// `natural` is set only by the host's natural spawning pass (`spawn_natural`).
     /// `reason` is the host's (`spawn_reason::SpawnReason`; `Natural` for `spawn_natural`).
     Spawned { entity: bevy_ecs::entity::Entity, natural: bool, reason: crate::spawn_reason::SpawnReason },
     /// `TamableAnimal.tame`: the player `owner` owns `entity`.
     Tamed { entity: bevy_ecs::entity::Entity, owner: Who },
-    /// A blow of `attacker` that landed on `victim` for `damage`.
-    HitDealt { attacker: Who, victim: bevy_ecs::entity::Entity, damage: f32 },
+    /// A blow of `attacker` that landed on `victim` for `damage`, of which `absorbed` went to the absorption hearts (`dealt_absorbed`).
+    HitDealt { attacker: Who, victim: bevy_ecs::entity::Entity, damage: f32, absorbed: f32 },
     /// The lead came off `entity`.
     Unleashed { entity: bevy_ecs::entity::Entity },
     /// A lethal hit on `entity`, which holds a totem: the host asks `living_use_totem` (only while a mod listens,
@@ -167,12 +179,16 @@ impl HostOut {
         self.out.push(HostEvent::DragonPhase { entity, from, to });
     }
     /// `MobEvent::Sound(name, at, volume, pitch)`.
-    pub fn sound(&mut self, name: &'static str, at: [f64; 3], volume: f32, pitch: f32) {
-        self.out.push(HostEvent::Sound { name, at, volume, pitch, source: None });
+    pub fn sound(&mut self, name: impl Into<Cow<'static, str>>, at: [f64; 3], volume: f32, pitch: f32) {
+        self.out.push(HostEvent::Sound { name: name.into(), at, volume, pitch, source: None });
     }
     /// `ServerLevel.playSound` with an explicit `SoundSource` (`source`, its index).
-    pub fn sound_from(&mut self, source: usize, name: &'static str, at: [f64; 3], volume: f32, pitch: f32) {
-        self.out.push(HostEvent::Sound { name, at, volume, pitch, source: Some(source) });
+    pub fn sound_from(&mut self, source: usize, name: impl Into<Cow<'static, str>>, at: [f64; 3], volume: f32, pitch: f32) {
+        self.out.push(HostEvent::Sound { name: name.into(), at, volume, pitch, source: Some(source) });
+    }
+    /// `MobEvent::LandingDust`: `count` crumbs of `state` at `at`, each leaving at `speed`.
+    pub fn block_particles(&mut self, state: BlockStateId, at: [f64; 3], count: i32, speed: f64) {
+        self.out.push(HostEvent::BlockParticles { state, at, count, speed });
     }
     /// `MobEvent::LevelParticles`.
     pub fn particles(&mut self, kind: &'static str, at: [f64; 3], spread: [f64; 3], speed: f64, count: u32) {
@@ -209,6 +225,12 @@ impl HostOut {
     pub fn game_event_by(&mut self, entity: bevy_ecs::entity::Entity, name: &'static str, at: [f64; 3], ground: bool, sneaking: bool, dampens: bool) {
         self.out.push(HostEvent::GameEventBy { entity, name, at, ground, sneaking, dampens });
     }
+    pub fn block_place(&mut self, entity: bevy_ecs::entity::Entity, at: [f64; 3], state: BlockStateId) {
+        self.out.push(HostEvent::BlockPlace { entity, at, state });
+    }
+    pub fn block_break(&mut self, at: [i32; 3], drop: bool, breaker: Option<bevy_ecs::entity::Entity>) {
+        self.out.push(HostEvent::BlockBreak { at, drop, breaker });
+    }
     pub fn pearl(&mut self, player: u32, to: [f64; 3], damage: f32, endermite: bool) {
         self.out.push(HostEvent::Pearl { player, to, damage, endermite });
     }
@@ -239,8 +261,8 @@ impl HostOut {
     pub fn death(&mut self, entity: bevy_ecs::entity::Entity, cause: &'static str, attacker: Option<Who>, at: [f64; 3]) {
         self.out.push(HostEvent::Death { entity, cause, attacker, at });
     }
-    pub fn hurt(&mut self, id: u32, damage: &'static str, cause: u32, direct: bool, at: [f64; 3]) {
-        self.out.push(HostEvent::Hurt { id, damage, cause, direct, at });
+    pub fn hurt(&mut self, id: u32, damage: &'static str, cause: u32, direct: bool, at: [f64; 3], attacker: Option<bevy_ecs::entity::Entity>) {
+        self.out.push(HostEvent::Hurt { id, damage, cause, direct, at, attacker });
     }
     pub fn death_animation(&mut self, id: u32, at: [f64; 3]) {
         self.out.push(HostEvent::DeathAnimation { id, at });
@@ -254,14 +276,17 @@ impl HostOut {
     pub fn target_changed(&mut self, entity: bevy_ecs::entity::Entity, target: Option<Who>, previous: Option<Who>) {
         self.out.push(HostEvent::TargetChanged { entity, target, previous });
     }
+    pub fn target_ask(&mut self, entity: bevy_ecs::entity::Entity, proposed: Option<Who>) {
+        self.out.push(HostEvent::TargetAsk { entity, proposed });
+    }
     pub fn spawned(&mut self, entity: bevy_ecs::entity::Entity, natural: bool, reason: crate::spawn_reason::SpawnReason) {
         self.out.push(HostEvent::Spawned { entity, natural, reason });
     }
     pub fn tamed(&mut self, entity: bevy_ecs::entity::Entity, owner: Who) {
         self.out.push(HostEvent::Tamed { entity, owner });
     }
-    pub fn hit_dealt(&mut self, attacker: Who, victim: bevy_ecs::entity::Entity, damage: f32) {
-        self.out.push(HostEvent::HitDealt { attacker, victim, damage });
+    pub fn hit_dealt(&mut self, attacker: Who, victim: bevy_ecs::entity::Entity, damage: f32, absorbed: f32) {
+        self.out.push(HostEvent::HitDealt { attacker, victim, damage, absorbed });
     }
     pub fn unleashed(&mut self, entity: bevy_ecs::entity::Entity) {
         self.out.push(HostEvent::Unleashed { entity });

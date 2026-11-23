@@ -35,7 +35,6 @@ mod connected_advancement_save_tests {
         let mut game_resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut game_resources);
         game.options.execution_role = ExecutionRole::DedicatedServer;
-        game.options.dedicated = Some(Vec::new());
         let dir = std::env::temp_dir().join(format!(
             "horizon-connected-advancement-save-{}",
             std::process::id()
@@ -201,8 +200,6 @@ mod connected_advancement_preservation_tests {
         let mut game_resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut game_resources);
         game.options.execution_role = ExecutionRole::DedicatedServer;
-        // Let a legacy launch-config gate reach the wrong-role control below.
-        game.options.dedicated = Some(Vec::new());
         let dir = std::env::temp_dir().join(format!(
             "horizon-advancement-preservation-{}",
             std::process::id()
@@ -377,17 +374,6 @@ mod connected_advancement_preservation_tests {
             read()
         );
         game.lan = Some(host);
-
-        // Launch configuration cannot grant dedicated-only commands to another role.
-        game.options.dedicated = Some(Vec::new());
-        for role in [ExecutionRole::IntegratedServer, ExecutionRole::Client] {
-            game.options.execution_role = role;
-            let dispatcher = horizon_client::command::vanilla::build_for(false, true);
-            let parsed = dispatcher.parse("save-all", &game.session.registries);
-            let (ctx, _) = parsed.executable().unwrap();
-            let error = game.run_chain(&parsed.context, ctx).unwrap_err();
-            assert_eq!(error.key, "command.unknown.command", "{role:?}");
-        }
         fs::remove_dir_all(&dir).unwrap();
     }
 }

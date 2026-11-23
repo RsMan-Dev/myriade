@@ -110,7 +110,7 @@ fn arrow_attackable(tags: &UpdateTags, type_id: Option<i32>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use horizon_client::chunk::Chunk;
     use horizon_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
     use horizon_core::position::ChunkPos;
@@ -170,7 +170,7 @@ mod tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -179,13 +179,12 @@ mod tests {
         options.game_dir = Some(
             std::env::temp_dir().join(format!("horizon-attack-checks-unit-{}", std::process::id())),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -229,7 +228,6 @@ mod tests {
                 allow_flight: false,
                 seed: 0,
                 max_players: 2,
-                integrated: false,
                 levels: Default::default(),
                 level_seeds: Default::default(),
             },

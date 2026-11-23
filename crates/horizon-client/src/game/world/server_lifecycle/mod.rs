@@ -1,4 +1,4 @@
-//! The server's run/stop boundary, shared by integrated and dedicated servers.
+//! The dedicated server's run/stop boundary.
 
 use super::Game;
 use horizon_client::Result;
@@ -9,7 +9,6 @@ impl Game<'_> {
     /// stops and saves the server, including a failed init or tick.
     pub(super) fn run_server_lifecycle(
         &mut self,
-        dedicated: bool,
         run: impl FnOnce(&mut Self, &mut bool) -> Result<()>,
     ) -> Result<()> {
         let mut startup_began = false;
@@ -28,22 +27,15 @@ impl Game<'_> {
             return result;
         }
         let run_error = result.as_ref().err().map(ToString::to_string);
-        let shutdown = self.shutdown_started_server(dedicated, crashed, run_error.as_deref());
+        let shutdown = self.shutdown_started_server(crashed, run_error.as_deref());
         result.and(shutdown)
     }
 
     /// Vanilla's nested `stopServer` finally: a listener panic still reaches
     /// cleanup, storage release and `server_stopped`, and the error is kept.
-    fn shutdown_started_server(
-        &mut self,
-        dedicated: bool,
-        crashed: bool,
-        run_error: Option<&str>,
-    ) -> Result<()> {
+    fn shutdown_started_server(&mut self, crashed: bool, run_error: Option<&str>) -> Result<()> {
         let mut failure: Option<String> = None;
-        if let Err(payload) =
-            catch_unwind(AssertUnwindSafe(|| self.native_server_stopping(dedicated)))
-        {
+        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| self.native_server_stopping())) {
             remember_shutdown(&mut failure, shutdown_panic(payload.as_ref()));
             self.keep_players_after_shutdown_panic();
         }
@@ -58,11 +50,7 @@ impl Game<'_> {
             }
         }
         match catch_unwind(AssertUnwindSafe(|| {
-            if dedicated {
-                self.stop_dedicated(crashed)
-            } else {
-                self.stop_integrated(crashed)
-            }
+            self.stop_dedicated(crashed)
         })) {
             Ok(Ok(())) => {}
             Ok(Err(error)) => {
@@ -90,9 +78,7 @@ impl Game<'_> {
                 }
             }
         }
-        if let Err(payload) =
-            catch_unwind(AssertUnwindSafe(|| self.native_server_stopped(dedicated)))
-        {
+        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| self.native_server_stopped())) {
             remember_shutdown(&mut failure, shutdown_panic(payload.as_ref()));
         }
         match failure {
@@ -160,10 +146,8 @@ impl Game<'_> {
     /// The session lock is not that marker: it is installed before the prepared
     /// level, so tag reads work, and a save in that gap would write the placeholder.
     pub(super) fn finish_server_save(&mut self, crashed: bool) -> Result<()> {
-        // IntegratedServer.teardownPublishedState must happen even if an
-        // earlier callback panicked; otherwise lan_close only unpublishes a
-        // still-serving server instead of disconnecting and dropping its hub.
-        self.stop_serving();
+        // The mod diagnostics end even if an earlier callback panicked.
+        self.stop_mod_diagnostics();
         let mut result = match catch_unwind(AssertUnwindSafe(|| {
             if crashed {
                 Ok(())

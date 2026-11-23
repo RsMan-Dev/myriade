@@ -31,12 +31,3 @@ pub fn check_parts(
 ) -> Result<(), crate::parts::MissingResolvedParts> {
     crate::parts::try_parts(hook, name).map(|_| ())
 }
-/// Scope an empty pose lookup, including on transports that do not consult it.
-#[must_use]
-#[cfg(any(test, feature = "testing"))]
-pub fn empty_pose_table() -> impl Sized {
-    (
-        crate::client::arm_pose::test_table(Vec::new()),
-        std::marker::PhantomData::<std::rc::Rc<()>>,
-    )
-}

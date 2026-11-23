@@ -36,8 +36,7 @@ import server_bench as bench
 
 FIXTURES = lab.ROOT / 'tools/fixtures'
 SCENARIOS = lab.ROOT / 'tools/paper_parity_scenarios.json'
-HOME_KEYS = ('HORIZON_HOME', 'HORIZON_LAUNCHER_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME',
-             'HORIZON_LAUNCHER_TRASH', 'HORIZON_LAUNCHER_CLIPBOARD', 'HORIZON_LAUNCHER_DESKTOP')
+HOME_KEYS = ('HORIZON_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME')
 
 
 def hook_map():
@@ -375,7 +374,7 @@ def main():
     start = commands.add_parser('run')
     start.add_argument('--engine', type=Path, required=True, help='export containing paper_trace')
     start.add_argument('--resources', type=Path, default=lab.RESOURCES)
-    start.add_argument('--bots', type=Path, default=lab.cargo_target() / f'fast/horizon-bots{bench.EXE}')
+    start.add_argument('--bots', type=Path, default=lab.cargo_target() / f'fast/myriade-bot{bench.EXE}')
     start.add_argument('--heap', default='2g')
     start.add_argument('--startup-timeout', type=int, default=1500,
                        help="seconds to wait for a server's Done line (resource loading is slow on network drives)")

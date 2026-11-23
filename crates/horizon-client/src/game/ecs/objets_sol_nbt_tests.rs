@@ -138,8 +138,7 @@ fn loaded_item_lifetime_counters_tick_with_signed_sentinels() {
     let mut game = crate::game::ecs::test_support::active_server_game(&mut resources);
     game.build_registries();
     game.world.chunks.insert((0, 0), std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));
-    let feet = horizon_core::geometry::Vec3::new(8.5, 70.0, 8.5);
-    game.player = Some(horizon_client::motion::PlayerMotion::new(game.motion, feet).unwrap());
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     game.update_chunk_tickets();
     for delay in [32767_i16, -1, 0, 1, 2] {
         for age in [-32768_i16, -1, 0, 5998, 5999, 6000, 32767] {
@@ -220,8 +219,7 @@ fn a_damaged_shulker_box_spills_its_stacks_upward() {
     game.build_registries();
     game.set_allow_commands(true);
     game.world.chunks.insert((0, 0), std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));
-    let feet = horizon_core::geometry::Vec3::new(8.5, 70.0, 8.5);
-    game.player = Some(horizon_client::motion::PlayerMotion::new(game.motion, feet).unwrap());
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     game.update_chunk_tickets();
     let boxed = horizon_client::item_data::parse_stack(
         r#"{id:"minecraft:shulker_box",count:1,components:{"minecraft:container":[

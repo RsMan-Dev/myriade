@@ -24,6 +24,15 @@ pub fn attach(w: &mut World, e: Entity, holder: Holder) -> bool {
     leash::attach(w, e, holder)
 }
 
+/// `AbstractBoat.getLeashOffset` for a boat or raft (1.375 by 0.5625): where the rope hangs, at the front.
+pub fn boat_leash_offset() -> [f64; 3] {
+    [0.0, f64::from(0.88_f32 * 0.5625_f32), f64::from(0.64_f32 * 1.375_f32)]
+}
+/// `AbstractBoat.getQuadLeashOffsets`: the four points of a quad lead on a boat, front-left first.
+pub fn boat_quad_leash_offsets() -> [[f64; 3]; 4] {
+    crate::rules::leash::quad_points(1.375, 0.5625, 0.0, 0.64, 0.382, 0.88)
+}
+
 /// The place of the holder for the pull; None when a player is not online.
 fn holder_state(w: &World, h: Holder) -> Option<HolderState> {
     match h {

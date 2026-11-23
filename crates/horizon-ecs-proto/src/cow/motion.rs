@@ -25,6 +25,8 @@ use horizon_core::geometry::{Aabb, Vec3, trig};
 #[allow(unused_imports)]
 use std::sync::Arc;
 use super::*;
+use crate::mount::{Ridden, Riding};
+use crate::rules::pushable::Unpushable;
 
 pub(crate) fn wrap(a: f32) -> f32 {
     let mut a = a % 360.0;
@@ -180,7 +182,12 @@ pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Conta
     let p = pos.0;
     let subject = body.lava_walker.then(|| horizon_client_render::collisions::PowderSnowSubject { lava_walker: true, ..Default::default() });
     let scene = SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject };
-    let moved = level.occ.resolve(scene, bounds.0, wanted, body.step_height, c.on_ground).unwrap_or(Vec3::ZERO);
+    // `Entity.collide`: the world border's walls stop a mob too; the occupancy cache has no walls, so a level with a border takes the kernel.
+    let border = level.mw.0.border.map(|b| (b, [p.x, p.z]));
+    let moved = match border {
+        Some(_) => scene.resolve_in_border_with(bounds.0, wanted, body.step_height, c.on_ground, border, &[]).unwrap_or(Vec3::ZERO),
+        None => level.occ.resolve(scene, bounds.0, wanted, body.step_height, c.on_ground).unwrap_or(Vec3::ZERO),
+    };
     // `Entity.move`: a move shorter than 1.0E-7 (squared) that a collision cut is not applied (a creeping walker on the ground).
     let sq = |v: Vec3| v.x * v.x + v.y * v.y + v.z * v.z;
     if sq(moved) > 1.0e-7 || sq(wanted) - sq(moved) < 1.0e-7 {
@@ -199,8 +206,8 @@ pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Conta
     }
     if c.on_ground {
         if c.fall_distance > 0.0 {
-            // `LivingEntity.calculateFallDamage`: the fall beyond 3 blocks, floored; a stalagmite tip replaces the ordinary landing.
-            let own = crate::inside_effects::fall_damage(c.fall_distance, 1.0);
+            // `LivingEntity.calculateFallDamage`: the fall beyond the safe distance, times the multiplier, floored; a stalagmite tip replaces the ordinary landing.
+            let own = crate::inside_effects::fall_damage_safe(c.fall_distance, body.safe_fall, body.fall_mult);
             *fall_damage = crate::inside_effects::fall_on(level, pos.0, c.fall_distance).unwrap_or(own);
         }
         c.fall_distance = 0.0;
@@ -215,6 +222,9 @@ pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Conta
     if differs(wanted.z, moved.z) {
         vel.0.z = 0.0;
     }
+    // `Entity.move`'s last step, after the collisions: the horizontal velocity scaled by the block's speed factor (`getBlockSpeedFactor`).
+    let f = crate::cow::block_speed(level, pos, body, vel, false);
+    vel.0 = Vec3::new(vel.0.x * f64::from(f), vel.0.y, vel.0.z * f64::from(f));
 }
 
 /// The commands collected by `OrdCmds` on one thread (with the emitting entity) and the empty queues kept for the next scopes (no allocation per scope).
@@ -288,6 +298,7 @@ pub struct PushIn(pub Vec3);
 #[allow(clippy::type_complexity)]
 pub(crate) fn push(
     cfg: Res<Config>,
+    level: Res<Level>,
     idx: Res<Index>,
     mut par: crate::cow::OrdCmds,
     // The neighbours include the creatures asleep: a `Mob` that is not ticked is still in the snapshot, it pushes the ones that
@@ -296,8 +307,12 @@ pub(crate) fn push(
     objects: Query<&Body>,
     ordered: Query<(), With<Overlapping>>,
     touching: Query<(), With<Touching>>,
+    sleepers: Query<(), (With<crate::behaviours::bed::Sleeping>, Allow<Disabled>)>,
     // `Creaking.isPushable` / `push`: not while it stands still under a stare (`canMove` false); a dead one (crumbling, `Dying`) is not pushable either.
-    fixed: Query<(), Or<(With<Stilled>, crate::tear_down::Dead)>>,
+    // `AbstractHorse.isPushable` (`!isVehicle`): a mount with its rider; `Warden.isPushable` (`!isDiggingOrEmerging`) reads the act below.
+    fixed: Query<(), Or<(With<Stilled>, crate::tear_down::Dead, (With<crate::rules::pushable::Unpushable>, With<Ridden>))>>,
+    acting: Query<&crate::behaviours::act_phase::ActPhase>,
+    riding: Query<&crate::mount::Riding>,
     // `AbstractCubeMob.push(Entity)`: a body of contact damage and its victim, asked only for overlapping boxes.
     (carriers, victims): (
         Query<(), (With<crate::behaviours::contact_damage::ContactDamage>, Allow<Disabled>)>,
@@ -309,6 +324,8 @@ pub(crate) fn push(
 ) {
     // `Entity.isPushable`: an object (an item on the ground) neither pushes nor is pushed; read only where two boxes overlap.
     let is_object = |e: Entity| objects.get(e).is_ok_and(|b| b.object);
+    // `Warden.isDiggingOrEmerging`: not pushable while it comes out of the ground or is in it.
+    let digging = |e: Entity| acting.get(e).is_ok_and(|a| matches!(a.phase, crate::behaviours::act_phase::Phase::Emerging | crate::behaviours::act_phase::Phase::Burrowing));
     let one = |e: Entity, b: &Bounds, v: &mut Vel, moving: bool, was_touching: bool| {
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let (cx, cz) = ((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
@@ -331,7 +348,7 @@ pub(crate) fn push(
         }
         // `LivingEntity.pushEntities` takes the players too (`getPushableEntities`): a creature standing on a player's box is pushed
         // off it, twice per tick as the pair's two calls give. The player's side is the host's, not written here.
-        if let Some(on) = online.as_deref().filter(|_| !is_object(e) && !fixed.contains(e)) {
+        if let Some(on) = online.as_deref().filter(|_| !is_object(e) && !fixed.contains(e) && !digging(e)) {
             let r = (mx.x - mn.x).max(mx.z - mn.z) / 2.0 + 0.3;
             on.for_near(cx, cz, r, |p| {
                 let pb = crate::targeting::player_box(&p);
@@ -349,6 +366,11 @@ pub(crate) fn push(
             if o == e {
                 return;
             }
+            // `Entity.push` returns at once for `isPassengerOfSameVehicle`: the same root vehicle (a mount and its rider share it).
+            let root = |x: Entity| riding.get(x).map_or(x, |r| r.0);
+            if root(o) == root(e) {
+                return;
+            }
             if *e_object.get_or_insert_with(|| is_object(e)) {
                 return;
             }
@@ -364,6 +386,13 @@ pub(crate) fn push(
                     });
                 }
             }
+            // `LivingEntity.push(Entity)` does nothing when the receiver sleeps in a bed: the call `pushEntities` makes on a sleeper
+            // (`doPush` → `sleeper.push(this)`) moves neither side, the sleeper's own call moves both. One sleeper: one call.
+            let in_bed = (sleepers.contains(e), sleepers.contains(o));
+            if in_bed.0 && in_bed.1 {
+                return;
+            }
+            let one_call = in_bed.0 != in_bed.1;
             let (omn, omx) = (ob.0.min_position(), ob.0.max_position());
             let (mut xa, mut za) = ((omn.x + omx.x) / 2.0 - cx, (omn.z + omx.z) / 2.0 - cz);
             let mut dd = xa.abs().max(za.abs());
@@ -379,12 +408,16 @@ pub(crate) fn push(
             let (bx, bz) = (xa * pow * f64::from(0.05_f32), za * pow * f64::from(0.05_f32));
             // The neighbour `o` is ticked before this animal (a lower index) or after it.
             let lower = o.index().index() < e.index().index();
-            let gain = |o_lower: bool| if cfg.push_form == 0 { 2.0 * cfg.push_k } else { 1.0 + if o_lower { cfg.push_k } else { 1.0 } };
+            let gain = |o_lower: bool| match () {
+                () if one_call => 1.0,
+                () if cfg.push_form == 0 => 2.0 * cfg.push_k,
+                () => 1.0 + if o_lower { cfg.push_k } else { 1.0 },
+            };
             let (gx, gz) = (bx * gain(lower), bz * gain(lower));
             // What the neighbour receives of this animal's call: its own call is the other one.
             xa = bx * gain(!lower);
             za = bz * gain(!lower);
-            if !*e_fixed.get_or_insert_with(|| fixed.contains(e)) {
+            if !*e_fixed.get_or_insert_with(|| fixed.contains(e) || digging(e)) {
                 dv.0 -= gx;
                 dv.1 -= gz;
             }
@@ -401,9 +434,9 @@ pub(crate) fn push(
                     cmd.entity(o).insert(Touching);
                 });
             }
-            if ((!ob.is_changed() && !(cfg.keep_touching && touching.contains(o))) || ordered.contains(o)) && !fixed.contains(o) {
+            if ((!ob.is_changed() && !(cfg.keep_touching && touching.contains(o))) || ordered.contains(o)) && !fixed.contains(o) && !digging(o) {
                 par.command_scope(e, |mut cmd| {
-                    // A sleeper keeps the push (its velocity changes) and moves when it wakes, not before.
+                    // A creature at rest keeps the push (its velocity changes) and moves when it is ticked again, not before.
                     let (push, wake) = (Vec3::new(xa, 0.0, za), !asleep);
                     cmd.queue(move |w: &mut World| add_push(w, o, push, wake));
                 });
@@ -422,7 +455,7 @@ pub(crate) fn push(
             }
         }
         // A pile: this one and the ones it overlaps are looked at by the cramming module (each tick until they are not).
-        if overlapping + 1 >= MAX_ENTITY_CRAMMING {
+        if cramming_limit(&level).is_some_and(|max| overlapping + 1 >= max) {
             par.command_scope(e, |mut cmd| {
                 cmd.entity(e).insert(Crowded);
             });
@@ -453,10 +486,13 @@ pub(crate) fn push(
     par.flush();
 }
 
-/// `gamerule maxEntityCramming`: 24 others overlapping hurt an animal.
-pub const MAX_ENTITY_CRAMMING: usize = 24;
+/// The game rule `maxEntityCramming` of the world: the others overlapping that crush an animal. `None` when it is 0 or less (never).
+pub(crate) fn cramming_limit(level: &Level) -> Option<usize> {
+    let max = level.mw.0.max_entity_cramming;
+    (max > 0).then_some(max as usize)
+}
 
-/// Overlapping at least `MAX_ENTITY_CRAMMING - 1` others when last looked at: the cramming module visits it each tick
+/// Overlapping at least `cramming_limit - 1` others when last looked at: the cramming module visits it each tick
 /// (`LivingEntity.pushEntities` counts the overlapping entities of every entity, every tick) until fewer overlap it.
 #[derive(Component, Default)]
 #[component(storage = "SparseSet")]
@@ -468,22 +504,27 @@ pub struct Crowded;
 #[allow(clippy::type_complexity)]
 pub(crate) fn cramming(
     clock: Res<Clock>,
+    level: Res<Level>,
     idx: Res<Index>,
     boxes: Query<&Bounds, Allow<Disabled>>,
+    riders: Query<(Has<Riding>, Has<Unpushable>, Has<Ridden>), Allow<Disabled>>,
     mut q: Query<(Entity, &Bounds, &mut Rng, &Health, &HurtAt), With<Crowded>>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
+    let limit = cramming_limit(&level).unwrap_or(usize::MAX);
     let mut dying: Vec<Entity> = Vec::new();
     for (e, b, mut rng, health, hurt) in &mut q {
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let mut n = 0;
         idx.for_near((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0, |o| {
-            if o != e && !dying.contains(&o) && boxes.get(o).is_ok_and(|ob| b.0.intersects(ob.0)) {
+            // `getPushableEntities` drops a mount that has a rider (`isPushable`), and the count drops a passenger (`isPassenger`).
+            let out = riders.get(o).is_ok_and(|(riding, unpushable, ridden)| riding || (unpushable && ridden));
+            if o != e && !out && !dying.contains(&o) && boxes.get(o).is_ok_and(|ob| b.0.intersects(ob.0)) {
                 n += 1;
             }
         });
-        if n < MAX_ENTITY_CRAMMING {
+        if n < limit {
             commands.entity(e).remove::<Crowded>();
         } else if rng.next_int(4) == 0 {
             queue.add(e, 6.0, Cause::Cramming);
@@ -518,15 +559,17 @@ pub(crate) fn apply_pushes(
     mut q: Query<(Entity, &PushIn, &mut Vel)>,
     mut commands: Commands,
     mut on: ResMut<crate::goals::Online>,
-    mounts: Query<(Entity, &crate::mount::Mount, &Yaw, &Body, &Pos), With<crate::mount::Ridden>>,
+    clock: Res<Clock>,
+    mounts: Query<(Entity, &crate::mount::Mount, &Yaw, &Body, &Pos, Option<&crate::mount::PassengerSeats>, Option<&crate::cow::GrowAt>, Option<&crate::attr_mod::AttrMods>, Option<&crate::behaviours::posture::Posture>, Option<&crate::behaviours::random_stand::StandAnim>), With<crate::mount::Ridden>>,
     mut riders: Query<(&mut Pos, Option<&mut Yaw>), (With<crate::mount::Riding>, Without<crate::mount::Ridden>)>,
+    rider_seats: Query<(&Body, Option<&crate::mount::RiderSeat>, Option<&crate::cow::GrowAt>, Option<&crate::attr_mod::AttrMods>)>,
 ) {
     for (e, p, mut v) in &mut q {
         v.0 = Vec3::new(v.0.x + p.0.x, v.0.y, v.0.z + p.0.z);
         commands.entity(e).remove::<PushIn>();
     }
     // The seats: no system of their own, so no cost when nothing is ridden (the queries are sparse sets).
-    crate::mount::seats(&mounts, &mut riders, &mut on, &mut commands);
+    crate::mount::seats(&mounts, &mut riders, &rider_seats, clock.game_now(), &mut on, &mut commands);
 }
 
 /// Puts the entity at `at`: its box follows, and the events that can put it into blocks or a fluid are raised.

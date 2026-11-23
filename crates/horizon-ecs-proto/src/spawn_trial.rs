@@ -5,7 +5,7 @@
 //! `Env.solid` says which block stops it). The detection runs at the ticks where `(pack(pos) + time) % 20 == 0`, so the spawner
 //! wakes at those ticks and at the instants its state changes. Called every tick by the caller (`run_wakes`).
 //! The ominous items are `ominous_spawner` entities.
-use crate::cow::{species_table, Body, Clock, Pos};
+use crate::cow::{species_table, Body, Clock, Level, Pos};
 use crate::despawn;
 use crate::goals::{Events, Online};
 use crate::item::spawn_at_location;
@@ -617,7 +617,8 @@ fn spawn_mob(w: &mut World, rng: &mut LegacyRandom, env: &Env, pos: Block3, t: &
     let _yaw = rng.next_float() * 360.0;
     let seed = rng.next_long() as u64;
     let nearest = nearest_sqr(w, at);
-    let e = crate::spawning::born(w, &sp, at, seed, nearest);
+    let mw = w.resource::<Level>().mw.0;
+    let e = crate::spawn_natural::born_finalized(w, mw, &sp, at, seed, nearest, crate::spawn_reason::SpawnReason::TrialSpawner, &mut None)?;
     w.resource_mut::<Events>().host.particles("minecraft:flame", at, [0.0; 3], 0.0, 20);
     Some(e)
 }

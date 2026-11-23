@@ -7,7 +7,6 @@ use crate::game::Dim;
 use crate::game::game_tests::tests::server_game;
 use horizon_client::chunk::Chunk;
 use horizon_client::items::ItemStack;
-use horizon_core::geometry::Vec3;
 use std::sync::Arc;
 
 
@@ -18,7 +17,7 @@ fn items_past_the_simulation_distance_enter_no_end_gateway() {
     let mut game = server_game(&mut resources);
     game.dim = Dim::End;
     game.settings.simulation_distance = 4;
-    game.settings.render_distance = 12;
+    game.settings.view_distance = 12;
     let gateway = game
         .pack
         .assets
@@ -28,9 +27,7 @@ fn items_past_the_simulation_distance_enter_no_end_gateway() {
     // The player in chunk (0, 0); chunk (2, 0) is inside the simulation
     // distance, chunk (8, 0) loaded and in view but past it. In each, an item
     // lies in an End gateway block.
-    game.player = Some(
-        horizon_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap(),
-    );
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     for (cx, x) in [(2, 40), (8, 136)] {
         game.world
             .chunks
@@ -74,9 +71,7 @@ fn a_ticking_gateway_counts_its_age_in_its_block_entity() {
     game.build_registries();
     game.set_allow_commands(true);
     game.dim = Dim::End;
-    game.player = Some(
-        horizon_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap(),
-    );
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     game.world
         .chunks
         .insert((2, 0), Arc::new(Chunk::empty(2, 0)));

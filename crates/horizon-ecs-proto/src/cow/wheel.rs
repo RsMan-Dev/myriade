@@ -158,6 +158,10 @@ pub enum Due {
     Sun,
     /// The mob may go away from now on (`despawn.rs`).
     Despawn,
+    /// An allay's tenth tick: it heals one point (`allay_heal.rs`).
+    AllayHeal,
+    /// A wandering trader's delay runs out, or one tick before (`despawn_delay.rs`).
+    DespawnDelay,
 }
 
 pub(crate) const WHEEL: usize = 4096;
@@ -329,6 +333,8 @@ pub(crate) fn due(
             Due::Effect => commands.queue(move |w: &mut World| crate::effects::due(w, e)),
             Due::Fuse => commands.queue(move |w: &mut World| crate::explosion::fuse_due(w, e)),
             Due::Despawn => commands.queue(move |w: &mut World| crate::despawn::due(w, e)),
+            Due::DespawnDelay => commands.queue(move |w: &mut World| crate::despawn_delay::due(w, e)),
+            Due::AllayHeal => commands.queue(move |w: &mut World| crate::allay_heal::due(w, e)),
             Due::Burn => {
                 if let Ok((e2, burning, imm)) = burners.get(e) {
                     let now = clock.of(e);
@@ -354,6 +360,7 @@ pub(crate) fn due(
                         b.height = sizes.adult.1;
                         bb.0 = box_at(p.0, sizes.adult.0, sizes.adult.1);
                         commands.entity(e).remove::<GrowAt>().insert(Recheck);
+                        commands.queue(move |w: &mut World| crate::attr_mod::grow_up(w, e));
                         grown.0.push(e);
                         events.grew.push(e);
                     }

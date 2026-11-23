@@ -3,8 +3,8 @@
 //! explored places) and the memories `sniffer_digging`, `sniffer_sniffing_target`, `sniffer_happy` and `sniff_cooldown`; three activities
 //! pick between them (`dig`, `sniff`, `idle`: configuration). Every behaviour is timed and PASSIVE: the brain wakes at the end of its time
 //! and at each memory write, which is when anything can change (`can_sniff` / `can_dig` are read then). The seed drops 120 ticks into the
-//! dig: a memory that lasts that long wakes the brain, where it is dropped. Not done: the sounds of the transitions (no sound event in the
-//! frame), the path test of `can_dig_at` (`create_path_to(.., 1).reached`: the frame has no path query), the leash and the head pitch of
+//! dig: a memory that lasts that long wakes the brain, where it is dropped. Each state entered and the seed drop play their sound (`voice`,
+//! silent for a `Silent` creature). Not done: the path test of `can_dig_at` (`create_path_to(.., 1).reached`: the frame has no path query), the leash and the head pitch of
 //! `head_block`.
 use crate::behaviours::breed::Love;
 use crate::behaviours::Cap;
@@ -72,10 +72,19 @@ fn equip(w: &mut World, e: Entity, _: &Ctx) {
         w.entity_mut(e).insert(State { state: IDLING, explored: Vec::new(), seed_due: false, seed_at: 0 });
     }
 }
+/// `Sniffer.setState`: the sound of each state it enters (`Sniffer.java`, the `playSound` of its `setState` calls).
 fn transition(w: &mut World, e: Entity, to: u8) {
     if let Some(mut s) = w.get_mut::<State>(e) {
         s.state = to;
     }
+    let sound = match to {
+        FEELING_HAPPY => "entity.sniffer.happy",
+        SCENTING => "entity.sniffer.scenting",
+        SNIFFING => "entity.sniffer.sniffing",
+        RISING => "entity.sniffer.digging_stop",
+        _ => return,
+    };
+    crate::tear_down::voice(w, e, sound);
 }
 fn in_water(w: &World, e: Entity) -> bool {
     w.get::<FluidState>(e).is_some_and(|f| f.in_water)
@@ -253,6 +262,7 @@ fn drop_seed(w: &mut World, e: Entity, p: &Params) {
     for stack in crate::loot::roll_table(w, p.table, seed) {
         crate::item::drop_item(w, stack, horizon_core::geometry::Vec3::new(f64::from(at[0]), f64::from(at[1]), f64::from(at[2])), horizon_core::geometry::Vec3::ZERO, 10);
     }
+    crate::tear_down::voice(w, e, "entity.sniffer.drop_seed");
 }
 
 // ---- FinishedDigging --------------------------------------------------------------------------------------------------

@@ -69,7 +69,6 @@ pub struct Assets {
     /// Leaked once per process: shared by world generation threads.
     pub registry: &'static BlockRegistry,
     pub properties: Properties,
-    pub material_states: [BlockStateId; 6],
     /// Block names in `#minecraft:blocks_fluid_flow` (fluid flow vectors).
     pub blocks_fluid_flow: BTreeSet<String>,
 }
@@ -141,9 +140,8 @@ impl Assets {
                 })
                 .collect::<Result<_>>()?,
         ));
-        let mut material_states = [BlockStateId(0); 6];
-        for (layer, name) in MATERIALS.iter().enumerate() {
-            material_states[layer] = registry
+        for name in MATERIALS {
+            registry
                 .default_state(&format!("minecraft:{name}"))
                 .ok_or_else(|| invalid("missing test-scene material"))?;
         }
@@ -154,7 +152,6 @@ impl Assets {
         Ok(Self {
             registry,
             properties,
-            material_states,
             blocks_fluid_flow,
         })
     }

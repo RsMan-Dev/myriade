@@ -17,7 +17,7 @@ fn inert(h: &mut Herd, x: f64, y: f64, z: f64) -> Entity {
         .spawn((
             Pos(p),
             Vel(Vec3::ZERO),
-            Body { width: w, height: hgt, step_height: 0.0, speed: 0.0, fall_factor: 1.0, object: false, orb: false, tnt: false, lava_walker: false },
+            Body { width: w, height: hgt, step_height: 0.0, speed: 0.0, fall_factor: 1.0, safe_fall: 3.0, fall_mult: 1.0, movement_efficiency: 0.0, object: false, orb: false, tnt: false, lava_walker: false },
             Gravity(0.04),
             Bounds(box_at(p, w, hgt)),
             Cell(u32::MAX, [i32::MIN; 8], u32::MAX),

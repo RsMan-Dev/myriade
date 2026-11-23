@@ -340,7 +340,6 @@ fn fixture(name: &str, test: impl FnOnce(&mut Game<'_>, LevelRef, Probe)) {
     let mods: Mods = vec![ModEntry::new("storage_attempts", Box::new(probe.clone()))].into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

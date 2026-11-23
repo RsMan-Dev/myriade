@@ -99,6 +99,6 @@ impl Game<'_> {
     }
     /// Whether `dimension` is the authoritative level being ticked: where a server mod's world helpers act.
     pub(super) fn native_level_open(&self, dimension: &str) -> bool {
-        (self.serving.is_some() || self.options.dedicated.is_some()) && dimension == self.dim.id()
+        dimension == self.dim.id()
     }
 }

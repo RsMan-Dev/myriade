@@ -1,7 +1,6 @@
 //! `player.place_block` against real LAN guests, through the public player handle, with a
 //! literal test for each refusal.
 
-use super::native_entity_refs::tests::with_client_game;
 use super::native_guest_turn_tests::with_guests;
 use mod_api::{EntityRef, PlayerWorldRefusal as Refusal, WorldEpoch};
 
@@ -19,7 +18,6 @@ fn api_state(game: &super::Game<'_>, name: &str) -> mod_api::BlockState {
 
 fn loaded(game: &mut super::Game<'_>) {
     // The write is `level_set_block`'s, which an authoritative server only takes.
-    game.options.dedicated = Some(Vec::new());
     game.world.chunks.insert(
         (0, 0),
         std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
@@ -139,17 +137,3 @@ fn another_level_is_not_where_the_player_is() {
     });
 }
 
-/// On a client it is `Client`.
-#[test]
-#[ignore = "daily"]
-fn a_client_cannot_place_a_block_as_a_player() {
-    with_client_game(|game| {
-        let level = mod_api::LevelRef::new(WorldEpoch::new(0), game.dim.key());
-        let ghost = mod_api::__private::game::player_ref(EntityRef::new(WorldEpoch::new(0), 1), 1);
-        let stone = api_state(game, "minecraft:stone");
-        assert_eq!(
-            ghost.place_block(game, level, [2, 70, 2], stone, true),
-            Err(Refusal::Client)
-        );
-    });
-}

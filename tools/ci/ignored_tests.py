@@ -32,9 +32,8 @@ A row marked `daily` (`PACKAGE TEST TARGET daily REASON`, in `daily-<package>.tx
 `verify` into the daily run with `#[ignore = "daily"]` (tools/ci/move_to_daily.py): not a known failure, it must
 pass, and its row must name a test that still runs. A package's shard runs the daily rows of the targets it
 already runs (its library; every target for the packages in INTEGRATION_TESTS); the shard `daily-rows`
-(tools/ci/ignored_shards.py; `daily-rows-launcher` for the launcher's) runs every other daily row, one `cargo test -p PACKAGE TARGET -- --ignored --exact
-TEST...` per package and target, from the package's own workspace: a launcher row runs from launcher/ against its
-own lockfile (`--locked`).
+(tools/ci/ignored_shards.py) runs every other daily row, one `cargo test -p PACKAGE TARGET -- --ignored --exact
+TEST...` per package and target, from the game's workspace.
 
 `--needs VARIABLE --one-process-each` runs the tests marked `needs VARIABLE`, each alone in its own process
 (`--list` prints those commands instead), and fails unless every run reports exactly one test passed: a
@@ -154,7 +153,7 @@ def compile_diagnostics(output):
 @lru_cache(maxsize=32)
 def source_lines(path):
     """Only immutable tracked Rust blobs, never a working-tree or resource file."""
-    if not re.fullmatch(r"(?:crates|launcher)/[A-Za-z0-9_./-]+\.rs", path):
+    if not re.fullmatch(r"crates/[A-Za-z0-9_./-]+\.rs", path):
         return None
     if any(part in ("", ".", "..", "target", ".local") for part in path.split("/")):
         return None
@@ -389,7 +388,7 @@ def safe_identity(name):
 
 @lru_cache(maxsize=1)
 def tracked_rust_paths():
-    listing = subprocess.run(["git", "ls-tree", "-rl", "HEAD", "--", "crates", "launcher"],
+    listing = subprocess.run(["git", "ls-tree", "-rl", "HEAD", "--", "crates"],
                              capture_output=True, text=True, errors="replace")
     paths = set()
     if listing.returncode == 0:
@@ -397,7 +396,7 @@ def tracked_rust_paths():
             fields = line.split()
             if (len(fields) == 5 and fields[0] in ("100644", "100755") and
                     fields[1] == "blob" and fields[3].isdigit() and int(fields[3]) <= SOURCE_BYTES and
-                    re.fullmatch(r"(?:crates|launcher)/[A-Za-z0-9_./-]+\.rs", fields[4]) and
+                    re.fullmatch(r"crates/[A-Za-z0-9_./-]+\.rs", fields[4]) and
                     not any(part in ("", ".", "..", "target", ".local") for part in fields[4].split("/"))):
                 paths.add(fields[4])
     return paths
@@ -720,12 +719,10 @@ def run(package, skip, number=None, count=None, only=None):
     # Resource-backed fixtures need a fresh home, not the runner user's game files.
     with tempfile.TemporaryDirectory(prefix="horizon-ignored-") as scratch:
         homes = {}
-        for key in ("HORIZON_HOME", "HORIZON_LAUNCHER_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME"):
+        for key in ("HORIZON_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME"):
             home = Path(scratch) / key.lower()
             home.mkdir()
             homes[key] = home
-        for key in ("HORIZON_LAUNCHER_TRASH", "HORIZON_LAUNCHER_CLIPBOARD", "HORIZON_LAUNCHER_DESKTOP"):
-            homes[key] = Path(scratch) / key.lower()
         env = lab.game_env(**homes)
         if package == "horizon-client-lib":
             # Worldgen must meet its real-time deadlines without disabling test assertions.
@@ -737,7 +734,7 @@ def run(package, skip, number=None, count=None, only=None):
         workspace = "."
         if only:
             target = only[0]
-            # A package of another workspace (the launcher's) runs from that workspace, against its own lockfile.
+            # A package of another workspace runs from that workspace, against its own lockfile.
             workspace = ignored_shards.workspace_members()[package][1]
             features = workspace_features(workspace).get(package, [])
             command = ["cargo", "test", *(["--locked"] if workspace != "." else []), "-p", package,

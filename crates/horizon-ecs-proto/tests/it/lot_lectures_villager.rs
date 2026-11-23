@@ -133,7 +133,7 @@ fn farmland_is_a_secondary_site_of_the_farmer_only() {
     let mut h = Herd::with_slab_awake(40, true, false);
     let none = spawn_named(&mut h, "minecraft:villager", 0.5, 0.5, 41);
     let farm = spawn_named(&mut h, "minecraft:villager", 0.5, 0.5, 42);
-    let (items, enchantments, trades) = crate::trade_vs_mob::registries();
+    let (items, enchantments, trades) = crate::common::registries();
     h.world.insert_resource(horizon_ecs_proto::behaviours::trade_offers::TradeData { trades, items, enchantments, seed: 0x5EED, sequences: Default::default() });
     h.set_block(1, 0, 0, "minecraft:farmland");
     h.set_block(-1, 0, 0, "minecraft:farmland");

@@ -2,16 +2,18 @@
 //! swims in a STRAIGHT line toward the position the target had at the start (`velocity` fixed, `speed` long); the charge ends
 //! when it is 12 blocks from its start, when the target is 11 blocks away or out of sight, or at contact: then the blow, the
 //! horizontal speed times `hit_slow`, the target dropped, and 80 ticks of rest. Woken by the target being acquired.
-//! REPLIS (fiche 113 §5): no blow with a given push (`causeExtraKnockback` absent: the standard knockback of `add_by_entity`);
-//! no head turn toward the target (`turn_to`, `aim_clamped` not called: the module keeps LOOK only as the flag of the Mob);
-//! the target-choosing rule of the nautilus is not here (the test sets the target); the taming and the love are not read.
+//! The blow pushes its target twice as vanilla does: the default knockback, then `causeExtraKnockback` along the animal's facing
+//! (`Hit.extra` for an entity, `PlayerState.pushes` for a player, applied by the host through the player's knockback).
+//! REPLIS (fiche 113 §5): no head turn toward the target (`turn_to`, `aim_clamped` not called: the module keeps LOOK only as the flag of the Mob);
+//! the target is chosen by `nearest_target` (the nautilus's parameters, `species/nautilus.rs`); the taming and the love are not read here.
 use super::*;
 use crate::cow::*;
+use crate::effects::{Effects, Kind};
 use crate::goals::*;
 use crate::hostile::PlayerState;
 use crate::rules::charge_attack::{charge_ends, charge_velocity};
 use crate::targeting::{self, Target, TargetWatchers, Who};
-use horizon_core::geometry::Vec3;
+use horizon_core::geometry::{Vec3, trig};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -108,6 +110,10 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
 fn tick(w: &mut World) {
     crate::goals::tick_state(w, charge_run);
 }
+/// The level of an effect on the animal (`amplifier + 1`, 0 without it).
+fn level(fx: Option<&Effects>, kind: Kind) -> i32 {
+    fx.and_then(|f| f.list.iter().find(|x| x.kind == kind)).map_or(0, |x| x.amp + 1)
+}
 /// The charge of every charging animal: velocity kept, then the end tests (target gone or unseen, 12 blocks, 11 blocks)
 /// and the contact (the blow, the horizontal speed cut, the target dropped, the goal ends).
 fn charge_run(
@@ -115,11 +121,11 @@ fn charge_run(
     clock: Res<Clock>,
     mut dmg: ResMut<DamageQueue>,
     mut reqs: ResMut<Requests>,
-    mut q: Query<(Entity, &Pos, &Bounds, &Charger, &mut Vel, &AttackDamage, Option<&Target>), With<Charging>>,
+    mut q: Query<(Entity, &Pos, &Bounds, &Charger, &mut Vel, &AttackDamage, Option<&Target>, &Body, &Yaw, Option<&Effects>), With<Charging>>,
     mut cmd: Commands,
 ) {
     let tick = clock.0;
-    for (e, pos, bounds, c, mut vel, attack, target) in &mut q {
+    for (e, pos, bounds, c, mut vel, attack, target, body, yaw, fx) in &mut q {
         let end = |reqs: &mut Requests| reqs.0.push(Req::End(e, c.slot));
         let Some(t) = target.copied() else {
             end(&mut reqs);
@@ -140,9 +146,26 @@ fn charge_run(
             continue;
         }
         let amount = attack.0;
+        // `causeExtraKnockback` (nautilus.rs:760): along (sin yaw, -cos yaw), power `(clamp(speed * movement speed, 0.2, 2) + boost) * 2`,
+        // the boost being 0.25 per level of speed less 0.25 per level of slowness (`Body.speed` already carries the effects' speed).
+        let angle = f64::from(yaw.0 * trig::DEG_TO_RAD);
+        // The factor is a float in the game; a slowness deep enough leaves no power, and then no second knockback.
+        let boost = 0.25 * (level(fx, Kind::Speed) - level(fx, Kind::Slowness)) as f32;
+        let power = f64::from((((c.p.speed * body.speed) as f32).clamp(0.2, 2.0) + boost) * 2.0);
+        let extra = (power > 0.0).then(|| (f64::from(trig::sin(angle)), -f64::from(trig::cos(angle)), power));
         match t.who {
-            Who::Entity(victim) => dmg.add_by_entity(victim, amount, (p.x, p.z), e),
-            Who::Player(id) => set.p1().hurt(tick, id, amount, (p.x, p.z), Some(Who::Entity(e))),
+            Who::Entity(victim) => {
+                dmg.add_by_entity(victim, amount, (p.x, p.z), e);
+                if let Some(hit) = dmg.0.last_mut() {
+                    hit.extra = extra;
+                }
+            }
+            Who::Player(id) => {
+                set.p1().hurt(tick, id, amount, (p.x, p.z), Some(Who::Entity(e)));
+                if let Some(extra) = extra {
+                    set.p1().push(id, extra, e);
+                }
+            }
         }
         vel.0.x *= c.p.hit_slow;
         vel.0.z *= c.p.hit_slow;

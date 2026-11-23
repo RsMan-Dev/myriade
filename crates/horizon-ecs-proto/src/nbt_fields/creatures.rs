@@ -55,6 +55,7 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("HasRightHorn"), write: write_right_horn, read: read_right_horn, accepts: byte, owner: Some(owner::<Rammer>) },
     Field { key: Cow::Borrowed("CannotHunt"), write: write_cannot_hunt, read: read_cannot_hunt, accepts: byte_or_int, owner: Some(owner::<Hunt>) },
     Field { key: Cow::Borrowed("Strength"), write: write_strength, read: read_strength, accepts: accept::int, owner: Some(owner::<Caravan>) },
+    Field { key: Cow::Borrowed("DespawnDelay"), write: write_despawn_delay, read: read_despawn_delay, accepts: accept::int, owner: Some(owner::<crate::despawn_delay::DespawnDelay>) },
     Field { key: Cow::Borrowed("Age"), write: write_age, read: read_age, accepts: accept::int, owner: Some(owner::<GrowAt>) },
     Field { key: Cow::Borrowed("AttachFace"), write: write_face, read: read_face, accepts: byte, owner: Some(owner::<Peek>) },
     Field { key: Cow::Borrowed("Color"), write: write_color, read: read_color, accepts: byte, owner: Some(owner::<Peek>) },
@@ -74,6 +75,8 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("flower_pos"), write: write_flower, read: read_flower, accepts: int_array, owner: Some(owner::<Bee>) },
     Field { key: Cow::Borrowed("EggLayTime"), write: write_egg_time, read: read_egg_time, accepts: accept::int, owner: Some(owner::<Egg>) },
     Field { key: Cow::Borrowed("scute_time"), write: write_scute_time, read: read_scute_time, accepts: accept::int, owner: Some(owner::<crate::gift_drop::GiftDue>) },
+    Field { key: Cow::Borrowed("size"), write: write_phantom_size, read: read_phantom_size, accepts: accept::int, owner: None },
+    Field { key: Cow::Borrowed("anchor_pos"), write: write_phantom_anchor, read: read_phantom_anchor, accepts: int_array, owner: None },
     Field { key: Cow::Borrowed("LastPoseTick"), write: write_last_pose, read: read_last_pose, accepts: accept::long, owner: Some(owner::<crate::behaviours::posture::Posture>) },
     Field { key: Cow::Borrowed("Color"), write: write_wool_color, read: read_wool_color, accepts: byte, owner: Some(owner::<Wool>) },
     Field { key: Cow::Borrowed("Sitting"), write: write_fox_sitting, read: read_fox_sitting, accepts: byte, owner: Some(owner::<FoxFlags>) },
@@ -181,24 +184,95 @@ fn write_screaming(w: &World, e: Entity, c: &mut Compound) {
 }
 
 /// `Goat.addAdditionalSaveData`: `HasLeftHorn` / `HasRightHorn` only while a part is off (`Shed`); a whole goat writes none.
-/// `Brain` memories (`minecraft:long_jump_cooling_down`, the ticks left of the long jump cooldown): written only while it runs.
-fn write_brain(w: &World, e: Entity, c: &mut Compound) {
-    let Some(left) = crate::behaviours::long_jump::cooldown_left(w, e) else { return };
-    let Tag::Compound(brain) = c.entry("Brain".into()).or_insert_with(|| Tag::Compound(Default::default())) else { return };
-    let Tag::Compound(memories) = brain.entry("memories".into()).or_insert_with(|| Tag::Compound(Default::default())) else { return };
-    memories.insert("minecraft:long_jump_cooling_down".into(), Tag::compound([("value", Tag::Int(left as i32))]));
+/// `Brain` memories, each the ticks left of its cooldown (`long_jump_cooling_down`, `ram_cooldown_ticks`, `attack_target_cooldown`): written
+/// only while each runs.
+fn is_phantom(w: &World, e: Entity) -> bool {
+    crate::nbt::id_of_entity(w, e) == Some("minecraft:phantom")
 }
 
-/// Reads the memory back: its ticks left, or none (the cooldown is over) when the memory is absent.
+/// `Phantom.addAdditionalSaveData`: the raw `size` (an int, 0 at the birth) and the `anchor_pos` the phantom circles.
+fn write_phantom_size(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(s) = w.get::<Size>(e).filter(|_| is_phantom(w, e)) {
+        c.insert("size".into(), Tag::Int(s.0));
+    }
+}
+
+fn read_phantom_size(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    if is_phantom(w, e) {
+        w.entity_mut(e).insert(Size(*v));
+    }
+    true
+}
+
+fn write_phantom_anchor(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(a) = w.get::<crate::cow::Anchor>(e).filter(|_| is_phantom(w, e)) {
+        c.insert("anchor_pos".into(), Tag::IntArray(a.0.to_vec()));
+    }
+}
+
+fn read_phantom_anchor(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::IntArray(v) = t else { return false };
+    if let (true, [x, y, z]) = (is_phantom(w, e), v.as_slice()) {
+        w.entity_mut(e).insert(crate::cow::Anchor([*x, *y, *z]));
+    }
+    true
+}
+
+fn write_brain(w: &World, e: Entity, c: &mut Compound) {
+    use crate::behaviours::{long_jump, nearest_target, ram};
+    let now = now_of(w, e);
+    let dig = w.get::<crate::behaviours::act_phase::ActPhase>(e).map(|a| a.dig_cooldown_until.saturating_sub(now)).filter(|&t| t > 0);
+    let left = [
+        ("minecraft:long_jump_cooling_down", long_jump::cooldown_left(w, e)),
+        ("minecraft:ram_cooldown_ticks", ram::cooldown_left(w, e)),
+        ("minecraft:attack_target_cooldown", nearest_target::attack_cooldown_left(w, e)),
+        ("minecraft:dig_cooldown", dig),
+    ];
+    // `GlobalPos` of the brute's home: its dimension and its block (`PiglinBruteAi.initMemories`).
+    let home = w.get::<crate::behaviours::brute_stroll_home::Home>(e).map(|h| {
+        let dim = w.get_resource::<crate::bridge::host::WorldDimension>().map_or("minecraft:overworld", |d| d.0);
+        ("minecraft:home", Tag::compound([("dimension", Tag::String(dim.into())), ("pos", Tag::IntArray(h.block.to_vec()))]))
+    });
+    if left.iter().all(|(_, t)| t.is_none()) && home.is_none() {
+        return;
+    }
+    let Tag::Compound(brain) = c.entry("Brain".into()).or_insert_with(|| Tag::Compound(Default::default())) else { return };
+    let Tag::Compound(memories) = brain.entry("memories".into()).or_insert_with(|| Tag::Compound(Default::default())) else { return };
+    for (key, t) in left {
+        if let Some(t) = t {
+            memories.insert(key.into(), Tag::compound([("value", Tag::Int(t as i32))]));
+        }
+    }
+    if let Some((key, pos)) = home {
+        memories.insert(key.into(), Tag::compound([("value", pos)]));
+    }
+}
+
+/// Reads the memories back: their ticks left, or none (the cooldown is over) when a memory is absent.
 fn read_brain(w: &mut World, e: Entity, t: &Tag) -> bool {
+    use crate::behaviours::{long_jump, nearest_target, ram};
     if !matches!(t, Tag::Compound(_)) {
         return false;
     }
-    let left = match t.get("memories").and_then(|m| m.get("minecraft:long_jump_cooling_down")).and_then(|m| m.get("value")) {
+    let mem = |key: &str| t.get("memories").and_then(|m| m.get(key)).and_then(|m| m.get("value"));
+    let left = |key: &str| match mem(key) {
         Some(Tag::Int(v)) => Some(i64::from(*v).max(0) as u64),
         _ => None,
     };
-    crate::behaviours::long_jump::set_cooldown_left(w, e, left);
+    long_jump::set_cooldown_left(w, e, left("minecraft:long_jump_cooling_down"));
+    ram::set_cooldown_left(w, e, left("minecraft:ram_cooldown_ticks"));
+    nearest_target::set_attack_cooldown_left(w, e, left("minecraft:attack_target_cooldown"));
+    let now = now_of(w, e);
+    if let Some(mut a) = w.get_mut::<crate::behaviours::act_phase::ActPhase>(e) {
+        a.dig_cooldown_until = now + left("minecraft:dig_cooldown").unwrap_or(0);
+    }
+    let pos = mem("minecraft:home").and_then(|h| h.get("pos"));
+    if let (Some(Tag::IntArray(p)), Some(mut h)) = (pos, w.get_mut::<crate::behaviours::brute_stroll_home::Home>(e)) {
+        if let [x, y, z] = p.as_slice() {
+            h.block = [*x, *y, *z];
+        }
+    }
     true
 }
 
@@ -254,6 +328,19 @@ fn write_strength(w: &World, e: Entity, c: &mut Compound) {
 fn read_strength(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Int(v) = t else { return false };
     w.entity_mut(e).insert(LlamaStrength(*v));
+    true
+}
+
+/// `WanderingTrader.despawnDelay`: the ticks left, written only while the trader carries its delay.
+fn write_despawn_delay(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(d) = w.get::<crate::despawn_delay::DespawnDelay>(e) {
+        c.insert("DespawnDelay".into(), Tag::Int(i32::try_from(d.due.saturating_sub(now_of(w, e))).unwrap_or(i32::MAX)));
+    }
+}
+
+fn read_despawn_delay(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    crate::despawn_delay::restore(w, e, *v);
     true
 }
 

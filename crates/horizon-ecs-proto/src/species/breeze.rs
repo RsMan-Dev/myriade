@@ -128,5 +128,6 @@ pub static DEF: Def = Def {
         ],
     },
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

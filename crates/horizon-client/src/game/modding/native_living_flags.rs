@@ -438,15 +438,10 @@ pub(in crate::game) mod tests {
         });
     }
 
-    pub(in crate::game) fn guest_server(game: &mut Game<'_>, dedicated: bool, owner: bool) {
+    pub(in crate::game) fn guest_server(game: &mut Game<'_>) {
         use super::super::{execution_role::ExecutionRole, lan::LanSettings};
         use horizon_client::lan::{NetConfig, hub::HubConfig};
-        game.options.execution_role = if dedicated {
-            ExecutionRole::DedicatedServer
-        } else {
-            ExecutionRole::IntegratedServer
-        };
-        game.options.dedicated = dedicated.then(Vec::new);
+        game.options.execution_role = ExecutionRole::DedicatedServer;
         let settings = LanSettings {
             port: 0,
             guest_commands: false,
@@ -469,12 +464,10 @@ pub(in crate::game) mod tests {
             allow_flight: true,
             seed: 0,
             max_players: 2,
-            integrated: !dedicated,
             levels: game.level_shapes,
             level_seeds: game.levels.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
-        game.lan.as_mut().unwrap().hub.singleplayer_owner = owner.then_some(12);
         game.world.chunks.insert(
             (0, 0),
             std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
@@ -604,11 +597,9 @@ pub(in crate::game) mod tests {
     fn living_flags_normal_guest_sleep_writes_survive_turns_and_sync() {
         use horizon_client::pose::Pose;
         use horizon_protocol::packets::play::Clientbound as C;
-        // The integrated owner, a LAN guest, and a dedicated guest all act
-        // through the real enter/leave path, not a standalone window body.
-        for (dedicated, owner) in [(false, true), (false, false), (true, false)] {
-            with_game(|game| {
-                guest_server(game, dedicated, owner);
+        // A dedicated guest acts through the real enter/leave path, not a standalone window body.
+        with_game(|game| {
+                guest_server(game);
                 let (living, rx) = guest(game, 12);
                 // Outside the turn the client owns jump input. Only the
                 // active body exposes and accepts the controller's state.
@@ -742,7 +733,6 @@ pub(in crate::game) mod tests {
                     Some("false")
                 );
             });
-        }
     }
 
     #[test]
@@ -751,7 +741,7 @@ pub(in crate::game) mod tests {
         for sleeping in [false, true] {
             for acting in [false, true] {
                 with_game(|game| {
-                    guest_server(game, true, false);
+                    guest_server(game);
                     let (outer, outer_rx) = guest(game, 12);
                     let (foreign, foreign_rx) = guest(game, 13);
                     bed(game, "minecraft:red_bed", [5, 64, 5]);
@@ -896,7 +886,7 @@ pub(in crate::game) mod tests {
     fn living_flags_guest_glide_stop_survives_own_turn_and_vines() {
         use horizon_client::pose::Pose;
         with_game(|game| {
-            guest_server(game, false, true);
+            guest_server(game);
             let (living, _rx) = guest(game, 12);
             let (_observer, observer_rx) = guest(game, 13);
             game.lan
@@ -971,7 +961,7 @@ pub(in crate::game) mod tests {
     fn living_flags_nested_guest_flags_restore_outer_and_refuse_fake_sleep() {
         use horizon_client::{lan::guest::Guest, motion::PlayerMotion};
         with_game(|game| {
-            guest_server(game, false, true);
+            guest_server(game);
             let (outer, _rx) = guest(game, 12);
             let (inner, _rx2) = guest(game, 13);
             bed(game, "minecraft:red_bed", [5, 64, 5]);
@@ -1040,7 +1030,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn living_flags_villager_sleep_rejects_invalid_beds_without_mutation() {
         crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
-            guest_server(game, true, false);
+            guest_server(game);
             crate::game::ecs::test_support::place_test_mob(game, 20, "minecraft:villager", [3.0, 64.0, 5.0]);
             let living = game.living(game.entity(20).unwrap()).unwrap();
             let stone = game
@@ -1094,7 +1084,7 @@ pub(in crate::game) mod tests {
         // The fixture's parts: glass is a ladder to even entity ids, a vine to none.
         mod_platform::__private::part_tests::ladder_game_thread();
         // The client library asks the mods through the executable's callbacks.
-        crate::entry::install_client_hooks();
+        crate::entry::install_level_hooks();
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),
@@ -1236,7 +1226,7 @@ pub(in crate::game) mod tests {
         .into();
         crate::game::api_values::install_parts(&mods).unwrap();
         // The client library asks the mods through the executable's callbacks.
-        crate::entry::install_client_hooks();
+        crate::entry::install_level_hooks();
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 game.world.chunks.insert(

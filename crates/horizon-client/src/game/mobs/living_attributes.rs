@@ -3,65 +3,92 @@
 //! `horizon_client::living_attributes`.
 use super::Game;
 use super::commands::Target;
-use horizon_client::mobs::{
-    Mob,
-    finalize::{self, Attr, Op},
-};
-use horizon_items::items::Items;
+use horizon_ecs_proto::attr_mod::{Modifier as EcsModifier, Operation as EcsOp, value as value_of};
+use horizon_ecs_proto::spawn_sheet::{AttrEdit, SpawnSheet};
 use horizon_world::attributes::{
     AttributeError, Instance, Modifier, Observer, Operation,
     entity::{AttributeId, Catalog},
 };
 use std::convert::Infallible;
-use std::sync::Arc;
 
-/// One mob's `collectEquipmentChanges`: each slot whose stack is not the one
-/// the map holds swaps the old stack's attribute modifiers for the new one's,
-/// full stacks with their components compared, as the tick's pass and a write
-/// both run it. The map is taken out so the seed can read the mob.
-pub(in crate::game) fn collect_equipment(catalog: &Arc<Catalog>, items: &Items, m: &mut Mob) {
-    horizon_client::mobs::armor::prepare(m, catalog);
-    let mut live = std::mem::take(&mut m.extra.live);
-    let seed = || {
-        horizon_client::entity_nbt::attribute_entries(m)
-            .into_iter()
-            .map(|(_, entry)| entry)
-            .collect()
-    };
-    let changed =
-        live.collect_equipment_changes(catalog, &m.kind.id, &m.extra.equipment, items, seed);
-    warn_failed(m.id, &m.kind.id, changed);
-    m.extra.live = live;
+/// The attribute name without its `minecraft:` prefix.
+fn attr_key(name: &str) -> &str {
+    name.strip_prefix("minecraft:").unwrap_or(name)
 }
 
-/// The attribute `name` when it is one a mob keeps itself: `finalize`'s store,
-/// which its gameplay reads and its save writes, for the attributes its type has.
-fn own_attribute(m: &Mob, name: &str) -> Option<Attr> {
-    let short = name.strip_prefix("minecraft:").unwrap_or(name);
-    finalize::command_attr(short).filter(|a| finalize::default_value(m, *a).is_some())
+/// The base the sheet gives attribute `name`: the last base written, a reset dropping it; None: the species' own.
+pub(in crate::game) fn sheet_base(sheet: &SpawnSheet, name: &str) -> Option<f64> {
+    sheet.attributes.iter().filter(|(n, _)| attr_key(n) == attr_key(name)).fold(None, |base, (_, edit)| match edit {
+        AttrEdit::Base(v) => Some(*v),
+        AttrEdit::ResetBase => None,
+        AttrEdit::Add(_) | AttrEdit::Remove(_) => base,
+    })
 }
 
-/// `write` on one of the mob's own attributes. A lower max health marks the attribute dirty;
-/// the mob's next tick cuts its health (`LivingEntity.refreshDirtyAttributes`, `finalize::refresh`).
-fn write_own_attribute(m: &mut Mob, a: Attr, write: AttributeWrite) -> bool {
-    write.apply_to_mob(m, a)
+/// The modifiers the sheet gives attribute `name`, in the order they were added.
+fn sheet_modifiers(sheet: &SpawnSheet, name: &str) -> Vec<EcsModifier> {
+    let mut mods = Vec::new();
+    for (_, edit) in sheet.attributes.iter().filter(|(n, _)| attr_key(n) == attr_key(name)) {
+        match edit {
+            AttrEdit::Add(m) => mods.push(m.clone()),
+            AttrEdit::Remove(id) => mods.retain(|m: &EcsModifier| m.id != *id),
+            AttrEdit::Base(_) | AttrEdit::ResetBase => {}
+        }
+    }
+    mods
 }
 
-/// An attribute write on a mob that is in no level yet (`finalize_spawn`'s
-/// lent mob), then its equipment's modifiers collected again, as
-/// `Game::write_attribute` does for a joined one. Only the attributes the mob
-/// keeps itself take it: the rest live in maps the level keeps per joined
-/// entity. None for another attribute, `Some(false)` when an add finds the id
+/// The value of attribute `name` on a fresh mob of `kind` as the sheet makes it, from the species' base, the modifiers of the pieces
+/// it wears (`worn`, the rows `equip_attrs` grants) and the sheet's modifiers.
+pub(in crate::game) fn sheet_value(catalog: &Catalog, kind: &str, sheet: &SpawnSheet, worn: &[(String, EcsModifier)], name: &str) -> Option<f64> {
+    let id: AttributeId = catalog.id(name)?;
+    let base = sheet_base(sheet, name).or_else(|| catalog.default_base(kind, id))?;
+    let mut mods: Vec<EcsModifier> = worn.iter().filter(|(n, _)| attr_key(n) == attr_key(name)).map(|(_, m)| m.clone()).collect();
+    mods.extend(sheet_modifiers(sheet, name));
+    Some(value_of(base, &mods))
+}
+
+/// An attribute write on a mob that is in no level yet (`finalize_spawn`'s lent sheet): recorded as an edit of the sheet, which the
+/// spawn applies. Only the attributes the species has take it. None for another attribute, `Some(false)` when an add finds the id
 /// taken or a remove finds none.
-pub(in crate::game) fn write_unspawned_attribute(
-    catalog: &Arc<Catalog>,
-    items: &Items,
-    m: &mut Mob,
-    name: &str,
-    write: AttributeWrite,
-) -> Option<bool> {
-    let done = write_own_attribute(m, own_attribute(m, name)?, write);
-    collect_equipment(catalog, items, m);
+pub(in crate::game) fn write_unspawned_attribute(catalog: &Catalog, kind: &str, sheet: &mut SpawnSheet, name: &str, write: AttributeWrite) -> Option<bool> {
+    let id = catalog.id(name)?;
+    catalog.default_base(kind, id)?;
+    let mods = sheet_modifiers(sheet, name);
+    let done = match write {
+        AttributeWrite::Base(v) => {
+            sheet.attribute(name, AttrEdit::Base(v));
+            true
+        }
+        AttributeWrite::ResetBase => {
+            sheet.attribute(name, AttrEdit::ResetBase);
+            true
+        }
+        AttributeWrite::Remove(id) => {
+            let had = mods.iter().any(|m| m.id == id);
+            if had {
+                sheet.attribute(name, AttrEdit::Remove(id));
+            }
+            had
+        }
+        AttributeWrite::Add { modifier, permanent, replace } => {
+            let taken = mods.iter().any(|m| m.id == modifier.id());
+            if taken && !replace {
+                return Some(false);
+            }
+            if taken {
+                sheet.attribute(name, AttrEdit::Remove(modifier.id().to_owned()));
+            }
+            let operation = match modifier.operation() {
+                Operation::AddValue => EcsOp::AddValue,
+                Operation::AddMultipliedBase => EcsOp::AddMultipliedBase,
+                Operation::AddMultipliedTotal => EcsOp::AddMultipliedTotal,
+            };
+            let m = EcsModifier { id: modifier.id().to_owned(), amount: modifier.amount(), operation, permanent };
+            sheet.attribute(name, AttrEdit::Add(m));
+            true
+        }
+    };
     Some(done)
 }
 
@@ -72,14 +99,6 @@ impl Game<'_> {
     /// one's. The mobs take theirs at the event of a slot change, in P
     /// (`equip_attrs`), never by tick.
     pub(super) fn tick_equipment_attributes(&mut self) {}
-}
-
-/// An item modifier the map refused (a bad modifier id) is logged, naming the
-/// entity, instead of being lost.
-fn warn_failed(id: u32, kind: &str, result: horizon_client::Result<()>) {
-    if let Err(error) = result {
-        log::warn!("equipment attributes of {kind} {id}: {error}");
-    }
 }
 
 /// One attribute write: the one path of `/attribute` (`AttributeCommand`'s
@@ -154,67 +173,6 @@ impl AttributeWrite {
             Self::ResetBase => {
                 value.set_base_value(default, observer)?;
                 Ok(true)
-            }
-        }
-    }
-
-    /// The write on one of the attributes a mob's gameplay reads from
-    /// `finalize`, which saves its bases and permanent modifiers.
-    fn apply_to_mob(self, m: &mut Mob, a: Attr) -> bool {
-        let taken = |m: &Mob, id: &str| {
-            finalize::has_modifier(m, a, id)
-                || finalize::has_transient_modifier(m, a, id)
-                || (id == "minecraft:baby" && finalize::transient(m, a).is_some())
-        };
-        let remove = |m: &mut Mob, id: &str| {
-            if id == "minecraft:baby" && finalize::transient(m, a).is_some() {
-                m.extra
-                    .attributes
-                    .get_or_insert_with(Box::default)
-                    .baby_speed_removed = true;
-            }
-            finalize::remove_modifier(m, a, id);
-        };
-        match self {
-            Self::Add {
-                modifier,
-                permanent,
-                replace,
-            } => {
-                let id = modifier.id();
-                if taken(m, id) {
-                    if !replace {
-                        return false;
-                    }
-                    remove(m, id);
-                }
-                let op = match modifier.operation() {
-                    Operation::AddValue => Op::AddValue,
-                    Operation::AddMultipliedBase => Op::AddMultipliedBase,
-                    Operation::AddMultipliedTotal => Op::AddMultipliedTotal,
-                };
-                if permanent {
-                    finalize::add_modifier(m, a, id.to_owned(), modifier.amount(), op);
-                } else {
-                    finalize::add_transient_modifier(m, a, id, modifier.amount(), op);
-                }
-                true
-            }
-            Self::Remove(id) => {
-                let had = taken(m, &id);
-                if had {
-                    remove(m, &id);
-                }
-                had
-            }
-            Self::Base(base) => {
-                finalize::set_base(m, a, base);
-                true
-            }
-            Self::ResetBase => {
-                let default = finalize::default_value(m, a).unwrap_or_default();
-                finalize::set_base(m, a, default);
-                true
             }
         }
     }
@@ -306,7 +264,7 @@ impl Game<'_> {
                         AttributeWrite::ResetBase => self.ecs.reset_attribute_base(mob, name),
                     });
                 }
-                // RESTE-SANS-ECS: the mob's own attributes (`own_attribute`) have no ECS write yet.
+                // RESTE-SANS-ECS: the mob's own attribute maps have no ECS write yet.
                 self.write_generic_attribute(t, name, id, write, default)
             }
             Target::Stand(_) => self.write_generic_attribute(t, name, id, write, default),
@@ -341,6 +299,7 @@ impl Game<'_> {
 mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
+    use std::sync::Arc;
     use crate::game::native_merchant_refs::tests::spawn_id;
     use horizon_client::{entities::ArmorStand, items::ItemStack};
     use horizon_core::geometry::Vec3;

@@ -31,7 +31,6 @@ mod entity_inside_tests {
         use horizon_client::block_contact::{landed, take_pending};
         use horizon_world::level::LandingWrite;
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.ecs = game.test_ecs_level();
             let state = |name| game.pack.assets.registry.default_state(name).unwrap();
             let (farmland, dirt, stone, air) = (

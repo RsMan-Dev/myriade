@@ -9,7 +9,10 @@ use super::Def;
 use crate::behaviours::avoid_entity::{self, Avoid};
 use crate::behaviours::{neutral_anger, forget_target, beg, breed, float, follow_owner, hurt_by, leap_at_target, look_at_player, melee, nearest_target, owner_target, panic, random_look, sit_when_ordered, stroll, Cap, Cond, Entry};
 use crate::rules::RuleEntry;
-use crate::tame::{TameParams, TAME};
+use crate::tame::{Owner, TameParams, TAME};
+use crate::cow::{Health, Rng};
+use crate::behaviours::ambient_sound;
+use bevy_ecs::prelude::*;
 
 /// `wolf_food`: the `meat` tag, the fish, the rabbit stew.
 const FOOD: &[&str] = &["minecraft:beef", "minecraft:chicken", "minecraft:cooked_beef", "minecraft:cooked_chicken", "minecraft:cooked_mutton", "minecraft:cooked_porkchop", "minecraft:cooked_rabbit", "minecraft:mutton", "minecraft:porkchop", "minecraft:rabbit", "minecraft:rotten_flesh", "minecraft:cod", "minecraft:cooked_cod", "minecraft:salmon", "minecraft:cooked_salmon", "minecraft:tropical_fish", "minecraft:pufferfish", "minecraft:rabbit_stew"];
@@ -19,7 +22,25 @@ const SPARED_TAME: &[&str] = &["minecraft:cat", "minecraft:parrot", "minecraft:h
 static ANGRY: Cond = Cond::Is("neutral:angry");
 static WILD: Cond = Cond::Not(&Cond::Is("horizon:is_tame"));
 
+/// `Wolf.getAmbientSound`: a growl while angry; else one time in three the whine (tame and under 20 health) or the pant; else the bark.
+/// The variant's own sound set is not in the ECS, so the default names stand.
+fn ambient(w: &mut World, e: Entity) -> &'static str {
+    if w.get::<neutral_anger::Angry>(e).is_some() {
+        return "entity.wolf.growl";
+    }
+    if w.get_mut::<Rng>(e).unwrap().next_u32() % 3 != 0 {
+        return "entity.wolf.ambient";
+    }
+    let tame = w.get::<Owner>(e).is_some_and(|o| o.0.is_some());
+    if tame && w.get::<Health>(e).is_some_and(|h| h.0 < 20.0) {
+        "entity.wolf.whine"
+    } else {
+        "entity.wolf.pant"
+    }
+}
+
 pub static DEF: Def = Def {
+    load_attrs: &[crate::attr_mod::LoadAttr { name: "max_health", base: None, when: crate::attr_mod::LoadWhen::Unowned }],
     name: "minecraft:wolf",
     sound_on_breed: true,
     sounds: Some(&["minecraft:angry", "minecraft:big", "minecraft:classic", "minecraft:cute", "minecraft:grumpy", "minecraft:puglin", "minecraft:sad"]),
@@ -38,7 +59,7 @@ pub static DEF: Def = Def {
     goals: &[
         Entry::new(&float::MODULE, 1, &float::Params::DEFAULT),
         Entry::new(&panic::MODULE, 1, &panic::Params { speed: 1.5, environmental: true, ..panic::Params::DEFAULT }),
-        Entry::new(&sit_when_ordered::MODULE, 2, &()),
+        Entry::new(&sit_when_ordered::MODULE, 2, &sit_when_ordered::Params { head_x: 20.0, refuses_mate: true, stands_when_hurt: true }),
         Entry::new(&avoid_entity::MODULE, 3, &AVOID_LLAMAS).when(&WILD),
         Entry::new(&forget_target::MODULE, 3, &forget_target::Params::DEFAULT),
         Entry::new(&leap_at_target::MODULE, 4, &leap_at_target::Params { yd: 0.4 }),
@@ -47,14 +68,16 @@ pub static DEF: Def = Def {
         Entry::new(&breed::MODULE, 7, &breed::Params { speed: 1.0, foods: FOOD, ..breed::Params::DEFAULT }),
         Entry::new(&stroll::MODULE, 8, &stroll::Params::DEFAULT),
         Entry::new(&beg::MODULE, 9, &beg::Params { foods: FOOD, ..beg::Params::DEFAULT }),
+        Entry::new(&crate::behaviours::shake_off_water::MODULE, 12, &crate::behaviours::shake_off_water::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 10, &random_look::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 11, &ambient_sound::Params { interval: Some(80), choose: Some(ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     changes: &[],
     rules: &[RuleEntry::new(&crate::dye::DYE,&crate::dye::DyeParams::WOLF), RuleEntry::new(&crate::body_armor::WEAR, &crate::body_armor::WearParams::WOLF), RuleEntry::new(&TAME, &TameParams::WOLF),RuleEntry::new(&crate::credit::CREDITS_OWNER, &())],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable]),
     brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[],
-    
+    body_wear: true,
     ..Def::EMPTY
 };

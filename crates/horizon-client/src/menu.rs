@@ -405,7 +405,7 @@ pub fn native_item_stacked_on_other(
     event: &mut StackedOnOther<'_>,
     canceled: &mut bool,
 ) {
-    crate::native_client_hooks::item_stacked_on_other(context, event, canceled);
+    crate::native_level_hooks::item_stacked_on_other(context, event, canceled);
 }
 
 /// `BeaconBlockEntity.BEACON_EFFECTS`: the powers of each pyramid level.
@@ -4152,8 +4152,8 @@ pub(crate) mod tests {
 
     #[test]
     fn installed_slot_rules_change_mod_menu_placement() {
-        use crate::native_client_hooks::test_hooks::{JUMPS, STILL_VALID_ASKED};
-        crate::native_client_hooks::test_hooks::install();
+        use crate::native_level_hooks::test_hooks::{JUMPS, STILL_VALID_ASKED};
+        crate::native_level_hooks::test_hooks::install();
         let kind = Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
             id: "test:rules",
             slots: 1,
@@ -5029,232 +5029,12 @@ pub(crate) mod tests {
 
     /// `RecipeCraftingHolder.setRecipeUsed`: when `limited_crafting` is false,
     /// crafting works even if the recipe is not known by the player.
-    #[test]
-    fn limited_crafting_disabled_allows_crafting_unknown_recipe() {
-        use crate::crafting::{Ingredient, Recipe, Template};
-        let mut recipes = Recipes::empty();
-        recipes.crafting.push((
-            "oak_planks".into(),
-            Recipe::Shapeless {
-                ingredients: vec![Ingredient::of(vec!["minecraft:oak_log".into()])],
-                result: Template {
-                    item: Some("minecraft:oak_planks".into()),
-                    count: 4,
-                    damage: 0,
-                    extra: None,
-                    components: None,
-                },
-            },
-        ));
-        let items = Items::for_tests(Default::default());
-        let brewing = Brewing::load(&std::path::PathBuf::new(), &items, &PackOverlay::NONE);
-        let banners = Banners::default();
-        let station_recipes = crate::stations::StationRecipes::default();
-        let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::item_names::Names::default();
-
-        let env = Env {
-            crafting_remainder: None,
-            items: &items,
-            recipes: &recipes,
-            brewing: &brewing,
-            banners: &banners,
-            station_recipes: &station_recipes,
-            enchantments: &enchantments,
-            names: &names,
-            trade: None,
-            maps: None,
-            player: None,
-            player_entity_id: None,
-            loop_context: &crate::test_resources::loop_context(LoopSide::Client),
-            limited_crafting: false,
-            can_equip: None,
-            known_recipes: None,
-            slot_rules: None,
-        };
-
-        let mut menu = Menu::new(Kind::Inventory);
-        menu.set_slot(&env, 1, stack("oak_log", 1));
-        assert_eq!(
-            menu.slot(0).map(|s| (&*s.item, s.count)),
-            Some(("minecraft:oak_planks", 4)),
-            "when limited_crafting is false, unlearned recipe should craft"
-        );
-    }
-
     /// `RecipeCraftingHolder.setRecipeUsed`: when `limited_crafting` is true,
     /// an unlearned recipe is blocked (result slot is None).
-    #[test]
-    fn limited_crafting_enabled_blocks_unknown_recipe() {
-        use crate::crafting::{Ingredient, Recipe, Template};
-        let mut recipes = Recipes::empty();
-        recipes.crafting.push((
-            "oak_planks".into(),
-            Recipe::Shapeless {
-                ingredients: vec![Ingredient::of(vec!["minecraft:oak_log".into()])],
-                result: Template {
-                    item: Some("minecraft:oak_planks".into()),
-                    count: 4,
-                    damage: 0,
-                    extra: None,
-                    components: None,
-                },
-            },
-        ));
-        let items = Items::for_tests(Default::default());
-        let brewing = Brewing::load(&std::path::PathBuf::new(), &items, &PackOverlay::NONE);
-        let banners = Banners::default();
-        let station_recipes = crate::stations::StationRecipes::default();
-        let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::item_names::Names::default();
-
-        let known = ["minecraft:stick"];
-        let env = Env {
-            crafting_remainder: None,
-            items: &items,
-            recipes: &recipes,
-            brewing: &brewing,
-            banners: &banners,
-            station_recipes: &station_recipes,
-            enchantments: &enchantments,
-            names: &names,
-            trade: None,
-            maps: None,
-            player: None,
-            player_entity_id: None,
-            loop_context: &crate::test_resources::loop_context(LoopSide::Client),
-            limited_crafting: true,
-            can_equip: None,
-            known_recipes: Some(&known),
-            slot_rules: None,
-        };
-
-        let mut menu = Menu::new(Kind::Inventory);
-        menu.set_slot(&env, 1, stack("oak_log", 1));
-        assert_eq!(
-            menu.slot(0),
-            None,
-            "when limited_crafting is true, unknown recipe must produce None in result slot"
-        );
-    }
-
     /// `RecipeCraftingHolder.setRecipeUsed`: when `limited_crafting` is true,
     /// a learned recipe (present in `known_recipes`) crafts successfully.
-    #[test]
-    fn limited_crafting_enabled_allows_known_recipe() {
-        use crate::crafting::{Ingredient, Recipe, Template};
-        let mut recipes = Recipes::empty();
-        recipes.crafting.push((
-            "oak_planks".into(),
-            Recipe::Shapeless {
-                ingredients: vec![Ingredient::of(vec!["minecraft:oak_log".into()])],
-                result: Template {
-                    item: Some("minecraft:oak_planks".into()),
-                    count: 4,
-                    damage: 0,
-                    extra: None,
-                    components: None,
-                },
-            },
-        ));
-        let items = Items::for_tests(Default::default());
-        let brewing = Brewing::load(&std::path::PathBuf::new(), &items, &PackOverlay::NONE);
-        let banners = Banners::default();
-        let station_recipes = crate::stations::StationRecipes::default();
-        let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::item_names::Names::default();
-
-        let known = ["minecraft:oak_planks"];
-        let env = Env {
-            crafting_remainder: None,
-            items: &items,
-            recipes: &recipes,
-            brewing: &brewing,
-            banners: &banners,
-            station_recipes: &station_recipes,
-            enchantments: &enchantments,
-            names: &names,
-            trade: None,
-            maps: None,
-            player: None,
-            player_entity_id: None,
-            loop_context: &crate::test_resources::loop_context(LoopSide::Client),
-            limited_crafting: true,
-            can_equip: None,
-            known_recipes: Some(&known),
-            slot_rules: None,
-        };
-
-        let mut menu = Menu::new(Kind::Inventory);
-        menu.set_slot(&env, 1, stack("oak_log", 1));
-        assert_eq!(
-            menu.slot(0).map(|s| (&*s.item, s.count)),
-            Some(("minecraft:oak_planks", 4)),
-            "when limited_crafting is true, learned recipe in known_recipes must craft"
-        );
-    }
-
     /// `RecipeCraftingHolder.setRecipeUsed`: special recipes bypass the `known_recipes` check
     /// (`recipe.value().isSpecial()`) and craft even when limited crafting is enabled.
-    #[test]
-    fn limited_crafting_enabled_allows_special_recipe() {
-        use crate::crafting::{Ingredient, Recipe, Special, Template};
-        let mut recipes = Recipes::empty();
-        recipes.crafting.push((
-            "dye_shulker_box".into(),
-            Recipe::Special(Special::Transmute {
-                input: Ingredient::of(vec!["minecraft:shulker_box".into()]),
-                material: Ingredient::of(vec!["minecraft:red_dye".into()]),
-                min: 1,
-                max: 1,
-                add_count: false,
-                result: Template {
-                    item: Some("minecraft:red_shulker_box".into()),
-                    count: 1,
-                    damage: 0,
-                    extra: None,
-                    components: None,
-                },
-            }),
-        ));
-        let items = Items::for_tests(Default::default());
-        let brewing = Brewing::load(&std::path::PathBuf::new(), &items, &PackOverlay::NONE);
-        let banners = Banners::default();
-        let station_recipes = crate::stations::StationRecipes::default();
-        let enchantments = crate::enchant::Enchantments::default();
-        let names = crate::item_names::Names::default();
-
-        let known: [&str; 0] = [];
-        let env = Env {
-            crafting_remainder: None,
-            items: &items,
-            recipes: &recipes,
-            brewing: &brewing,
-            banners: &banners,
-            station_recipes: &station_recipes,
-            enchantments: &enchantments,
-            names: &names,
-            trade: None,
-            maps: None,
-            player: None,
-            player_entity_id: None,
-            loop_context: &crate::test_resources::loop_context(LoopSide::Client),
-            limited_crafting: true,
-            can_equip: None,
-            known_recipes: Some(&known),
-            slot_rules: None,
-        };
-
-        let mut menu = Menu::new(Kind::Inventory);
-        menu.set_slot(&env, 1, stack("shulker_box", 1));
-        menu.set_slot(&env, 2, stack("red_dye", 1));
-        assert_eq!(
-            menu.slot(0).map(|s| (&*s.item, s.count)),
-            Some(("minecraft:red_shulker_box", 1)),
-            "special recipe must craft with limited_crafting: true without being in known_recipes"
-        );
-    }
-
     /// `BrewingStandMenu.PotionSlot.onTake`: a pickup and a shift-click on a
     /// bottle slot each queue the taken stack once for the game's hook adapter;
     /// with no listener nothing is kept.

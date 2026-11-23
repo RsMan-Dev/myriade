@@ -32,7 +32,6 @@ impl Game<'_> {
             return Err(ExplosionDestroyError::InvalidBlast);
         }
         if !self.level_in_place(level)
-            || (self.serving.is_none() && self.options.dedicated.is_none())
         {
             return Err(ExplosionDestroyError::Unavailable);
         }

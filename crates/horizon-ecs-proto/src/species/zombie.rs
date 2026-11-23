@@ -6,11 +6,13 @@ use crate::behaviours::{convert_in_water, Entry};
 use crate::rules::RuleEntry;
 
 pub static DEF: Def = Def {
+    load_attrs: zombie_base::LOAD_ATTRS,
     name: "minecraft:zombie",
     reference: Some(&zombie_base::DEF),
     rules: &[RuleEntry::new(&crate::hostile::SUN_BURN, &()), RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), RuleEntry::new(&crate::loot::BABY_DROPS, &crate::loot::BabyDrops::ZOMBIE),RuleEntry::new(&crate::reinforcements::RULE, &crate::reinforcements::Params::ZOMBIE)],
     // `Zombie.convertsInWater`: eyes under for 600 ticks, then 300 of conversion, into a drowned.
     changes: &[Change::Add(Section::Goals, Entry::new(&convert_in_water::MODULE, 0, &convert_in_water::Params { into: "minecraft:drowned", ..convert_in_water::Params::DEFAULT }))],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

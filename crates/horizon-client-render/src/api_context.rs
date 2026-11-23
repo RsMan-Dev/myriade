@@ -6,7 +6,6 @@ use std::sync::Arc;
 pub fn load_origin(origin: engine::DataLoadOrigin) -> mod_api::DataLoadOrigin {
     match origin {
         engine::DataLoadOrigin::ServerDataLoad => mod_api::DataLoadOrigin::ServerDataLoad,
-        engine::DataLoadOrigin::ClientPreload => mod_api::DataLoadOrigin::ClientPreload,
         _ => unreachable!("all engine load origins are mapped"),
     }
 }
@@ -15,7 +14,6 @@ pub fn load_origin(origin: engine::DataLoadOrigin) -> mod_api::DataLoadOrigin {
 pub fn loop_side(side: engine::LoopSide) -> mod_api::LoopSide {
     match side {
         engine::LoopSide::Server => mod_api::LoopSide::Server,
-        engine::LoopSide::Client => mod_api::LoopSide::Client,
         _ => unreachable!("all engine loop sides are mapped"),
     }
 }
@@ -97,10 +95,6 @@ mod tests {
                     engine::DataLoadOrigin::ServerDataLoad,
                     mod_api::DataLoadOrigin::ServerDataLoad,
                 ),
-                (
-                    engine::DataLoadOrigin::ClientPreload,
-                    mod_api::DataLoadOrigin::ClientPreload,
-                ),
             ] {
                 let load = engine::LoadContext::new(origin, inputs.clone(), ["active"]);
                 let reader = LoadReader(&load);
@@ -133,7 +127,6 @@ mod tests {
                     ["second", "first"]
                 );
                 for (side, expected) in [
-                    (engine::LoopSide::Client, mod_api::LoopSide::Client),
                     (engine::LoopSide::Server, mod_api::LoopSide::Server),
                 ] {
                     let source = load.loop_context(side, ["active"]);

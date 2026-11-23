@@ -48,7 +48,6 @@ fn rows(index: &Arc<Mutex<AttachmentIndex<AttachmentHolder>>>, name: &str) -> Ve
 #[ignore = "daily"]
 fn nested_player_turns_preserve_binding_and_rollback_whole_membership() {
     with_guests(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.lan
             .as_mut()
             .unwrap()
@@ -126,7 +125,6 @@ fn nested_player_turns_preserve_binding_and_rollback_whole_membership() {
 #[ignore = "daily"]
 fn retained_player_records_and_save_snapshots_do_not_keep_residency() {
     with_guests(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.lan
             .as_mut()
             .unwrap()

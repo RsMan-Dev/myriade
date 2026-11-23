@@ -5,7 +5,7 @@ everything is that **it plays like vanilla**: first exactly like it, then better
 ([vanilla first, then better](#vanilla-first-then-better)). This page is the short version of how we work; questions are
 welcome on [Discord](https://discord.gg/playhorizon).
 
-This repository holds the game and the launcher, plus the tools, tests and docs that build, check and release them.
+This repository holds the game, plus the tools, tests and docs that build, check and release them.
 The website (playhorizon.dev) is built in a separate repository from this one's README, `docs/api/` and roadmap. Anything
 else (videos, Discord and other community material) lives elsewhere.
 
@@ -20,10 +20,8 @@ the registry, and their docs ([mods](docs/mods.md), [native mods](docs/native-mo
 
 ## Build it
 
-- **Prerequisites:** Rust (stable), Python 3.11+, JDK 25, git 2.38 or newer, and on Linux the ALSA and udev headers
-  (`libasound2-dev libudev-dev`; Void Linux: `base-devel pkg-config alsa-lib-devel eudev-libudev-devel`).
-- **Resources:** Horizon never downloads the game; it prepares its resources from your own copy of Minecraft 26.3, as
-  described in [Build from source](docs/native-client.md#run-from-a-checkout).
+- **Prerequisites:** Rust (stable), Python 3.11+, JDK 25, git 2.38 or newer.
+- **Resources:** Horizon never downloads the game; it prepares its resources from your own copy of Minecraft 26.3.
 - **Commands:**
 
   ```sh
@@ -31,7 +29,6 @@ the registry, and their docs ([mods](docs/mods.md), [native mods](docs/native-mo
   cargo run --release -p horizon-game
   ```
 
-- **Launcher:** its own Cargo workspace in `launcher/` (`cd launcher && cargo run`; on NixOS, `nix-shell` first).
 
 ## Vanilla first, then better
 
@@ -53,10 +50,9 @@ and compares their outputs.
   them. [The parity workflow](docs/parity-workflow.md) shows how harnesses run; copy a nearby one. Where vanilla
   has nothing to compare (Horizon's own features, performance work, refactors), no harness is needed: one Rust
   test of the changed behaviour, or the numbers before and after.
-- **Horizon's own features** (the launcher, the new menus) follow [the design system](docs/design-system.md) and are
-  off by default wherever they would change the vanilla look.
+- **Horizon's own features** are off by default wherever they would change the vanilla look.
 - **Three layers: engine, platform, Horizon.**
-  - Vanilla code never depends on the platform (mods, shader packs, HDR, the settings system) or on Horizon
+  - Vanilla code never depends on the platform (mods) or on Horizon
     (its extras, cosmetics, the shop, official servers, telemetry).
   - The platform never depends on Horizon.
   - Horizon uses only the platform, never the engine: it will live in its own repository.
@@ -117,7 +113,7 @@ python3 tools/pr_ready.py --base upstream/main   # or origin/main if you work on
 ```
 
 It looks at what your branch changes and runs what matters: rustfmt, clippy with warnings denied, the tests of the
-crates you touched (and the launcher's), generated files, `Cargo.lock` and the Python tests. Like CI, it runs the
+crates you touched, generated files, `Cargo.lock` and the Python tests. Like CI, it runs the
 vanilla harnesses only when your branch changes a harness, an oracle, a probe or the runner; otherwise it lists the
 ones your change can affect, and main's parity run checks them after the merge. `--harnesses` runs them on your
 machine anyway (it needs the vanilla data). It exits non-zero when something fails.
@@ -186,7 +182,7 @@ it (edited on every push, never repeated): talk to its author in the thread befo
   fixes that shouldn't wait. pr_ready suggests one.
 
 Who reviews and merges: the Horizon Team, on CI for ordinary pull requests; risky ones (saves, network, world
-generation, the launcher's updates) wait for a local proof first ([merging](docs/release-flow.md#merging)).
+generation) wait for a local proof first ([merging](docs/release-flow.md#merging)).
 A bot, CodeRabbit, also comments when a pull request opens. Treat it like any reviewer: fix what's right, say why
 when it isn't, and resolve the thread. It can't block a merge; `@coderabbitai review` asks it to look again.
 

@@ -8,7 +8,8 @@
 //! Not verified against vanilla: the weights of the idle `RunOne`s, the priorities of the goals.
 //! The rule `harness_worn` takes a harness item. Riding: `RIDE` with `RideParams::GHAST`; `mount::ridden_drive` steers the first rider (`Steer::Fly`, harness, no still timeout).
 use super::Def;
-use crate::behaviours::{float, float_around, harness_worn, heal_weather, square_or_face, still_under_riders, Cap, Entry};
+use bevy_ecs::prelude::{Entity, World};
+use crate::behaviours::{ambient_sound, float, float_around, harness_worn, heal_weather, square_or_face, still_under_riders, Cap, Entry};
 use crate::brain::behaviours::{count_down_cooldown_ticks, fly_stroll, follow_adult, follow_temptation, look_at_target_sink, move_to_target_sink, panic, run_one, walk_to_look_target, work_swim};
 use crate::brain::sensors::{adult, hurt_by, living, nearest_players, tempting};
 use crate::brain::*;
@@ -45,15 +46,17 @@ static IDLE_KIDS: &[Kid] = &[
 
 pub static DEF: Def = Def {
     name: "minecraft:happy_ghast",
+    max_scale: 1.0,
     goals: &[
         Entry::new(&still_under_riders::MODULE, 1, &still_under_riders::Params { reach: 2.0, after: 10 }),
         Entry::new(&square_or_face::MODULE, 0, &square_or_face::Params::DEFAULT),
         Entry::new(&heal_weather::MODULE, 3, &heal_weather::Params { dry: 600, wet: 20, amount: 1.0, max: 20.0 }),
         Entry::new(&float::MODULE, 3, &float::Params { unless_still: true, ..float::Params::DEFAULT }),
         Entry::new(&float_around::MODULE, 5, &float_around::Params { blocks: 16 }),
+        Entry::new(&ambient_sound::MODULE, 6, &ambient_sound::Params { interval: Some(80), choose: Some(ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Rideable, Cap::CollidableWhenStill, Cap::Brain]),
-    rules: &[RuleEntry::new(&harness_worn::RULE, &()), RuleEntry::new(&crate::hand_feed::FEED_BABY, &crate::hand_feed::FeedParams::HAPPY_GHAST), RuleEntry::new(&RIDE, &RideParams::GHAST), RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::GHAST)],
+    rules: &[crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&harness_worn::RULE, &()),RuleEntry::new(&crate::hand_feed::FEED_BABY, &crate::hand_feed::FeedParams::HAPPY_GHAST), RuleEntry::new(&RIDE, &RideParams::GHAST), RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::GHAST), RuleEntry::new(&crate::leash::QUAD_HOLDER, &())],
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Float, free: true, ..fly::Params::DEFAULT }))],
     brain: BrainDef {
         sensors: &[
@@ -88,7 +91,7 @@ pub static DEF: Def = Def {
 pub static BABY: Def = Def {
     name: "minecraft:happy_ghast",
     // `Animal.mobInteract`: the food ages the baby up (the adult cannot fall in love).
-    rules: &[RuleEntry::new(&crate::hand_feed::FEED_BABY, &crate::hand_feed::FeedParams::HAPPY_GHAST)],
+    rules: &[crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&crate::hand_feed::FEED_BABY, &crate::hand_feed::FeedParams::HAPPY_GHAST)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::CollidableWhenStill, Cap::Brain]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Float, free: true, hovers: true, ..fly::Params::DEFAULT }))],
     brain: BrainDef {
@@ -116,3 +119,8 @@ pub static BABY: Def = Def {
     },
     ..Def::EMPTY
 };
+
+/// `HappyGhast.getAmbientSound`: the ghastling's sound when it is a baby, else the adult's.
+fn ambient(w: &mut World, e: Entity) -> &'static str {
+    if crate::behaviours::panda_state::is_baby(w, e) { "entity.ghastling.ambient" } else { "entity.happy_ghast.ambient" }
+}

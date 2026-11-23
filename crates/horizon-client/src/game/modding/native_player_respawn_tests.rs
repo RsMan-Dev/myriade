@@ -104,6 +104,7 @@ fn a_player_who_won_the_game_is_respawned_alive_as_the_button_does() {
 #[test]
 #[ignore = "daily"]
 fn each_respawn_refusal_has_its_own_name_and_changes_nothing() {
+    // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : le joueur du monde (uuid 99, entité 99) sans connexion est posé à la main pour être refusé)
     use horizon_client::motion::PlayerMotion;
     use horizon_core::geometry::Vec3;
     with_guests(|game| {
@@ -130,7 +131,6 @@ fn each_respawn_refusal_has_its_own_name_and_changes_nothing() {
 
         // The world's own player has none either.
         {
-            let _serving = super::integrated::tests::install_serving(game, false);
             game.level.player_uuid = Some([0, 0, 0, 99]);
             let mut body = PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap();
             body.entity_id = 99;

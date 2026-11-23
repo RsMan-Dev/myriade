@@ -276,15 +276,11 @@ fn missing_original_at_reload_preserves_the_published_data_and_reports_its_owner
         std::fs::create_dir_all(&root).unwrap();
         let mut command = std::process::Command::new(std::env::current_exe().unwrap());
         command.args(["--ignored", "--exact", "game::server_reload::tests::missing_original_at_reload_preserves_the_published_data_and_reports_its_owners", "--nocapture"])
-            .env(MODE, &root).env("HORIZON_NO_AUDIO", "1").env("HORIZON_LAUNCHER_NO_SELF_UPDATE", "1");
+            .env(MODE, &root).env("HORIZON_NO_AUDIO", "1");
         for key in [
             "HORIZON_HOME",
-            "HORIZON_LAUNCHER_HOME",
             "XDG_DATA_HOME",
             "XDG_CONFIG_HOME",
-            "HORIZON_LAUNCHER_TRASH",
-            "HORIZON_LAUNCHER_CLIPBOARD",
-            "HORIZON_LAUNCHER_DESKTOP",
         ] {
             command.env(key, root.join(key));
         }
@@ -1030,7 +1026,6 @@ fn data_maps_updated_fires_for_each_registry_on_first_open_and_every_reload() {
     };
     mod_platform::testing::with_mods(vec![ModEntry::new("probe", Box::new(probe))].into(), || {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             let root =
                 std::env::temp_dir().join(format!("data-maps-updated-{}", std::process::id()));
             game.load_world(request(&root)).unwrap();
@@ -1064,7 +1059,7 @@ fn data_maps_updated_fires_for_each_registry_on_first_open_and_every_reload() {
             );
             // A game that isn't a server holds no maps it may answer, even with
             // tables built.
-            game.options.dedicated = None;
+            // TODO(phase 2): joueur local retiré — à faire agir par un joueur connecté (as_guest).
             assert_eq!(
                 game.data_map_value("minecraft:item", "minecraft:coal", "probe:fuel"),
                 Err(DataMapError::Unavailable)

@@ -63,19 +63,11 @@ pub(in super::super) fn load_item_data(
     role: ExecutionRole,
     owning_load: OwningLoad,
 ) -> horizon_client::Result<ItemData> {
-    let phase = mod_api::__private::PhaseOwner::scope(if role.is_client() {
-        mod_api::__private::ModPhase::Setup
-    } else {
-        mod_api::__private::ModPhase::World
-    });
+    let phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
     let _reload = phase.reloading()?;
     let inputs = LoadInputs::new(builtin_registry_names(root)?, Game::mod_data_root());
     let inventory = horizon_mod_package::enabled::EnabledMods::read(root)?;
-    let ids: Vec<_> = if role.is_logical_server() {
-        inventory.server_ids().collect()
-    } else {
-        inventory.client_ids().collect()
-    };
+    let ids: Vec<_> = inventory.server_ids().collect();
     let context = owning_load.context(
         role.data_load_origin(),
         Arc::new(inputs),
@@ -136,7 +128,7 @@ mod tests {
         assert_eq!(make(OwningLoad::Later).setting("reader", "absent"), None);
         for role in [OwningLoad::Startup, OwningLoad::Later] {
             let context = role.context(
-                DataLoadOrigin::ClientPreload,
+                DataLoadOrigin::ServerDataLoad,
                 inputs.clone(),
                 &["silent"],
                 Some(settings.clone()),
@@ -144,8 +136,12 @@ mod tests {
             assert_eq!(context.setting("silent", "count"), None);
             assert_eq!(context.registry("minecraft:item"), None);
         }
-        let fallback =
-            OwningLoad::Startup.context(DataLoadOrigin::ClientPreload, inputs, &["reader"], None);
+        let fallback = OwningLoad::Startup.context(
+            DataLoadOrigin::ServerDataLoad,
+            inputs,
+            &["reader"],
+            None,
+        );
         assert_eq!(fallback.setting("reader", "count").as_deref(), Some("7"));
     }
 }

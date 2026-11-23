@@ -93,7 +93,7 @@ Paths below are verified existing integration owners relative to this repository
 | --- | --- |
 | Part registration and dispatch | `crates/horizon-mod-vocab/src/parts/entities.rs:124` registers behavior; `:53` resolves a type's Parts. Resolve into slots at load. |
 | Mod spawning, including callers using level handles | `crates/horizon-client/src/game/modding/native_level_spawning.rs:15` owns level_spawn_mob. Add a general insertion path without pretending every entity is a mob. |
-| Natural/spawner policy | `crates/horizon-client/src/game/mobs/natural_spawning.rs:43` gates eligible chunks. General MISC types do not gain natural spawning implicitly. Explicit spawn adapters use the same insertion boundary. |
+| Natural/spawner policy | `crates/horizon-client/src/game/mobs/spawn_level.rs` gates eligible chunks. General MISC types do not gain natural spawning implicitly. Explicit spawn adapters use the same insertion boundary. |
 | Identity, reads and queries | `crates/horizon-client/src/game/modding/native_entity_refs.rs:101` resolves targets, `:176` creates refs, `:245` queries entities. Extend all three to general rows; do not scan families for each lookup. |
 | Temporary lift | `crates/horizon-client/src/game/modding/native_entity_refs.rs:86` owns held-out access. General rows must retain residency visibility and balance restoration after panic. |
 | Residency insert/remove/unload/restore/world reset | `crates/horizon-client/src/join_seq/residency.rs:95` journals events, `:108` drains them, `:121` resets epoch. Integrate the general owner here; retirement waits for root commit. |

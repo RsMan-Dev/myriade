@@ -39,6 +39,7 @@ fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> Game<'a> 
     assert!(game.run_command("fill 0 99 0 31 99 15 dirt"));
     // A hostile mob spawns and the player takes damage on any but peaceful.
     assert!(game.run_command("difficulty normal"));
+    // TODO(phase 2): assertion sur l'hôte : entity_id = HOST et lan_host ouvert dans le test (player_kill_credit_tests.rs:42)
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 6.5)).unwrap());
     game.player.as_mut().unwrap().entity_id = HOST as i32;
     game.lan_host(
@@ -62,7 +63,6 @@ fn game<'a>(resources: &'a mut Option<Arc<crate::game::Resources>>) -> Game<'a> 
             allow_flight: false,
             seed: 0,
             max_players: 2,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         },

@@ -802,9 +802,8 @@ impl Game<'_> {
     /// call (`ChunkTickets::take_changes`), told to the mods in order as
     /// `chunk_ticket_level_updated`, with no player's state swapped in. The
     /// tickets keep them only while a mod listens (`update_chunk_tickets`).
-    pub(in crate::game) fn run_chunk_ticket_level_updates(&mut self) {
+    pub(in crate::game) fn run_chunk_ticket_level_updates(&mut self, changes: Vec<horizon_client::ticket_levels::LevelChange>) {
         use horizon_client::ticket_levels::UNLOADED;
-        let changes = self.tickets.take_changes();
         if changes.is_empty() {
             return;
         }
@@ -842,25 +841,6 @@ impl Game<'_> {
             })
         }) {
             return Some((PlayerRead::Guest(guest), guest.entity_id as u32));
-        }
-        if self.lan_acting_uuid.is_none()
-            && self.serving.is_some()
-            && self
-                .level
-                .player_uuid
-                .map(horizon_client::lan::playerdata::ints_uuid)
-                == Some(uuid)
-        {
-            let body = self.player.as_ref()?;
-            return Some((
-                PlayerRead::Acting {
-                    mode: self.mode_id(),
-                    body: Some(body),
-                    abilities: self.acting_abilities,
-                    last_death: self.level.last_death.as_ref(),
-                },
-                body.entity_id as u32,
-            ));
         }
         None
     }
@@ -1158,16 +1138,6 @@ impl Game<'_> {
         if let Some(guest) = self.online_player_record(player) {
             return Some(Dim::from_id(&guest.dimension).key());
         }
-        if self.serving.is_some()
-            && self.player(player.uuid()) == Some(player)
-            && self
-                .level
-                .player_uuid
-                .map(horizon_client::lan::playerdata::ints_uuid)
-                == Some(player.uuid())
-        {
-            return Some(self.dim.key());
-        }
         None
     }
 
@@ -1417,7 +1387,7 @@ impl Game<'_> {
     /// on a client, which follows its server's rate. The command runs it from a listener too,
     /// as vanilla does.
     pub(in crate::game) fn apply_tick_rate(&mut self, rate: f32) -> bool {
-        if !self.is_logical_server() || !(1.0..=10_000.0).contains(&rate) {
+        if !(1.0..=10_000.0).contains(&rate) {
             return false;
         }
         self.clock.set_rate(rate);
@@ -1632,11 +1602,7 @@ impl Game<'_> {
             return;
         }
         let plain = line.plain();
-        if self.is_dedicated_server() {
-            super::dedicated::log("INFO", &plain);
-        } else {
-            log::info!("{plain}");
-        }
+        super::dedicated::log("INFO", &plain);
         let Some(host) = &self.lan else {
             return;
         };
@@ -1651,7 +1617,7 @@ impl Game<'_> {
     /// about (empty and 0 for no one), `message` is the line (`§` codes colour it).
     /// Only on a dedicated server; false elsewhere and for an empty message.
     pub(super) fn native_server_event(&self, name: &str, uuid: u128, message: &str) -> bool {
-        if !self.is_dedicated_server() || message.trim().is_empty() {
+        if message.trim().is_empty() {
             return false;
         }
         super::dedicated::events::record("announce", name, uuid, json!({ "message": message }));
@@ -1779,9 +1745,7 @@ impl Game<'_> {
         let Some((min, max)) = ordered_box(min, max) else {
             return Vec::new();
         };
-        if (self.serving.is_none() && self.options.dedicated.is_none())
-            || dimension != self.dim.id()
-        {
+        if dimension != self.dim.id() {
             return Vec::new();
         }
         self.ecs
@@ -1813,8 +1777,7 @@ impl Game<'_> {
         count: Option<u32>,
         age: Option<u32>,
     ) -> bool {
-        if (self.serving.is_none() && self.options.dedicated.is_none())
-            || dimension != self.dim.id()
+        if dimension != self.dim.id()
             || count == Some(0)
             || count.is_some_and(|c| c > crate::orb_limits::MAX_COUNT)
             || value.is_some_and(|v| !crate::orb_limits::value_fits(v))
@@ -2402,7 +2365,6 @@ mod tests {
     fn experience_orbs_refuse_bounds_that_are_not_finite_and_swap_an_inverted_box() {
         let mut resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
-        game.options.dedicated = Some(Vec::new());
         let at = horizon_core::geometry::Vec3::new(1.0, 70.0, 1.0);
         let id = game.ecs_orb_moving(3, [at.x, at.y, at.z], [0.0; 3]).expect("an orb");
         let dimension = game.dim.id().to_owned();
@@ -2426,27 +2388,13 @@ mod tests {
         assert_eq!(ids(&game, [2.0, 71.0, 2.0], [0.0, 69.0, 0.0]), [id]);
     }
 
-    /// A mod's `announce` reaches the dedicated server's event stream and nothing else's.
-    /// The integrated server thread keeps the launch configuration (`options.dedicated`) too,
-    /// so it cannot be what decides.
+    /// A mod's `announce` reaches the dedicated server's event stream.
     #[test]
     #[ignore = "daily"]
-    fn server_events_are_posted_only_on_the_dedicated_role() {
-        use crate::game::execution_role::ExecutionRole;
+    fn server_events_are_posted_by_the_dedicated_server() {
         let mut resources = None;
-        let mut game = crate::game::game_tests::tests::server_game(&mut resources);
-        game.options.dedicated = Some(Vec::new());
-        for (role, posted) in [
-            (ExecutionRole::DedicatedServer, true),
-            (ExecutionRole::IntegratedServer, false),
-        ] {
-            game.options.execution_role = role;
-            assert_eq!(
-                game.native_server_event("Alex", 7, "hello"),
-                posted,
-                "{role:?}"
-            );
-        }
+        let game = crate::game::game_tests::tests::server_game(&mut resources);
+        assert!(game.native_server_event("Alex", 7, "hello"));
     }
 
     fn with_command_sources(test: impl FnOnce(&mut Game<'_>)) {
@@ -4248,7 +4196,6 @@ pub(super) mod fake_action_tests {
         mode: i32,
     ) -> (PlayerRef, u32, u32) {
         super::super::bossbars::audience_tests::add_real_and_fake(game);
-        game.options.dedicated = Some(Vec::new());
         for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
             let mut chunk = horizon_client::chunk::Chunk::empty(x, z);
             chunk.lit = true;
@@ -5482,7 +5429,6 @@ impl Game<'_> {
     }
     /// The listening socket of a dedicated server; None on any other side and before it listens.
     fn dedicated_lan(&self) -> Option<&horizon_client::lan::Lan> {
-        self.options.dedicated.as_ref()?;
         Some(&self.lan.as_ref()?.hub.lan)
     }
 }

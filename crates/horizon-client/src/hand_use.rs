@@ -30,8 +30,6 @@ pub struct SwingDescription {
 pub struct SwingState {
     pub current: Option<SwingDescription>,
     pub ticks: i32,
-    pub old_animation: f32,
-    pub animation: f32,
 }
 impl SwingState {
     /// `startIfAble`: a swing restarts unless the current one is in its
@@ -48,29 +46,18 @@ impl SwingState {
             animation,
             duration_ticks: duration,
         };
-        if self.current != Some(swing) {
-            self.old_animation = 0.0;
-            self.animation = 0.0;
-        }
         self.current = Some(swing);
         self.ticks = 0;
         true
     }
     /// `tick` (from `LivingEntity.baseTick`).
     pub fn tick(&mut self) {
-        self.old_animation = self.animation;
         if let Some(c) = self.current {
-            if c.duration_ticks > 0 {
-                self.animation = (self.ticks as f32 / c.duration_ticks as f32).min(1.0);
-            }
             let ticks = self.ticks;
             self.ticks += 1;
             if ticks > c.duration_ticks {
                 self.current = None;
-                self.animation = 0.0;
             }
-        } else {
-            self.animation = 0.0;
         }
     }
     pub fn swinging(&self) -> bool {
@@ -149,8 +136,6 @@ pub trait HandWorld {
     fn cannot_attack(&mut self) -> bool;
     /// The main-hand item is a `PIERCING_WEAPON`.
     fn piercing_weapon(&mut self) -> bool;
-    fn attack_animation(&mut self) -> SwingAnimation;
-    fn interact_animation(&mut self, hand: Hand) -> SwingAnimation;
     /// `MultiPlayerGameMode.piercingAttack`.
     fn piercing_attack(&mut self, animation: SwingAnimation);
     /// `Player.attack` on the targeted entity when the item's attack range

@@ -37,6 +37,10 @@ pub struct HostSetup {
     pub simulation_radius: i32,
 }
 
+/// The name of the dimension the world is in: the `dimension` of a `GlobalPos` (a brute's home).
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct WorldDimension(pub &'static str);
+
 /// Who or what hurt an entity, as the host names it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HurtSource {
@@ -85,6 +89,7 @@ impl EcsWorld {
         zone::enable(&mut world, setup.simulation_radius);
         world.init_resource::<view::Modified>();
         world.insert_resource(crate::frame_item::DropRng(crate::flat::Rng(setup.seed as u64 ^ 0x9E37_79B9_7F4A_7C15)));
+        world.insert_resource(WorldDimension(setup.dimension));
         EcsWorld { world, schedule: crate::cow::schedule(), occ, half: HALF, spawned: setup.seed as u64, chunks: HashMap::new() }
     }
 
@@ -135,12 +140,38 @@ impl EcsWorld {
         out
     }
 
+    /// `step` with the mods' goal and behaviour hooks answered by `goals`, and the natural pass's spawn hooks by `spawn` (None: no mod listens).
+    pub fn step_with(&mut self, mw: &MobWorld<'_>, goals: &dyn crate::mod_goals::ModGoalHost, spawn: Option<&dyn crate::spawn_mod_host::SpawnModHost>) -> Vec<HostEvent> {
+        use crate::mod_goals::{LentHost, ModGoalCalls};
+        use crate::spawn_mod_host::{LentSpawnHost, SpawnModCalls};
+        self.world.insert_resource(ModGoalCalls(Some(LentHost::lend(goals))));
+        self.world.insert_resource(SpawnModCalls(spawn.map(LentSpawnHost::lend)));
+        let ran = catch_unwind(AssertUnwindSafe(|| self.step(mw)));
+        self.world.insert_resource(SpawnModCalls(None));
+        self.world.insert_resource(ModGoalCalls(None));
+        self.world.insert_resource(crate::targeting::LivingVisibility(None));
+        match ran {
+            Ok(out) => out,
+            Err(p) => resume_unwind(p),
+        }
+    }
+
     pub fn world(&self) -> &World {
         &self.world
     }
 
     pub fn world_mut(&mut self) -> &mut World {
         &mut self.world
+    }
+
+    /// The game's `living_visibility` answers for the next `step_with` (`None`: no mod listens, nothing is asked); emptied after it.
+    pub fn lend_living_visibility(&mut self, host: Option<&dyn crate::targeting::LivingVisibilityHost>) {
+        self.world.insert_resource(crate::targeting::LivingVisibility(host.map(crate::targeting::LentVisibility::lend)));
+    }
+
+    /// The host's table of an item's prototype attack range, set once at the level's creation.
+    pub fn set_prototype_range_table(&mut self, f: crate::rules::melee_attack::PrototypeRangeFn) {
+        self.world.insert_resource(crate::rules::melee_attack::PrototypeRange(f));
     }
 
     /// `SpecialDates.isHalloween` for the host's day (read by the carved pumpkin of `spawn_gear`); the host sets it when the date changes.
@@ -155,42 +186,65 @@ impl EcsWorld {
 
     /// `spawn` for the reason the host names (`EntitySpawnReason`): kept on the entity (`Spawn`) and told in `Spawned`.
     pub fn spawn_for(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], nbt: Option<&Compound>, reason: crate::spawn_reason::SpawnReason) -> Option<Entity> {
-        self.spawn_as(mw, kind, at, nbt, reason, None, None)
+        self.spawn_as(mw, kind, at, nbt, reason, None, None, true)
     }
 
-    /// `spawn_for`, then the species' `finalizeSpawn` for the same reason (`spawn_finalize::finalize`, its class from the species' bits):
-    /// the group of the pack goes in and the next one comes back, with the draws the host keeps (follow bonus, left hand, door flag).
-    /// `special` is the difficulty's special multiplier at `at`.
-    pub fn spawn_finalized(
-        &mut self,
-        mw: &MobWorld<'_>,
-        kind: &str,
-        at: [f64; 3],
-        reason: crate::spawn_reason::SpawnReason,
-        special: f32,
-        group: Option<crate::spawn_finalize::Group>,
-    ) -> Option<(Entity, crate::spawn_finalize::Outcome)> {
-        self.spawn_finalized_at(mw, kind, at, None, reason, special, group)
-    }
-
-    /// `spawn_finalized` whose variant draw reads the place of `finalize_at` (`finalizeSpawn` runs before `snapTo`, so a cat reads the
-    /// origin); None: the place of `at`.
-    pub fn spawn_finalized_at(
+    /// The entity of `sheet` made for `kind` at `at`, its edits applied, neither finalized nor announced: `finalize_prepared` finishes it,
+    /// then `announce_prepared` tells it. The variant draw reads the place of `finalize_at` (`finalizeSpawn` runs before `snapTo`, so a
+    /// cat reads the origin); None: the place of `at`.
+    pub fn spawn_prepared(
         &mut self,
         mw: &MobWorld<'_>,
         kind: &str,
         at: [f64; 3],
         finalize_at: Option<[f64; 3]>,
         reason: crate::spawn_reason::SpawnReason,
-        special: f32,
-        group: Option<crate::spawn_finalize::Group>,
-    ) -> Option<(Entity, crate::spawn_finalize::Outcome)> {
-        let shared = match group {
-            Some(crate::spawn_finalize::Group::Ageable { variant, .. }) => variant,
+        sheet: &crate::spawn_sheet::SpawnSheet,
+    ) -> Option<Entity> {
+        let shared = match sheet.group {
+            Some(crate::spawn_finalize::Group::Ageable { variant, .. } | crate::spawn_finalize::Group::Shaped { variant, .. }) => variant,
             _ => None,
         };
-        let e = self.spawn_as(mw, kind, at, None, reason, shared, finalize_at)?;
-        Some((e, self.finalize_spawned(mw, e, reason, special, group)))
+        let e = self.spawn_as(mw, kind, at, None, reason, shared, finalize_at, false)?;
+        self.apply_sheet(e, sheet);
+        Some(e)
+    }
+
+    /// `Spawned` for the entity `e` of `spawn_prepared`, once `finalize_prepared` has run (`addFreshEntity` comes after `finalizeSpawn`).
+    pub fn announce_prepared(&mut self, mw: &MobWorld<'_>, e: Entity, reason: crate::spawn_reason::SpawnReason) {
+        let natural = reason == crate::spawn_reason::SpawnReason::Natural;
+        self.lent(mw, |w| {
+            crate::bridge::host_events_more::said_spawned(w, e, natural, reason);
+        });
+    }
+
+    /// The edits of `sheet` on the new entity `e`, in the order they were made; the persistence last.
+    pub(crate) fn apply_sheet(&mut self, e: Entity, sheet: &crate::spawn_sheet::SpawnSheet) {
+        use crate::spawn_sheet::AttrEdit;
+        if !sheet.passenger_attachments.is_empty() {
+            let adult = sheet.passenger_attachments.iter().map(|a| a.map(f64::from)).collect::<Vec<[f64; 3]>>();
+            self.world_mut().entity_mut(e).insert(crate::mount::PassengerSeats { adult: std::borrow::Cow::Owned(adult), baby: None });
+        }
+        for (slot, stack) in &sheet.equipment {
+            crate::equip_stack::set(self.world_mut(), e, *slot, stack.clone());
+        }
+        for (name, edit) in &sheet.attributes {
+            match edit {
+                AttrEdit::Base(base) => self.set_attribute_base(e, name, *base),
+                AttrEdit::ResetBase => self.reset_attribute_base(e, name),
+                AttrEdit::Add(m) => self.add_attribute_modifier(e, name, m.clone()),
+                AttrEdit::Remove(id) => self.remove_attribute_modifier(e, name, id),
+            };
+        }
+        for tag in &sheet.tags {
+            crate::nbt_tag::add(self.world_mut(), e, tag);
+        }
+        if let Some(name) = &sheet.name {
+            self.set_custom_name(e, Some(name.clone()));
+        }
+        if sheet.persistent {
+            crate::despawn::keep(self.world_mut(), e);
+        }
     }
 
     /// `PatrolSpawner.spawnPatrolMember`: a patrol raider is created (`spawn_for`, `Patrol`), a leader is named and takes its patrol target
@@ -203,14 +257,17 @@ impl EcsWorld {
                 crate::behaviours::long_distance_patrol::find_target(&mut self.world, e, [0, 0, 0]);
             }
         }
-        self.finalize_spawned(mw, e, reason, special, None);
+        self.finalize_prepared(mw, e, reason, special, None);
         if leader && reason == crate::spawn_reason::SpawnReason::Patrol {
             crate::behaviours::long_distance_patrol::wake(&mut self.world, e);
         }
         Some(e)
     }
 
-    fn finalize_spawned(
+    /// `finalizeSpawn` of the entity `e` made by `spawn_prepared` (or `spawn_for`) for `reason`, with the pack's `group` (the sheet's):
+    /// the species' draws, the class's and the gear, the kept draws (follow bonus, left hand, door flag). `special` is the difficulty's
+    /// special multiplier at its place. The outcome holds the group for the next member of the pack.
+    pub fn finalize_prepared(
         &mut self,
         mw: &MobWorld<'_>,
         e: Entity,
@@ -220,34 +277,12 @@ impl EcsWorld {
     ) -> crate::spawn_finalize::Outcome {
         self.spawned += 1;
         let mut random = horizon_core::random::LegacyRandom::new(self.spawned as i64);
-        let w = &mut self.world;
-        w.insert_resource(crate::spawn_finalize::Special(special));
-        let class = crate::spawn_finalize::kind_of(w, e);
-        // The species' extra draws (`Def::draws`) come before or after the class's own, as the jar's `finalizeSpawn` does.
-        let draws = crate::behaviours::spawn_draw::draws_of(w, e);
-        let biome = w.get_resource::<crate::spawning::Spawner>().map_or_else(String::new, |s| s.biome.clone());
-        let has = |tag: &str| mw.data.biome_has(tag, &biome);
-        let ctx = |w: &World| crate::rules::spawn_draw::Ctx { biome: &biome, biome_has: &has, special, baby: w.get::<crate::cow::GrowAt>(e).is_some() };
-        let mut group = group.or(draws.and_then(|d| d.group));
-        if let Some(d) = draws {
-            let c = ctx(w);
-            crate::behaviours::spawn_draw::run(w, e, d, crate::behaviours::spawn_draw::When::Before, &mut group, &c, &mut random);
-        }
-        let mut out = crate::spawn_finalize::finalize(w, e, class, group, reason, special, &mut random);
-        if let Some(d) = draws {
-            let c = ctx(w);
-            crate::behaviours::spawn_draw::run(w, e, d, crate::behaviours::spawn_draw::When::After, &mut out.group, &c, &mut random);
-        }
-        out
-    }
-
-    /// `spawn` for a creature of the host's natural spawning pass: its `Spawned` event says so (`natural`).
-    pub fn spawn_natural(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3]) -> Option<Entity> {
-        self.spawn_as(mw, kind, at, None, crate::spawn_reason::SpawnReason::Natural, None, None)
+        crate::spawn_natural::finalize_in(&mut self.world, mw, e, reason, special, group, &mut random)
     }
 
     /// `group`: the variant the pack's group gives (`Group::Ageable::variant`), taken instead of a draw by a species that shares it.
-    fn spawn_as(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], nbt: Option<&Compound>, reason: crate::spawn_reason::SpawnReason, group: Option<u8>, draw_at: Option<[f64; 3]>) -> Option<Entity> {
+    /// `announce`: whether `Spawned` is told here (false for a prepared spawn, told by `announce_prepared`).
+    fn spawn_as(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], nbt: Option<&Compound>, reason: crate::spawn_reason::SpawnReason, group: Option<u8>, draw_at: Option<[f64; 3]>, announce: bool) -> Option<Entity> {
         let natural = reason == crate::spawn_reason::SpawnReason::Natural;
         let table = species_table();
         // A sort with a constructor of its own (the falling block, the TNT...) has no row among the species.
@@ -271,7 +306,9 @@ impl EcsWorld {
                 }
                 zone::admit(w, &[e]);
                 view::mark(w, e);
-                crate::bridge::host_events_more::said_spawned(w, e, natural, reason);
+                if announce {
+                    crate::bridge::host_events_more::said_spawned(w, e, natural, reason);
+                }
                 return Some(e);
             }
             let sp = sp?;
@@ -304,7 +341,9 @@ impl EcsWorld {
             }
             zone::admit(w, &[e]);
             view::mark(w, e);
-            crate::bridge::host_events_more::said_spawned(w, e, natural, reason);
+            if announce {
+                crate::bridge::host_events_more::said_spawned(w, e, natural, reason);
+            }
             Some(e)
         })
     }
@@ -389,7 +428,7 @@ impl EcsWorld {
             HurtSource::IndirectMagic { owner } => (Cause::Magic, owner, false),
             HurtSource::Void => (Cause::OutOfWorld, None, false),
         };
-        self.lent(mw, |w| w.resource_mut::<DamageQueue>().0.push(Hit { target: e, amount, cause, damage, from, by, direct, power: None, projectile: None }));
+        self.lent(mw, |w| w.resource_mut::<DamageQueue>().0.push(Hit { target: e, amount, cause, damage, from, by, direct, power: None, extra: None, projectile: None }));
     }
 
     /// The player uses its item (`hand` 0: main, else off hand) on `e`; true when a goal answered.
@@ -455,6 +494,19 @@ impl EcsWorld {
                 };
                 let y = by.and_then(|e| self.world.get::<Pos>(e)).map_or(0.0, |p| p.0.y);
                 (h.player, h.amount, [h.from.0, y, h.from.1], by)
+            })
+            .collect()
+    }
+
+    /// The second knockbacks of the blows (`causeExtraKnockback`) since the last call: the player, the position of the creature that
+    /// dealt it, (x, z, power) and that creature. The host applies them after the blow (`take_player_hits`).
+    pub fn take_player_pushes(&mut self) -> Vec<(u32, [f64; 3], (f64, f64, f64), Entity)> {
+        let pushes = std::mem::take(&mut self.world.resource_mut::<crate::hostile::PlayerState>().pushes);
+        pushes
+            .into_iter()
+            .map(|(player, extra, by)| {
+                let at = self.world.get::<Pos>(by).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
+                (player, at, extra, by)
             })
             .collect()
     }

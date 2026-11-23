@@ -37,9 +37,6 @@ impl Game<'_> {
         cancel
     }
     pub(super) fn block_distance(&self) -> Option<f64> {
-        if false && self.targeting().hit_through_walls {
-            return None;
-        }
         self.pick_unfiltered().map(|h| {
             let eye = self.aim().map(|(eye, _)| eye).unwrap_or_default();
             (0..3)

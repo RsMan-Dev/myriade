@@ -3,7 +3,7 @@ use crate::IFloor as _;
 use crate::rules::pathsearch::type_on_below;
 use horizon_world::registry::BlockStateId;
 use horizon_client_lib::mobs::{MobWorld, data::{self, PathComputationType}, path::{Evaluator, Path, PathMob, PathNode, PathType}};
-use horizon_client_lib::blocks::Fluid;
+use horizon_client_lib::blocks::{BlockFacts, Fluid};
 use horizon_client_lib::fast_hash::FxHashMap;
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::position::BlockPos;
@@ -261,6 +261,23 @@ pub fn path_type_from_state(w: &MobWorld, x: i32, y: i32, z: i32) -> PathType {
             .and_then(|hooks| hooks.block_path_type(state, [x, y, z]))
             .unwrap_or_else(|| w.data.path_type(state))
     })
+}
+/// The `isPathfindable` answers of the mod parts, by state (`PartAnswers.pathfindable`): `part(state, kind)` is the parts' answer where they
+/// give one, else the block keeps its own (`MobData::block_pathfindable`). `states` is the number of states of `data`.
+pub fn part_pathfindable(data: &data::MobData, states: usize, part: impl Fn(BlockStateId, PathComputationType) -> Option<bool>) -> Box<[u8]> {
+    (0..states)
+        .map(|i| {
+            let id = BlockStateId(i as u32);
+            PathComputationType::ALL
+                .into_iter()
+                .filter(|&kind| part(id, kind).unwrap_or_else(|| data.block_pathfindable(id, kind)))
+                .fold(0, |bits, kind| bits | data::PartAnswers::pathfindable_bit(kind))
+        })
+        .collect()
+}
+/// Keeps the parts' answers: each state's path type follows its `LAND` answer, before the fences, leaves and air (`resolve_parts`).
+pub fn resolve_part_answers(data: &data::MobData, facts: &BlockFacts, answers: Option<&[u8]>) {
+    data.resolve_parts(facts, &data::PartAnswers { pathfindable: answers });
 }
 /// WalkNodeEvaluator.getPathTypeStatic.
 /// A mod's supplied path is classified through here, so every block step

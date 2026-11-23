@@ -42,7 +42,7 @@ fn set_config_flag(n: &mut NavParams, name: &str, on: bool) -> bool {
 
 /// The evaluator the creature's search uses, by its mode: the air's, the water's (amphibious or not), else the walk's, the
 /// amphibious one when the species has it (as the cow's `pathfind`).
-fn evaluator(world: &World, e: Entity) -> Evaluator {
+pub fn evaluator(world: &World, e: Entity) -> Evaluator {
     let swim = world.get::<SwimParams>(e);
     if world.get::<FlyMode>(e).is_some() {
         Evaluator::Fly
@@ -57,6 +57,56 @@ fn evaluator(world: &World, e: Entity) -> Evaluator {
             None => Evaluator::Walk,
         }
     }
+}
+
+/// `GroundPathNavigation.trimPath` with `avoidSun`: the nodes before the first one the sky sees are kept.
+pub fn trim_before_sky(path: &mut Path, sees_sky: impl Fn(i32, i32, i32) -> bool) {
+    if let Some(i) = path.nodes.iter().position(|n| sees_sky(n.x, n.y, n.z)) {
+        path.nodes.truncate(i);
+    }
+}
+
+/// The node clock of a supplied path (the node timeout of `doStuckDetection`): the node it counts, its ticks there and the limit.
+/// Set by `follow` on the creature, removed when the path ends.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct NodeClock {
+    pub node: usize,
+    pub timer: u32,
+    pub limit: u32,
+}
+
+/// The ticks a creature at `at` may take to reach `n` at `speed`: `dist / speed * 20`, saturating (a zero speed never times out).
+fn node_limit(at: [f64; 3], n: &PathNode, speed: f64) -> u32 {
+    let (dx, dy, dz) = (f64::from(n.x) + 0.5 - at[0], f64::from(n.y) - at[1], f64::from(n.z) + 0.5 - at[2]);
+    ((dx * dx + dy * dy + dz * dz).sqrt() / speed * 20.0) as u32
+}
+
+/// The node timeout of a supplied path: a creature that stays on one node past three times its limit drops the path.
+/// Only the creatures that carry a `NodeClock` are visited.
+pub fn node_timeout(mut cmd: Commands, mut q: Query<(Entity, &mut NodeClock, &mut Nav, &crate::cow::Pos)>) {
+    for (e, mut c, mut nav, pos) in &mut q {
+        let speed = nav.speed;
+        let Some(path) = nav.path.as_mut().filter(|p| !p.is_done()) else {
+            cmd.entity(e).remove::<NodeClock>();
+            continue;
+        };
+        if path.next != c.node {
+            let at = [pos.0.x, pos.0.y, pos.0.z];
+            *c = NodeClock { node: path.next, timer: 0, limit: node_limit(at, &path.next_node(), speed) };
+        } else {
+            c.timer += 1;
+            if c.timer > c.limit.saturating_mul(3) {
+                nav.path = None;
+                cmd.entity(e).remove::<(NodeClock, Following, Moving)>().insert(crate::cow::PathEnded);
+            }
+        }
+    }
+}
+
+/// The node timeout runs after `follow` moved the creatures of the tick.
+pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
+    s.add_systems(node_timeout.after(crate::cow::follow));
 }
 
 /// `PathNavigation.moveTo(Path, speed)` for the path `nodes` a mod supplies: each node is floored and classified, the path is
@@ -83,15 +133,15 @@ pub fn follow(world: &mut World, mw: &MobWorld<'_>, e: Entity, nodes: &[[f64; 3]
     if world.get::<AvoidSun>(e).is_some() && world.get_resource::<Daylight>().is_some_and(|d| d.0) {
         let p = pm.position;
         if !mw.can_see_sky(p.x.floor() as i32, (p.y + 0.5).floor() as i32, p.z.floor() as i32) {
-            if let Some(i) = path.nodes.iter().position(|n| mw.can_see_sky(n.x, n.y, n.z)) {
-                path.nodes.truncate(i);
-            }
+            trim_before_sky(&mut path, |x, y, z| mw.can_see_sky(x, y, z));
         }
     }
     if path.nodes.is_empty() {
         return false;
     }
     let now = world.resource::<Clock>().of(e);
+    let at = [pm.position.x, pm.position.y, pm.position.z];
+    let clock = NodeClock { node: 0, timer: 0, limit: node_limit(at, &path.nodes[0], speed) };
     if let Some(mut nav) = world.get_mut::<Nav>(e) {
         nav.path = Some(path);
         nav.speed = speed;
@@ -99,7 +149,7 @@ pub fn follow(world: &mut World, mw: &MobWorld<'_>, e: Entity, nodes: &[[f64; 3]
         nav.last_check = now.saturating_sub(1);
         nav.last_pos = pm.position;
     }
-    world.entity_mut(e).remove::<NeedsPath>().insert((Following, Moving));
+    world.entity_mut(e).remove::<NeedsPath>().insert((Following, Moving, clock));
     true
 }
 
@@ -133,7 +183,11 @@ pub fn set_flag(world: &mut World, e: Entity, name: &str, on: bool) -> bool {
 /// The path malus of `kind` for `e` (`NavParams.malus`, else the default of the type). None for an unknown type or a creature
 /// without `NavParams`.
 pub fn malus(world: &World, e: Entity, kind: &str) -> Option<f32> {
-    let t = path_type(kind)?;
+    malus_of(world, e, path_type(kind)?)
+}
+
+/// The path malus of the type `t` for `e` (see `malus`).
+pub fn malus_of(world: &World, e: Entity, t: PathType) -> Option<f32> {
     let n = world.get::<NavParams>(e)?;
     Some(n.malus[t as usize].unwrap_or_else(|| t.malus()))
 }

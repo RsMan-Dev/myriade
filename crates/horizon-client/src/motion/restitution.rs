@@ -1,7 +1,7 @@
 //! `Entity.getBlockBounciness` for the player: the block's restitution after its parts.
 use super::{MotionWorld, Result, movement_support};
 use crate::{block_contact, health::DamageLevel};
-use horizon_world::{native_load_context::LoopSide, registry::BlockStateId};
+use horizon_world::registry::BlockStateId;
 
 impl MotionWorld<'_, '_, '_> {
     /// `Block.getBounceRestitution` of `state` for the player landing on it at
@@ -15,14 +15,13 @@ impl MotionWorld<'_, '_, '_> {
             return Ok(own);
         }
         let position = self.support(movement_support::LEGACY_SUPPORT_OFFSET)?;
-        let client_side = self.loop_context.side() == LoopSide::Client;
         let contact = block_contact::Contact {
             entity: self.player.entity_id,
             kind: "minecraft:player",
             state,
             position,
         };
-        let level = DamageLevel::of(
+        let mut level = DamageLevel::of(
             &mut *self.scene,
             self.assets.registry,
             self.tag_items,
@@ -30,7 +29,7 @@ impl MotionWorld<'_, '_, '_> {
             self.damage_hooks,
         );
         Ok(block_contact::bounce_restitution(
-            &mut level.on_client(client_side),
+            &mut level,
             contact,
             own,
         ))

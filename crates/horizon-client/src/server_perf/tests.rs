@@ -35,7 +35,6 @@ fn options(window_s: f64) -> CaptureOptions {
         block_names: Vec::new(),
         levels: Vec::new(),
         wire: Vec::new(),
-        gpu: GpuMode::Unspecified,
         timeline: None,
         file: None,
     }

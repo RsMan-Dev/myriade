@@ -39,8 +39,15 @@ static VARIANT: crate::rules::variant::Table = crate::rules::variant::Table {
     inherit: crate::rules::variant::Inherit::None,
 };
 
+/// `RabbitGroupData`: a pack's later members are babies with chance 1 (the draw is still made); the first one is not.
+static DRAWS: crate::behaviours::spawn_draw::Draws = crate::behaviours::spawn_draw::Draws {
+    group: Some(crate::spawn_finalize::Group::Ageable { should_baby: true, size: 0, chance: 1.0, variant: None }),
+    list: &[],
+};
+
 pub static DEF: Def = Def {
     name: "minecraft:rabbit",
+    draws: Some(&DRAWS),
     reference: None,
     variant: Some(&VARIANT),
     // The killer bunny's target goals (`Rabbit.setVariant(EVIL)`): hurt by (no alert), then the nearest player and wolf, both seen.

@@ -61,7 +61,7 @@ fn assign(w: &mut World, e: Entity, c: &Ctx) {
 
 fn can_reset(w: &mut World, e: Entity, c: &Ctx) -> bool {
     let p = c.get::<Params>();
-    !present(w, e, p.job) && w.get::<Merchant>(e).is_some_and(|m| m.profession != NONE && m.profession != NITWIT && m.trade.xp == 0 && m.level <= 1)
+    !present(w, e, p.job) && trade_offers::profession_known(w, e) && w.get::<Merchant>(e).is_some_and(|m| m.profession != NONE && m.profession != NITWIT && m.trade.xp == 0 && m.level <= 1)
 }
 
 fn reset(w: &mut World, e: Entity, _: &Ctx) {

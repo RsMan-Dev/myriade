@@ -62,7 +62,7 @@ def main():
     cp = os.pathsep.join(map(str, [jars['server'], *libraries]))
     with tempfile.TemporaryDirectory(prefix='horizon-stored-enchantments-') as tmp:
         scratch = Path(tmp)
-        homes = {key: scratch / key for key in ('HORIZON_HOME', 'HORIZON_LAUNCHER_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME')}
+        homes = {key: scratch / key for key in ('HORIZON_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME')}
         env = lab.game_env(os.environ, **homes, CARGO_BUILD_JOBS='2')
         run(['javac', '--release', lock['minecraft']['java_major'], '-proc:none', '-cp', cp,
              '-d', classes, source, source.parent / 'ParityData.java'], 'javac', cwd=scratch, env=env)

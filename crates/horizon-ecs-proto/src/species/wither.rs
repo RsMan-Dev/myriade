@@ -35,8 +35,9 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 7, &random_look::Params::DEFAULT),
     ],
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Steer { speed: 0.5, accel: 0.6 }, max_turn: 10.0, hovers: false, ..fly::Params::DEFAULT }))],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune, Cap::WitherImmune]),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune, Cap::WitherImmune, Cap::FreezeImmune, Cap::NeverStuck]),
     not_in_peaceful: true,
     no_portal: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

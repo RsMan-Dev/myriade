@@ -11,7 +11,7 @@ use horizon_client::{
     collisions::SceneCollisions,
     containers::BlockEntity,
     items::{ItemStack, Items},
-    mobs::{Mob, Species, equip::equippable, sulfur_cube},
+    mobs::{Species, equip::equippable, sulfur_cube},
     projectiles::{Projectile, ProjectileKind},
 };
 use mod_api::SoundSource;
@@ -237,17 +237,6 @@ fn equine(s: Species) -> bool {
             | Species::TraderLlama
     )
 }
-/// What a mob holds in a slot.
-pub(super) fn mob_slot_item(m: &Mob, slot: Slot) -> Option<Arc<str>> {
-    let x = &m.extra;
-    match slot {
-        Slot::MainHand | Slot::OffHand | Slot::Feet | Slot::Legs | Slot::Chest | Slot::Head => {
-            horizon_client::mobs::finalize::item(m, slot as usize)
-        }
-        Slot::Body => x.body_stack().map(|s| s.item.clone()),
-        Slot::Saddle => m.saddle_item().map(|s| s.item),
-    }
-}
 /// `LivingEntity.canUseSlot` and its overrides, from the species, whether it is grown and whether it is tame.
 fn can_use_slot(s: Species, grown: bool, tame: bool, slot: Slot) -> bool {
     match s {
@@ -267,7 +256,7 @@ fn can_use_slot(s: Species, grown: bool, tame: bool, slot: Slot) -> bool {
         _ => true,
     }
 }
-/// `Mob.canDispenserEquipIntoSlot` and its overrides, from the species, the loot pickup and whether it is tame.
+/// `canDispenserEquipIntoSlot` and its overrides, from the species, the loot pickup and whether it is tame.
 fn can_dispenser_equip(s: Species, loot: bool, tame: bool, slot: Slot) -> bool {
     match s {
         Species::Pig | Species::Strider => slot == Slot::Saddle || loot,
@@ -280,10 +269,6 @@ fn can_dispenser_equip(s: Species, loot: bool, tame: bool, slot: Slot) -> bool {
         Species::Allay => false,
         _ => loot,
     }
-}
-/// `getEquipSound`: the saddle overrides of pigs, striders, horses, camels and nautili.
-pub(super) fn equip_sound(m: &Mob, slot: Slot, default: Option<String>) -> Option<String> {
-    equip_sound_of(m.species(), m.fluids.eye_in_water, slot, default)
 }
 /// `getEquipSound` from the species and whether the eyes are under water.
 pub(super) fn equip_sound_of(s: Species, underwater: bool, slot: Slot, default: Option<String>) -> Option<String> {
@@ -305,9 +290,6 @@ pub(super) fn equip_sound_of(s: Species, underwater: bool, slot: Slot, default: 
         }
         _ => return default,
     })
-}
-pub(super) fn mob_set_slot(m: &mut Mob, slot: Slot, stack: ItemStack) {
-    m.set_equipment_stack(slot as usize, Some(stack));
 }
 
 impl Game<'_> {
@@ -466,10 +448,7 @@ impl Game<'_> {
         facing: Direction,
         stack: ItemStack,
     ) -> Option<ItemStack> {
-        if !(self.serving.is_some() || self.options.dedicated.is_some())
-            || dimension != self.dim.id()
-            || !self.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4))
-        {
+        if dimension != self.dim.id() || !self.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4)) {
             return Some(stack);
         }
         if stack.count == 0 {
@@ -487,8 +466,7 @@ impl Game<'_> {
         stack: ItemStack,
         remainder: ItemStack,
     ) -> Option<ItemStack> {
-        if !(self.serving.is_some() || self.options.dedicated.is_some())
-            || dimension != self.dim.id()
+        if dimension != self.dim.id()
             || !self.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4))
             || stack.count == 0
         {
@@ -575,36 +553,34 @@ impl Game<'_> {
         stack: ItemStack,
     ) -> Result<Option<ItemStack>> {
         let mut answer = None;
-        if self.serving.is_some() || self.options.dedicated.is_some() {
-            // A mod's global `dispenser_acts` first, then the block the dispenser faces
-            // (`dispense_method`), then the item's part (`dispense_item`); the first answer wins.
-            self.native_dispenser_acts(
+        // A mod's global `dispenser_acts` first, then the block the dispenser faces
+        // (`dispense_method`), then the item's part (`dispense_item`); the first answer wins.
+        self.native_dispenser_acts(
+            self.dim.id(),
+            [pos.0, pos.1, pos.2],
+            facing,
+            &stack,
+            &mut answer,
+        );
+        if answer.is_none() {
+            let front = self.block_at(offset(pos, facing));
+            self.native_dispense_method(
+                self.dim.id(),
+                [pos.0, pos.1, pos.2],
+                facing,
+                front,
+                &stack,
+                &mut answer,
+            );
+        }
+        if answer.is_none() {
+            self.native_dispense_item(
                 self.dim.id(),
                 [pos.0, pos.1, pos.2],
                 facing,
                 &stack,
                 &mut answer,
             );
-            if answer.is_none() {
-                let front = self.block_at(offset(pos, facing));
-                self.native_dispense_method(
-                    self.dim.id(),
-                    [pos.0, pos.1, pos.2],
-                    facing,
-                    front,
-                    &stack,
-                    &mut answer,
-                );
-            }
-            if answer.is_none() {
-                self.native_dispense_item(
-                    self.dim.id(),
-                    [pos.0, pos.1, pos.2],
-                    facing,
-                    &stack,
-                    &mut answer,
-                );
-            }
         }
         if let Some((left, event)) = mod_dispensed(answer, self.items()) {
             if event == FAIL {
@@ -1416,9 +1392,7 @@ impl Game<'_> {
         self.world.modified.insert((front.0 >> 4, front.2 >> 4));
         // BoatDispenseItemBehavior: createDefaultStackConfig with no user.
         self.apply_item_stack_config(super::commands::Target::Boat(id), &kind, &stack, false);
-        if self.serving.is_some() || self.options.dedicated.is_some() {
-            self.native_vehicle_create(kind.as_str(), at);
-        }
+        self.native_vehicle_create(kind.as_str(), at);
         (shrink(stack), CLICK)
     }
     /// `MinecartDispenseItemBehavior`.
@@ -1459,9 +1433,7 @@ impl Game<'_> {
         self.next_entity = next;
         // AbstractMinecart.createMinecart: createDefaultStackConfig with no user.
         self.apply_item_stack_config(super::commands::Target::Cart(id), kind.id(), &stack, false);
-        if self.serving.is_some() || self.options.dedicated.is_some() {
-            self.native_vehicle_create(kind.id(), at);
-        }
+        self.native_vehicle_create(kind.id(), at);
         (shrink(stack), CLICK)
     }
 
@@ -2325,7 +2297,6 @@ mod tests {
         super::super::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -2440,7 +2411,7 @@ mod tests {
         fn installed(&self, test: impl FnOnce()) {
             let tailor = mod_api::ModEntry::new("tailor", Box::new(Tailor(self.clone())));
             let mods: mod_api::Mods = vec![tailor].into();
-            crate::entry::install_client_hooks();
+            crate::entry::install_level_hooks();
             super::super::api_values::install_parts(&mods).unwrap();
             mod_platform::testing::with_mods(mods, test);
         }
@@ -2499,7 +2470,6 @@ mod tests {
         let fits = Fits::new("minecraft:armor_stand");
         fits.installed(|| {
             super::super::native_entity_refs::tests::with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
                 // No part answers for the chestplate: the component's answer stands.
                 let chestplate = ItemStack::new("minecraft:iron_chestplate", 1);
                 let (_, worn, stand, _) = dress(game, 0, chestplate);
@@ -2551,8 +2521,7 @@ mod tests {
     fn a_dispenser_reads_the_stacks_own_equippable() {
         use horizon_core::nbt::Tag;
         super::super::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            let slot = |name: &str| ("slot", Tag::String(name.into()));
+            let slot =|name: &str| ("slot", Tag::String(name.into()));
             let allowed = |list: Vec<Tag>| ("allowed_entities", Tag::List(list));
             let dressed = |game: &mut Game<'_>, row, stack| {
                 let (done, worn, stand, _) = dress(game, row, stack);
@@ -2602,7 +2571,7 @@ mod tests {
             let mut game = server_with_guest(&mut resources);
             // Open the world and admit the guest as a join does, so its handle resolves.
             game.native_lifecycle
-                .begin_open(mod_api::Authority::IntegratedServer);
+                .begin_open(mod_api::Authority::DedicatedServer);
             game.reset_entity_residency();
             let guest = game.lan.as_ref().unwrap().hub.guest(2).unwrap().entity_id as u32;
             assert_eq!(
@@ -2757,7 +2726,6 @@ mod tests {
                 allow_flight: false,
                 seed: 0,
                 max_players: 2,
-                integrated: false,
                 levels: Default::default(),
                 level_seeds: Default::default(),
             },

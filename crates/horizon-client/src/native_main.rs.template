@@ -9,5 +9,5 @@ static GAME_IDENTITY: [u8; horizon_mod_package::game_identity::MARK.len()] =
 fn main() {
     std::hint::black_box(&HOLDER_CAPABILITY);
     std::hint::black_box(&GAME_IDENTITY);
-    horizon_mod_host::main();
+    horizon_game::native_main();
 }

@@ -12,6 +12,7 @@ static OK_TARGET: Cond = Cond::Is("drowned:ok_target");
 static PLAYER_OK: Cond = Cond::Is("drowned:player_ok");
 
 pub static DEF: Def = Def {
+    load_attrs: zombie_base::LOAD_ATTRS,
     name: "minecraft:drowned",
     reference: Some(&zombie_base::DEF),
     changes: &[
@@ -47,5 +48,6 @@ pub static DEF: Def = Def {
         crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::DROWNED),
     ],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

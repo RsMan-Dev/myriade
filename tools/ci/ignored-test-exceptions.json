@@ -18,14 +18,6 @@
   {
     "package": "horizon-client",
     "target": "lib",
-    "test": "game::attachment_instruction_bench::attachment_instruction_count",
-    "path": "crates/horizon-client/src/game/modding/attachment_instruction_bench.rs",
-    "reason": "callgrind fixture; needs HORIZON_TEST_RESOURCES",
-    "rationale": "Opt-in instruction-count measurement, not a daily correctness check: returns without measuring unless ATTACHMENT_PASSES parses as usize. Run by hand with HORIZON_TEST_RESOURCES and ATTACHMENT_PASSES, exact-selecting this full test path with --ignored --exact --nocapture under the intended measurement tooling. No automated runner currently supplies ATTACHMENT_PASSES; the source diagnostic naming a parity harness does not establish such a runner. All assertions remain in the test."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
     "test": "game::block_entity_part_state_tests::native_and_compiled_wasm_part_state_count_ticks",
     "path": "crates/horizon-client/src/game/modding/block_entity_part_state_tests.rs",
     "reason": "needs prepared resources and compiled HORIZON_WASM_FIXTURE/HORIZON_WASM_STD",
@@ -50,110 +42,6 @@
   {
     "package": "horizon-client",
     "target": "lib",
-    "test": "game::creatures::mob_islands::tests::a_fast_mob_joins_only_the_herds_its_bound_reaches",
-    "path": "crates/horizon-client/src/game/creatures/mob_islands.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::creatures::mob_islands::tests::a_fox_eating_chorus_fruit_joins_the_herd_below",
-    "path": "crates/horizon-client/src/game/creatures/mob_islands.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::creatures::mob_islands::tests::a_pet_teleports_to_its_owner_while_a_far_herd_ticks_apart",
-    "path": "crates/horizon-client/src/game/creatures/mob_islands.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::creatures::mob_islands::tests::a_raid_shares_one_group_beside_a_herd",
-    "path": "crates/horizon-client/src/game/creatures/mob_islands.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::creatures::mob_islands::tests::actual_reaches_cover_links_villages_and_bounded_moves",
-    "path": "crates/horizon-client/src/game/creatures/mob_islands.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::creatures::mob_islands::tests::foreign_lookup_observes_serial_visibility_and_unwind",
-    "path": "crates/horizon-client/src/game/creatures/mob_islands.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::creatures::mob_islands::tests::islands_tick_their_mobs_as_one_thread_does",
-    "path": "crates/horizon-client/src/game/creatures/mob_islands.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::creatures::mob_islands::tests::mobs_on_their_own_random_leave_the_level_stream_alone",
-    "path": "crates/horizon-client/src/game/creatures/mob_islands.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::creatures::mob_islands::tests::moved_riders_use_loaded_and_ticking_state_at_their_turn",
-    "path": "crates/horizon-client/src/game/creatures/mob_islands.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::creatures::mob_islands::tests::startup_and_turn_failures_release_lanes_and_preserve_payload",
-    "path": "crates/horizon-client/src/game/creatures/mob_islands.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::creatures::mob_islands::tests::verification_detects_snapshot_and_gaussian_only_differences",
-    "path": "crates/horizon-client/src/game/creatures/mob_islands.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::creatures::mob_islands::tests::villagers_on_their_own_random_tick_in_groups_as_serial",
-    "path": "crates/horizon-client/src/game/creatures/mob_islands.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::creatures::prep::tests::preparation_refreshes_climbing_and_nearest_after_a_move",
-    "path": "crates/horizon-client/src/game/creatures/prep.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
     "test": "game::end::cooldown_tests::gateway_counters_match_actual_vanilla_methods",
     "path": "crates/horizon-client/src/game/world/end/gateway_cooldown_tests.rs",
     "reason": "needs explicit HORIZON_TEST_RESOURCES and HORIZON_PORTAL_REFERENCE",
@@ -162,34 +50,10 @@
   {
     "package": "horizon-client",
     "target": "lib",
-    "test": "game::entity_model_loading_tests::entity_model_document_benchmark",
-    "path": "crates/horizon-client/src/game/interface/entity_model_loading_tests.rs",
-    "reason": "opt-in benchmark; requires ENTITY_MODEL_BENCH_DOCUMENT",
-    "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; ENTITY_MODEL_BENCH_DOCUMENT supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
     "test": "game::explosion::tests::explosion_items_parity_fixture",
     "path": "crates/horizon-client/src/game/entities/explosion.rs",
     "reason": "requires prepared resources; tools/test_explosion_items_parity.py",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/issue-2177.txt; #2177 supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::fishing::tests::breeze_hook_parity_fixture",
-    "path": "crates/horizon-client/src/game/items/fishing.rs",
-    "reason": "run by tools/test_breeze_hook_parity.py",
-    "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_breeze_hook_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::fishing::tests::fishing_retrieve_reference",
-    "path": "crates/horizon-client/src/game/items/fishing.rs",
-    "reason": "requires prepared resources and the vanilla fishing reference",
-    "rationale": "tools/test_fishing_rng_parity.py:120-125 supplies HORIZON_FISHING_RESOURCES and the independent HORIZON_FISHING_REFERENCE JSON and exact-selects this test; the ordinary prepared-resource daily leg has neither oracle input."
   },
   {
     "package": "horizon-client",
@@ -242,22 +106,6 @@
   {
     "package": "horizon-client",
     "target": "lib",
-    "test": "game::minecarts::cart_cost_bench::tick_carts_with_many_parked_carts",
-    "path": "crates/horizon-client/src/game/entities/minecarts.rs",
-    "reason": "a timing, needs prepared resources in HORIZON_TEST_RESOURCES",
-    "rationale": "Manual wall-clock measurement, not a daily correctness check: prints tick_carts time without behavioral assertions. Run by hand on an idle machine with HORIZON_TEST_RESOURCES, exact-selecting the full test path with --ignored --exact --nocapture. CARTS_PARKED, CARTS_MOVING, MOBS and TICKS optionally control the workload; defaults include 600 parked carts, 100 moving carts and 3000 mobs. Test body remains unchanged."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::mod_api_host::attachment_membership_tests::attachment_entity_read_bench",
-    "path": "crates/horizon-client/src/game/modding/mod_api_host.rs",
-    "reason": "manual attachment scaling benchmark; needs HORIZON_TEST_RESOURCES",
-    "rationale": "Opt-in measurement, not an ordinary daily correctness check: manual attachment scaling benchmark; needs HORIZON_TEST_RESOURCES. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
     "test": "game::native_block_entity_item_tests::timing_container_moves_beside_saved_data",
     "path": "crates/horizon-client/src/game/modding/native_block_entity_item_tests.rs",
     "reason": "needs prepared resources in HORIZON_TEST_RESOURCES; runs in an isolated scratch process",
@@ -270,14 +118,6 @@
     "path": "crates/horizon-client/src/game/modding/native_block_entity_item_tests.rs",
     "reason": "needs prepared resources in HORIZON_TEST_RESOURCES; runs in an isolated scratch process",
     "rationale": "Opt-in wall-clock measurement, not a daily correctness check: returns without measuring unless HORIZON_STORAGE_TIMING is set. Run by hand with HORIZON_STORAGE_TIMING=1 and HORIZON_TEST_RESOURCES, using --ignored --exact --nocapture on its full test path; with_mod_parts runs the measurement in an isolated child process. All assertions remain in the test."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::native_goal_ticks::tests::mod_goal_tick_cost",
-    "path": "crates/horizon-client/src/game/modding/native_goal_ticks/native_goal_ticks_tests.rs",
-    "reason": "cost probe",
-    "rationale": "Opt-in measurement, not an ordinary daily correctness check: cost probe. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
   {
     "package": "horizon-client",
@@ -314,66 +154,10 @@
   {
     "package": "horizon-client",
     "target": "lib",
-    "test": "game::native_server::fake_action_tests::fakes_acting_each_tick_cost",
-    "path": "crates/horizon-client/src/game/modding/native_server.rs",
-    "reason": "timing",
-    "rationale": "Opt-in measurement, not an ordinary daily correctness check: timing. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::native_server::wasm_selector_tests::wasm_selectors_resolve_in_game_and_refuse_before_guest_dispatch",
-    "path": "crates/horizon-client/src/game/modding/native_server/wasm_selector_tests.rs",
-    "reason": "needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD built from this tree",
-    "rationale": "Existing separately supplied input HORIZON_WASM_FIXTURE in tools/ci/ignored-tests/wasm-fixture.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD built from this tree"
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
     "test": "game::native_server::wasm_selector_tests::wasm_server_tick_messages_reach_dedicated_game",
     "path": "crates/horizon-client/src/game/modding/native_server/wasm_selector_tests.rs",
     "reason": "needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD built from this tree",
     "rationale": "Existing separately supplied input HORIZON_WASM_FIXTURE in tools/ci/ignored-tests/wasm-fixture.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD built from this tree"
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::natural_spawning::parallel::tests::the_second_of_two_proposals_over_a_players_cap_is_dropped",
-    "path": "crates/horizon-client/src/game/mobs/natural_spawning/parallel.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::natural_spawning::parallel::tests::the_spawns_are_the_same_in_any_number_of_lanes",
-    "path": "crates/horizon-client/src/game/mobs/natural_spawning/parallel.rs",
-    "reason": "needs the upstream-parallel-mobs feature and prepared resources",
-    "rationale": "Compiled only with the upstream-parallel-mobs feature, which no daily shard builds; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-parallel-mobs.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::nether_portal::cooldown_tests::portal_contact_and_waiting_handoff_match_vanilla_counters",
-    "path": "crates/horizon-client/src/game/blocks/tests/portal_cooldown_tests.rs",
-    "reason": "needs explicit HORIZON_TEST_RESOURCES and HORIZON_PORTAL_REFERENCE",
-    "rationale": "Existing separately supplied input HORIZON_PORTAL_REFERENCE in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs explicit HORIZON_TEST_RESOURCES and HORIZON_PORTAL_REFERENCE"
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::payload_transport::wasm_config_tests::compiled_guest_runs_on_configuration_connection_thread",
-    "path": "crates/horizon-client/src/game/modding/payload_transport/wasm_config_tests.rs",
-    "reason": "requires prepared resources and compiled HORIZON_WASM_FIXTURE/HORIZON_WASM_STD",
-    "rationale": "Existing separately supplied input HORIZON_WASM_FIXTURE in tools/ci/ignored-tests/wasm-fixture.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. requires prepared resources and compiled HORIZON_WASM_FIXTURE/HORIZON_WASM_STD"
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::payload_transport::wasm_tests::compiled_guest_runs_in_actual_game_roots",
-    "path": "crates/horizon-client/src/game/modding/payload_transport/wasm_tests.rs",
-    "reason": "requires prepared resources and compiled HORIZON_WASM_FIXTURE/HORIZON_WASM_STD",
-    "rationale": "Existing separately supplied input HORIZON_WASM_FIXTURE in tools/ci/ignored-tests/wasm-fixture.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. requires prepared resources and compiled HORIZON_WASM_FIXTURE/HORIZON_WASM_STD"
   },
   {
     "package": "horizon-client",
@@ -394,54 +178,6 @@
   {
     "package": "horizon-client",
     "target": "lib",
-    "test": "game::remote::interaction_event_tests::interaction_event_wasm_tests::wasm_interaction_shared_matrix",
-    "path": "crates/horizon-client/src/game/network/remote/interaction_event_wasm_tests.rs",
-    "reason": "needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD; build with horizon-mod-wasm/listener-fixture",
-    "rationale": "Existing separately supplied input HORIZON_WASM_FIXTURE in tools/ci/ignored-tests/wasm-fixture.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD; build with horizon-mod-wasm/listener-fixture"
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::remote::movement_input_tests::wasm_movement_input_keys_axes_and_sprint",
-    "path": "crates/horizon-client/src/game/network/remote/movement_input_tests.rs",
-    "reason": "needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD",
-    "rationale": "Existing separately supplied input HORIZON_WASM_FIXTURE in tools/ci/ignored-tests/wasm-fixture.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD"
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::remote_mob_data::tests::mob_air_parity_fixture",
-    "path": "crates/horizon-client/src/game/network/remote_mob_data.rs",
-    "reason": "run by tools/test_mob_air_parity.py",
-    "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_air_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::remote_mob_data::tests::raider_celebration_parity_fixture",
-    "path": "crates/horizon-client/src/game/network/remote_mob_data.rs",
-    "reason": "run by tools/test_raider_celebration_parity.py",
-    "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_raider_celebration_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::remote_vehicles::tests::steering_mount_control_matches_vanilla",
-    "path": "crates/horizon-client/src/game/network/remote_vehicles.rs",
-    "reason": "requires prepared resources and the vanilla mount-control reference",
-    "rationale": "Existing parity-harness step in tools/ci/ignored-tests/issue-2177.txt; #2177 supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
-    "test": "game::special_attack_fixture::tests::special_attack_cases_without_world_startup",
-    "path": "crates/horizon-client/src/game/items/special_attack_fixture.rs",
-    "reason": "needs prepared resources and HORIZON_SPECIAL_ATTACK_CASES=INPUT,OUTPUT",
-    "rationale": "Existing separately supplied input HORIZON_SPECIAL_ATTACK_CASES in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs prepared resources and HORIZON_SPECIAL_ATTACK_CASES=INPUT,OUTPUT"
-  },
-  {
-    "package": "horizon-client",
-    "target": "lib",
     "test": "game::stats::stat_award_tests::wasm_real_break_and_jump_rewrite_awards",
     "path": "crates/horizon-client/src/game/interface/tests/stat_award_tests.rs",
     "reason": "needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD; build with horizon-mod-wasm/listener-fixture",
@@ -454,14 +190,6 @@
     "path": "crates/horizon-client-core/src/lang.rs",
     "reason": "needs a downloaded pack in HORIZON_LANG_PACK_DIR",
     "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-core.txt: needs a downloaded pack in HORIZON_LANG_PACK_DIR. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client-lib",
-    "target": "lib",
-    "test": "arrows::client_tests::client_arrow_parity_fixture",
-    "path": "crates/horizon-client/src/arrows_client_tests.rs",
-    "reason": "run by client-arrow differential harness",
-    "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_client_arrow_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
     "package": "horizon-client-lib",
@@ -482,14 +210,6 @@
   {
     "package": "horizon-client-lib",
     "target": "lib",
-    "test": "item_render::glint_tests::external_item_atlas_oracle",
-    "path": "crates/horizon-client/src/item_render/glint_tests.rs",
-    "reason": "requires an independently generated pinned vanilla atlas JSON and matching resources",
-    "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; HORIZON_GLINT_ROOT supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
-  },
-  {
-    "package": "horizon-client-lib",
-    "target": "lib",
     "test": "lan::entity::send_bench::tracker_send_benchmark",
     "path": "crates/horizon-client/src/lan/entity/send_bench.rs",
     "reason": "performance measurement; requires HORIZON_SEND_BENCH=1 on an idle machine",
@@ -498,58 +218,10 @@
   {
     "package": "horizon-client-lib",
     "target": "lib",
-    "test": "mobs::dragon_contacts::parity::contact_transcript",
-    "path": "crates/horizon-client/src/mobs/dragon_contacts.rs",
-    "reason": "writes the vanilla parity transcript",
-    "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_dragon_contacts_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
-  },
-  {
-    "package": "horizon-client-lib",
-    "target": "lib",
-    "test": "mobs::leash::tests::happy_ghast_leash_dispatch_matches_vanilla",
-    "path": "crates/horizon-client/src/mobs/leash.rs",
-    "reason": "requires HORIZON_TEST_RESOURCES and the vanilla Happy Ghast leash reference",
-    "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_happy_ghast_leash_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
-  },
-  {
-    "package": "horizon-client-lib",
-    "target": "lib",
-    "test": "mobs::render::scroll_tests::benchmark_mob_farm_geometry",
-    "path": "crates/horizon-client/src/mobs/render.rs",
-    "reason": "manual benchmark; needs the prepared resources",
-    "rationale": "Opt-in measurement, not an ordinary daily correctness check: manual benchmark; needs the prepared resources. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
-  },
-  {
-    "package": "horizon-client-lib",
-    "target": "lib",
-    "test": "mobs::shulker::space_tests::shulker_space_parity_fixture",
-    "path": "crates/horizon-client/src/mobs/shulker_space_tests.rs",
-    "reason": "run by tools/test_shulker_space_parity.py",
-    "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_shulker_space_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
-  },
-  {
-    "package": "horizon-client-lib",
-    "target": "lib",
-    "test": "mobs::villager_brain::farming_tests::vanilla_farming_classification_matches_the_oracle",
-    "path": "crates/horizon-client/src/mobs/villager_farming_tests.rs",
-    "reason": "tools/test_villager_farming_parity.py supplies the vanilla oracle",
-    "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_villager_farming_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
-  },
-  {
-    "package": "horizon-client-lib",
-    "target": "lib",
     "test": "mobs::villager_brain::poi_classification_tests::vanilla_bed_poi_states",
     "path": "crates/horizon-client/src/mobs/villager_brain.rs",
     "reason": "requires the vanilla bed POI oracle output",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_bed_poi_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
-  },
-  {
-    "package": "horizon-client-lib",
-    "target": "lib",
-    "test": "mobs::villager_brain::reputation_witness_tests::witnesses_use_sensor_candidates_radius_invisibility_and_cached_results",
-    "path": "crates/horizon-client/src/mobs/villager_brain/reputation_witness_tests.rs",
-    "reason": "requires explicit prepared resources and vanilla oracle output",
-    "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_villager_witness_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
     "package": "horizon-client-lib",
@@ -586,70 +258,6 @@
   {
     "package": "horizon-client-render",
     "target": "lib",
-    "test": "gfx::crumbling_tests::crack_samples_stay_aligned_between_stages",
-    "path": "crates/horizon-client-render/src/gfx/crumbling_tests.rs",
-    "reason": "requires a Vulkan/Metal/DX12 adapter",
-    "rationale": "Existing adapter-gated GPU lane in tools/ci/ignored-tests/gpu.txt; a real available adapter is required and the runner handles adapter availability separately from prepared-resource daily selection."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
-    "test": "gfx::entity_batch::tests::benchmark_entity_batch",
-    "path": "crates/horizon-client-render/src/gfx/entity_batch.rs",
-    "reason": "manual production-helper microbenchmark",
-    "rationale": "Opt-in measurement, not an ordinary daily correctness check: manual production-helper microbenchmark. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
-    "test": "gfx::hdr::tests::a_frame_without_room_keeps_no_targets_and_the_next_makes_them",
-    "path": "crates/horizon-client-render/src/gfx/hdr.rs",
-    "reason": "requires a Vulkan/Metal/DX12 adapter",
-    "rationale": "Existing adapter-gated GPU lane in tools/ci/ignored-tests/gpu.txt; a real available adapter is required and the runner handles adapter availability separately from prepared-resource daily selection."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
-    "test": "gfx::pack_post::indirect_tests::an_unsupported_indirect_device_keeps_the_direct_and_render_passes",
-    "path": "crates/horizon-client-render/src/gfx/pack_post/indirect_tests.rs",
-    "reason": "requires an explicit capability mask",
-    "rationale": "Exact opt-in adapter capability control, not an ordinary daily selection: requires a real GPU and HORIZON_SHADER_PACK_WITHOUT=indirect. Its by-hand row in tools/ci/ignored-tests/manual-horizon-client-render.txt gives the exact cargo test command. Preserve the explicit environment assertion, unsupported-indirect diagnostic and direct/render pixel assertions."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
-    "test": "gfx::pack_uniforms::initial_history_tests::core_matrix_inputs_render_provider_values",
-    "path": "crates/horizon-client-render/src/gfx/pack_uniforms.rs",
-    "reason": "requires a host GPU; run with --ignored --nocapture",
-    "rationale": "Existing adapter-gated GPU lane in tools/ci/ignored-tests/gpu.txt; a real available adapter is required and the runner handles adapter availability separately from prepared-resource daily selection."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
-    "test": "gfx::resident::tests::column_walk_speed",
-    "path": "crates/horizon-client-render/src/gfx/resident.rs",
-    "reason": "timing, not a check",
-    "rationale": "Opt-in measurement, not an ordinary daily correctness check: timing, not a check. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
-    "test": "gfx::resident::tests::tight_bounds_benchmark",
-    "path": "crates/horizon-client-render/src/gfx/resident.rs",
-    "reason": "benchmark",
-    "rationale": "Opt-in measurement, not an ordinary daily correctness check: benchmark. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
-    "test": "gfx::weather::tests::weather_shader_uvs_match_legacy_bits",
-    "path": "crates/horizon-client-render/src/gfx/weather.rs",
-    "reason": "requires a Vulkan/Metal/DX12 adapter",
-    "rationale": "Existing adapter-gated GPU lane in tools/ci/ignored-tests/gpu.txt; a real available adapter is required and the runner handles adapter availability separately from prepared-resource daily selection."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
     "test": "light::tests::benchmark_light_chunk",
     "path": "crates/horizon-client-render/src/light.rs",
     "reason": "benchmark",
@@ -666,62 +274,6 @@
   {
     "package": "horizon-client-render",
     "target": "lib",
-    "test": "mesher::leaf_culling::tests::mask_build_benchmark",
-    "path": "crates/horizon-client-render/src/mesher/leaf_culling.rs",
-    "reason": "microbenchmark; run with --ignored --nocapture",
-    "rationale": "Opt-in measurement, not an ordinary daily correctness check: microbenchmark; run with --ignored --nocapture. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
-    "test": "mesher::reuse_tests::benchmark_padded_reuse",
-    "path": "crates/horizon-client-render/src/mesher/reuse_tests.rs",
-    "reason": "opt-in scratch microbenchmark; run with --nocapture --test-threads=1",
-    "rationale": "Opt-in measurement, not an ordinary daily correctness check: opt-in scratch microbenchmark; run with --nocapture --test-threads=1. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
-    "test": "mesher::tint_tests::colormap_tint_cost",
-    "path": "crates/horizon-client-render/src/mesher/tint_tests.rs",
-    "reason": "timing, not a check",
-    "rationale": "Opt-in measurement, not an ordinary daily correctness check: timing, not a check. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
-    "test": "mesher::visibility_tests::visibility_benchmark",
-    "path": "crates/horizon-client-render/src/mesher/visibility_tests.rs",
-    "reason": "opt-in microbenchmark: cargo test --profile fast ... visibility_benchmark -- --ignored --exact --nocapture",
-    "rationale": "Opt-in measurement, not an ordinary daily correctness check: opt-in microbenchmark: cargo test --profile fast ... visibility_benchmark -- --ignored --exact --nocapture. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
-    "test": "menu_blur::tests::without_room_the_menu_is_not_blurred_and_the_next_screen_blurs",
-    "path": "crates/horizon-client-render/src/menu_blur.rs",
-    "reason": "requires a Vulkan/Metal/DX12 adapter",
-    "rationale": "Existing adapter-gated GPU lane in tools/ci/ignored-tests/gpu.txt; a real available adapter is required and the runner handles adapter availability separately from prepared-resource daily selection."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
-    "test": "packs::cache::tests::benchmark_real_resource_root",
-    "path": "crates/horizon-client-render/src/packs/cache.rs",
-    "reason": "requires prepared resources and real pack paths in environment",
-    "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; HORIZON_OVERLAY_BENCH_VANILLA supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
-    "test": "particles::tick_bench::particle_tick_cost",
-    "path": "crates/horizon-client-render/src/particles/tick_bench.rs",
-    "reason": "a measurement, not a check",
-    "rationale": "Opt-in measurement, not an ordinary daily correctness check: a measurement, not a check. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
     "test": "streaming::forced_cover::tests::forced_cover_cost",
     "path": "crates/horizon-client-render/src/streaming/forced_cover.rs",
     "reason": "timings; run with --release --ignored --nocapture",
@@ -734,62 +286,6 @@
     "path": "crates/horizon-client-render/src/streaming.rs",
     "reason": "reproducible actual generation scheduler benchmark; run with --ignored --nocapture",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: reproducible actual generation scheduler benchmark; run with --ignored --nocapture. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "test:it",
-    "test": "atomic_member_values::reads_of_atomic_members_see_the_atomic_updates",
-    "path": "crates/horizon-client-render/tests/it/atomic_member_values.rs",
-    "reason": "requires a host GPU; run with --ignored --nocapture",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-render.txt: requires a host GPU; run with --ignored --nocapture. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "test:it",
-    "test": "fragment_output_components::component_qualified_outputs_write_their_own_channels",
-    "path": "crates/horizon-client-render/tests/it/fragment_output_components.rs",
-    "reason": "requires a host GPU; run with --ignored --nocapture",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-render.txt: requires a host GPU; run with --ignored --nocapture. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "test:it",
-    "test": "sunrise_shader::sunrise_sectors_match_reference_on_real_gpu",
-    "path": "crates/horizon-client-render/tests/it/sunrise_shader.rs",
-    "reason": "requires a host GPU; run with --ignored --nocapture",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-render.txt: requires a host GPU; run with --ignored --nocapture. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "test:it",
-    "test": "texture_matrix::texture_matrix_is_the_identity_in_the_vertex_stage_and_zero_in_the_fragment_stage",
-    "path": "crates/horizon-client-render/tests/it/texture_matrix.rs",
-    "reason": "requires a host GPU; run with --ignored --nocapture",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-render.txt: requires a host GPU; run with --ignored --nocapture. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "test:it",
-    "test": "uniform_initial_render::authored_defaults_render_and_runtime_values_override_including_zero",
-    "path": "crates/horizon-client-render/tests/it/uniform_initial_render.rs",
-    "reason": "requires a host GPU; run with --ignored --nocapture",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-render.txt: requires a host GPU; run with --ignored --nocapture. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "test:world_view_slots",
-    "test": "world_view_slot_delivers_only_drawable_requests",
-    "path": "crates/horizon-client-render/tests/world_view_slots.rs",
-    "reason": "requires a Vulkan/Metal/DX12 adapter",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-render.txt: requires a Vulkan/Metal/DX12 adapter; cargo test -p horizon-client-render --test world_view_slots -- --ignored. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-client-render",
-    "target": "lib",
-    "test": "gfx::ray_lights::tests::rebuild_timings",
-    "path": "crates/horizon-client-render/src/gfx/ray_lights.rs",
-    "reason": "timing",
-    "rationale": "Manual wall-clock measurement of the ray light sources' rebuild (render-thread cost and worker build), not a daily correctness check. Run by hand on an idle machine with --release, exact-selecting the full test path with --ignored --exact --nocapture; the grid's correctness is covered by the other gfx::ray_lights tests."
   },
   {
     "package": "horizon-core",
@@ -830,110 +326,6 @@
     "path": "crates/horizon-items/src/item_data.rs",
     "reason": "microbenchmark; run with --ignored --nocapture",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: microbenchmark; run with --ignored --nocapture. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
-  },
-  {
-    "package": "horizon-launcher",
-    "target": "bin:horizon-launcher",
-    "test": "cull::desktop_tests::desktop_list_renders_the_viewport_after_scrollbar_jumps",
-    "path": "launcher/src/cull.rs",
-    "reason": "requires an interactive desktop and graphics adapter",
-    "rationale": "Compiled only on Windows (cfg(all(test, target_os = \"windows\"))) and opens a real window; explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-launcher.txt. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-launcher",
-    "target": "lib",
-    "test": "account::tests::secrets_file_writer",
-    "path": "launcher/src/account/tests.rs",
-    "reason": "a child process of processes_sharing_the_secrets_file_lose_nothing",
-    "rationale": "Existing explicit manual runner subprocess in tools/ci/ignored-tests/manual-horizon-launcher.txt: a child process of processes_sharing_the_secrets_file_lose_nothing. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-launcher",
-    "target": "lib",
-    "test": "account::tests::system_keychain_keeps_long_secrets",
-    "path": "launcher/src/account/tests.rs",
-    "reason": "writes to the OS keychain",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-launcher.txt: writes to the OS keychain. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-launcher",
-    "target": "lib",
-    "test": "backend::release_loading_tests::benchmark_shared_startup_response",
-    "path": "launcher/src/backend/release_loading_tests.rs",
-    "reason": "local release-loading benchmark; run explicitly with --ignored --nocapture",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-launcher.txt: local release-loading benchmark; run explicitly with --ignored --nocapture. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-launcher",
-    "target": "lib",
-    "test": "browser::tests::live_modrinth_search_pick_and_download",
-    "path": "launcher/src/browser/tests.rs",
-    "reason": "needs the network",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-launcher.txt: needs the network. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-launcher",
-    "target": "lib",
-    "test": "native_mods::api::tests::wrapper_owns_holder_marker",
-    "path": "launcher/src/native_mods/api.rs",
-    "reason": "daily: starts rustc",
-    "rationale": "Existing parity-harness step in tools/ci/ignored-tests/native-wrapper.txt; #4065 supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
-  },
-  {
-    "package": "horizon-launcher",
-    "target": "lib",
-    "test": "native_mods::registry_compile::tests::real_sdk_registry_compile",
-    "path": "launcher/src/native_mods/registry_compile.rs",
-    "reason": "requires an explicitly prepared private SDK, mod and launcher executable",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-launcher.txt: requires an explicitly prepared private SDK, mod and launcher executable. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-launcher",
-    "target": "lib",
-    "test": "pictures::tests::a_32k_screenshot_is_read_in_little_memory",
-    "path": "launcher/src/pictures.rs",
-    "reason": "slow soak: 2 GiB of pixels; run with --ignored --nocapture",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-launcher.txt: slow soak: 2 GiB of pixels; run with --ignored --nocapture. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-launcher",
-    "target": "lib",
-    "test": "rust_toolchain::tests::managed_arm64_toolchain_builds_the_game",
-    "path": "launcher/src/rust_toolchain.rs",
-    "reason": "downloads the managed Windows ARM64 toolchain and builds Horizon",
-    "rationale": "Existing explicit manual runner ci.yml in tools/ci/ignored-tests/manual-horizon-launcher.txt: downloads the managed Windows ARM64 toolchain and builds Horizon. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-launcher",
-    "target": "lib",
-    "test": "storage::inventory::eviction_tests::allocated_forty_gib_cleanup_proof",
-    "path": "launcher/src/storage/inventory.rs",
-    "reason": "manual allocated 40 GiB proof; requires HORIZON_EVICTION_PROOF_ROOT in checkout scratch",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-launcher.txt: manual allocated 40 GiB proof; requires HORIZON_EVICTION_PROOF_ROOT in checkout scratch. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-launcher",
-    "target": "lib",
-    "test": "telemetry::tests::official_count_follows_the_srv_record",
-    "path": "launcher/src/telemetry.rs",
-    "reason": "asks the live official server",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-launcher.txt: asks the live official server. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-launcher",
-    "target": "test:startup",
-    "test": "cli_settings_work_with_one_mib_process_stack",
-    "path": "launcher/tests/startup.rs",
-    "reason": "the Windows launcher-processes job runs it by name",
-    "rationale": "Explicit by-hand Windows runner in tools/ci/ignored-tests/manual-horizon-launcher.txt: from launcher/, select cli_settings_work_with_one_mib_process_stack in test:startup with --ignored --exact. The fork's launcher-windows-check workflow is not adopted. Not selected by daily shards."
-  },
-  {
-    "package": "horizon-launcher",
-    "target": "test:startup",
-    "test": "hardware_probes_run_hidden_after_the_first_frame",
-    "path": "launcher/tests/startup.rs",
-    "reason": "requires an interactive Windows desktop and graphics adapter",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-launcher.txt: requires an interactive Windows desktop and graphics adapter. Not selected by daily shards."
   },
   {
     "package": "horizon-mod-api",
@@ -1120,14 +512,6 @@
     "rationale": "Explicit by-hand runner in tools/ci/ignored-tests/manual-horizon-mod-wasm.txt: supply locally built HORIZON_WASM_FIXTURE and HORIZON_WASM_STD. The fork's wasm-mods workflow is not adopted. Not selected by daily shards."
   },
   {
-    "package": "horizon-perf",
-    "target": "test:it",
-    "test": "pacing_fixture::write_the_pacing_fixture",
-    "path": "crates/horizon-perf/tests/it/pacing_fixture.rs",
-    "reason": "rewrites tests/fixtures/pacing_slow_frames.hzperf",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-perf.txt: rewrites tests/fixtures/pacing_slow_frames.hzperf. Not selected by daily shards."
-  },
-  {
     "package": "horizon-protocol",
     "target": "lib",
     "test": "connection::tests::packet_decoder_in_memory_microbenchmark",
@@ -1142,14 +526,6 @@
     "path": "crates/horizon-server/src/service.rs",
     "reason": "creates a scheduled task on this computer",
     "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-server.txt: creates a scheduled task on this computer (Windows only). Not selected by daily shards."
-  },
-  {
-    "package": "horizon-shaders",
-    "target": "test:it",
-    "test": "real_packs::real_packs_read",
-    "path": "crates/horizon-shaders/tests/it/real_packs.rs",
-    "reason": "needs HORIZON_TEST_SHADER_PACKS",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-shaders.txt: needs HORIZON_TEST_SHADER_PACKS. Not selected by daily shards."
   },
   {
     "package": "horizon-threads",

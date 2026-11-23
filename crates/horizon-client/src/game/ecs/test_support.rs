@@ -1,5 +1,5 @@
 //! A server `Game` with an active ECS level, for the tests of the ECS's host side. The resources are leaked: a test process keeps them anyway.
-use crate::game::{Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources};
+use crate::game::{Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources};
 use std::path::PathBuf;
 
 /// A game on an integrated server's role whose ECS level is active, with one `kind` spawned at `at`: the game and the entity's network id.
@@ -13,13 +13,13 @@ pub(in crate::game) fn ecs_game_with(kind: &str, at: [f64; 3]) -> (Game<'static>
         &root,
         &settings,
         std::time::Instant::now(),
-        ExecutionRole::IntegratedServer,
+        ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = ExecutionRole::IntegratedServer;
+    options.execution_role = ExecutionRole::DedicatedServer;
     options.game_dir = Some(std::env::temp_dir().join(format!("horizon-ecs-test-{}", std::process::id())));
     let resources = Box::leak(Box::new(loaded.resources));
     let mut game = Game::new(
@@ -27,11 +27,10 @@ pub(in crate::game) fn ecs_game_with(kind: &str, at: [f64; 3]) -> (Game<'static>
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.reset_entity_residency();
-    game.native_lifecycle.begin_open(mod_api::Authority::IntegratedServer);
+    game.native_lifecycle.begin_open(mod_api::Authority::DedicatedServer);
     game.ecs = game.test_ecs_level();
     let id = game.ecs_spawn(kind, at, None).expect("a known species");
     (game, id)

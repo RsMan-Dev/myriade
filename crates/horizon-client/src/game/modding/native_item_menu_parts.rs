@@ -1,6 +1,6 @@
 // game-module-visibility: pub(crate)
 //! The executable's side of the item hooks the client library asks inside its menus and
-//! recipe matching (`native_client_hooks`): `can_grindstone_repair`, `is_combine_repairable`
+//! recipe matching (`native_level_hooks`): `can_grindstone_repair`, `is_combine_repairable`
 //! and `can_fit_inside_container_items`. Each asks the parts of the stack's item, with the
 //! loop context of the side that runs the menu or the match, and no `Host`.
 use super::api_values::TryIntoApi;

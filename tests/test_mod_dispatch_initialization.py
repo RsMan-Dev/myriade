@@ -32,7 +32,7 @@ def test_bodies(source):
 
 def violations(root):
     failures = []
-    for crate in ('horizon-mod-api', 'horizon-mod-wasm', 'horizon-mod-host',
+    for crate in ('horizon-mod-api', 'horizon-mod-wasm', 'horizon-game',
                   'horizon-mod-points', 'horizon-mod-render', 'horizon-client',
                   'horizon-client-lib'):
         for path in (root / 'crates' / crate).rglob('*.rs'):

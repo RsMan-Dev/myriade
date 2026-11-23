@@ -18,8 +18,6 @@ mod unload_sweep;
 mod completion_tests;
 #[path = "persist/passenger_graph.rs"]
 mod passenger_graph;
-#[path = "persist/hurt_by_refs.rs"]
-mod hurt_by_refs;
 #[cfg(test)]
 #[path = "persist/lookup_order_tests.rs"]
 mod lookup_order_tests;
@@ -1109,6 +1107,9 @@ impl Game<'_> {
         }
         for &g in &gone {
             if let Some(e) = self.ecs.entity_of(g) {
+                if let Some(w) = self.ecs.ecs_mut() {
+                    horizon_ecs_proto::mod_goals::clear_behaviours(w.world_mut(), e);
+                }
                 self.ecs.despawn(e);
             }
         }
@@ -1184,9 +1185,7 @@ impl Game<'_> {
     /// `ServerPlayer.loadAndSpawnParentVehicle`: the ride the player's file
     /// names, once the vehicle is in the world.
     pub(super) fn restore_root_vehicle(&mut self) {
-        if self.serving.is_some()
-            || self.options.dedicated.is_some()
-            || self.riding.is_some()
+        if self.riding.is_some()
             || self.player.is_none()
         {
             return;
@@ -1321,7 +1320,7 @@ impl Game<'_> {
         entity_nbt::who_by_uuid(&self.persist.uuids, &[], player, uuid).or_else(|| self.ecs_who_by_uuid(uuid))
     }
     /// The mob that was loaded or saved with a UUID.
-    pub(super) fn mob_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
+    pub(in crate::game) fn mob_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
         match self.who_by_uuid(uuid) {
             Some(Who::Mob(id)) => Some(id),
             _ => None,
@@ -1710,7 +1709,7 @@ mod tests;
 mod item_display_saved_transform_tests {
     use super::*;
     use crate::game::{Audio, Options, Progress, Settings, commands::Target, load_resources};
-    use horizon_client::{chunk::Chunk, motion::PlayerMotion};
+    use horizon_client::chunk::Chunk;
     use horizon_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
     fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
@@ -1722,7 +1721,7 @@ mod item_display_saved_transform_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -1732,17 +1731,16 @@ mod item_display_saved_transform_tests {
             std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
                 .join(format!("h132-{:?}", std::thread::current().id())),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(mod_api::Authority::DedicatedServer);
         game.build_registries();
         game.set_allow_commands(true);
 
@@ -1762,14 +1760,20 @@ mod item_display_saved_transform_tests {
                 .add_empty_chunk(ChunkPos::new(x, z))
                 .unwrap();
         }
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5)).unwrap());
-        game.creative = true;
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
         assert!(game.run_command("fill 0 199 0 31 199 31 stone"));
         assert!(
             game.run_command("summon pig 13.5 200 2.5 {UUID:[I;132,0,0,99],NoAI:1b,NoGravity:1b}")
         );
         game.world.random.set_seed(132);
-        test(&mut game);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(
+            &mut game,
+            Vec3::new(2.5, 200.0, 2.5),
+            |game| {
+                game.creative = true;
+                test(game);
+            },
+        );
     }
     const IDENTITY: &str = "{translation:[0f,0f,0f],left_rotation:[0f,0f,0f,1f],scale:[1f,1f,1f],right_rotation:[0f,0f,0f,1f]}";
     const CHANGED: &str = "{translation:[1.25f,-2.5f,3f],left_rotation:[0f,1f,0f,0f],scale:[2f,3f,4f],right_rotation:[0f,0f,0f,1f]}";
@@ -1881,8 +1885,6 @@ mod item_display_saved_transform_tests {
     fn existing_native_item_display_setter_carries_only_transform_state() {
         use mod_api::Transformation;
         with_game(|game| {
-            // Same actual server-context setup as existing native machine/contact fixtures.
-            game.options.dedicated = Some(Vec::new());
             let id = summon(game, 4, None);
             let uuid = game.ecs.uuid_words(id);
             let clock = game.world.game_time;
@@ -1949,7 +1951,6 @@ mod summon_uuid_conflict_tests;
 mod sulfur_body_attribute_tests {
     use super::*;
     use crate::game::{Audio, Options, Progress, Settings, load_resources};
-    use horizon_client::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
@@ -1961,7 +1962,7 @@ mod sulfur_body_attribute_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -1971,13 +1972,12 @@ mod sulfur_body_attribute_tests {
             std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
                 .join(format!("h192-{:?}", std::thread::current().id())),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -1991,10 +1991,16 @@ mod sulfur_body_attribute_tests {
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("difficulty normal"));
         assert!(game.run_command("scoreboard objectives add h192 dummy"));
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5)).unwrap());
-        game.creative = true;
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
         game.load_ticking_neighbourhood(0, 0);
-        test(&mut game);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(
+            &mut game,
+            Vec3::new(2.5, 200.0, 2.5),
+            |game| {
+                game.creative = true;
+                test(game);
+            },
+        );
     }
     /// `/attribute <cube> <attribute> get 1000`, read back through a score.
     fn read(game: &mut Game<'_>, n: i32, attribute: &str) -> i32 {
@@ -2061,7 +2067,7 @@ mod sulfur_body_attribute_tests {
 mod summoned_knot_tests {
     use super::*;
     use crate::game::{Audio, Options, Progress, Settings, commands::Target, load_resources};
-    use horizon_client::{chunk::Chunk, motion::PlayerMotion};
+    use horizon_client::chunk::Chunk;
     use horizon_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
     fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
@@ -2073,7 +2079,7 @@ mod summoned_knot_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -2083,13 +2089,12 @@ mod summoned_knot_tests {
             std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
                 .join(format!("h129-{:?}", std::thread::current().id())),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -2111,15 +2116,21 @@ mod summoned_knot_tests {
                 .add_empty_chunk(ChunkPos::new(x, z))
                 .unwrap();
         }
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5)).unwrap());
-        game.creative = true;
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
         assert!(game.run_command("fill 0 199 0 31 199 31 stone"));
         assert!(
             game.run_command("summon pig 13.5 200 2.5 {UUID:[I;129,0,0,99],NoAI:1b,NoGravity:1b}")
         );
         game.world.random.set_seed(129);
         game.load_ticking_neighbourhood(0, 0);
-        test(&mut game);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(
+            &mut game,
+            Vec3::new(2.5, 200.0, 2.5),
+            |game| {
+                game.creative = true;
+                test(game);
+            },
+        );
     }
     /// The network ids of the ECS entities of `kind`, in id order.
     fn ecs_ids(game: &Game<'_>, kind: &str) -> Vec<u32> {

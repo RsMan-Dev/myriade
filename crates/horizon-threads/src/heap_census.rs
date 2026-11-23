@@ -1,4 +1,4 @@
-//! Who holds the heap, for `horizon-ctl memory` (feature `alloc-census`, for
+//! Who holds the heap, for `the control socket's memory command` (feature `alloc-census`, for
 //! measuring only): mimalloc with a tag in front of each block, and the live
 //! bytes of each tag. A block's tag is what ran on its thread when it was
 //! allocated: the innermost [`tag`] (a startup step, a timed span or a pool

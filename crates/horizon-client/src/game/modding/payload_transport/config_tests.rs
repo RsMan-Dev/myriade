@@ -271,11 +271,9 @@ fn controlled_peer(port: u16, expected: &[u8], game: &super::super::Game<'_>, ne
     let release = Release(release);
     if network {
         let (entered, ready) = std::sync::mpsc::channel();
-        assert!(game.integrated.as_ref().unwrap().post(move |_| {
-            entered.send(()).unwrap();
-            held.recv_timeout(Duration::from_secs(30)).unwrap();
-        }));
-        ready.recv_timeout(Duration::from_secs(30)).unwrap();
+        let _ = (entered, held);
+        // TODO(phase 2): serveur intégré retiré — même vérification par un invité réel.
+        todo!("phase 2 : passer par un invité connecté au serveur dédié");
     }
     c.send(
         &cfg::Serverbound::CustomPayload(cfg::CustomPayload {

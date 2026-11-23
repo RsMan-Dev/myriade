@@ -10,6 +10,5 @@ mod files;
 mod fixture_v1;
 mod health_recorder;
 mod live_follow;
-mod merge;
 mod slow_ring;
 mod writer_thread;

@@ -8,13 +8,11 @@ mod command_exploration_map_tests {
     fn actual_item_modify_materializes_selected_exploration_map() {
         let mut game_resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut game_resources);
-        game.player = Some(
-            horizon_client::motion::PlayerMotion::new(
-                game.motion,
-                horizon_core::geometry::Vec3::new(4.5, 200.0, 4.5),
-            )
-            .unwrap(),
-        );
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(
+            &mut game,
+            horizon_core::geometry::Vec3::new(4.5, 200.0, 4.5),
+            |game| {
         assert_eq!(
             game.player_source().entity,
             Some(crate::game::commands::Target::Player)
@@ -127,6 +125,7 @@ mod command_exploration_map_tests {
             ),
             "actual registered item command must allocate, decorate, model and save its selected stack's map"
         );
+        });
     }
 }
 
@@ -142,13 +141,6 @@ mod added_preservation_tests {
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     ) -> crate::game::Game<'a> {
         let mut game = crate::game::game_tests::tests::server_game(resources);
-        game.player = Some(
-            horizon_client::motion::PlayerMotion::new(
-                game.motion,
-                horizon_core::geometry::Vec3::new(4.5, 200.0, 4.5),
-            )
-            .unwrap(),
-        );
         game.world_root =
             std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap()).join(label);
         let pack = game.world_root.join("datapacks/mapcmd");
@@ -190,6 +182,11 @@ mod added_preservation_tests {
     fn nonempty_command_keeps_no_destination_but_pending_loot_filters_it() {
         let mut game_resources = None;
         let mut game = game("map-command-no-destination", &mut game_resources);
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(
+            &mut game,
+            horizon_core::geometry::Vec3::new(4.5, 200.0, 4.5),
+            |game| {
         assert!(
             game.run_command(
                 "item replace entity @s hotbar.0 with map[custom_data={sentinel:5}] 3"
@@ -223,6 +220,7 @@ mod added_preservation_tests {
         assert!(game.maps.data.is_empty());
         assert!(game.maps.last_id.is_none());
         assert_eq!(game.world.game_time, 0);
+        });
     }
 
     #[test]
@@ -230,6 +228,11 @@ mod added_preservation_tests {
     fn loaded_reference_list_sequence_filter_order_preserves_counts_and_empty() {
         let mut game_resources = None;
         let mut game = game("map-command-reference-order", &mut game_resources);
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(
+            &mut game,
+            horizon_core::geometry::Vec3::new(4.5, 200.0, 4.5),
+            |game| {
         let path = game
             .world_root
             .join("datapacks/mapcmd/data/mapcmd/item_modifier");
@@ -293,5 +296,6 @@ mod added_preservation_tests {
         assert!(game.maps.last_id.is_none());
         assert_eq!(game.world.game_time, 0);
         let _ = std::fs::remove_dir_all(&game.world_root);
+            });
     }
 }

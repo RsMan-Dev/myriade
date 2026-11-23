@@ -55,7 +55,7 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod item_collision_tests {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Game, Options, Progress, Settings, load_resources};
     use horizon_client::chunk::Chunk;
     use horizon_core::position::ChunkPos;
     use std::sync::Arc;
@@ -74,7 +74,7 @@ mod item_collision_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -83,13 +83,12 @@ mod item_collision_tests {
         options.game_dir = Some(
             std::env::temp_dir().join(format!("horizon-item-cart-unit-{}", std::process::id())),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();

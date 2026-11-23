@@ -25,5 +25,9 @@ pub static DEF: Def = Def {
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Direct, noclip: true, ..fly::Params::DEFAULT }))],
     rules: &[crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::VEX)],
     not_in_peaceful: true,
+    light_lit: true,
+    // SpawnPlacements: NO_RESTRICTIONS, Monster.checkMonsterSpawnRules (dark, then ground).
+    spawn: Some(crate::spawning::SpawnDef { place: crate::spawning::Place::Anywhere, ..crate::spawning::SpawnDef::MONSTER }),
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

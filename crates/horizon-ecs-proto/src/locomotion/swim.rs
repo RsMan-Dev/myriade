@@ -64,9 +64,11 @@ pub struct Params {
     pub squid: bool,
     /// The look control puts the pitch back to 0 at the end of every tick (`LookControl.resetXRotOnTick`: the frog's, with no tongue target).
     pub reset_pitch: bool,
+    /// `AbstractFish.getFlopSound`: the sound of the hop out of the water, at `makeSound`'s pitch; None for an animal that does not flop.
+    pub flop: Option<&'static str>,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { needs_water: true, amphibious: None, breach: false, control: Control::Fish, push: Push::Fixed(0.01), sinks: true, squid: false, reset_pitch: false };
+    pub const DEFAULT: Params = Params { needs_water: true, amphibious: None, breach: false, control: Control::Fish, push: Push::Fixed(0.01), sinks: true, squid: false, reset_pitch: false, flop: None };
 }
 /// The swim's parameters of the entity, as the systems read them.
 #[derive(Component, Clone, Copy, Debug)]
@@ -78,6 +80,7 @@ pub struct SwimParams {
     pub sinks: bool,
     pub squid: bool,
     pub reset_pitch: bool,
+    pub flop: Option<&'static str>,
 }
 /// The tentacle cycle of a squid (`Squid.tentacleMovement`, `tentacleSpeed`) and the vector its goals set (`Mob.extra.vector`): what moves it.
 #[derive(Component, Clone, Copy, Debug)]
@@ -99,7 +102,7 @@ pub struct Dry;
 pub static MODULE: Module = Module { name: "swim", requires: &[Cap::Locomotion, Cap::Living], equip, systems, ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let sp = *crate::behaviours::params::<Params>(p);
-    w.entity_mut(e).insert(SwimParams { amphibious: sp.amphibious, breach: sp.breach, control: sp.control, push: sp.push, sinks: sp.sinks, squid: sp.squid, reset_pitch: sp.reset_pitch });
+    w.entity_mut(e).insert(SwimParams { amphibious: sp.amphibious, breach: sp.breach, control: sp.control, push: sp.push, sinks: sp.sinks, squid: sp.squid, reset_pitch: sp.reset_pitch, flop: sp.flop });
     if sp.squid {
         // `Squid.register`: the cycle speed at birth; the animal is always in the physics (its cycle runs each tick).
         // A creature made by `spawn_declared` gets its stream after its locomotion: the entity's own number seeds a stream until then.
@@ -450,12 +453,13 @@ fn turtle_control(pos: &Pos, vel: &mut Vel, yaw: &mut Yaw, m: &mut MoveTo, d: &m
 #[allow(clippy::type_complexity)]
 fn dry(
     level: Res<Level>,
-    mut q: Query<(Entity, &mut Air, &crate::goals::Uid, &TypeName, &mut Contact, &mut Vel, &mut Rng, Has<Moving>, &SwimParams), With<Dry>>,
+    mut q: Query<(Entity, &mut Air, &crate::goals::Uid, &TypeName, &mut Contact, &mut Vel, &mut Rng, Has<Moving>, &SwimParams, &Pos, Has<crate::behaviours::elder_curse::Silent>), With<Dry>>,
     mut queue: ResMut<DamageQueue>,
+    mut events: ResMut<crate::goals::Events>,
     mut commands: Commands,
 ) {
     let cx = level.mw.0.loop_context;
-    for (e, mut air, uid, tn, mut c, mut v, mut rng, moving, swp) in &mut q {
+    for (e, mut air, uid, tn, mut c, mut v, mut rng, moving, swp, at, silent) in &mut q {
         if let Some(damage) = horizon_client_lib::breathing::own_air(cx, uid.0 as u32, tn.0, &mut air.0, false, 300) {
             queue.add(e, damage, Cause::Drown);
         }
@@ -464,6 +468,13 @@ fn dry(
             let (a, b) = (rng.next_f64() as f32, rng.next_f64() as f32);
             v.0 = flop_velocity(v.0, a, b);
             c.on_ground = false;
+            // `makeSound(getFlopSound())`: the pitch's two draws come whether the fish is silent or not.
+            if let Some(name) = swp.flop {
+                let pitch = ((rng.next_u32() >> 8) as f32 / 16_777_216.0 - (rng.next_u32() >> 8) as f32 / 16_777_216.0) * 0.2 + 1.0;
+                if !silent {
+                    events.host.sound(name, [at.0.x, at.0.y, at.0.z], 1.0, pitch);
+                }
+            }
         }
         if !moving {
             commands.entity(e).insert(Moving);

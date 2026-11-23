@@ -14,7 +14,7 @@ pub static DEF: Def = Def {
         Entry::new(&panic::MODULE, 0, &panic::Params { speed: 1.25, ..panic::Params::DEFAULT }),
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 1, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
-        Entry::new(&sit_when_ordered::MODULE, 2, &()),
+        Entry::new(&sit_when_ordered::MODULE, 2, &sit_when_ordered::Params { stands_when_hurt: true, ..sit_when_ordered::Params::DEFAULT }),
         Entry::new(&follow_owner::MODULE, 2, &follow_owner::Params { speed: 1.0, start: 5.0, stop: 1.0 }),
         Entry::new(&fly_stroll::MODULE, 2, &fly_stroll::Params::DEFAULT),
         Entry::new(&land_on_shoulder::MODULE, 3, &land_on_shoulder::Params::DEFAULT),

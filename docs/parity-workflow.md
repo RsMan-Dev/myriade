@@ -68,9 +68,9 @@ All runners on a machine share `PARITY_MACHINE_JOBS` slots (default: half the CP
 
 ### Harnesses that start the game
 
-The game logs into `HORIZON_HOME` and falls back to the player's own game folder when it is unset, so a harness that starts the game, `horizon-ctl`, the launcher or the dedicated server builds the environment with `lab.game_env(**extra)`: no audio, and fresh scratch folders for `HORIZON_HOME`, `HORIZON_LAUNCHER_HOME`, `XDG_DATA_HOME` and `XDG_CONFIG_HOME`, removed when the harness exits (a folder you pass, or that the environment already has, is kept). The runner also gives each harness its own `HORIZON_HOME` under `.local/parity-runner/game-home/`. `tests/test_game_home.py` fails for a script in `tools/` that starts the game without it.
+The game logs into `HORIZON_HOME` and falls back to the player's own game folder when it is unset, so a harness that starts the game, `the control socket`, the launcher or the dedicated server builds the environment with `lab.game_env(**extra)`: no audio, and fresh scratch folders for `HORIZON_HOME`, `XDG_DATA_HOME` and `XDG_CONFIG_HOME`, removed when the harness exits (a folder you pass, or that the environment already has, is kept). The runner also gives each harness its own `HORIZON_HOME` under `.local/parity-runner/game-home/`. `tests/test_game_home.py` fails for a script in `tools/` that starts the game without it.
 
-`frame_identity` (`tools/test_frame_identity_parity.py`) holds the picture where a change shouldn't move it, as the HDR design note's first tests ask ([design/hdr-linear-light.md](design/hdr-linear-light.md#tests)). Its oracle is the base build, not vanilla: pictures of the game hold Minecraft's textures and can't be committed. It builds `BASE_SHA` (else the merge-base with `origin/main`) in a worktree and target folder of its own under `.local/frame-identity/`, kept between runs so a later base rebuilds incrementally, draws fixed scenes offscreen with each build under `HORIZON_STILL=1` (HDR off; the Golden Hour pack in SDR and with offscreen HDR output; HDR turned off in a running game), and requires identical pixels, writing `diff-<scene>.png` where they aren't. Both builds draw on lavapipe where Mesa's Vulkan driver is installed, else on the machine's default adapter. When the change touches only `tools/`, `tests/`, `.github/` or Markdown outside `crates/`, the base reuses the change's binaries (`--build-base` builds it anyway), so the run checks that two runs of one build agree. It is `named_only` in `tools/parity_hosts.json`, since it fails any change that moves the picture on purpose: a pull request that must leave it alone carries the `frame-identity` label (docs/release-flow.md), and `python3 tools/parity.py frame_identity` runs it by name.
+`frame_identity` (`tools/test_frame_identity_parity.py`) holds the picture where a change shouldn't move it, as the HDR design note's first tests ask (design/hdr-linear-light.md). Its oracle is the base build, not vanilla: pictures of the game hold Minecraft's textures and can't be committed. It builds `BASE_SHA` (else the merge-base with `origin/main`) in a worktree and target folder of its own under `.local/frame-identity/`, kept between runs so a later base rebuilds incrementally, draws fixed scenes offscreen with each build under `HORIZON_STILL=1` (HDR off; the Golden Hour pack in SDR and with offscreen HDR output; HDR turned off in a running game), and requires identical pixels, writing `diff-<scene>.png` where they aren't. Both builds draw on lavapipe where Mesa's Vulkan driver is installed, else on the machine's default adapter. When the change touches only `tools/`, `tests/`, `.github/` or Markdown outside `crates/`, the base reuses the change's binaries (`--build-base` builds it anyway), so the run checks that two runs of one build agree. It is `named_only` in `tools/parity_hosts.json`, since it fails any change that moves the picture on purpose: a pull request that must leave it alone carries the `frame-identity` label (docs/release-flow.md), and `python3 tools/parity.py frame_identity` runs it by name.
 
 ### Other machines
 
@@ -130,13 +130,10 @@ Debug builds carry line tables only (`[profile.dev]` in `Cargo.toml`), which kee
 
 ## Server execution in game fixtures
 
-`HORIZON_COMMAND_SCRIPT` runs on the integrated server's `Server thread`, with the
-headless client joined through the normal memory connection. Commands use the connected
-owner's body and dimension. The script owns the clock: each `tick` calls `tick_server`,
-while login and portal arrival pump connection-only passes. The client acknowledges
-terrain and teleports without predicting movement, matching the command oracle's stationary
-player. Script and save errors return through server shutdown; output keeps the existing
-styled messages and `CommandResultCallback` schema.
+Command scripts run on a dedicated server: `Server.op` in `tools/server_lab.py` sends each
+operation as `op <player> <json>` on the control socket, and the reply is its record. Commands
+use the connected player's body and dimension, and each `tick` op advances the clock. Errors come
+back as an `error` reply. Output keeps the styled messages and `CommandResultCallback` schema.
 
 `HORIZON_DISPENSE_FIXTURE` and `HORIZON_SCULK_FIXTURE` are component probes. They construct
 a server `Game` on a server thread and retain the oracles' synthetic levels, seeded random
@@ -173,7 +170,7 @@ One draw too many or too few shifts every later value, so read the first field t
 
 ### State digest
 
-A build with `--features state-digest` and `HORIZON_STATE_DIGEST=<file>` appends one line per level tick: hashes of the entities (join order), their own randoms, the block entities (ticker order) and the scheduled ticks, plus the level random, `Level.randValue`, the entity-id counter and the join counter. Off by default and compiled out. `digest-sync U E S` is `sync_randoms` (needs `HORIZON_TEST_SEEDS=1`). It works on a dedicated server's console and, through `horizon-ctl command`, on an integrated server (a LAN host), where it syncs the owner's level on the server thread, and `HORIZON_STATE_DIGEST_DETAIL=1` adds a raw line per entity and block entity. The join numbers are hashed relative to the sync, and the join field under `counters` is the upcoming join number. After the integrated `digest-sync` they are ranks instead: each entity's place in the join-order walk, and the number of entities visited. The window's client world shares the process-wide join counter there, so ranked digests match although the raw counters differ.
+A build with `--features state-digest` and `HORIZON_STATE_DIGEST=<file>` appends one line per level tick: hashes of the entities (join order), their own randoms, the block entities (ticker order) and the scheduled ticks, plus the level random, `Level.randValue`, the entity-id counter and the join counter. Off by default and compiled out. `digest-sync U E S` is `sync_randoms` (needs `HORIZON_TEST_SEEDS=1`). It works on a dedicated server's console and, through `horizon-server command`, on an integrated server (a LAN host), where it syncs the owner's level on the server thread, and `HORIZON_STATE_DIGEST_DETAIL=1` adds a raw line per entity and block entity. The join numbers are hashed relative to the sync, and the join field under `counters` is the upcoming join number. After the integrated `digest-sync` they are ranks instead: each entity's place in the join-order walk, and the number of entities visited. The window's client world shares the process-wide join counter there, so ranked digests match although the raw counters differ.
 
 - `tools/state_digest_scene.py BINARY RESOURCES TEMPLATE OUT` runs a fixed dedicated-server scene (frozen before the first tick, `tick step N`) and writes `OUT/digest.txt`; `--generate` makes the forceloaded flat template once. Random ticks are off unless `--random-ticks`. `HORIZON_SCENE_GATE` names an optional script to wait on before each run.
 - `--extended` adds subjects to that scene without changing the default one, so old baselines stay valid. Before the window: breeding pairs, primed TNT, skeletons beside an iron golem, zombies beside a villager, a zombie villager, a zombie, a piglin and a hoglin with conversion countdowns, creepers, a slime, a minecart, a boat with a rider, jockeys and a dispenser. Inside the window the script steps the frozen server in pieces and runs commands between them (`extended_plan` in the script): `/data merge` and `/data modify`, `/effect`, `/attribute`, `/item replace`, `/tp`, `/ride`, `/fill`, `/setblock`, `/damage`, `/kill`, `/execute ... run`, summoned arrows, snowballs, eggs and a fireball, lightning on a pig and a villager, and more TNT and creepers. Passes at ticks 0 to 100 need the default 200 ticks or more, and a pass at or after `--ticks` is skipped. It needs step mode, not `--sprint`. The script writes the console output to `OUT/commands.log` and counts lines that look like command errors in `timings.txt` (`command_errors`), so check that count is 0 before trusting a baseline. `/give` needs a player, so it stays in the players scene.
@@ -202,7 +199,7 @@ python3 tools/parity_fuzz.py --replay scenarios.json                            
 ## Reading vanilla
 
 Game jars, decompiled sources and reports live in the gitignored `.local/`, rebuilt from your own copy of the game;
-nothing of Mojang's is committed or downloaded by the tools ([README](native-client.md#run-from-a-checkout)):
+nothing of Mojang's is committed or downloaded by the tools:
 
 ```sh
 python3 tools/lab.py prepare --server-jar ~/Downloads/server.jar   # checks the pinned jars (research-lock.json)
@@ -267,7 +264,7 @@ multiplayer): those block.
 
 The game-binary fixture audit keeps these complementary direct rule tests:
 
-- `command_harness.rs`: command feedback, styled spans and result callbacks,
+- `command_ops.rs` (`op` on the dedicated server's control socket): command feedback, styled spans and result callbacks,
   held player position, explicit ticks and portal completion matching
   `VanillaCommandExecOracle`. LAN `commands`, `feedback`, `styles`, `levels` and
   `portals` cover command input, packet feedback and travel across the boundary.

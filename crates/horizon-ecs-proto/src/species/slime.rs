@@ -27,5 +27,6 @@ pub static DEF: Def = Def {
     spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Slime, ..crate::spawning::SpawnDef::MONSTER }), despawn: Some(crate::despawn::DespawnDef::MOB),
     not_in_peaceful: true,
     draws: Some(&crate::behaviours::spawn_draw::SPAWN_SIZE),
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

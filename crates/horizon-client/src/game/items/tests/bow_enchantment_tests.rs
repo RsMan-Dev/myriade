@@ -1,7 +1,7 @@
 //! `BowItem.releaseUsing` through `ProjectileWeaponItem.draw` and `shoot`: the
 //! bow's enchantment components decide the arrows it fires, and the ammunition
 //! is whatever `#minecraft:arrows` lists.
-use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+use crate::game::{Game, Options, Progress, Settings, load_resources};
 use horizon_client::items::ItemStack;
 
 /// A game on the prepared resources with a creative player (as `crossbow.rs`).
@@ -14,23 +14,23 @@ fn game_with_player(root: &std::path::Path) -> Game<'static> {
         root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.to_path_buf();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let res: &'static _ = Box::leak(Box::new(loaded.resources));
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.creative = true;
+    // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : ce fixture construit son propre Game avec ses ressources)
     game.player = Some(
         horizon_client::motion::PlayerMotion::new(
             game.motion,

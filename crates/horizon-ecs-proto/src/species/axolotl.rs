@@ -73,6 +73,7 @@ static DRAWS: crate::behaviours::spawn_draw::Draws = crate::behaviours::spawn_dr
 
 pub static DEF: Def = Def {
     name: "minecraft:axolotl",
+    despawn: Some(crate::despawn::DespawnDef { removable: crate::despawn::Removable::UnlessNamed, ..crate::despawn::DespawnDef::MOB }),
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     variant: Some(&VARIANT),
     draws: Some(&DRAWS),

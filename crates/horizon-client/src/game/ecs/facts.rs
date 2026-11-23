@@ -85,7 +85,8 @@ impl Game<'_> {
         // A player who is dead or in creative or spectator is not a target. Its team is the board's (`Game::push_team_event`).
         let alive = !self.player.as_ref()?.health.dead_or_dying();
         let targetable = !matches!(self.mode, GameMode::Creative | GameMode::Spectator);
-        Some((p, PlayerFact { alive, targetable, hero: self.hero_amplifier() }))
+        let spectator = matches!(self.mode, GameMode::Spectator);
+        Some((p, PlayerFact { alive, targetable, hero: self.hero_amplifier(), spectator }))
     }
 
     /// What a death reads of the player `player` that hurts `e`: its luck attribute and the stack in its main hand (Looting). Told with
@@ -109,19 +110,17 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::game::native_entity_refs::tests::with_game;
-    use horizon_client::motion::PlayerMotion;
+    use crate::game::native_guest_turn_tests::with_acting_guest;
     use horizon_core::geometry::Vec3;
     use horizon_ecs_proto::bridge::{host::HostSetup, players::PlayerFacts};
 
     #[test]
     #[ignore = "daily"]
     fn a_present_player_is_announced_once_and_left_when_gone() {
-        with_game(|game| {
+        with_acting_guest(Vec3::new(0.5, 64.0, 0.5), |game| {
             game.ecs = {
                 game.test_ecs_level()
             };
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
             let facts = |game: &crate::game::Game<'_>| game.ecs.world().and_then(|w| w.get_resource::<PlayerFacts>()).map_or(0, |f| f.0.len());
             game.sync_player_facts().unwrap();
             assert_eq!(facts(game), 1);

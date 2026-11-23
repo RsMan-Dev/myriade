@@ -1,9 +1,8 @@
-//! `player_changed_dimension` is heard on every logical server: the integrated server that runs
-//! single player and the LAN world opened from it, and a dedicated server (arismoko/horizon#3250).
+//! `player_changed_dimension` is heard on the dedicated server (arismoko/horizon#3250).
 //! All three tests are daily resource tests registered in `daily-horizon-client.txt`.
 use super::Dim;
 use crate::game::{
-    Game, execution_role::ExecutionRole, lan::LanSettings, lan_actions::GuestCommand,
+    Game, lan::LanSettings, lan_actions::GuestCommand,
     native_entity_refs::tests::with_game_role,
 };
 use horizon_client::{
@@ -38,12 +37,10 @@ impl Hooks for Recorder {
     }
 }
 
-/// A server of `role` with one survival player at (3.5, 64, 5.5) in the Overworld, its options as
-/// `integrated.rs`'s server Game and a dedicated server set them.
-fn with_server(role: ExecutionRole, test: impl FnOnce(&mut Game<'_>)) {
+/// A dedicated server with one survival player at (3.5, 64, 5.5) in the Overworld.
+fn with_server(test: impl FnOnce(&mut Game<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-    with_game_role(root, role, |game| {
-        game.options.dedicated = Some(Vec::new());
+    with_game_role(root, |game| {
         let config = HubConfig {
             default_game_mode: 0,
             guest_commands: true,
@@ -55,7 +52,6 @@ fn with_server(role: ExecutionRole, test: impl FnOnce(&mut Game<'_>)) {
             allow_flight: false,
             seed: 0,
             max_players: 2,
-            integrated: role == ExecutionRole::IntegratedServer,
             levels: game.level_shapes,
             level_seeds: game.levels.runtime.seeds(),
         };
@@ -142,19 +138,17 @@ fn finish_trip(game: &mut Game<'_>, dim: Dim) {
     game.enter_level(home).unwrap();
 }
 
-fn run_as_player(game: &mut Game<'_>, role: ExecutionRole, command: &str) {
+fn run_as_player(game: &mut Game<'_>, command: &str) {
     assert!(game.run_guest_command(GuestCommand {
         conn: CONN,
         command: command.into(),
         permission: 4,
-        integrated: role == ExecutionRole::IntegratedServer,
         quiet: false,
     }));
-    // The integrated server runs them at its tick's start (`integrated.rs`).
     game.run_level_teleports();
 }
 
-fn heard_on(role: ExecutionRole, test: impl FnOnce(&mut Game<'_>, &Heard)) {
+fn heard_on(test: impl FnOnce(&mut Game<'_>, &Heard)) {
     let heard = Heard::default();
     let mods: mod_api::Mods = vec![ModEntry::new(
         "dimension-recorder",
@@ -162,14 +156,9 @@ fn heard_on(role: ExecutionRole, test: impl FnOnce(&mut Game<'_>, &Heard)) {
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        with_server(role, |game| test(game, &heard));
+        with_server(|game| test(game, &heard));
     });
 }
-
-const SERVERS: [ExecutionRole; 2] = [
-    ExecutionRole::IntegratedServer,
-    ExecutionRole::DedicatedServer,
-];
 
 fn overworld_to_nether() -> Vec<(String, String)> {
     vec![("minecraft:overworld".into(), "minecraft:the_nether".into())]
@@ -178,8 +167,7 @@ fn overworld_to_nether() -> Vec<(String, String)> {
 #[test]
 #[ignore = "daily"]
 fn a_nether_portal_trip_is_heard_once_on_every_server() {
-    for role in SERVERS {
-        heard_on(role, |game, heard| {
+        heard_on(|game, heard| {
             let portal = game
                 .pack
                 .assets
@@ -197,43 +185,37 @@ fn a_nether_portal_trip_is_heard_once_on_every_server() {
             }
             assert!(
                 game.on_server_trip(CONN),
-                "{role:?}: the portal never took the player"
+                "the portal never took the player"
             );
             assert!(
                 heard.lock().unwrap().is_empty(),
-                "{role:?}: heard before the trip ended"
+                "heard before the trip ended"
             );
             finish_trip(game, Dim::Nether);
-            assert_eq!(*heard.lock().unwrap(), overworld_to_nether(), "{role:?}");
+            assert_eq!(*heard.lock().unwrap(), overworld_to_nether());
         });
-    }
 }
 
 #[test]
 #[ignore = "daily"]
 fn a_command_teleport_into_the_nether_is_heard_once_on_every_server() {
-    for role in SERVERS {
-        heard_on(role, |game, heard| {
+        heard_on(|game, heard| {
             run_as_player(
                 game,
-                role,
                 "execute in minecraft:the_nether run tp @s 0 64 0",
             );
             finish_trip(game, Dim::Nether);
-            assert_eq!(*heard.lock().unwrap(), overworld_to_nether(), "{role:?}");
+            assert_eq!(*heard.lock().unwrap(), overworld_to_nether());
         });
-    }
 }
 
 #[test]
 #[ignore = "daily"]
 fn an_end_gateway_jump_within_the_level_is_not_heard_on_any_server() {
-    for role in SERVERS {
-        heard_on(role, |game, heard| {
+        heard_on(|game, heard| {
             game.build_registries();
             run_as_player(
                 game,
-                role,
                 "setblock 3 64 5 minecraft:end_gateway{exit_portal:[I;40,64,40],ExactTeleport:0b}",
             );
             // Not exact: the player waits for the exit's chunks, then lands near it.
@@ -242,9 +224,8 @@ fn an_end_gateway_jump_within_the_level_is_not_heard_on_any_server() {
             let at = game.lan.as_ref().unwrap().hub.guest(CONN).unwrap().position;
             assert!(
                 (at[0] - 40.5).hypot(at[2] - 40.5) < 16.0,
-                "{role:?}: the jump landed at {at:?}"
+                "the jump landed at {at:?}"
             );
-            assert!(heard.lock().unwrap().is_empty(), "{role:?}: {heard:?}");
+            assert!(heard.lock().unwrap().is_empty(), "{heard:?}");
         });
-    }
 }

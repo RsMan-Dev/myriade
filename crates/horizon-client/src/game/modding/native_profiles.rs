@@ -46,9 +46,6 @@ impl Game<'_> {
         if let Some(profile) = self.online_profile(|g| g.uuid == uuid) {
             return Some(profile);
         }
-        if !self.is_dedicated_server() {
-            return None;
-        }
         let user = super::dedicated::cached_user_by_id(uuid)?;
         Some(GameProfile::new(user.id, user.name.clone(), Vec::new()))
     }
@@ -57,9 +54,6 @@ impl Game<'_> {
     pub(super) fn profile_by_name(&self, name: &str) -> Option<GameProfile> {
         if let Some(profile) = self.online_profile(|g| same_name(&g.name, name)) {
             return Some(profile);
-        }
-        if !self.is_dedicated_server() {
-            return None;
         }
         let user = super::dedicated::cached_user_by_name(name)?;
         Some(GameProfile::new(user.id, user.name.clone(), Vec::new()))

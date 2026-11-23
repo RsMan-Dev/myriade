@@ -28,8 +28,8 @@ registers now) would lose its blocks, and what they hold, for good, so the world
 before it opens: a blocking question on the client (Don't Open by default, Back Up and
 Open, Open Without a Backup), and a refusal on a dedicated server unless
 `--allowMissingMods` or `server.toml`'s `[missing_mods] allow = true` says to open it.
-Then the hook fires before the world opens, on the side that asks (`HostSide::Client` in
-singleplayer, the dedicated server's `HostSide::Server`), with no world loaded yet, and
+Then the hook fires before the world opens, on the side that asks (the dedicated server's
+`HostSide::Server`), with no world loaded yet, and
 each id a listener resolves is taken off the question. Otherwise it fires on the opening
 server (the integrated one in singleplayer) before world-state restoration; preparation
 has already upgraded the world at this boundary.

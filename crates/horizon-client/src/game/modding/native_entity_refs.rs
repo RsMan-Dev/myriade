@@ -103,9 +103,6 @@ impl Game<'_> {
             .then_some(entity)
     }
     pub(super) fn entity_by_uuid(&self, uuid: mod_api::EntityUuid) -> Option<EntityRef> {
-        if !self.is_logical_server() {
-            return None;
-        }
         let epoch = self.native_lifecycle.epoch()?;
         let uuid = horizon_client::lan::playerdata::uuid_ints(uuid.0);
         let id = self.ecs.id_of(self.ecs.entity_by_uuid(uuid)?)?;
@@ -150,7 +147,7 @@ impl Game<'_> {
     }
     /// Loaded server levels, in vanilla dimension order. Empty without a server world.
     pub(super) fn native_list_levels(&self) -> Vec<LevelRef> {
-        if !self.is_logical_server() || self.native_lifecycle.epoch().is_none() {
+        if self.native_lifecycle.epoch().is_none() {
             return Vec::new();
         }
         self.loaded_dims()
@@ -314,8 +311,7 @@ impl Game<'_> {
         tool: Option<&ItemStack>,
         entity: Option<EntityRef>,
     ) -> Option<Vec<ItemStack>> {
-        if !self.is_logical_server()
-            || !self.level_handle_current(level)
+        if !self.level_handle_current(level)
             || self.dim.key() != level.dimension()
             || !world_items!(self).has_loot_table(table)
         {
@@ -534,7 +530,6 @@ impl Game<'_> {
         // A carrier transfer fence holds this cell: every mod write
         // through the level gate refuses while the operation runs.
         !self.world.carrier_fences.locks_cell(&pos)
-            && self.is_logical_server()
             && self.level_handle_current(level)
             && self.world.loaded(pos[0], pos[2])
             && self.world.shape.contains_y(pos[1])
@@ -550,7 +545,7 @@ impl Game<'_> {
         pos: [i32; 3],
         kind: BlockShapeKind,
     ) -> Option<Vec<[f64; 6]>> {
-        if !self.is_logical_server() || !self.level_handle_current(level) {
+        if !self.level_handle_current(level) {
             return None;
         }
         let (world, anims) = if self.dim.key() == level.dimension() {
@@ -849,17 +844,12 @@ pub(super) mod tests {
                 .current_dir(&scratch)
                 .env(flag, case)
                 .env("HORIZON_TEST_RESOURCES", &resources)
-                .env("HORIZON_NO_AUDIO", "1")
-                .env("HORIZON_LAUNCHER_NO_SELF_UPDATE", "1");
+                .env("HORIZON_NO_AUDIO", "1");
             for key in [
                 "HORIZON_HOME",
-                "HORIZON_LAUNCHER_HOME",
                 "XDG_DATA_HOME",
                 "XDG_CONFIG_HOME",
                 "XDG_RUNTIME_DIR",
-                "HORIZON_LAUNCHER_TRASH",
-                "HORIZON_LAUNCHER_CLIPBOARD",
-                "HORIZON_LAUNCHER_DESKTOP",
             ] {
                 let home = scratch.join(key);
                 std::fs::create_dir(&home).unwrap();
@@ -1016,7 +1006,6 @@ pub(super) mod tests {
         game.player.as_mut().expect("fixture player body").entity_id =
             i32::try_from(id).expect("fixture entity ID fits the protocol");
         game.level.player_uuid = Some(horizon_client::lan::playerdata::uuid_ints(uuid));
-        game.bind_local_player_residency();
         game.lan_acting_entity = Some(id);
         game.lan_acting_uuid = Some(uuid);
     }
@@ -1058,7 +1047,6 @@ pub(super) mod tests {
                 allow_flight: true,
                 seed: 0,
                 max_players: 2,
-                integrated: true,
                 levels: game.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             },
@@ -1096,11 +1084,7 @@ pub(super) mod tests {
         root: std::path::PathBuf,
         test: impl FnOnce(&mut super::Game<'_>),
     ) {
-        with_game_role(
-            root,
-            super::super::execution_role::ExecutionRole::IntegratedServer,
-            test,
-        );
+        with_game_role(root, test);
     }
 
     /// Keep a key that a test mod's `register` declared. The game fixture registers the
@@ -1117,18 +1101,8 @@ pub(super) mod tests {
         );
     }
 
-    pub(in crate::game) fn with_client_game(test: impl FnOnce(&mut super::Game<'_>)) {
-        let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        with_game_role(
-            root,
-            super::super::execution_role::ExecutionRole::Client,
-            test,
-        );
-    }
-
     pub(in crate::game) fn with_game_role(
         root: std::path::PathBuf,
-        role: super::super::execution_role::ExecutionRole,
         test: impl FnOnce(&mut super::Game<'_>),
     ) {
         use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
@@ -1171,19 +1145,18 @@ pub(super) mod tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = role;
+        options.execution_role = super::super::execution_role::ExecutionRole::DedicatedServer;
         options.game_dir = Some(saves.path().to_path_buf());
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.reset_entity_residency();
         game.native_lifecycle
-            .begin_open(Authority::IntegratedServer);
+            .begin_open(Authority::DedicatedServer);
 
         // A game that opened its world resolves its parts; the harness stops
         // short of the open, so do it here for the by-state part table.
@@ -1201,7 +1174,6 @@ pub(super) mod tests {
     #[ignore = "daily"]
     fn typed_uuid_and_nbt_reads_follow_the_entity_level() {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             // with_game prepares lifecycle, not world-open command registries.
             // execute in and summon must resolve real dimension and entity keys.
             game.build_registries();
@@ -1243,7 +1215,6 @@ pub(super) mod tests {
 
         mod_platform::__private::part_tests::weak_power_game_thread();
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1278,7 +1249,6 @@ pub(super) mod tests {
         // The fixture's parts: glass sustains any plant, grass sustains none.
         mod_platform::__private::part_tests::sustain_plant_game_thread();
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1298,8 +1268,6 @@ pub(super) mod tests {
             // Default: soils with no part answer as vanilla's plant rule does.
             assert!(survives(game, "minecraft:dirt"));
             assert!(!survives(game, "minecraft:stone"));
-            // A client's copy of the level does not ask the part.
-            game.options.dedicated = None;
             assert!(!survives(game, "minecraft:glass"));
             assert!(survives(game, "minecraft:grass_block"));
         });
@@ -1308,13 +1276,13 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_block_part_decides_whether_the_tool_harvests() {
-        use horizon_client::{chunk::Chunk, motion::PlayerMotion};
+        use horizon_client::chunk::Chunk;
         use horizon_core::{geometry::Vec3, position::ChunkPos};
         use std::sync::Arc;
 
         // The fixture's parts: stone is harvested by any tool, dirt by none.
         mod_platform::__private::part_tests::harvest_game_thread();
-        with_game(|game| {
+        crate::game::native_guest_turn_tests::with_acting_guest(Vec3::new(4.5, 62.0, 4.5), |game| {
             let scratch = std::env::temp_dir().join(format!(
                 "horizon-harvest-part-{}-{:?}",
                 std::process::id(),
@@ -1322,7 +1290,6 @@ pub(super) mod tests {
             ));
             std::fs::create_dir_all(&scratch).unwrap();
             game.world_root = scratch.clone();
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 62.0, 4.5)).unwrap());
             game.player.as_mut().unwrap().ground.on_ground = true;
             game.creative = false;
             game.build_registries();
@@ -1383,7 +1350,6 @@ pub(super) mod tests {
         use horizon_client::chunk::Chunk;
         use std::sync::Arc;
 
-        game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1442,7 +1408,6 @@ pub(super) mod tests {
         use std::sync::Arc;
 
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1515,7 +1480,6 @@ pub(super) mod tests {
         // its own tick 2 ticks later, as a diode does.
         signal_reader_game_thread();
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             let registry = game.pack.assets.registry;
             let glass = registry.default_state("minecraft:glass").unwrap();
             let lever = |powered: &str| {
@@ -1634,7 +1598,6 @@ pub(super) mod tests {
 
         mod_platform::__private::part_tests::removal_game_thread();
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1734,7 +1697,6 @@ pub(super) mod tests {
 
         mod_platform::__private::part_tests::sticky_game_thread();
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1831,7 +1793,6 @@ pub(super) mod tests {
 
         mod_platform::__private::part_tests::redstone_game_thread();
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1867,7 +1828,6 @@ pub(super) mod tests {
 
         mod_platform::__private::part_tests::connection_game_thread();
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1907,7 +1867,6 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn side_guards_agree_across_integrated_and_dedicated() {
-        use super::super::execution_role::ExecutionRole;
         use horizon_client::chunk::Chunk;
         use std::sync::Arc;
         with_game(|game| {
@@ -1915,19 +1874,9 @@ pub(super) mod tests {
                 .chunks
                 .insert((-2, 3), Arc::new(Chunk::empty(-2, 3)));
             let level = game.level(game.dim.id()).unwrap();
-            // The integrated server thread (game/world/integrated.rs sets the role and
-            // `dedicated` on the serving Game) and a dedicated server simulate.
-            for (role, dedicated) in [
-                (ExecutionRole::IntegratedServer, true),
-                (ExecutionRole::DedicatedServer, true),
-            ] {
-                game.options.execution_role = role;
-                game.options.dedicated = dedicated.then(Vec::new);
-                assert!(game.native_simulates());
-                assert!(game.level(game.dim.id()).is_some());
-                assert!(game.level_in_place(level));
-                assert!(game.native_level_write_allowed(level, [-32, 64, 48]));
-            }
+            assert!(game.level(game.dim.id()).is_some());
+            assert!(game.level_in_place(level));
+            assert!(game.native_level_write_allowed(level, [-32, 64, 48]));
         });
     }
 
@@ -1965,7 +1914,7 @@ pub(super) mod tests {
                 .chunks
                 .insert((-2, 3), Arc::new(Chunk::empty(-2, 3)));
             game.native_lifecycle
-                .begin_open(Authority::IntegratedServer);
+                .begin_open(Authority::DedicatedServer);
             assert!(game.chunk(level, [-2, 3]).is_none());
             assert!(!chunk.loaded(game));
             assert_eq!(chunk.status(game), None);
@@ -2057,7 +2006,6 @@ pub(super) mod tests {
                 allow_flight: true,
                 seed: 0,
                 max_players: 2,
-                integrated: true,
                 levels: game.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };
@@ -2461,7 +2409,6 @@ pub(super) mod tests {
                 allow_flight: false,
                 seed: 0,
                 max_players: 20,
-                integrated: false,
                 levels: Default::default(),
                 level_seeds: Default::default(),
             };
@@ -2616,7 +2563,6 @@ pub(super) mod tests {
                 sync: false,
             };
             let holder = horizon_mod_runtime::attachments::Holder::Player(2345);
-            game.options.dedicated = Some(Vec::new());
             let real_holder = horizon_mod_runtime::attachments::Holder::Player(1);
             attachment
                 .set(
@@ -2752,7 +2698,6 @@ pub(super) mod tests {
             assert!(game.player_remove_fake(nether_actor));
             game.enter_command_level(super::super::Dim::Overworld)
                 .unwrap();
-            game.options.dedicated = None;
             let players = game.native_server_players();
             assert_eq!(players.len(), 1);
             assert_eq!(players[0].uuid(), 1);
@@ -3324,7 +3269,7 @@ pub(super) mod tests {
             game.ecs = game.test_ecs_level();
             crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [0.0; 3]).unwrap();
             crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
-            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 14));
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(), &mut || 14));
             for (id, max) in [(12, 20.0), (13, 20.0), (14, 200.0)] {
                 let living = game.living(game.entity(id).unwrap()).unwrap();
                 assert_eq!(
@@ -3357,26 +3302,25 @@ pub(super) mod tests {
             &root,
             &settings,
             Instant::now(),
-            super::super::execution_role::ExecutionRole::IntegratedServer,
+            super::super::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = super::super::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = super::super::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         game.native_lifecycle
-            .begin_open(Authority::IntegratedServer);
+            .begin_open(Authority::DedicatedServer);
 
         let level = game.level("minecraft:overworld").unwrap();
         assert!(

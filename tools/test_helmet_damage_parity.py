@@ -1,92 +1,152 @@
 #!/usr/bin/env python3
-"""Compare falling-impact equipment wear and armor reduction without starting a server."""
+"""Compare armour wear and armour reduction on a hit, on the whole server, through the same commands on both sides.
+
+Each fixture row equips the player (helmet, boots, Unbreaking, unbreakable), heals it, lets the hurt cooldown pass,
+hits it with `/damage` (the row's damage type, 8 damage) and reads its health and slots with `data get`. The vanilla
+side runs VanillaCommandExecOracle on the script; the Horizon side runs the same script through run_as_player on a
+dedicated server with a bot joined as Player. Rows without Unbreaking are exact: their records must be equal line by
+line. Unbreaking draws come from the level random, which no command seeds: those rows repeat the hit STAT_REPS times
+and compare the frequency of a head durability loss, which must agree within TOLERANCE on both servers.
+"""
 import json
 import os
 from pathlib import Path
-import re
+import shutil
 import subprocess
-import tempfile
+import sys
 
 try:
-    from . import lab, test_rust_parity as base, integration_env
+    from . import lab, test_rust_parity as base, test_command_exec_parity as commands
 except ImportError:
-    import lab, test_rust_parity as base, integration_env
+    import lab
+    import test_rust_parity as base
+    import test_command_exec_parity as commands
 
-PARITY_RUST_SCOPE = [
-    'crates/horizon-world/src/living_hurt.rs',
-    'crates/horizon-world/src/player_hurt.rs',
-    'crates/horizon-world/src/living_damage.rs',
-    'crates/horizon-world/src/server_player_combat.rs',
-    'crates/horizon-world/src/server_player_damage.rs',
-    'crates/horizon-client/src/health',
-    'crates/horizon-client/src/health.rs',
-    'crates/horizon-client/src/game.rs',
-    'crates/horizon-client/src/game/mobs/creatures',
-    'crates/horizon-client/src/game/items/potions.rs',
-    'crates/horizon-client/src/game/entities/falling_damage',
-    'crates/horizon-client/src/game/entities/falling_damage.rs',
-]
-TEST = 'game::falling_damage::helmet_tests::falling_impacts_wear_the_helmet_before_normal_armor_and_reduction'
+FIXTURE = lab.ROOT / 'tests/fixtures/helmet_damage.json'
+SEED = 1
+HURT_COOLDOWN_TICKS = 20
+HIT = 8
+STAT_REPS = 200
+TOLERANCE = 0.1
+
+
+def components(damage, unbreaking, unbreakable=False):
+    parts = []
+    if damage:
+        parts.append(f'damage={damage}')
+    if unbreaking:
+        parts.append(f'enchantments={{levels:{{"minecraft:unbreaking":{unbreaking}}}}}')
+    if unbreakable:
+        parts.append('unbreakable={}')
+    return f'[{",".join(parts)}]' if parts else ''
+
+
+def cmd(text, stat=None):
+    op = {'op': 'cmd', 'cmd': text, 'label': text, 'admission': True}
+    if stat:
+        op['stat'] = stat
+    return op
+
+
+def episode(row, stat=None):
+    """One equip-hit-read round; `stat` = [row index, repetition] tags the head reads of a statistic."""
+    ops = [
+        cmd('/gamemode survival @s'),
+        cmd('/effect clear @s'),
+        cmd('/item replace entity @s armor.head with air'),
+        cmd('/item replace entity @s armor.feet with air'),
+        cmd('/effect give @s minecraft:instant_health 1 255'),
+        {'op': 'tick', 'n': HURT_COOLDOWN_TICKS},
+    ]
+    if row['head']:
+        head = f"minecraft:{row['head']}" + components(row['head_damage'], row['unbreaking'], row.get('unbreakable'))
+        ops.append(cmd(f'/item replace entity @s armor.head with {head}'))
+    if row.get('boots_damage') is not None:
+        feet = 'minecraft:iron_boots' + components(row['boots_damage'], row['unbreaking'])
+        ops.append(cmd(f'/item replace entity @s armor.feet with {feet}'))
+    head_read = '/data get entity @s Inventory[{Slot:103b}]'
+    ops.append(cmd(head_read, stat and stat + ['before']))
+    ops.append(cmd(f"/damage @s {HIT} minecraft:{row['source']}"))
+    ops.append(cmd('/data get entity @s Health'))
+    ops.append(cmd(head_read, stat and stat + ['after']))
+    ops.append(cmd('/data get entity @s Inventory[{Slot:100b}]'))
+    ops.append({'op': 'tick', 'n': HURT_COOLDOWN_TICKS})
+    return ops
+
+
+def script(rows):
+    ops = []
+    for index, row in enumerate(rows):
+        if row['unbreaking']:
+            for rep in range(STAT_REPS):
+                ops += episode(row, [index, rep])
+        else:
+            ops += episode(row)
+    return ops
 
 
 def main():
     lock, jars, libraries = base.verify_artifacts()
     build = lab.LOCAL / 'helmet-damage-parity'
-    build.mkdir(parents=True, exist_ok=True)
-    report = build / 'report.json'
-    report.unlink(missing_ok=True)
-    oracle_root = lab.ROOT / 'mods/horizon/src/test/java'
-    oracle = oracle_root / 'dev/horizonlab/parity/VanillaHelmetDamageOracle.java'
-    fixtures = lab.ROOT / 'tests/fixtures/helmet_damage.json'
-    sources = [Path(__file__), lab.ROOT / 'tools/lab.py', lab.ROOT / 'tools/test_rust_parity.py',
-               lab.ROOT / 'tools/integration_env.py', oracle, fixtures,
-               oracle_root / 'dev/horizonlab/parity/ParityData.java',
-               oracle_root / 'dev/horizonlab/parity/VanillaBlockUpdateOracle.java',
-               lab.ROOT / 'Cargo.toml', lab.ROOT / 'Cargo.lock']
-    for entry in PARITY_RUST_SCOPE:
-        path = lab.ROOT / entry
-        sources.extend(sorted(path.rglob('*.rs')) if path.is_dir() else [path])
-    tested = base.source_hashes(sources)
+    shutil.rmtree(build, ignore_errors=True)
+    build.mkdir(parents=True)
+    rows = json.loads(FIXTURE.read_text(encoding='utf-8'))
+    ops = script(rows)
+    script_path = build / 'script.jsonl'
+    script_path.write_text(''.join(json.dumps(op, ensure_ascii=False) + '\n' for op in ops), encoding='utf-8')
+    oracle = lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaCommandExecOracle.java'
     classes = build / 'classes'
-    classes.mkdir(exist_ok=True)
-    dependencies = os.pathsep.join(map(str, [jars['server'], *libraries]))
+    classes.mkdir()
+    dependency_path = os.pathsep.join(map(str, libraries))
 
-    def run(command, name, cwd=lab.ROOT, env=None):
+    def run(command, name, **kwargs):
         with (build / (name + '.log')).open('w', encoding='utf-8') as log:
-            subprocess.run(list(map(str, command)), cwd=cwd, env=env, check=True,
-                           stdout=log, stderr=subprocess.STDOUT, timeout=900)
+            result = subprocess.run(list(map(str, command)), stdout=log, stderr=subprocess.STDOUT, **kwargs)
+        if result.returncode:
+            tail = (build / (name + '.log')).read_text(errors='replace')[-3000:]
+            sys.exit(f'{name} failed ({result.returncode}):\n{tail}')
 
-    run(['javac', '--release', lock['minecraft']['java_major'], '-proc:none', '-sourcepath',
-         oracle_root, '-cp', dependencies, '-d', classes, oracle], 'compile-java')
-    with tempfile.TemporaryDirectory(prefix='horizon-helmet-parity-') as scratch:
-        env = integration_env.game_environment(os.environ, scratch)
-        env['HORIZON_TEST_RESOURCES'] = str(Path(os.environ.get('HORIZON_TEST_RESOURCES', lab.RESOURCES)).resolve())
-        run(['java', '-Xmx768m', '-Djava.awt.headless=true', '-cp',
-             str(classes) + os.pathsep + dependencies, 'dev.horizonlab.parity.VanillaHelmetDamageOracle',
-             fixtures, build / 'server.txt'], 'server', cwd=scratch, env=env)
-        run(['cargo', 'test', '--locked', '-p', 'horizon-client', '--lib',
-             TEST, '--', '--exact', '--ignored', '--nocapture'], 'rust', env=env)
-    records = [line for line in (build / 'rust.log').read_text(encoding='utf-8').splitlines()
-               if re.fullmatch(r'HELMET \d+ -?\d+ -?\d+ [0-9a-f]{8} -?\d+', line)]
-    (build / 'rust.txt').write_text('\n'.join(records) + '\n', encoding='utf-8')
-    matched = base.compare(build / 'server.txt', build / 'rust.txt')
-    count = 2 * len(json.loads(fixtures.read_text(encoding='utf-8')))
-    if matched != count:
-        raise AssertionError(f'Incomplete output: {matched} of {count} cases')
-    base.ensure_sources_unchanged(sources, tested)
-    lab.write_json(report, dict(schema=1, minecraft=lock['minecraft']['version'],
-        sources_sha256=tested, server_jar_sha256=lab.digest(jars['server'], 'sha256'),
-        matched_output_lines=matched, output_sha256=lab.digest(build / 'rust.txt', 'sha256'),
-        scope='Real Player.hurtHelmet, Player.hurtArmor, LivingEntity.doHurtEquipment, ItemStack durability, '
-              'onEquippedItemBroken modifier removal and armor reduction versus the production Game falling-hit path. '
-              'Includes bare heads, nondamageable head items, breaks in both equipment phases, ordinary armor '
-              'breaks, all three falling sources, a generic-source control, an ordinary mob_attack hit that breaks '
-              'a boot (whose reduction must not apply to that hit) beside one that leaves it worn (#11696), and '
-              'seeded Unbreaking with next RNG state. '
-              'Vanilla outer hurt guards/cooldown, effects, health storage, transport and player notifications '
-              'are not compared by this oracle; the Game test also checks both falling impacts and the /damage player path, '
-              'cooldown-sensitive repeat hits and that draining events cannot wear equipment twice.'))
-    print(f'{matched} helmet damage cases match pinned vanilla: {report}', flush=True)
+    run(['javac', '--release', lock['minecraft']['java_major'], '-proc:none', '-cp',
+         str(jars['server']) + os.pathsep + dependency_path, '-d', classes, oracle], 'compile-java')
+    vanilla_dir = build / 'vanilla'
+    vanilla_dir.mkdir()
+    run(['java', '-Xmx3G', '-Duser.timezone=UTC', '-cp',
+         os.pathsep.join([str(classes), str(jars['server']), dependency_path]),
+         'dev.horizonlab.parity.VanillaCommandExecOracle', vanilla_dir / 'universe', script_path,
+         build / 'vanilla.jsonl', str(SEED)], 'java', cwd=vanilla_dir)
+    run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client', '--bin', 'horizon-client'], 'compile-rust',
+        cwd=lab.ROOT)
+    metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'],
+                                                  cwd=lab.ROOT, text=True))
+    binary = Path(metadata['target_directory']) / 'fast' / 'horizon-client'
+    rust_dir = build / 'rust'
+    rust_dir.mkdir()
+    commands.run_as_player(binary, script_path, build / 'rust.jsonl', commands.SERVER_ENV, rust_dir)
+    expected = (build / 'vanilla.jsonl').read_text(encoding='utf-8').splitlines()
+    actual = (build / 'rust.jsonl').read_text(encoding='utf-8').splitlines()
+    recorded = [op for op in ops if op['op'] == 'cmd']
+    if len(expected) != len(recorded) or len(actual) != len(recorded):
+        sys.exit(f'helmet damage record counts differ: {len(expected)} vanilla, {len(actual)} Horizon, '
+                 f'{len(recorded)} commands')
+    exact = [i for i, op in enumerate(recorded) if 'stat' not in op]
+    for i in exact:
+        if expected[i] != actual[i]:
+            sys.exit(f'helmet damage differs at {recorded[i]["cmd"]}: vanilla {expected[i]}; Horizon {actual[i]}')
+    pairs = {}
+    for i, op in enumerate(recorded):
+        if 'stat' in op:
+            row, rep, phase = op['stat']
+            pairs.setdefault(row, {}).setdefault(rep, {})[phase] = i
+    for row, reps in sorted(pairs.items()):
+        shares = []
+        for lines in (expected, actual):
+            losses = sum(lines[reps[r]['before']] != lines[reps[r]['after']] for r in reps)
+            shares.append(losses / len(reps))
+        print(f'row {row}: head durability lost in {shares[0]:.3f} vanilla, {shares[1]:.3f} Horizon, '
+              f'{len(reps)} hits')
+        if abs(shares[0] - shares[1]) > TOLERANCE:
+            sys.exit(f'row {row}: durability loss frequency differs beyond {TOLERANCE}')
+    print(f'helmet damage: {len(exact)} exact records match; {len(pairs)} Unbreaking rows within {TOLERANCE}')
 
 
 if __name__ == '__main__':

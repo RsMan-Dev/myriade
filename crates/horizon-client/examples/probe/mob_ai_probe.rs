@@ -1285,7 +1285,6 @@ pub fn main() -> horizon_client::Result<()> {
             ($snapshot:expr, $grid:expr) => {
                 MobWorld {
                     mob_maps: horizon_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
-                    goal_host: None,
                     teams: Default::default(),
                     professions: horizon_client::mobs::villager::profession_table(),
                     loop_context: crate::test_resources::server_loop_context(),

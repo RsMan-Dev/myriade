@@ -76,7 +76,6 @@ fn run() {
     mods.push(ModEntry::new(OBSERVER, Box::new(Heard(heard.clone()))));
     mod_platform::testing::with_mods(mods.into(), || {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

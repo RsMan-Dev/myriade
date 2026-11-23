@@ -5,6 +5,8 @@
 use super::Def;
 use crate::behaviours::{animal_panic, breed, croak, float, lay_spawn, long_jump, look_at_player, random_look, shoot_tongue, stroll, tempt, try_find_land, Cap, Entry};
 use crate::locomotion::{swim, walk, Medium};
+use crate::behaviours::spawn_draw::{Draw, Draws, Kind, Store, When};
+use crate::rules::spawn_draw::Roll;
 use crate::behaviours::Cond;
 
 static NOT_PREGNANT: Cond = Cond::Not(&Cond::Is("frog:pregnant"));
@@ -40,5 +42,12 @@ pub static DEF: Def = Def {
         (Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params { smooth_land: Some((10.0, 0.1)), ..walk::Params::DEFAULT })),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion]),
+    draws: Some(&DRAWS),
     ..Def::EMPTY
+};
+
+/// `FrogAi.initMemories`: the long jump's cooldown, 100 to 140 ticks, drawn at the spawn.
+static DRAWS: Draws = Draws {
+    group: None,
+    list: &[Draw { when: When::Before, kind: Kind::Plain(Roll::Between { min: 100, max: 140 }), store: Store::Call(long_jump::spawn_cooldown) }],
 };

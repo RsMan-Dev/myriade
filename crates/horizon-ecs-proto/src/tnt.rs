@@ -34,7 +34,7 @@ pub struct Primed {
 
 /// Primes a TNT at `at` with velocity `vel`, its fuse `fuse` ticks long (`PrimedTnt`'s constructor; the random short fuse is the caller's).
 pub fn spawn_primed(w: &mut World, at: Vec3, vel: Vec3, fuse: i32, power: f32) -> Entity {
-    let body = Body { width: SIZE, height: SIZE, step_height: 0.0, speed: 0.0, fall_factor: 1.0, lava_walker: false, object: true, orb: false, tnt: true };
+    let body = Body { width: SIZE, height: SIZE, step_height: 0.0, speed: 0.0, fall_factor: 1.0, safe_fall: 3.0, fall_mult: 1.0, movement_efficiency: 0.0, lava_walker: false, object: true, orb: false, tnt: true };
     let e = w
         .spawn((Pos(at), Vel(vel), OwnTime, body, Gravity(0.04), Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 }, FluidState::default(), Moving))
         .id();
@@ -90,11 +90,6 @@ pub(crate) fn travel_tnt(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Co
         vel.0.y -= g;
     }
     do_move(level, pos, vel, c, body, bounds, fall_damage);
-    // `Entity.move`'s last step: the horizontal velocity scaled by the block's speed factor, read only when it moves sideways.
-    if vel.0.x != 0.0 || vel.0.z != 0.0 {
-        let f = f64::from(crate::block_factor::speed(level.mw.0, [pos.0.x, pos.0.y, pos.0.z]));
-        vel.0 = Vec3::new(vel.0.x * f, vel.0.y, vel.0.z * f);
-    }
     vel.0 = drag(vel.0, c.on_ground);
     false
 }

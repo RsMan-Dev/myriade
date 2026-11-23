@@ -11,7 +11,7 @@ fn load_spawner(game: &mut crate::game::Game<'_>, snbt: &str) {
 #[test]
 #[ignore = "daily"]
 fn warning_dispatch_uses_neutral_at_tick_four() {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Game, Options, Progress, Settings, load_resources};
     use horizon_client::motion::PlayerMotion;
     let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
@@ -22,19 +22,18 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(
@@ -49,7 +48,7 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
     game.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 4.5)).unwrap());
     game.reset_entity_residency();
-    game.native_lifecycle.begin_open(mod_api::Authority::IntegratedServer);
+    game.native_lifecycle.begin_open(mod_api::Authority::DedicatedServer);
     game.ecs = game.test_ecs_level();
 
     const WARNING: &str = "minecraft:block.trial_spawner.about_to_spawn_item";

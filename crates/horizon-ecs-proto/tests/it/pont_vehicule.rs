@@ -16,7 +16,7 @@ fn setup() -> HostSetup {
 }
 
 fn fact() -> PlayerFact {
-    PlayerFact { alive: true, targetable: true, hero: None }
+    PlayerFact { alive: true, targetable: true, hero: None, ..Default::default() }
 }
 
 fn player(id: u32, x: f64, z: f64) -> Player {

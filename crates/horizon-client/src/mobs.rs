@@ -54,7 +54,6 @@ pub mod leash;
 pub mod living;
 pub mod llama;
 mod mob_slot;
-pub mod mod_behaviors;
 pub mod monster_brain;
 mod model;
 pub mod nautilus;
@@ -71,7 +70,6 @@ pub mod nav;
 pub mod nether;
 pub mod panda;
 pub mod parrot;
-pub mod part_goals;
 pub mod path;
 pub mod phantom;
 pub mod piglin;
@@ -88,7 +86,7 @@ pub mod sheep_dye;
 pub mod shulker;
 pub mod sniffer;
 pub mod spawn_rules;
-pub mod spawn_selection;
+pub mod spawn_place;
 pub mod spawner;
 pub mod spawning;
 pub mod spear_use;
@@ -120,7 +118,6 @@ pub mod wither;
 mod invisible_follow_tests;
 pub mod world;
 pub use world::{TargetInfo, VisualShape, single_player_pos, visual_clip, visual_shape};
-pub mod dragon_contacts;
 pub mod zombie_villager;
 /// The dye colours in `DyeColor`'s order.
 pub const DYE_NAMES: [&str; 16] = [
@@ -3040,7 +3037,7 @@ pub fn apply_brain_events(
                 if source.attacker_species.is_none() {
                     source.attacker_species = fish.map(Mob::species);
                 }
-                let held = if crate::native_client_hooks::has_mods() {
+                let held = if crate::native_level_hooks::has_mods() {
                     fish.and_then(|m| m.extra.main_hand_stack()).cloned()
                 } else {
                     None
@@ -3290,9 +3287,6 @@ pub struct MobWorld<'a> {
     /// The mod hooks the AI asks mid-tick, on a server where a mod listens
     /// (None otherwise: the AI asks nothing).
     pub mob_hooks: Option<&'a dyn MobHooks>,
-    /// The goal view's facts (arismoko/horizon#1077), on the native-authoritative side where
-    /// a mod attached an entity part (None otherwise: no mod goal runs).
-    pub goal_host: Option<&'a dyn part_goals::GoalHost>,
     /// Whether a listener can cancel animal taming.
     pub asks_animal_tame: bool,
     /// Whether a listener can cancel a mob's block destruction.
@@ -3303,8 +3297,7 @@ pub struct MobWorld<'a> {
     /// not in the level (a warden's anger, `AngerManagement.angerByUuid`).
     /// None: this world keeps no entity UUIDs, so nothing is resolved.
     pub who_lookup: Option<&'a dyn WhoLookup>,
-    /// Another thread's mobs, for a lookup by id that misses `others`: a group of the server's
-    /// parallel mob loop (`game/mob_islands.rs`) answers as the serial loop would.
+    /// Another thread's mobs, for a lookup by id that misses `others`.
     pub foreign: Option<&'a dyn ForeignSeen>,
     /// The level's world border, whose walls stop a mob's moves
     /// (`Entity.collectColliders`); None: nothing stops them there.
@@ -3337,6 +3330,16 @@ pub enum TargetChange {
     Set(Option<Who>),
     /// Keep the previous target.
     Keep,
+}
+/// The block whose noise cell `BiomeManager.getBiome` reads for the block `x, y, z` (the zoom's quart, as a block).
+pub fn zoomed_block(zoom: horizon_core::biome::BiomeZoom, x: i32, y: i32, z: i32) -> [i32; 3] {
+    let [qx, qy, qz] = zoom.quart_at_block(horizon_core::position::BlockPos::new(x, y, z));
+    [qx << 2, qy << 2, qz << 2]
+}
+/// The biome index (`mw.biomes`) that `BiomeManager.getBiome` reads at a block; `None` where the chunk is not loaded.
+pub fn zoomed_biome_index(mw: &MobWorld, zoom: horizon_core::biome::BiomeZoom, x: i32, y: i32, z: i32) -> Option<u16> {
+    let [x, y, z] = zoomed_block(zoom, x, y, z);
+    mw.world.noise_biome(x, y, z)
 }
 impl MobWorld<'_> {
     /// The currently selected player view. The ordinary tick uses `player`;
@@ -3540,15 +3543,7 @@ impl Mob {
         yaw: f32,
         random: EntityRandom,
     ) -> Self {
-        let mut mob = Self::remote_with_random(id, kind, position, yaw, random);
-        // The parts a mod attached to this entity type add their goals right
-        // after the species' own (arismoko/horizon#1077): vanilla's `registerGoals` moment,
-        // which belongs to the authoritative construction. A type with no
-        // brain is told so at the same moment (arismoko/horizon#824); a brain-driven type
-        // registers its behaviors at the brain's own construction.
-        part_goals::attach(&mut mob);
-        mod_behaviors::attach_at_construction(&mob);
-        mob
+        Self::remote_with_random(id, kind, position, yaw, random)
     }
     /// The same construction without the mod parts' goals: a client's copy of
     /// a server's mob, from its spawn packet. The species' goals stand — the

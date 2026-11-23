@@ -18,6 +18,8 @@ pub enum Flap {
 pub struct Params {
     /// `getMovementEmission().emitsEvents()`: false is NONE (the shulker).
     pub events: bool,
+    /// `getMovementEmission().emitsSounds()`: false is EVENTS (the squid, the bat, the silverfish) and NONE (the shulker).
+    pub sounds: bool,
     /// `nextStep()` is `moveDist + step_gap` (turtle 0.15, strider 0.6, warden 0.55); 0 is the default, `floor(moveDist) + 1`.
     pub step_gap: f32,
     pub flap: Flap,
@@ -25,7 +27,7 @@ pub struct Params {
     pub dampens: bool,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { events: true, step_gap: 0.0, flap: Flap::Never, dampens: false };
+    pub const DEFAULT: Params = Params { events: true, sounds: true, step_gap: 0.0, flap: Flap::Never, dampens: false };
 }
 
 #[derive(Component, Clone, Copy, Debug)]

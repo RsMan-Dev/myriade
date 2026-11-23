@@ -65,7 +65,7 @@ import time
 LOCK_DIR = "/Users/Shared/horizon-compile-lock"
 # Each role's longest wait, in seconds: for a priority role, all of a job's waits together (BUDGET_FILE); for a pull
 # request, all waits of one Turn (a prebuild's first and those after giving the turn back). parity-main 20 min of its
-# job's 360; a Mac build job 60 (Mac build legs 180, exporters 150, the launcher's Mac leg on main 90); a pull
+# job's 360; a Mac build job 60 (Mac build legs 180, exporters 150); a pull
 # request's parity job 60 per prebuild of its 240 (the frame_identity step is a second prebuild).
 WAIT = {"main": 20 * 60, "build": 60 * 60, "pr": 60 * 60}
 PRIORITY = {"main", "build"}

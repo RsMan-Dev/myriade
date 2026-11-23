@@ -414,7 +414,7 @@ mod tests {
                 Some(LevelDimensionShape::new(0, 256, 128, false, true))
             );
             game.native_lifecycle
-                .begin_open(Authority::IntegratedServer);
+                .begin_open(Authority::DedicatedServer);
             let host: &dyn Host = game;
             assert_eq!(overworld.dimension_shape(host), None);
             assert_eq!(nether.dimension_shape(host), None);

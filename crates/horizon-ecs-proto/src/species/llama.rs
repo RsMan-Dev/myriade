@@ -37,7 +37,7 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 9, &random_look::Params::DEFAULT),
     ],
     // A llama is a tamable, rideable horse (`AbstractChestedHorse`): the caps of the horse, for the wild run around like crazy.
-    rules: &[RuleEntry::new(&RIDE, &RideParams::LLAMA), RuleEntry::new(&crate::make_mad::ANGRY, &crate::make_mad::Angry::LLAMA), RuleEntry::new(&LEASH, &LeashParams::LLAMA), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::BODY), RuleEntry::new(&crate::fit_chest::FIT_CHEST, &crate::fit_chest::ChestParams::LLAMA)],
+    rules: &[crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&RIDE, &RideParams::LLAMA),RuleEntry::new(&crate::make_mad::ANGRY, &crate::make_mad::Angry::LLAMA), RuleEntry::new(&LEASH, &LeashParams::LLAMA), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::BODY), RuleEntry::new(&crate::fit_chest::FIT_CHEST, &crate::fit_chest::ChestParams::LLAMA)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable, Cap::Rideable]),
     llama_strength: true,
     random_max_health: true,

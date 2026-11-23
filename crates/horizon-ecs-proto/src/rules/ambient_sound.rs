@@ -5,6 +5,12 @@ pub fn delay(min: u32, max: u32, r: u32) -> i32 {
     (min + r % (max - min + 1)) as i32
 }
 
+/// `Mob.baseTick`: the counter restarts at `-interval` and rises by one each tick, and a sound plays on the tick where the draw `r`
+/// (`nextInt(1000)`) is below it. Drawn once: the sound falls `r + interval + 2` ticks after the last one.
+pub fn vanilla_delay(interval: u32, r: u32) -> i32 {
+    (r + interval + 2) as i32
+}
+
 /// The index of the sound played: the draw `r` taken modulo `len` (`len` > 0).
 pub fn pick(r: u32, len: usize) -> usize {
     (r as usize) % len

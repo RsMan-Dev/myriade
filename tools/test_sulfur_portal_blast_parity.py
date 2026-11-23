@@ -25,11 +25,8 @@ def child_env(scratch, resources=None):
     """Fresh data roots; the test process's cwd is its isolated game directory."""
     env = dict(os.environ)
     env.pop("HORIZON_TEST_RESOURCES", None)
-    for key, name in [("HORIZON_HOME", "home"), ("HORIZON_LAUNCHER_HOME", "launcher"),
-                      ("XDG_DATA_HOME", "xdg-data"), ("XDG_CONFIG_HOME", "xdg-config"),
-                      ("HORIZON_LAUNCHER_TRASH", "trash"),
-                      ("HORIZON_LAUNCHER_CLIPBOARD", "clipboard"),
-                      ("HORIZON_LAUNCHER_DESKTOP", "desktop")]:
+    for key, name in [("HORIZON_HOME", "home"),
+                      ("XDG_DATA_HOME", "xdg-data"), ("XDG_CONFIG_HOME", "xdg-config")]:
         env[key] = str(scratch / name)
     env = lab.game_env(env)
     if resources is not None:

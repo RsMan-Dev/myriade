@@ -17,8 +17,28 @@ import subprocess
 import uuid
 
 import lab
+import test_command_exec_parity as runner
 import test_rust_parity as base
-from integration_env import run_game
+from bot_lab import Bot
+from server_lab import Server
+
+
+def run_native(binary, script, out, folder):
+    """Runs the script on a dedicated server (view and simulation distance 12, the harness radius) for a bot joined as
+    Player: each line goes to the server's `op`, in order; the records of the recorded operations go to `out`."""
+    ops = [json.loads(line) for line in script.read_text(encoding='utf-8').splitlines() if line.strip()]
+    records = []
+    properties = {'level-name': 'saves/harness', 'view-distance': '12', 'simulation-distance': '12'}
+    with Server(binary.parent, folder, lab.RESOURCES, properties=properties, ready_seconds=300,
+               env=runner.SERVER_ENV) as server, \
+            Bot(timeout=600) as bot:
+        bot.join('127.0.0.1', server.port, 'Player')
+        bot.wait_for('loaded', 300)
+        for op in ops:
+            reply = server.op('Player', op)
+            if runner.is_recorded(op):
+                records.append(reply)
+    out.write_text(''.join(json.dumps(r, ensure_ascii=False) + '\n' for r in records), encoding='utf-8')
 
 
 def identity(i):
@@ -161,9 +181,9 @@ def main():
     script = out / 'script.jsonl'
     script.write_text(''.join(json.dumps({k: v for k, v in op.items() if k not in ('positive', 'position')})+'\n' for op in ops))
     lock, jars, libraries = base.verify_artifacts()
-    def run(command, name, game=False, **kw):
+    def run(command, name, **kw):
         with (out / (name+'.log')).open('w') as log:
-            result = (run_game if game else subprocess.run)(list(map(str, command)), stdout=log, stderr=subprocess.STDOUT, **kw)
+            result = subprocess.run(list(map(str, command)), stdout=log, stderr=subprocess.STDOUT, **kw)
         if result.returncode:
             raise RuntimeError(f'{name}: {result.returncode}; see {out / (name+".log")}')
     if args.binary is None:
@@ -197,10 +217,11 @@ def main():
     config.mkdir(parents=True)
     # Transfer only generator configuration, never chunks, actors, RNG or AI state.
     shutil.copyfile(out/'world_gen_settings.dat', config/'world_gen_settings.dat')
-    env = lab.game_env(HORIZON_PLAYER_NAME='Player', HORIZON_COMMAND_SCRIPT=script,
-                       HORIZON_COMMAND_OUTPUT=out/'rust.jsonl', HORIZON_HARNESS_TERRAIN_ONLY='1', HORIZON_API_DISCOVERY='http://127.0.0.1:9/')
-    run([binary, '--resources', lab.RESOURCES, '--world', 'harness', '--seed', 1, '--radius', 12],
-        'rust', game=True, cwd=rust, env=env)
+    # Each settle waits for its required chunks only (terrain_only), as the harness's TERRAIN_ONLY mode did.
+    native_ops = [dict(op, terrain_only=True) if op['op'] == 'settle' else op for op in map(json.loads, script.read_text().splitlines())]
+    native_script = out / 'native-script.jsonl'
+    native_script.write_text(''.join(json.dumps(op) + '\n' for op in native_ops))
+    run_native(binary, native_script, out/'rust.jsonl', rust)
     native = [json.loads(line) for line in (out/'rust.jsonl').read_text().splitlines()]
     gates, positions = evaluate(recorded, native)
     # Positions use only the explicit range contract; raw trajectories remain below.

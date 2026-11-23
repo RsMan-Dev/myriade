@@ -585,7 +585,7 @@ impl Game<'_> {
         }
     }
     /// `GameEvent.Context.of(mob, state)`.
-    pub(super) fn mob_context(&mut self, id: u32, state: Option<BlockStateId>) -> Context {
+    pub(in crate::game) fn mob_context(&mut self, id: u32, state: Option<BlockStateId>) -> Context {
         self.ecs_mob_context(id, state)
     }
     /// `GameEvent.Context.of(mob, state)` for an ECS mob: its rider and its listening are read from P's components.
@@ -974,9 +974,7 @@ impl Game<'_> {
         // A mod block's sculk template (a catalyst spreading, a sensor's vibrations) is the
         // template's own: it waits while the block's mod is off.
         let state = self.world.block(key.0, key.1, key.2);
-        if self.native_authoritative()
-            && crate::game::code_block_owners::suppressed(self.pack.assets.registry, state)
-        {
+        if crate::game::code_block_owners::suppressed(self.pack.assets.registry, state) {
             return Ok(());
         }
         let time = self.world.game_time;
@@ -2132,7 +2130,6 @@ mod tests {
         use std::sync::Arc;
 
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.sculk_prepare();
             game.world
                 .chunks

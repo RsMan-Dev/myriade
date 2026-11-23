@@ -39,9 +39,16 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
     if !crate::brain::is_active(w, e, "rest") {
         return false;
     }
-    if w.get::<Sleeping>(e).is_some() {
-        // Frappé au lit : le villageois se réveille (`stop` retire `Sleeping`).
-        return !hurt_recently(w, e);
+    if let Some(&Sleeping(p)) = w.get::<Sleeping>(e) {
+        // `SleepInBed.canStillUse`: the home is still this bed, and the body lies above it (more than 0.4 up, within 1.14 of the
+        // bed's centre). Hurt in the bed: it wakes (`stop` retires `Sleeping`).
+        let centre = [f64::from(p[0]) + 0.5, f64::from(p[1]) + 0.5, f64::from(p[2]) + 0.5];
+        let lies = w.get::<crate::cow::Pos>(e).is_some_and(|at| {
+            let d = [at.0.x - centre[0], at.0.y - centre[1], at.0.z - centre[2]];
+            at.0.y > f64::from(p[1]) + 0.4 && d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < 1.14 * 1.14
+        });
+        let home = matches!(get(w, e, &crate::species::villager::HOME), Some(MemValue::Block(h)) if *h == p);
+        return home && lies && !hurt_recently(w, e);
     }
     let Some(p) = bed(w, e) else { return false };
     // `SleepInBed.checkExtraStartConditions`: the bed's centre within 2 blocks; short of it, the walk goes on (or starts again).

@@ -90,6 +90,7 @@ pub fn birth(w: &mut World, e: Entity, items: &Items) -> Option<Entity> {
     let baby = spawn_like(w, e, at.x, at.z, seed);
     crate::species::goat::inherit_screaming(w, baby, e, m.partner);
     w.entity_mut(baby).insert(GrowAt(now + GROWN));
+    crate::attr_mod::apply_load(w, baby);
     bed_for_child(w, e, baby);
     for p in [e, m.partner] {
         food_stock::digest(w, p);

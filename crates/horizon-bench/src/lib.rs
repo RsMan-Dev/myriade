@@ -62,7 +62,7 @@ pub struct Conditions {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub render_distance: Option<u32>,
+    pub view_distance: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub simulation_distance: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -7,14 +7,16 @@ use crate::locomotion::{fly, Medium};
 
 pub static DEF: Def = Def {
     name: "minecraft:ghast",
+    rules: &[crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), crate::rules::RuleEntry::new(&crate::leash::QUAD_HOLDER, &())],
     targets: &[Entry::new(&nearest_target::MODULE, 1, &nearest_target::Params { max_dy: Some(4.0), ..nearest_target::Params::PLAYER })],
     goals: &[
         Entry::new(&float_around::MODULE, 5, &float_around::Params::DEFAULT),
         Entry::new(&ghast_look::MODULE, 7, &ghast_look::Params::DEFAULT),
         Entry::new(&charged_shot::MODULE, 7, &charged_shot::Params::GHAST),
     ],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune]),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune, Cap::RefusedByMobs]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Float, free: true, ..fly::Params::DEFAULT }))],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

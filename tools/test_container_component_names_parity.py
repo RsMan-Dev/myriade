@@ -70,15 +70,13 @@ def main(argv=None):
                 command=['java','-Xmx3G','-Duser.timezone=UTC','-Dhorizon.parity.flat=true','-cp',cp,'dev.horizonlab.parity.VanillaCommandExecOracle',str(cwd/'universe'),str(original),str(output),str(runner.SEED)]
                 result=subprocess.run(command,cwd=cwd,stdout=log,stderr=subprocess.STDOUT,timeout=600)
                 world=cwd/'universe/harness'
+                assert result.returncode==0,'actual process/save boundary failed'
             else:
                 assert digest(binary)==seal
-                env=runner.lab.game_env(HORIZON_PLAYER_NAME='Player',HORIZON_COMMAND_SCRIPT=original,HORIZON_COMMAND_OUTPUT=output,HORIZON_API_DISCOVERY='http://127.0.0.1:9/')
-                command=[str(binary),'--resources',str(runner.lab.RESOURCES),'--world','harness','--seed',str(runner.SEED),'--radius','4']
-                result=runner.run_game(command,cwd=cwd,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=600)
+                runner.run_as_player(binary,original,output,None,cwd=cwd)
                 world=cwd/'saves/harness'
-        receipt['processes'].append({'stage':name,'started_utc':started,'finished_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'pid':None,'argv':command,'exit':result.returncode,'world':str(world),'output_rows':len(output.read_text().splitlines()) if output.exists() else None})
+        receipt['processes'].append({'stage':name,'started_utc':started,'finished_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'world':str(world),'output_rows':len(output.read_text().splitlines()) if output.exists() else None})
         (out/'restart-receipts.json').write_text(json.dumps(receipt,indent=2)+'\n')
-        assert result.returncode==0,'actual process/save boundary failed'
         rows=load(output);assert len(rows)==len(records(ops))
         if args.reference_only:admit(ops,rows)
         snapshot=disk(world,out/(name+'-disk.json'))

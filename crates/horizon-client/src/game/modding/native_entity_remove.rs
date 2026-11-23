@@ -372,6 +372,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn discard_mob_and_refuse_players_and_stale_handles() {
+        // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : le mob 12 entrerait en collision avec l'entité 12 de l'invité)
         use super::super::native_entity_refs::tests::with_game;
         use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;

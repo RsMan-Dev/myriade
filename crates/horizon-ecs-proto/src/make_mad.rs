@@ -1,6 +1,6 @@
 //! `AbstractHorse.makeMad`: a mount that refuses its rider rears (when its species rears: it has the `Stand` cycle) and makes its angry
 //! sound. The rule `angry` gives the sound of the species (`getAngrySound`; a species with none is silent and takes no rule). Nothing ticks.
-use crate::behaviours::random_stand::{Stand, Standing, STAND_TICKS};
+use crate::behaviours::random_stand::{Stand, Standing};
 use crate::cow::{now_of, Bounds, GrowAt};
 use crate::rules::{no_attrs, no_interact, params, Rule};
 use bevy_ecs::prelude::*;
@@ -33,15 +33,21 @@ pub static ANGRY: Rule = Rule {
     interact: no_interact,
 };
 
+/// `AbstractHorse.standIfPossible`: a mount that rears (it has the `Stand` cycle) rears for 20 ticks (`setStanding(20)`: the counter
+/// runs down 20 ticks, javap, not the random cycle's 19). Used by a hurt blow (`random_stand::hurt`) and by `make_mad`.
+pub fn stand_if_possible(w: &mut World, e: Entity) {
+    let now = now_of(w, e);
+    if w.get::<Stand>(e).is_some() {
+        w.entity_mut(e).insert(Standing { until: now + 20 });
+    }
+}
 /// `makeMad`: no effect while the mount already rears; else it rears for 20 ticks (`standIfPossible`) and says its sound.
 pub fn make_mad(w: &mut World, e: Entity) {
     let now = now_of(w, e);
     if w.get::<Standing>(e).is_some_and(|s| now < s.until) {
         return;
     }
-    if w.get::<Stand>(e).is_some() {
-        w.entity_mut(e).insert(Standing { until: now + STAND_TICKS });
-    }
+    stand_if_possible(w, e);
     let Some(a) = w.get::<CanBeAngry>(e).map(|a| a.0) else { return };
     let sound = if w.get::<GrowAt>(e).is_some() { a.baby } else { a.adult };
     let Some(b) = w.get::<Bounds>(e).map(|b| b.0) else { return };

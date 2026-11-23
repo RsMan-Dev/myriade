@@ -53,7 +53,6 @@ fn two_guests(game: &mut super::Game<'_>) -> (mpsc::Receiver<Out>, mpsc::Receive
         allow_flight: true,
         seed: 0,
         max_players: 3,
-        integrated: true,
         levels: game.level_shapes,
         level_seeds: game.levels.runtime.seeds(),
     };

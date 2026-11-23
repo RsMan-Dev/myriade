@@ -88,6 +88,7 @@ const MOVE_KIDS: &[Kid] = &[
 ];
 
 pub static DEF: Def = Def {
+    load_attrs: &[crate::attr_mod::LoadAttr { name: "movement_speed", base: None, when: crate::attr_mod::LoadWhen::Always }, crate::attr_mod::LoadAttr { name: "movement_speed", base: Some(f64::from(0.2f32)), when: crate::attr_mod::LoadWhen::BabyBonus }],
     name: "minecraft:piglin",
     targets: &[
         Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, alert_types: &["minecraft:piglin", "minecraft:piglin_brute"], ignoring: &["minecraft:piglin", "minecraft:piglin_brute"], ..hurt_by::Params::DEFAULT }),
@@ -96,8 +97,9 @@ pub static DEF: Def = Def {
     ],
     goals: &[
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
-        Entry::new(&convert_timer::MODULE, 0, &convert_timer::Params { into: "minecraft:zombified_piglin", after: 300 }),
+        Entry::new(&convert_timer::MODULE, 0, &convert_timer::Params { into: "minecraft:zombified_piglin", after: 300, drop_carried: true }),
         Entry::new(&walk_away::MODULE, 2, &walk_away::Params::DEFAULT),
+        Entry::new(&crate::behaviours::piglin_eat::MODULE, 3, &()),
         Entry::new(&flee_repellent::MODULE, 2, &flee_repellent::Params {
             blocks: &["minecraft:soul_campfire", "minecraft:soul_torch", "minecraft:soul_wall_torch", "minecraft:soul_lantern"],
             species: &[],
@@ -109,7 +111,7 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 0.6, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 7, &random_look::Params::DEFAULT),
-        Entry::new(&ambient_sound::MODULE, 8, &ambient_sound::Params { sounds: &["minecraft:entity.piglin.ambient"], min: 80, max: 160 }),
+        Entry::new(&ambient_sound::MODULE, 8, &ambient_sound::Params { sounds: &["minecraft:entity.piglin.ambient"], min: 80, max: 160, ..ambient_sound::Params::DEFAULT }),
     ],
     rules: &[
         // `Piglin.getBaseExperienceReward`: `xpReward` (5) as is; a baby keeps its loot and its experience (`Monster`).
@@ -118,6 +120,7 @@ pub static DEF: Def = Def {
         crate::rules::RuleEntry::new(&crate::loot::BABY_DROPS, &crate::loot::BabyDrops::MONSTER),
         crate::rules::RuleEntry::new(&crate::guard_alert::RULE, &crate::guard_alert::Params::PIGLIN),
         crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::PIGLIN),
+        crate::rules::RuleEntry::new(&crate::item_store::STORE, &crate::item_store::Slots::PIGLIN),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     brain: BrainDef {
@@ -187,5 +190,6 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &look_and_interact::BEHAVIOUR, activity: "idle", priority: 5, params: &(), needs: &[], duration: None, kids: &[] },
         ],
     },
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

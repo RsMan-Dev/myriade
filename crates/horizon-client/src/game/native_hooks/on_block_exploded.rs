@@ -18,12 +18,10 @@ impl Game<'_> {
         state: BlockStateId,
         explosion: &mod_api::ExplosionStart<'_>,
     ) {
-        if !self.is_logical_server()
-            || !crate::game::api_values::block_state::block_listens(
-                mod_api::HookId::OnBlockExploded,
-                state,
-            )
-        {
+        if !crate::game::api_values::block_state::block_listens(
+            mod_api::HookId::OnBlockExploded,
+            state,
+        ) {
             return;
         }
         let block_entity = self

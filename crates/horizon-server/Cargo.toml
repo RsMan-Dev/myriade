@@ -10,7 +10,7 @@ description = "Host a Horizon server: server.toml, the CLI and the supervisor th
 horizon-platform = { path = "../horizon-platform", features = ["server-files", "world", "mod-runtime-process"] }
 # Shared server configuration and launch command used by the native-mod launcher.
 horizon-server-launch = { path = "../horizon-server-launch" }
-# `horizon-server mcp`: the Model Context Protocol, shared with horizon-ctl and the launcher.
+# `horizon-server mcp`: the Model Context Protocol.
 horizon-mcp = { path = "../horizon-mcp" }
 # server.toml's [anticheat], which the game reads: checked here before every start.
 horizon-anticheat = { path = "../horizon-anticheat" }

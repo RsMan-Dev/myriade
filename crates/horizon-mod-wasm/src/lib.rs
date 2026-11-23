@@ -74,7 +74,6 @@ pub(crate) fn native_only_hook(name: &str) -> Option<&'static str> {
 use horizon_mod_package::dependencies;
 use horizon_mod_package::manifest::Manifest;
 use std::collections::BTreeMap;
-use std::path::Path;
 use std::sync::OnceLock;
 
 /// One wasm mod as installed: its manifest and its checked `mod.wasm`.
@@ -487,16 +486,12 @@ pub fn refusal(id: &str) -> Option<Refusal> {
 }
 
 /// Loads the wasm mods selected by the actual startup arguments, once at startup.
-/// `player_dir` is the client's already resolved options directory, not the shared game/cache
-/// directory. Dedicated startup reads properties in its game directory instead.
+/// The compile budget is read from the game directory's server.properties.
 /// Refusals are reported and published for the Mods page and content filtering.
-pub fn load_installed(
-    launch: &horizon_mod_package::selection::LaunchArguments,
-    player_dir: &Path,
-) -> Loaded {
+pub fn load_installed(launch: &horizon_mod_package::selection::LaunchArguments) -> Loaded {
     let game_dir = &launch.context.game_dir;
     let dev = &launch.context.dev_mods;
-    let budget = compile_budget::CompileBudget::read(launch, player_dir);
+    let budget = compile_budget::CompileBudget::read(launch);
     let mut cache = module_cache::ModuleCache::new(game_dir.join(module_cache::CACHE_DIR));
     if let Ok(budget) = budget.as_ref() {
         cache.budget = *budget;
@@ -998,7 +993,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let loaded = load_installed(&launch, &root);
+        let loaded = load_installed(&launch);
         assert!(loaded.mods.is_empty());
         assert_eq!(loaded.refused.len(), 2);
         assert!(loaded.refused.iter().all(|(id, refusal)| {
@@ -1021,7 +1016,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let loaded = load_installed(&launch, &root);
+        let loaded = load_installed(&launch);
         assert!(
             loaded.refused.iter().any(|(id, reason)| id == "bad_mixin"
                 && reason
@@ -1384,7 +1379,7 @@ mod mixed_install_tests {
             None,
         )
         .unwrap();
-        let loaded = load_installed(&launch, &root);
+        let loaded = load_installed(&launch);
         std::fs::remove_dir_all(root).unwrap();
         assert!(loaded.mods.is_empty());
         assert_eq!(loaded.refused.len(), 1);

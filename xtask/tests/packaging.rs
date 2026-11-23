@@ -1,4 +1,4 @@
-//! Exercise the real CLI packers, including their archive and exporter setup.
+//! Exercise the real CLI packer, including its archive and exporter setup.
 use std::{fs, path::Path, process::Command};
 
 fn git(root: &Path, args: &[&str]) {
@@ -16,7 +16,7 @@ fn git(root: &Path, args: &[&str]) {
 
 #[test]
 #[ignore = "daily"]
-fn client_and_server_layouts_require_and_ship_std() {
+fn server_layouts_require_and_ship_std() {
     let root = std::env::temp_dir().join(format!("xtask-packaging-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     for name in [
@@ -27,7 +27,6 @@ fn client_and_server_layouts_require_and_ship_std() {
         "research-lock.json",
         "LICENSE",
         "LICENSES/GPL-3.0.txt",
-        "packaging/PLAY.txt",
         "exporters/manifest.json",
     ] {
         let path = root.join(name);
@@ -50,35 +49,18 @@ fn client_and_server_layouts_require_and_ship_std() {
             "fixture",
         ],
     );
-    for target in [
-        "linux",
-        "linux-musl",
-        "windows",
-        "windows-arm64",
-        "macos",
-        "macos-x64",
-    ] {
+    for target in ["linux", "linux-musl"] {
         let source = root.join(target);
         fs::create_dir_all(&source).unwrap();
-        let suffix = if target.starts_with("windows") {
-            ".exe"
-        } else {
-            ""
-        };
-        for name in [
-            "horizon-client",
-            "horizon-ctl",
-            "horizon-prepare",
-            "horizon-server",
-        ] {
-            fs::write(source.join(format!("{name}{suffix}")), b"program").unwrap();
+        for name in ["horizon-client", "horizon-prepare", "horizon-server"] {
+            fs::write(source.join(name), b"program").unwrap();
         }
-        for task in ["package", "package-server"] {
+        for task in ["package-server", "package"] {
             let out = root.join(format!("{target}-{task}"));
             let run = || {
                 Command::new(env!("CARGO_BIN_EXE_xtask"))
                     .arg(task)
-                    .arg(source.join(format!("horizon-client{suffix}")))
+                    .arg(source.join("horizon-client"))
                     .arg(&out)
                     .current_dir(&root)
                     .output()
@@ -99,15 +81,7 @@ fn client_and_server_layouts_require_and_ship_std() {
                 b"wasm-member"
             );
             assert!(out.join("LICENSES/GPL-3.0.txt").is_file());
-            let engine = if task == "package" {
-                "horizon-client"
-            } else {
-                "horizon-engine"
-            };
-            assert_eq!(
-                fs::read(out.join(format!("{engine}{suffix}"))).unwrap(),
-                b"program"
-            );
+            assert_eq!(fs::read(out.join("horizon-engine")).unwrap(), b"program");
             assert!(out.join("exporters/manifest.json").is_file());
             fs::remove_file(source.join("horizon-wasm-std.wasm")).unwrap();
         }

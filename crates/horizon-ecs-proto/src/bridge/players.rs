@@ -11,6 +11,8 @@ pub struct PlayerFact {
     pub targetable: bool,
     /// The amplifier of the player's Hero of the Village effect, if it has one (the villagers' discount).
     pub hero: Option<i32>,
+    /// A spectator brings no chunk to the natural spawning and counts for no local cap (`ChunkMap.getPlayersCloseForSpawning`).
+    pub spectator: bool,
 }
 
 #[derive(Resource, Default)]

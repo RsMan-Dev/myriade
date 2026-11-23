@@ -112,7 +112,7 @@ pub(crate) use hit::Hit;
 use horizon_client::random_source;
 use horizon_client::hand_use::SwingAnimation;
 use mod_api::client::first_person::Hand;
-use resource_loader::{Loaded, PendingWorldEntry};
+use resource_loader::Loaded;
 use self::api_values::TryIntoApi;
 pub(crate) use api_values::{block_jump_factor, block_speed_factor, is_ladder};
 use horizon_client::spans::{startup, time as span};
@@ -182,52 +182,6 @@ use {
     },
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Screen {
-    Playing,
-    GameModeSwitcher,
-    /// Horizon's emote wheel (`game/cosmetics/emote_wheel.rs`): over the world, not pausing.
-    EmoteWheel,
-    Paused,
-    Options,
-    Chat,
-    Creative,
-    Inventory,
-    Dead,
-    /// The Statistics screen.
-    Stats,
-    /// The Advancements screen.
-    Advancements,
-    /// WorldOptionsScreen (game/network/lan_screen.rs).
-    WorldOptions,
-    /// Play with Friends, from the pause menu's Friends button
-    /// (`friends_screen`, game/network/friends.rs).
-    Friends,
-    /// `SocialInteractionsScreen` (`social_screen`, game/network/social.rs).
-    Social,
-    /// CommandBlockEditScreen (game/administration/command_blocks.rs).
-    CommandBlock,
-    /// A game master block's edit screen (game/interface/block_editor.rs).
-    BlockEditor,
-    /// ServerLinksDialogScreen: a server's links (game/network/server_links.rs).
-    ServerLinks,
-    /// ConfirmLinkScreen for a server link (game/network/server_links.rs).
-    ConfirmLink,
-    /// DialogScreen.WarningScreen: the note about custom screens.
-    DialogWarning,
-    /// WinScreen: the end poem and the credits (game/interface/win.rs).
-    Win,
-    /// DebugOptionsScreen, F3+F6 (game/interface/debug_options.rs).
-    DebugOptions,
-    /// A screen of a native mod's own (`mod_screen_open`): it draws and
-    /// takes its input through the screen hooks.
-    Mod,
-    /// PvP & HUD's widget editor (game/interface/hud_editor.rs).
-    HudEditor,
-    /// Horizon Studio script screen (`studio_screen_open`): canvas draws
-    /// itself, takes input through the screen hooks, does not draw chat.
-    Studio,
-}
 /// The vanilla `state` a `transformer` table entry offers to `ability`: hoe and
 /// shovel tables have one action each; the axe's strip, scrape and wax-off lists
 /// are one untagged list in `BlockTransformers.bootstrap`, so its particle names it.
@@ -366,8 +320,6 @@ struct GameLevel<'w> {
     /// `Level.isClientSide`: a client's copy of the level (a guest of a LAN
     /// world, a window on its server thread, a dedicated server's client).
     client_side: bool,
-    /// Only the integrated or dedicated server dispatches native observations.
-    native_authoritative: bool,
     native_player: Option<u128>,
     /// The acting player's entity id, beside `native_player`.
     native_player_entity: Option<i32>,
@@ -646,14 +598,6 @@ fn portal_ticket_can_expire(
         && (-r..=r).all(|dz| (-r..=r).all(|dx| world.chunks.contains_key(&(x + dx, z + dz))))
 }
 
-/// The icon the Select World list shows for the world in play
-/// (`GameRenderer.tryTakeScreenshotIfNeeded`): its path in the save, and when
-/// the last frame grab was asked for.
-struct WorldIcon {
-    path: PathBuf,
-    last_attempt: Option<Instant>,
-}
-
 #[derive(Debug, PartialEq)]
 struct QueuedLevelEvent {
     kind: i32,
@@ -680,21 +624,8 @@ struct TickScratch {
 }
 
 struct Game<'a> {
-    /// Shared with an integrated server; `collision` and `motion` borrow from it.
+    /// Shared; `collision` and `motion` borrow from it.
     res: Arc<Resources>,
-    pending_entry: Option<PendingWorldEntry>,
-    /// When `resourcepacks/` was last looked at for the open pack screen, and what it held
-    /// (`watch_pack_folder`).
-    pack_folder: Option<(
-        std::time::Instant,
-        Vec<(String, u64, Option<std::time::SystemTime>)>,
-    )>,
-    /// A server's resource packs (game/world/server_packs.rs).
-    server_packs: server_packs::ServerPackState,
-    /// The link a chat click asks to open (`ConfirmLinkScreen`).
-    link_prompt: Option<String>,
-    /// Single player's server while it loads its world (`Minecraft.doWorldLoad`).
-    integrated_starting: Option<integrated::Starting>,
     collision: &'a BlockCollisionRegistry<'a>,
     motion: &'a MotionResources,
     /// This world's frozen damage definitions and reloadable tag snapshot.
@@ -705,10 +636,6 @@ struct Game<'a> {
     data_map_registries: Vec<String>,
     /// This game's resource packs (`reload_packs` replaces them).
     pack: PackResources,
-    instance_groups: std::cell::RefCell<native_instance_groups::InstanceGroupStorage>,
-    /// `LocalPlayer.itemActivation`: the totem flying up to the screen.
-    item_activation: horizon_client::item_activation::ItemActivation,
-    weather_parameters: horizon_client::weather::ParameterCache,
     world: World,
     /// The biome table the world plays with: the game's own with the world's
     /// packs over it (`Biomes::with_packs`), `None` before a world opens.
@@ -716,30 +643,13 @@ struct Game<'a> {
     /// `world_biomes` as the biome files made it, before `native_biome_colors`.
     world_biomes_base: Option<Arc<Biomes>>,
     streaming: Streaming,
-    lod_source_attempted: bool,
-    lod_observe: horizon_client::fast_hash::FxHashSet<(i32, i32)>,
-    /// The server level far terrain keeps the chunks of.
-    lod_level: Option<String>,
-    /// Beacon beam sections kept after their chunk unloads, so far terrain
-    /// LOD still draws their beams (`beacon_geometry` refreshes them).
-    far_beacons: HashMap<(i32, i32, i32), Vec<(u32, i32)>>,
-    /// The detail revision, centre and radius `Lod::update` last had covered for.
-    lod_covered_at: Option<(u64, (i32, i32), i32)>,
-    /// Whether the view's columns have all arrived, and how new it is: large
-    /// translucent pages wait for both before they shrink (`set_terrain_loading`).
-    view_arrival: horizon_client::streaming::ViewArrival,
     options: Options,
     settings: Settings,
     player: Option<PlayerMotion>,
     spawn: Option<Vec3>,
     clock: FixedStep,
     previous_position: Vec3,
-    /// `yRotO` / `xRotO` of the local player: the view at the start of the tick,
-    /// moved by `Entity.turn` and a boat's `clampRotation` as the view is
-    /// (`LocalPlayer.getRopeHoldPosition` eases the held lead from it).
-    rope_rot_old: (f32, f32),
     eye: f32,
-    previous_eye: f32,
     yaw: f32,
     pitch: f32,
     inventory: Vec<Option<ItemStack>>,
@@ -749,9 +659,6 @@ struct Game<'a> {
     craft_size: usize,
     /// The crafting table the 3x3 grid belongs to (`CraftingMenu.access`).
     craft_table: Option<[i32; 3]>,
-    /// `lastQuickMoved`: what the last Shift click moved, which a Shift
-    /// double click moves every stack of.
-    last_quick_moved: Option<ItemStack>,
     /// Open container block entity, if any.
     container: Option<(i32, i32, i32)>,
     /// The open container and the slots it had when it opened:
@@ -780,57 +687,10 @@ struct Game<'a> {
     left: bool,
     right: bool,
     cursor: (f32, f32),
-    captured: bool,
-    /// The window held the pointer when it lost focus: the system lets a
-    /// grabbed pointer go with the focus, and a window that comes back still
-    /// wanting it takes it again (`MouseHandler.grabMouse`, whose grab
-    /// outlives the window's focus).
-    regrab_on_refocus: bool,
-    /// This view's corner in its shared window; cursor warps include the offset.
-    view_at: [u32; 2],
-    /// Splitscreen: this player's own Microsoft account session (one of the launcher's other
-    /// accounts), in place of the process's (P1's) for its connections and skin.
-    split_auth: Option<std::sync::Arc<horizon_client::auth::AuthSession>>,
-    focused: bool,
-    /// The window's last focus change during a scripted run, applied once the run ends.
-    focus_after_run: Option<bool>,
-    /// When the window lost focus, while it is still without
-    /// (`Minecraft.lastActiveTime`: pausing waits 500 ms).
-    focus_lost: Option<Instant>,
-    /// An agent moved the mouse (`mouse-move`) since the pointer was last
-    /// grabbed or released: its motion turns the view like a grabbed pointer.
-    agent_pointer: bool,
-    /// A world screen with the pointer captured was open last frame.
-    was_playing: bool,
     debug: bool,
-    /// `horizon-ctl gpu-passes`: time Horizon's own passes on the GPU with F3 shut.
-    gpu_passes: bool,
-    /// `horizon-ctl gpu-passes detail`: also dispatch times and counters.
-    gpu_pass_detail: bool,
-    screen: Screen,
-    /// Avoid an endless rebuild loop if the new device is lost as well.
-    last_device_recovery: Option<Instant>,
-    /// Horizon Extras' dynamic lights this frame (`dynamic_lights.rs`), and how brightly each
-    /// item glows (built the first time the extra is on).
-    dynamic_lights: Vec<[f32; 4]>,
-    /// Which entity this frame's entity vertices belong to (`Frame::entity_motion`).
-    entity_motion: std::cell::RefCell<Vec<(u32, u64)>>,
-    /// The GPU-posed vertex count at each of `entity_motion`'s marks (`Frame::entity_motion_posed`).
-    entity_motion_posed: std::cell::RefCell<Vec<u32>>,
     started: Instant,
     previous: Instant,
-    /// FramerateLimitTracker.latestInputTime.
-    last_input: Instant,
     frames: u64,
-    /// `item_level` for one frame, game time, day time and dimension.
-    item_level_cache: std::cell::RefCell<
-        Option<(
-            (u64, i64, i64, &'static str),
-            horizon_assets::item_model::LevelState,
-        )>,
-    >,
-    /// Frames drawn with the player in the world, for `--world-frames`.
-    world_frames: u64,
     ticks: u64,
     /// What ends the game with an error; kept as it is, so main can tell a debug crash.
     error: Option<Box<dyn std::error::Error>>,
@@ -848,17 +708,8 @@ struct Game<'a> {
     /// The side, registries and mod settings of this game's resource generation, which
     /// its menus lend to the hooks they fire inside a loop; rebuilt by `refresh_loop_context`.
     loop_context: Arc<horizon_world::native_load_context::LoopContext>,
-    setting_overrides: std::cell::RefCell<std::collections::BTreeMap<(String, String), String>>,
     /// The native damage hooks every level of this game lends to its hits.
     damage_hooks: horizon_client::health::DamageHooks,
-    /// Minecarts whose `MinecartSoundInstance` is playing.
-    cart_sounds: HashSet<u32>,
-    /// The minecart the riding sounds were started for (`LocalPlayer.startRiding`).
-    riding_cart_sounds: Option<u32>,
-    /// `LocalPlayer.wasFallFlying` for the elytra's flying sound.
-    was_fall_flying: bool,
-    /// Remote guardian eye targets reused between ticks.
-    guardian_look_scratch: Vec<(usize, [f64; 3])>,
     next_entity: u32,
     /// The last entity id when this level's entity pass began: an item with a
     /// later one was added during that pass and first ticks on the next
@@ -873,24 +724,12 @@ struct Game<'a> {
     pickups: pickups::Pickups,
     /// Lecterns whose page-turn pulse is running (ticks left).
     lectern_pulses: Vec<((i32, i32, i32), i32)>,
-    /// LevelLoadingScreen.smoothedProgress while the player is not placed yet.
-    loading_progress: f32,
-    /// `CreateWorldScreen.openCreateWorldScreen`'s data read, on a worker,
-    /// while the title says `createWorld.preparing`.
-    creation_job: Option<std::thread::JoinHandle<std::result::Result<(), String>>>,
-    /// When `loading_progress` last eased (the server thread's load, 50 ms a step).
-    loading_progress_at: Option<std::time::Instant>,
-    /// A received packet started or ended a piston's move: `poll_remote`
-    /// syncs the moving pistons once its packets are handled, not once per packet.
-    moving_pistons_stale: bool,
     /// The world spawn search's origin chunk and fallback height, once known.
     spawn_origin: Option<((i32, i32), i32)>,
     /// `native_create_spawn_position` was asked, and a mod chose the spawn.
     spawn_hook_fired: bool,
     spawn_hook_cancelled: bool,
     spawn_spiral: horizon_client::world_spawn::ChunkSpiral,
-    /// A new player's spawn search, while its candidates' chunks load.
-    player_spawn: Option<horizon_client::world_spawn::PlayerSpawnFinder>,
     /// Chunks a respawn search waits for this tick, kept loading beside the
     /// player's own (taken by `update_world`).
     spawn_wait: Vec<(i32, i32)>,
@@ -920,11 +759,6 @@ struct Game<'a> {
     /// The crossbow charge's start and middle loading sounds played (`game/items/crossbow.rs`):
     /// each charge plays each once, however far a mod's tick moved the charge at a time.
     crossbow_sounds: [bool; 2],
-    /// Hud.scopeScale (spyglass overlay size).
-    scope_scale: f32,
-    /// The save a native mod asked the title to open (`request_world`), taken by the title's next frame, which
-    /// asks the player first.
-    native_world_request: Option<native_world_request::Request>,
     /// Armor slots: head, chest, legs, feet.
     armor: [Option<ItemStack>; 4],
     /// The off hand (Inventory slot 40, saved as slot 150; menu slot 504 here).
@@ -960,15 +794,9 @@ struct Game<'a> {
     /// Swings of uses whose client predicts them (`SwingSource.PREDICTED`):
     /// a server does not send these back to the player who swung.
     predicted_swings: u32,
-    visible_hands: [(usize, Option<ItemStack>); 2],
-    /// Whether the main and off hand's slots were set to a new stack that
-    /// the hand doesn't show yet (`Game::hand_stack_replaced`).
-    hands_replaced: [bool; 2],
     /// `Minecraft`'s attack handling, attack clicks since the last tick and
     /// the attack strength tickers the hand reads.
     hand_strength: horizon_client::attack_strength::AttackStrength,
-    dragging: bool,
-    flash: u32,
     /// The head of the bed while sleeping; the visual timer also survives waking.
     sleeping: Option<[i32; 3]>,
     sleep_timer: u32,
@@ -1023,27 +851,14 @@ struct Game<'a> {
     painting_variants: paintings::PaintingVariants,
     /// Worn armor as of the last equipment check (frost walker).
     location_armor: [Option<ItemStack>; 4],
-    /// The yaw and pitch a native mod's camera drew the last frame from (`native_camera_pose`),
-    /// none when it drew from vanilla's.
-    posed_rotation: Option<(f32, f32)>,
-    /// The roll, in degrees, a native mod's camera drew the last frame with (`native_camera_roll`),
-    /// 0 when none rolled it.
-    posed_roll: f32,
     /// `LocalPlayer.postEffects`: the chains the server has the screen run
     /// (`ClientboundPostEffectsPacket`), in order.
     post_effects: Vec<String>,
-    /// `GameRenderer.spectatedEntityPostEffect` (`checkEntityPostEffect`).
-    spectated_post_effect: Option<&'static str>,
-    /// `LocalPlayer.experienceDisplayStartTick`: (last progress, seen a change, tick).
-    experience_display: (f32, bool, u64),
     /// The boats a mob's lead can hang on, for this tick's mob ticks.
     /// The boats and minecarts `native_vehicle_moved` follows (lan_vehicles.rs).
-    /// Songs playing from jukeboxes (tracked sound handles).
-    jukebox_sounds: HashMap<(i32, i32, i32), u64>,
     maps: maps::Maps,
     text_displays: std::collections::HashMap<i32, text_displays::RemoteTextDisplay>,
     interactions: std::collections::HashMap<i32, interactions::RemoteInteraction>,
-    text_display_vertices: usize,
     /// `ProfileResolver.Cached`: `Dynamic` profiles (name- or id-only heads
     /// and mannequins) resolve through the services in the background.
     skin_profiles: RefCell<horizon_client::skins::Resolver>,
@@ -1076,7 +891,7 @@ struct Game<'a> {
     /// Monster spawners' display mobs (`game/mobs/spawner.rs`).
     spawners: spawner::SpawnerState,
     /// Reused candidate buffers for natural spawning.
-    spawn_scratch: natural_spawning::SpawnScratch,
+    spawn_scratch: spawn_level::SpawnScratch,
     hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
     /// The open `host.transaction`s, innermost last (`transactions.rs`).
     transactions: transactions::OpenTransactions,
@@ -1093,21 +908,8 @@ struct Game<'a> {
     trial_spawner_tick_positions: Vec<horizon_client::block_entities::Pos>,
     /// The `[[native.loop]]` slots' state, per published loop (`published_loops.rs`).
     loop_states: published_loops::LoopStates,
-    /// The Agent Control setting the socket was last opened or closed for (`agent_settings`).
-    agent_control_on: bool,
     /// The control endpoint `horizon-server` talks to (`--control-socket`).
     control: Option<horizon_client::control::Server>,
-    /// When an agent's last command came.
-    agent_last: Option<Instant>,
-    /// This thread's and all threads' allocation counts at the last rendered frame.
-    alloc_mark: Option<(
-        horizon_threads::alloc_count::Counts,
-        horizon_threads::alloc_count::Counts,
-    )>,
-    /// This play session's frame and tick times, for opt-in performance statistics.
-    pending_bench: Option<(Instant, std::sync::mpsc::Sender<String>, bool)>,
-    /// The PvP & HUD options' state (`game/entities/pvp.rs`).
-    pvp: pvp::PvpState,
     /// Horizon mods (`game/modding/mods/mod.rs`), none running unless turned on.
     mods: mods::ModsState,
     /// Every item and recipe, for mods (`game/modding/native_recipes.rs`), made once.
@@ -1132,12 +934,6 @@ struct Game<'a> {
     events: events::Events,
     /// `HORIZON_TICK_SCRIPT`'s scenario (game/world/tick_script.rs).
     tick_script: tick_script::TickScript,
-    /// The overworld's last `sky_darken` and its inputs (time, rain, thunder).
-    sky_darken_memo: std::cell::Cell<Option<((Dim, i64, u32, u32), i32)>>,
-    /// The last water plane `water_plane` found, kept while none is in reach.
-    water_plane_memo: std::cell::Cell<Option<f32>>,
-    /// The camera's block and the second `water_plane` last scanned at.
-    water_plane_scan: std::cell::Cell<Option<([i32; 3], i64)>>,
     persist: persist::EntityMemory,
     /// Missing profession IDs already reported for this world session.
     missing_professions: HashSet<String>,
@@ -1146,58 +942,36 @@ struct Game<'a> {
     /// Typed per-level membership follows dimensions, not the temporary world swap.
     attachment_indexes: attachment_index::Indexes,
     /// Connected to a server: the world comes from the network (game/network/remote/mod.rs).
-    /// The current connection came from Realms (retained for reconnect).
-    realm_session: bool,
     /// The server session: registries, rules, clocks, difficulty (game/administration/session_state.rs).
     session: session_state::SessionState,
     /// This world is open to the network (game/lan.rs).
     lan: Option<lan::LanHost>,
-    /// Single player's server thread, which `remote` is connected to.
-    integrated: Option<integrated::Integrated>,
     /// The shapes of the open world's levels, from its dimension types.
     level_shapes: horizon_client::chunk::LevelShapes,
-    /// This game is that server thread's (game/world/integrated.rs).
-    serving: Option<integrated::Serving>,
     command_block_screen: Option<command_blocks::CommandBlockScreen>,
     /// `StructureTemplateManager.structureRepository`: the templates in memory
     /// by id, a miss included (game/administration/structure_blocks.rs).
     structure_templates: HashMap<String, Option<structure_blocks::TemplateEntry>>,
-    structure_spawns: horizon_client::mobs::spawn_selection::StructureSpawns,
+    structure_spawns: horizon_client::mobs::spawn_place::StructureSpawns,
     /// The game tests read so far, by id (the test instance registry).
     test_defs: std::cell::RefCell<HashMap<String, Option<test_instances::TestDef>>>,
     /// `test_defs` holds the world's whole test instance registry
     /// (`snapshot_test_defs`), so a miss is final.
     test_defs_snapshot: bool,
-    /// `GameTestBlockHighlightRenderer.markers`: block, text, removal time.
-    test_highlights: HashMap<(i32, i32, i32), (String, std::time::Instant)>,
     /// `GameTestTicker.SINGLETON`: the game tests running on this server.
     game_tests: game_tests::GameTests,
-    /// `Minecraft.gpuUtilization`: the last timed frame's GPU time over its
-    /// CPU time, in percent.
-    gpu_utilization: f64,
-    /// `ServerChunkCache.lastSpawnState` of each level: its spawnable chunks
-    /// and each `MobCategory`'s count.
-    spawn_counts: HashMap<Dim, (i32, [i32; 8])>,
     /// The natural spawning policy mods set on each level (`LevelRef::set_spawn_limits`,
     /// `set_spawn_flags`); a level with none spawns as vanilla. Kept while the world is open.
-    spawn_policies: HashMap<mod_api::DimensionKey, natural_spawning::SpawnPolicy>,
+    spawn_policies: HashMap<mod_api::DimensionKey, spawn_level::SpawnPolicy>,
     /// The passages mods registered in each level, and a client's copy (`native_passages.rs`).
     passages: native_passages::Passages,
-    death_focus: Option<u8>,
     /// MultiPlayerGameMode.previousLocalPlayerMode (F3+N goes back to it).
     previous_mode: Option<horizon_client::command::args::GameMode>,
-    gamemode_switcher: Option<horizon_client::game_mode_switcher::GameModeSwitcher>,
-    /// The game is handling a key, mouse or typed-text event, from the window or the
-    /// control socket: the only time a mod reaches the clipboard (`with_user_input`).
-    user_input: std::cell::Cell<bool>,
     /// The world was saved for the application ending (`save_for_exit`).
     saved_for_exit: bool,
     pending_save: Option<saving::ClosingSave>,
     /// Scheduled end of the server tick (`MinecraftServer.haveTime`).
     server_tick_deadline: Option<Instant>,
-    /// The world list's icon in progress (`GameRenderer.tryTakeScreenshotIfNeeded`):
-    /// `None` without a local world, or once the save has its icon.png.
-    world_icon: Option<WorldIcon>,
     /// The block a guest is acting on (game/network/lan_actions/interaction.rs).
     forced_hit: Option<Hit>,
     /// `Minecraft.hitResult` while the clicks of a tick act (game/network/remote/mod.rs
@@ -1213,7 +987,6 @@ struct Game<'a> {
     /// +2): the pick helpers' `&self` reach.
     entity_reach: f64,
     block_reach: f64,
-    client_targeting: std::cell::Cell<mod_api::ClientTargeting>,
     /// The part of a right click a guest's packet asks for (game/network/lan_actions/interaction.rs).
     guest_use: Option<GuestUse>,
     /// The last `use_hand` that ended the click did so with `FAIL`, which
@@ -1356,12 +1129,7 @@ struct Game<'a> {
     /// `BrushableBlockEntity`'s brush counts of the blocks being brushed.
     brushing: brush::Brushing,
     border: horizon_client::worldborder::WorldBorder,
-    /// The camera's 16-block section when the wall was last invalidated.
-    border_section: Option<[i32; 3]>,
     adv: advancements::AdvState,
-    restore_player_state: bool,
-    /// The local player as a model (third person, the inventory).
-    player_model: Option<Mob>,
     block_entity_tick_key: Option<block_entity_tick_items::Key>,
     block_entity_tick_items: Option<Box<block_entity_tick_items::Scope>>,
     wasm_dispatch_failures: std::rc::Rc<std::cell::Cell<u64>>,
@@ -1655,7 +1423,7 @@ impl Game<'_> {
         let (origin, dir) = self.aim()?;
         // GameRenderer.pick: the block ray runs out to the larger of the two
         // interaction ranges; filterHitResult then drops a hit past the block's.
-        self.clip_targeting_ray(origin, dir, self.block_reach.max(self.entity_reach))
+        self.clip_ray(origin, dir, self.block_reach.max(self.entity_reach))
             .filter(|hit| {
                 let distance: [f64; 3] = std::array::from_fn(|i| hit.point[i] - origin[i]);
                 distance.iter().map(|v| v * v).sum::<f64>() <= self.block_reach.powi(2)
@@ -1970,7 +1738,6 @@ impl Game<'_> {
             golem_chests.push(key);
             golem_chests.extend(self.chest_other_half(key));
         }
-        let native_authoritative = self.native_authoritative();
         let environment = self.res.environment_of(&self.dimension_type().id);
         let other_entities = entity::entity_lists_of!(self, without_carts);
         let mut level = GameLevel {
@@ -2030,7 +1797,6 @@ impl Game<'_> {
             open_containers: &open_containers,
             golem_chests: &golem_chests,
             client_side: false,
-            native_authoritative,
             native_player: self.lan_acting_uuid,
             native_player_entity: self.lan_acting_entity.map(|id| id as i32),
             debug: self.world_debug,
@@ -2101,8 +1867,7 @@ impl Game<'_> {
     // A wasm mod's staged internals table calls this; nothing in Horizon does.
     #[allow(dead_code)]
     fn level_can_survive(&mut self, pos: [i32; 3], state: BlockStateId) -> bool {
-        if !self.is_logical_server()
-            || !self.world.loaded(pos[0], pos[2])
+        if !self.world.loaded(pos[0], pos[2])
             || !self.world.shape.contains_y(pos[1])
             || self.pack.assets.registry.state(state).is_none()
         {
@@ -2184,18 +1949,19 @@ impl Game<'_> {
                 // read from the ECS fight: its FightView has no watchers.
                 dragon: None,
                 viewed: self.viewed_tickets(),
-                view_distance: self.settings.render_distance.clamp(2, 32),
+                view_distance: self.settings.view_distance.clamp(2, 32),
                 simulation_distance: self.settings.simulation_distance.max(2),
             }
         });
         // The levels' changes are kept only for a listener, so that a tick
         // with none looks at no chunk.
         self.tickets.record_changes(
-            self.is_logical_server()
-                && mod_api::__private::listened(mod_api::HookId::ChunkTicketLevelUpdated),
+            mod_api::__private::listened(mod_api::HookId::ChunkTicketLevelUpdated) || self.ecs.is_active(),
         );
         self.tickets.update(sources);
-        self.run_chunk_ticket_level_updates();
+        let changes = self.tickets.take_changes();
+        self.ecs_ticket_levels_changed(&changes);
+        self.run_chunk_ticket_level_updates(changes);
     }
     /// `ServerLevel.startTickingChunk`: a loaded chunk's saved ticks are
     /// scheduled from the game time at which it becomes a ticking chunk
@@ -3109,7 +2875,7 @@ impl Game<'_> {
         // (`guest_stop_digging`), never breaking it on its own count. Breaking it here would
         // take the block from under the player's crack before the player's client predicts the
         // break, so it gets neither particles nor sound.
-        if m.progress >= 1.0 && (self.lan_acting.is_none() || m.ticks == 1) {
+        if m.progress >= 1.0 && m.ticks == 1 {
             let pos = m.pos;
             self.mining = None;
             self.break_block(pos)?;
@@ -3308,8 +3074,6 @@ impl Game<'_> {
         self.update_chunk_tickets();
         self.score_destroyed_entities();
         horizon_client::spans::time("tick_effects", || self.tick_effects(running));
-        // The window's own ticks: a game that is not a logical server runs them, as it always did.
-        let window = !self.is_logical_server();
         // Player.tick's ItemCooldowns.tick for the window's player (a
         // server's players count theirs down in `tick_guests`).
         self.shield_cooldown = self.shield_cooldown.saturating_sub(1);
@@ -3400,9 +3164,6 @@ impl Game<'_> {
         if let Some(log) = self.world.block_log.as_mut() {
             log.extend(held);
         }
-        if window {
-            horizon_client::spans::time("tick_hand", || self.tick_hand());
-        }
         horizon_client::spans::time("tick_sleep", || self.tick_sleep());
         span("sleep_status", || self.announce_sleep_status());
         span("sleep_status", || self.free_left_beds());
@@ -3424,12 +3185,10 @@ impl Game<'_> {
             horizon_client::spans::time("tick_sculk_blocks", || self.tick_sculk_blocks())?;
         }
         if running {
-            if !window {
-                // The bells' and conduits' server tickers (not while paused or frozen).
-                horizon_client::spans::time("tick_block_entity_servers", || {
-                    self.tick_block_entity_servers()
-                });
-            }
+            // The bells' and conduits' server tickers (not while paused or frozen).
+            horizon_client::spans::time("tick_block_entity_servers", || {
+                self.tick_block_entity_servers()
+            });
         }
         // ServerLevel.tick's `entityManager.tick()`, frozen or not, after every
         // block entity ticker (the bells, conduits and gateways above too): the
@@ -3669,7 +3428,7 @@ impl Game<'_> {
         self.damage_tag_generation = self.damage_tag_generation.wrapping_add(1);
         self.resolve_parts()?;
         // A code-mod switch can have rebuilt the root since `Game::new`.
-        self.structure_spawns = horizon_client::mobs::spawn_selection::StructureSpawns::load(&root);
+        self.structure_spawns = horizon_client::mobs::spawn_place::StructureSpawns::load(&root);
         // Native tag reads use the lock to tell that the tag tables are ready.
         self.session_lock = Some(session_lock);
         // Keep the no-pack preload; a world's packs replace it atomically.
@@ -3698,7 +3457,6 @@ impl Game<'_> {
         self.sync_recipe_content();
         reset_world_progress(&mut self.adv, &mut self.stats);
         self.prefetch_advancement_tree(&stack);
-        self.restore_player_state = true;
         self.rand_sequences = rand_sequences;
         // ServerLevel.getWorldBorder: the level in place reads its own saved
         // border when it is made, before any command (the parked levels read
@@ -3759,12 +3517,6 @@ impl Game<'_> {
         book.recipes.retain(|r| index.contains(r));
         book.to_be_displayed.retain(|r| index.contains(r));
         self.enter_opened_dim(dim);
-        // LevelStorageAccess.getIconFile: this save's icon.png is what the
-        // Select World list shows.
-        self.world_icon = Some(WorldIcon {
-            path: save_root.join("icon.png"),
-            last_attempt: None,
-        });
         self.world_flat = horizon_client::save::WorldGen::read(&save_root)
             .is_some_and(|w| w.preset == horizon_client::save::WorldPreset::Flat);
         self.world_debug = horizon_client::save::WorldGen::read(&save_root)
@@ -3786,7 +3538,6 @@ impl Game<'_> {
         self.spawn_hook_fired = false;
         self.spawn_hook_cancelled = false;
         self.spawn_spiral = Default::default();
-        self.player_spawn = None;
         self.creatures.reset_trader();
         self.creatures.cat = Default::default();
         self.creatures.custom_spawners.clear();
@@ -3807,8 +3558,7 @@ impl Game<'_> {
         };
         self.carried = None;
         self.using = None;
-        self.clear_lod();
-        let facts = self.dimension_type_of(dim);
+        let facts =self.dimension_type_of(dim);
         self.streaming.sky_light = facts.height.has_skylight;
         self.load_world_state()?;
         self.native_world_opened(dim);
@@ -3821,9 +3571,7 @@ impl Game<'_> {
         self.session_lock = None;
         self.clear_world_parts();
         self.world_adopted = false;
-        self.world_icon = None;
         horizon_client::crash::clear_detail("World");
-        self.item_activation.reset();
         self.bosses = Default::default();
         self.streaming.paused = true;
         self.world = Game::world_for_mods(self.res.facts().air, 0);
@@ -3832,7 +3580,6 @@ impl Game<'_> {
         self.sleep_timer = 0;
         self.player_beds.clear();
         self.clear_entities();
-        self.clear_lod();
         // Clear sync data (registries, dialog tags) so dialogs don't leak
         // between worlds.
         lan::sync::forget_sync_data();
@@ -4889,7 +4636,7 @@ impl Game<'_> {
         self.level.end_clock = Some(self.world.end_clock);
         // A server has no player of its own; `enter_guest` puts one in
         // `self.player` only while a command reads it.
-        if self.player.is_none() && self.options.dedicated.is_some() {
+        if self.player.is_none() {
             return;
         }
         self.level.selected_slot = self.selected as i32;
@@ -4901,8 +4648,6 @@ impl Game<'_> {
             .map(|h| self.ridden_by_others(&h.hub.guests, self.dim.id(), None, false))
             .unwrap_or_default();
         let vehicle = self.parent_vehicle_tag(self.riding, &others);
-        // Only the local player's file is this one's to rewrite.
-        let local = self.serving.is_none() && self.options.dedicated.is_none();
         let level = &mut self.level;
         level.creative = self.creative;
         level.game_mode = mode;
@@ -4923,11 +4668,6 @@ impl Game<'_> {
                     .get_or_insert_with(|| horizon_core::nbt::Tag::Compound(Default::default()));
                 if let horizon_core::nbt::Tag::Compound(map) = extra {
                     map.insert("RootVehicle".into(), tag);
-                }
-            }
-            None if local && self.pending_vehicle.is_none() => {
-                if let Some(horizon_core::nbt::Tag::Compound(map)) = &mut level.player_extra {
-                    map.remove(&"RootVehicle".into());
                 }
             }
             None => {}
@@ -5117,7 +4857,6 @@ impl<'a> Game<'a> {
         pack: PackResources,
         options: Options,
         settings: Settings,
-        audio: Audio,
     ) -> Result<Self> {
         let phase = match Self::mod_phase_for_construction() {
             mod_api::__private::ModPhase::Packages if cfg!(test) => {
@@ -5142,64 +4881,43 @@ impl<'a> Game<'a> {
         streaming.paused = true;
         let level = Level::default();
         let save = Arc::new(SaveDir::new(
-            std::env::current_dir()?
-                .join("saves")
-                .join(".horizon-title"),
+            std::env::current_dir()?.join("saves"),
             horizon_client::save::LevelShape::OVERWORLD,
         ));
         let world = Game::world_for_mods(res.facts().air, 0);
-        let creative = options.creative;
         let inventory = vec![None; 36];
         let now = Instant::now();
-        let look = options.look;
         let resource_source = pack.source.clone();
         let mut game = Game {
-            structure_spawns: horizon_client::mobs::spawn_selection::StructureSpawns::load(
+            structure_spawns: horizon_client::mobs::spawn_place::StructureSpawns::load(
                 &options.resources,
             ),
             world_biomes: None,
             world_biomes_base: None,
             res: res.clone(),
-            pending_entry: None,
-            pack_folder: None,
-            server_packs: Default::default(),
-            link_prompt: None,
-            integrated_starting: None,
             collision: res.collision(),
             motion: res.motion(),
             health_resources: res.motion().health.clone(),
             damage_tag_generation: 1,
             data_map_registries: Vec::new(),
             pack,
-            instance_groups: Default::default(),
-            item_activation: Default::default(),
-            weather_parameters: Default::default(),
             world,
             streaming,
-            lod_source_attempted: false,
-            far_beacons: HashMap::new(),
-            lod_observe: Default::default(),
-            lod_level: None,
-            lod_covered_at: None,
-            view_arrival: Default::default(),
             options,
             settings,
             player: None,
             spawn: None,
             clock: FixedStep::default(),
             previous_position: Vec3::ZERO,
-            rope_rot_old: (0.0, 10.0),
             eye: 1.62,
-            previous_eye: 1.62,
-            yaw: look.map_or(level.rotation[0], |l| l.0),
-            pitch: look.map_or(level.rotation[1], |l| l.1),
+            yaw: level.rotation[0],
+            pitch: level.rotation[1],
             inventory,
             selected: 0,
             carried: None,
             craft_grid: vec![None; 9],
             craft_size: 2,
             craft_table: None,
-            last_quick_moved: None,
             container: None,
             open_container_slots: None,
             station: None,
@@ -5210,39 +4928,16 @@ impl<'a> Game<'a> {
             destroying: HashMap::new(),
             destroy_delay: 0,
             use_delay: 0,
-            creative,
-            mode: if creative {
-                horizon_client::command::args::GameMode::Creative
-            } else {
-                horizon_client::command::args::GameMode::Survival
-            },
+            creative: false,
+            mode: horizon_client::command::args::GameMode::Survival,
             sneak_held: false,
             left: false,
             right: false,
             cursor: (0.0, 0.0),
-            captured: false,
-            regrab_on_refocus: false,
-            view_at: [0, 0],
-            split_auth: None,
-            focused: true,
-            focus_after_run: None,
-            focus_lost: None,
-            agent_pointer: false,
-            was_playing: false,
             debug: false,
-            gpu_passes: false,
-            gpu_pass_detail: false,
-            screen: Screen::Playing,
-            last_device_recovery: None,
-            dynamic_lights: Vec::new(),
-            entity_motion: Default::default(),
-            entity_motion_posed: Default::default(),
             started: now,
             previous: now,
-            last_input: now,
             frames: 0,
-            item_level_cache: Default::default(),
-            world_frames: 0,
             ticks: 0,
             error: None,
             message: None,
@@ -5251,28 +4946,18 @@ impl<'a> Game<'a> {
             player_autosaves: Default::default(),
             session_lock: None,
             world_adopted: false,
-            audio,
+            audio: Audio::default(),
             loop_context: Arc::new(res.core.item_data.context().loop_context(loop_side, [])),
-            setting_overrides: Default::default(),
             damage_hooks: native_hooks::DAMAGE_HOOKS,
-            cart_sounds: HashSet::new(),
-            riding_cart_sounds: None,
-            was_fall_flying: false,
-            guardian_look_scratch: Vec::new(),
             next_entity: 0,
             ticked_entities_through: u32::MAX,
             contact_drops: 0..0,
             pickups: Default::default(),
             lectern_pulses: Vec::new(),
-            loading_progress: 0.0,
-            creation_job: None,
-            loading_progress_at: None,
-            moving_pistons_stale: false,
             spawn_origin: None,
             spawn_hook_fired: false,
             spawn_hook_cancelled: false,
             spawn_spiral: Default::default(),
-            player_spawn: None,
             spawn_wait: Vec::new(),
             ecs: horizon_client::ecs_bridge::EcsLevel::inert(),
             creatures: Default::default(),
@@ -5290,8 +4975,6 @@ impl<'a> Game<'a> {
             use_duration: 0,
             use_start: Default::default(),
             crossbow_sounds: [false; 2],
-            scope_scale: 0.5,
-            native_world_request: None,
             armor: [None, None, None, None],
             offhand: None,
             equipment: Default::default(),
@@ -5309,11 +4992,7 @@ impl<'a> Game<'a> {
             level_up_sound: Default::default(),
             swings_started: 0,
             predicted_swings: 0,
-            visible_hands: [(0, None), (0, None)],
-            hands_replaced: [false; 2],
             hand_strength: Default::default(),
-            dragging: false,
-            flash: 0,
             sleeping: None,
             sleep_timer: 0,
             player_beds: Vec::new(),
@@ -5341,16 +5020,10 @@ impl<'a> Game<'a> {
             level_events: Vec::new(),
             painting_variants: paintings::PaintingVariants::load(&root),
             location_armor: Default::default(),
-            posed_rotation: None,
-            posed_roll: 0.0,
             post_effects: Vec::new(),
-            spectated_post_effect: None,
-            experience_display: Default::default(),
-            jukebox_sounds: HashMap::new(),
             maps: maps::Maps::default(),
             text_displays: Default::default(),
             interactions: Default::default(),
-            text_display_vertices: 0,
             skin_profiles: RefCell::new(horizon_client::skins::Resolver::new()),
             riding: None,
             started_riding: Vec::new(),
@@ -5378,14 +5051,9 @@ impl<'a> Game<'a> {
             spawner_tick_positions: Vec::new(),
             trial_spawner_tick_positions: Vec::new(),
             loop_states: Default::default(),
-            agent_control_on: false,
             control: None,
-            agent_last: None,
-            alloc_mark: None,
-            pending_bench: None,
             events: Default::default(),
             tick_script: tick_script::TickScript::from_env(),
-            pvp: Default::default(),
             mods: mod_sources,
             recipe_tables: Default::default(),
             native_input: Default::default(),
@@ -5396,44 +5064,30 @@ impl<'a> Game<'a> {
             native_configs: Default::default(),
             mod_phase,
             native_net: Default::default(),
-            sky_darken_memo: Default::default(),
-            water_plane_memo: Default::default(),
-            water_plane_scan: Default::default(),
             persist: Default::default(),
             missing_professions: Default::default(),
             entity_attachments: Default::default(),
             entity_initialization: Default::default(),
             attachment_indexes: Default::default(),
-            realm_session: false,
             lan: None,
             session: Default::default(),
-            integrated: None,
             level_shapes: Default::default(),
-            serving: None,
             command_block_screen: None,
             structure_templates: HashMap::new(),
             test_defs: std::cell::RefCell::new(HashMap::new()),
             test_defs_snapshot: false,
-            test_highlights: HashMap::new(),
             game_tests: game_tests::GameTests::default(),
-            gpu_utilization: 0.0,
-            spawn_counts: HashMap::new(),
             spawn_policies: HashMap::new(),
             passages: Default::default(),
-            death_focus: None,
             previous_mode: None,
-            gamemode_switcher: None,
-            user_input: Default::default(),
             saved_for_exit: false,
             pending_save: None,
             server_tick_deadline: None,
-            world_icon: None,
             forced_hit: None,
             tick_hit: Default::default(),
             tick_mob: None,
             entity_reach: 3.0,
             block_reach: 4.5,
-            client_targeting: Default::default(),
             guest_use: None,
             use_failed: false,
             block_use_original: Vec::new(),
@@ -5497,10 +5151,7 @@ impl<'a> Game<'a> {
             rand_sequences: Default::default(),
             brushing: Default::default(),
             border: Default::default(),
-            border_section: None,
             adv: Default::default(),
-            restore_player_state: true,
-            player_model: None,
         };
         game.reset_entity_residency();
         // A server runs an ECS level once its world opens (`adopt_world`); a fixture that builds a
@@ -5524,9 +5175,7 @@ pub(crate) fn run_with(
 ) -> Result<()> {
     let mut options = Options::read(options)?;
     options.mods.native = Arc::new(native);
-    if options.execution_role == execution_role::ExecutionRole::DedicatedServer
-        && !dedicated::preflight(&mut options)?
-    {
+    if !dedicated::preflight(&mut options)? {
         return Ok(());
     }
     native_hooks::install_block_contact_hooks();
@@ -5535,16 +5184,10 @@ pub(crate) fn run_with(
     horizon_threads::put_helpers_behind();
     // A dedicated server too: vanilla's "Server Shutdown Thread" (`DedicatedServer.initServer`'s
     // shutdown hook) halts the server and saves its players and levels on SIGTERM, SIGINT or SIGHUP.
-    if false
-        || options.execution_role == execution_role::ExecutionRole::DedicatedServer
-    {
-        horizon_threads::catch_stop_signals();
-    }
+    horizon_threads::catch_stop_signals();
     let started = Instant::now();
     // A dedicated server times its spans always, so its slow ring holds the steps of a lag spike (microseconds a tick).
-    if options.spikes.is_none()
-        && options.execution_role == execution_role::ExecutionRole::DedicatedServer
-    {
+    if options.spikes.is_none() {
         options.spikes = Some(dedicated::SLOW_TICK_MS);
     }
     tick_profile::want_spans(tick_profile::SPANS_SPIKES, options.spikes.is_some());
@@ -5604,11 +5247,8 @@ pub(crate) fn run_with(
     native_biome_source::install();
     native_density_function::install();
     mods::register_components(&vanilla_root)?;
-    mods::register_gui_layers(options.execution_role);
     mods::register_map_decoration_types();
-    mods::register_range_select_item_model_properties(options.execution_role);
-    mods::register_select_item_model_properties(options.execution_role);
-    mods::register_resource_sources(options.execution_role);
+    horizon_assets::item_model::register_special_model_types(Vec::new());
     mods::register_enchantment_damage_effects();
     mods::freeze_declarations()?;
     mod_phase.advance(mod_api::__private::ModPhase::Setup)?;
@@ -5618,7 +5258,7 @@ pub(crate) fn run_with(
     // Someone is playing: the anonymous ping behind the launcher's "N playing now", and the
     // official server in their list (servers.dat in the game folder, the working directory). Not
     // for a server, a benchmark, a run that quits by itself, a harness's fixture or a run that
-    // horizon-ctl drives: those start in a source checkout and wrote the list there.
+    // the control socket drives: those start in a source checkout and wrote the list there.
     // Snapshots of derived tables live in the game folder, never beside the
     // shared resources.
     Behaviours::set_cache_dir(std::env::current_dir()?.join(".horizon-cache"));
@@ -5634,22 +5274,18 @@ pub(crate) fn run_with(
         &Progress::new(),
     )?;
     options.resources = loaded.root.clone();
-    let audio = Audio::default();
     let resources = loaded.resources;
-    let mut settings = early_settings;
-    if let Some(d) = options.distance_override {
-        settings.render_distance = d;
-    }
-    let mut game = Game::new(&resources, loaded.pack, options, settings, audio)?;
+    let settings = early_settings;
+    let mut game = Game::new(&resources, loaded.pack, options, settings)?;
     game.session.vanilla_root = vanilla_root;
     game.start_mods();
     game.refresh_loop_context()?;
     game.start_agent_control()?;
     if let Ok(spec) = std::env::var("HORIZON_SCULK_FIXTURE") {
-        return game.run_component_harness(integrated::ComponentHarness::Sculk(spec));
+        return game.run_component_harness(component_harness::ComponentHarness::Sculk(spec));
     }
     if let Ok(output) = std::env::var("HORIZON_HOT_PATHS") {
-        return game.run_component_harness(integrated::ComponentHarness::HotPaths(output));
+        return game.run_component_harness(component_harness::ComponentHarness::HotPaths(output));
     }
     let result = game.run_dedicated();
     game.native_game_shutting_down();
@@ -5781,18 +5417,6 @@ mod test_neighbourhood {
                 }
             }
         }
-    }
-}
-
-fn write_level_for_role(
-    level: &mut Level,
-    dir: &std::path::Path,
-    role: execution_role::ExecutionRole,
-) -> Result<()> {
-    if role.writes_singleplayer_player() {
-        level.write(dir)
-    } else {
-        level.write_without_player(dir)
     }
 }
 

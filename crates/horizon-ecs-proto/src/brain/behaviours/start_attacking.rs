@@ -89,10 +89,52 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
 
 fn start(w: &mut World, e: Entity, c: &Ctx) {
     let Some(who) = target(w, e, c.get::<Params>()) else { return };
+    if w.get::<TargetAsked>(e).is_some() {
+        return;
+    }
+    if w.get_resource::<TargetWatched>().is_some_and(|t| t.0) {
+        w.entity_mut(e).insert(TargetAsked(who));
+        w.resource_mut::<crate::goals::Events>().host.target_ask(e, Some(who));
+        return;
+    }
+    take_target(w, e, who);
+}
+
+fn take_target(w: &mut World, e: Entity, who: Who) {
     set(w, e, &ATTACK_TARGET, MemValue::Who(who), None);
     // The memory of the target: the brain decides when it ends (StopAttackingIfTargetInvalid), not the targeting's sight.
     targeting::set_target(w, e, Target::new(who, u16::MAX, u8::MAX));
     erase(w, e, &CANT_REACH_WALK_TARGET_SINCE);
+}
+
+/// While `on` (a mod hears `living_change_target`), a target is asked of the host first (`TargetAsk`) and taken by `resolve_target`.
+#[derive(Resource, Default)]
+pub struct TargetWatched(pub bool);
+
+/// A target the host has been asked about: the memory keeps no target until `resolve_target`.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct TargetAsked(pub Who);
+
+/// The host's answer to a proposed target. `Set(who)` takes `who` when it is the proposed one or can be seen as a target; otherwise
+/// the answer is `Keep`, and the brain has no target.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TargetAnswer {
+    Keep,
+    Set(Option<Who>),
+}
+
+/// The answer to a `TargetAsk` of `e`: the target is taken, or not (`Keep`, or a `Set` that names nothing valid).
+pub fn resolve_target(w: &mut World, e: Entity, answer: TargetAnswer) {
+    let Some(asked) = w.get_entity_mut(e).ok().and_then(|mut m| m.take::<TargetAsked>()) else {
+        crate::behaviours::nearest_target::resolve_pending(w, e, answer);
+        return;
+    };
+    if let TargetAnswer::Set(Some(who)) = answer {
+        if who == asked.0 || targeting::info(w, who).is_some() {
+            take_target(w, e, who);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -171,6 +213,41 @@ mod tests {
     }
 
     /// A creaking takes the nearest visible player only while it is active; a creative player is never taken.
+    /// While a mod hears the target (`TargetWatched`), a hurt creature asks the host once (`TargetAsk`) and holds its target until
+    /// `resolve_target`; without a listener, the target is taken at once and nothing is asked.
+    #[test]
+    fn a_watched_target_is_asked_and_held_until_resolved() {
+        let mut h = Herd::with_slab_awake(40, true, false);
+        let e = brained(&mut h, &HURT);
+        let sp = h.world.resource::<SpeciesTable>().0[0];
+        let prey = spawn_species(&mut h.world, &sp, 3.5, 0.5, 92);
+        h.world.insert_resource(TargetWatched(true));
+        set(&mut h.world, e, &HURT_BY_ENTITY, MemValue::Who(Who::Entity(prey)), None);
+        step(&mut h, e);
+        let asked = h.world.resource_mut::<crate::goals::Events>().host.drain().filter(|ev| {
+            matches!(ev, crate::host_out::HostEvent::TargetAsk { entity, proposed: Some(Who::Entity(p)) } if *entity == e && *p == prey)
+        });
+        assert_eq!(asked.count(), 1, "one question to the host");
+        assert!(h.world.get::<Target>(e).is_none(), "held until the answer");
+        resolve_target(&mut h.world, e, TargetAnswer::Set(Some(Who::Entity(prey))));
+        assert_eq!(h.world.get::<Target>(e).map(|t| t.who), Some(Who::Entity(prey)));
+    }
+
+    #[test]
+    fn an_unwatched_target_is_taken_at_once_and_not_asked() {
+        let mut h = Herd::with_slab_awake(40, true, false);
+        let e = brained(&mut h, &HURT);
+        let sp = h.world.resource::<SpeciesTable>().0[0];
+        let prey = spawn_species(&mut h.world, &sp, 3.5, 0.5, 92);
+        set(&mut h.world, e, &HURT_BY_ENTITY, MemValue::Who(Who::Entity(prey)), None);
+        step(&mut h, e);
+        assert_eq!(h.world.get::<Target>(e).map(|t| t.who), Some(Who::Entity(prey)), "taken at once");
+        let asked = h.world.get_resource_mut::<crate::goals::Events>().map_or(0, |mut ev| {
+            ev.host.drain().filter(|ev| matches!(ev, crate::host_out::HostEvent::TargetAsk { .. })).count()
+        });
+        assert_eq!(asked, 0, "nothing asked");
+    }
+
     #[test]
     fn a_creaking_takes_a_visible_player_only_while_active_and_never_a_creative_one() {
         let mut h = Herd::with_slab_awake(40, true, false);

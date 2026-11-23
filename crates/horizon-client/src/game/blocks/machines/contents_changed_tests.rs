@@ -178,7 +178,6 @@ fn with_changes(
         .prepared()
         .to_path_buf();
     with_game_at(root, |game| {
-        game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

@@ -86,17 +86,8 @@ and [Parts](../../modding/src/concepts/parts.md).
 | New attribute types | `declare_attribute` | Startup declarations on the sides that load the mod | When the attribute catalog grows, before entity attribute rows resolve. The mod attributes append after the vanilla ones, sorted by mod id then attribute id — the network id order on every side running the same mods. |
 | Game rules and categories | `game_rule_bool`, `game_rule_category` | Startup, before the game validates and installs the rule schema | When the game uses the installed schema to load rule values and build the rule UI. |
 | Dimension, chunk generation, biome source and density function code, structure types, ticket controllers | `register_dimension`, `register_chunk_generator`, `register_biome_source`, `register_density_function_type`, `register_structure_type`, `register_ticket_controller` | Startup declarations, consumed by world setup and generation | When the world resolves its dimension, structure or ticket registrations; a density function type when density JSON naming it loads. |
-| Controls bindings | `Registrar::register_key_mapping` | Startup registration, client consumer | When the client installs the bindings in Controls and restores saved bindings. |
-| Component tooltips | `Registrar::register_tooltip_appender` | Startup registration, client consumer | The item tooltip builder uses the callback for the registered component and placement. |
 | Server commands | `Hooks::register_commands` collects `Command` usages | Server, when opening a world and on explicit command refresh | After the server rebuilds the command tree. The server owns permission checks and sends the tree to players. |
 | Command argument types | `Registrar::register_command_argument` declares parsing and suggestions | Startup, on the sides that load the mod | Before command trees that use the type are built at world open or refresh; clients that do not know the type complete it from the server. |
-| Client commands | `Hooks::register_client_commands` collects `Command` usages | Client, at connection start and when the server sends its tree | After the client incorporates them into completion and local dispatch. |
-| HUD layers and F3 entries | `register_gui_layers` and `register_debug_entries` | Client startup | When the installed HUD order or debug entry list is used for drawing. |
-| World-space debug renderers | `register_debug_renderers` | Client, each refresh of the renderer list | The next debug draw uses the refreshed list. |
-| Model layers, colour resolvers, block and item tints, numeric and categorical item model properties | `register_layer_definitions`, `register_color_resolvers`, `register_block_tint_sources`, `register_item_tint_sources`, `register_range_select_item_model_property`, `register_select_item_model_property` | Client startup before resource loading | The client can resolve the declarations when it builds its models and rendering tables. |
-| Entity renderers | `register_entity_renderers` registers an `EntityRenderer` per entity type | Client startup before resource loading; resolved again on every resource load | When a frame draws an entity of the type through a route that reads the table: the content mods' thrown types and the living types drawn as mobs so far ([entity renderers](../../modding/src/how-to/client/entity-renderers.md)). |
-| Entity layers | `register_entity_layers` adds an `EntityRenderLayer` to a living entity type or a player model | Client, on every resource load after the entity renderers resolve | When a frame draws a mob or player of the target, after its model and vanilla layers ([entity layers](../../modding/src/how-to/client/entity-layers.md)). |
-| Special item model renderers | `register_special_model_renderer` registers a `SpecialModelRenderer` per special model type, the last registration of a type winning | Client startup before resource loading; a failed renderer is asked again, and kept answers dropped, on every resource load | When an item whose definition holds a `minecraft:special` model of the type is drawn with a stack that model node has no kept answer for; every display context draws that answer ([special item renderers](../../modding/src/how-to/client/special-item-renderers.md)). |
 | Data map types | `data_map_types` | Server, at world data load and each reload | After the server publishes the loaded data maps. |
 | Recipe property additions | `recipe_property_sets` | Server data load and client preload, after recipes resolve, and again on reload | When station slot checks use the published sets. |
 | Mod configs | `register_configs` | Config phase on the owning side, once at startup for Client/Common and per world for Server | After the file is read and the mod receives its config loading callback. |
@@ -244,8 +235,7 @@ which compile game code. An inject never falls back to one.
 
 The launcher and the game send nothing about the player or their machine to any server: no performance, crash,
 bug or benchmark uploads, and no "I'm playing" ping. Reports stay local files the player can read and share by
-hand. A mod API that reported on mods would break this, so none does; the repository's `docs/telemetry.md`
-says what stays local.
+hand. A mod API that reported on mods would break this, so none does.
 
 ## What is next
 

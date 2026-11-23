@@ -137,6 +137,8 @@ pub struct Species {
     pub lava_walker: bool,
     pub water_efficiency: f32,
     pub eye_height: f64,
+    /// `Entity.getSoundSource` of the type (`Def::sound_source`).
+    pub sound_source: crate::species::SoundCategory,
     /// The type (`minecraft:cow`...), whose size, speed and goals below are data of the species.
     pub name: &'static str,
     /// Whether the type is saved with its world (`Def::saved`): an entity of an unsaved species has no NBT.
@@ -181,12 +183,20 @@ pub struct Species {
     pub persistent: bool,
     /// The chance of a screaming goat at birth (`Def::screaming`): a draw only when it is there.
     pub screaming: Option<f64>,
+    /// The instances the species gets at load (`attr_mod::apply_load`): none for most.
+    pub load_attrs: &'static [crate::attr_mod::LoadAttr],
     /// The chance of a horn lost at a natural spawn (`Def::lost_horn`).
     pub lost_horn: Option<f64>,
+    /// `Def::max_scale`: the cap `model_scale` applies (`LivingEntity.sanitizeScale`).
+    pub max_scale: f32,
     /// `Def::llama_strength`: the strength is drawn at the pose (`spawn_declared`).
     pub llama_strength: bool,
     /// `Def::random_max_health`: the max health is drawn at the birth (`spawn_declared`).
     pub random_max_health: bool,
+    /// `Def::horse_gen`: the speed and jump strength drawn at the birth (`spawn_declared`).
+    pub horse_gen: crate::species::HorseGen,
+    /// `Def::body_wear`: the body piece wears when hurt (`BodyWear`, posed at the birth).
+    pub body_wear: bool,
     /// `Def::not_in_peaceful`.
     pub not_in_peaceful: bool,
 }

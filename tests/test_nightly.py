@@ -82,8 +82,8 @@ class NightlyTests(unittest.TestCase):
         self.assertNotIn("### Not merged yet", text)
         self.assertIn("Nothing new for players on main", notes())
 
-    def test_notes_open_with_the_way_to_the_launcher(self):
-        # A raw HTML line that launchers skip, as on a game release.
+    def test_notes_open_with_the_players_banner(self):
+        # A raw HTML line that GitHub skips in one-line summaries, as on a game release.
         with mock.patch.object(nightly.train, "REPO", "horizon-rust/horizon"):
             self.assertTrue(notes().startswith(nightly.train.PLAYERS + "\n\nNightly 2026-10-28 · bbbbbbb: "))
             self.assertIn(nightly.PLAYERS, notes())
@@ -202,22 +202,6 @@ class FirstNightlyTests(unittest.TestCase):
                 fetched = next(args for args in calls if args[0] == "fetch")
                 self.assertIn("+refs/heads/main:refs/remotes/origin/main", fetched)
                 self.assertEqual("+refs/tags/nightly:refs/tags/nightly" in fetched, existing)
-
-
-def polytone_gate_bypasses(game, nightly_build):
-    """Where the Polytone tests could fail without holding the Nightly (game-build.yml's `polytone-windows`, called
-    through nightly-build.yml's `build`)."""
-    problems = []
-    job = game["jobs"]["polytone-windows"]
-    for where, part in [("job", job), *((f"step {i}", step) for i, step in enumerate(job["steps"]))]:
-        problems += [f"polytone-windows {where}: {key}" for key in ("if", "continue-on-error") if key in part]
-    for name in ("sign", "publish", "sdk-publish"):
-        gate = nightly_build["jobs"][name]
-        if "build" not in gate["needs"]:
-            problems.append(f"{name} doesn't need build")
-        condition = "".join(str(gate.get("if", "")).split())
-        problems += [f"{name} runs on {status}" for status in ("always()", "cancelled()", "failure()") if status in condition]
-    return problems
 
 
 # The guard comes from the workflow's own commit into RUNNER_TEMP, never from the checkout being built.
@@ -358,9 +342,9 @@ class UntrustedBuildTests(unittest.TestCase):
 
     def test_an_untrusted_build_never_runs_on_the_release_runner(self):
         runs_on = [line for line in self.game.splitlines() if "runs-on:" in line]
-        self.assertEqual(len(runs_on), 4)
-        # The host-independent wasm member and the Polytone tests run on credential-free hosted runners.
-        hosted = [line for line in runs_on if line.strip() in ("runs-on: ubuntu-22.04", "runs-on: windows-latest")]
+        self.assertEqual(len(runs_on), 3)
+        # The host-independent wasm member and the build run on credential-free hosted runners.
+        hosted = [line for line in runs_on if line.strip() == "runs-on: ubuntu-22.04"]
         self.assertEqual(len(hosted), 2)
         # The nightly's own runner: never the release runner, and never behind pull requests' parity queue.
         nightly_runner = "fromJSON('[\"self-hosted\", \"macOS\", \"horizon-nightly\"]')"
@@ -368,31 +352,6 @@ class UntrustedBuildTests(unittest.TestCase):
             if line in hosted:
                 continue
             self.assertIn(f"inputs.trusted && vars.MAC_RUNNER || {nightly_runner}", line)
-
-    def test_the_polytone_tests_hold_the_nightly_as_the_windows_build_does(self):
-        # Their own job beside the Windows build: whatever it was given, a failure must still fail the called
-        # workflow, which sign, publish and sdk-publish need.
-        game = yaml.safe_load(self.game)
-        nightly_build = yaml.safe_load((WORKFLOWS / "nightly-build.yml").read_text())
-        job = game["jobs"]["polytone-windows"]
-        self.assertEqual(job["runs-on"], "windows-latest")
-        self.assertEqual(job["env"]["RUSTFLAGS"], "-C target-feature=+crt-static")
-        self.assertEqual(job["steps"][-1]["run"].strip(),
-                         "cargo test --release --locked -p horizon-client-render --lib particles::polytone::tests::")
-        self.assertEqual(polytone_gate_bypasses(game, nightly_build), [])
-        # Each way around the gate is caught: a step or job allowed to fail, a skipped test, a publishing job that
-        # runs after a failed build.
-        for bypass in ({"step": {"continue-on-error": True}}, {"step": {"if": "github.event_name == 'schedule'"}},
-                       {"job": {"continue-on-error": True}}, {"job": {"if": "${{ inputs.trusted }}"}},
-                       {"sign": {"if": "${{ !cancelled() }}"}}, {"publish": {"if": "always() && true"}},
-                       {"sdk-publish": {"if": "failure() || needs.sdk.outputs.needed == 'true'"}},
-                       {"sign": {"needs": ["pick", "sdk-index"]}}):
-            with self.subTest(bypass=bypass):
-                mutated_game, mutated_build = copy.deepcopy(game), copy.deepcopy(nightly_build)
-                [(where, change)] = bypass.items()
-                polytone = mutated_game["jobs"]["polytone-windows"]
-                {"step": polytone["steps"][-1], "job": polytone}.get(where, mutated_build["jobs"].get(where)).update(change)
-                self.assertNotEqual(polytone_gate_bypasses(mutated_game, mutated_build), [])
 
     def test_mac_jobs_read_no_machine_shared_cache(self):
         # Whatever `trusted` says; a job or workflow added to the route later is held to it too.
@@ -405,7 +364,7 @@ class UntrustedBuildTests(unittest.TestCase):
         covered = {job for job, _ in machine_cache_problems(
             {"jobs": {name: {**job, "steps": job["steps"][:1] + [{"run": "cargo build"}]}
                       for name, job in game["jobs"].items() if "steps" in job}})}
-        self.assertLessEqual({"exporters", "build"}, covered)
+        self.assertLessEqual({"exporters"}, covered)
         # No caller can switch the protections off: none of them reads an input, and callers pass only declared ones.
         inputs = set(game[True]["workflow_call"]["inputs"])
         for path in sorted(WORKFLOWS.glob("*.yml")):
@@ -463,16 +422,12 @@ class UntrustedBuildTests(unittest.TestCase):
             "export of a family name": lambda job: later(job).update(run="export CARGO_REGISTRIES_X_TOKEN\ncargo build"),
             "declare -x": lambda job: later(job).update(run="declare -x RUSTC=/x\ncargo build"),
         }
-        for name in ("exporters", "build"):
+        for name in ("exporters",):
             for label, change in breaks.items():
                 with self.subTest(job=name, change=label):
                     mutated = copy.deepcopy(game)
                     change(mutated["jobs"][name])
                     self.assertIn(name, {job for job, _ in machine_cache_problems(mutated)})
-        mutated = copy.deepcopy(game)
-        mac = next(entry for entry in mutated["jobs"]["build"]["strategy"]["matrix"]["include"] if entry.get("mac"))
-        mac["rustflags"] = "-C x"
-        self.assertEqual({job for job, _ in machine_cache_problems(mutated)}, {"build"})
         for new in ({"runs-on": ["self-hosted", "macOS"], "steps": [{"run": "bash tools/ci/runner-env.sh"}]},
                     {"runs-on": "${{ vars.MAC_RUNNER }}", "steps": [{"run": "cargo build"}]}):
             mutated = copy.deepcopy(game)
@@ -539,6 +494,7 @@ class UntrustedBuildTests(unittest.TestCase):
                                GITHUB_WORKFLOW_SHA="abc123")
                 # The ancestor walk ends at the temporary folder: a developer machine may hold configs above it.
                 run = (SETUP_RUN.replace("/usr/bin/curl", str(curl)).replace("/usr/bin/python3", str(python))
+                       .replace("/usr/bin/mktemp", shutil.which("mktemp"))
                        .replace('"$GITHUB_WORKSPACE"', f'"$GITHUB_WORKSPACE" --top "{temporary.as_posix()}"'))
                 result = subprocess.run(["bash", "-c", run], cwd=checkout, env=environ, capture_output=True, text=True)
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
@@ -736,7 +692,7 @@ class SdkPairTests(unittest.TestCase):
         arguments = command[command.index("--") + 1:]
         self.assertEqual(arguments, ["verify", "--repository", "horizon-rust/horizon", "--tag", "sdk-" + "a" * 40,
                                      "--only", "sdk.json", "/tmp/x"])
-        self.assertNotIn("--publishing", command, "an unsigned SDK is refused, as the launcher refuses it")
+        self.assertNotIn("--publishing", command, "an unsigned SDK is refused")
 
     def test_the_previous_sdk_is_the_nearest_published_one_behind_the_build(self):
         a, b, c, d = ("a" * 40, "b" * 40, "c" * 40, "d" * 40)

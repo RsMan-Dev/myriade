@@ -1,6 +1,6 @@
 use super::*;
 pub(super) struct PreparedWorldReload {
-    pub(super) structure_spawns: horizon_client::mobs::spawn_selection::StructureSpawns,
+    pub(super) structure_spawns: horizon_client::mobs::spawn_place::StructureSpawns,
     pub(super) advancements: Arc<horizon_client::advancements::Tree>,
     pub(super) tables: Option<WorldTables>,
     pub(super) health: horizon_client::health::HealthResources,

@@ -237,7 +237,7 @@ def run(kind, case, parent, binary, timeout, reload=False):
     command = ([java, '-Xms256M', '-Xmx2G', '-jar', str(ROOT / '.local/minecraft/26.3/jars/server.jar'), '--nogui']
                if kind == 'java' else
                [str(binary), '--resources', str(ROOT / '.local/horizon-client/26.3'), '--dedicated', '--nogui'])
-    env = lab.game_env(HORIZON_HOME=out / 'homes/horizon', HORIZON_LAUNCHER_HOME=out / 'homes/launcher',
+    env = lab.game_env(HORIZON_HOME=out / 'homes/horizon',
                        XDG_DATA_HOME=out / 'homes/xdg-data', XDG_CONFIG_HOME=out / 'homes/xdg-config')
     start = time.monotonic()
     facts = dict(start_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(), kind=kind, case=case,
@@ -323,38 +323,6 @@ def run(kind, case, parent, binary, timeout, reload=False):
     return facts
 
 
-def run_integrated(case, parent, binary, timeout):
-    """Exercise single player's real integrated-server startup, also used before opening LAN."""
-    out = parent / f'native-{case}'
-    out.mkdir(parents=True, exist_ok=False)
-    game = out / 'game'
-    pack = game / 'saves/prg/datapacks/prg'
-    files = pack_files(case)
-    replace_pack(pack, {}, files)
-    script = out / 'commands.jsonl'
-    script.write_bytes(b''.join(encode({'op': 'cmd', 'cmd': command, 'source': 'console'})
-                                for command in SERVICE))
-    result = out / 'commands-out.jsonl'
-    env = lab.game_env(
-        HORIZON_HOME=out / 'homes/horizon', HORIZON_LAUNCHER_HOME=out / 'homes/launcher',
-        XDG_DATA_HOME=out / 'homes/xdg-data', XDG_CONFIG_HOME=out / 'homes/xdg-config',
-        HORIZON_COMMAND_SCRIPT=script, HORIZON_COMMAND_OUTPUT=result,
-        HORIZON_API_DISCOVERY='http://127.0.0.1:9/', HORIZON_PLAYER_NAME='PredicateProbe',
-        HORIZON_HARNESS_LOADED_FIXTURE='1', HORIZON_HARNESS_TIMEOUT=str(int(timeout)))
-    command = [str(binary), '--resources', str(ROOT / '.local/horizon-client/26.3'),
-               '--world', 'prg', '--seed', '121', '--radius', '2', '--headless']
-    with (out / 'server.log').open('w', encoding='utf-8') as log:
-        completed = subprocess.run(command, cwd=game, env=env, stdout=log, stderr=subprocess.STDOUT,
-                                   timeout=timeout)
-    facts = {'kind': 'native', 'case': case, 'integrated': True, 'command': command,
-             'return_code': completed.returncode, 'inputs': {path: sha(data) for path, data in files.items()},
-             'log_sha256': sha((out / 'server.log').read_bytes()),
-             'service': result.read_text(encoding='utf-8') if result.exists() else None}
-    (out / 'outcome.json').write_text(json.dumps(facts, indent=2) + '\n')
-    print('integrated', case, 'exit', completed.returncode, 'served', result.exists(), flush=True)
-    return facts
-
-
 # The Java 26.3 diagnostics each invalid case must log (as substrings; their order and log prefixes are
 # not part of the contract).
 REFUSAL = ("Failed to load datapacks, can't proceed with server load. "
@@ -398,16 +366,6 @@ def check(folder, facts):
     assert facts['inputs'] == {path: sha(data) for path, data in expected.items()}, 'fixture changed since run'
     log = (folder / 'server.log').read_bytes()
     assert sha(log) == facts['log_sha256'], 'sealed log changed'
-    if facts.get('integrated'):
-        if facts['case'] in VALID_CASES:
-            assert facts['return_code'] == 0 and facts['service'], facts
-            for marker in ('PRG_TARGET_TRUE', 'PRG_REF_TRUE', 'PRG_SERVICE_END'):
-                assert marker in facts['service'], facts['service']
-        else:
-            assert facts['return_code'] != 0 and facts['service'] is None, facts
-            for diagnostic in [*DIAGNOSTICS[facts['case']], REFUSAL]:
-                assert diagnostic in log.decode('utf-8', 'replace'), diagnostic
-        return
     assert facts['reaped'] and not facts['timed_out'] and not facts.get('probe_error'), facts
     replies = ''.join(facts['console_reply_lines'])
     if facts.get('reload'):
@@ -444,10 +402,7 @@ def main():
     a.add_argument('--cases', default=','.join(CASES))
     a.add_argument('--verify-only', action='store_true', help='check sealed outcomes without running')
     a.add_argument('--reload', action='store_true', help='reject invalid candidates and retain live data')
-    a.add_argument('--integrated', action='store_true', help='native single player/LAN startup via the real server')
     o = a.parse_args()
-    if o.integrated and (o.kind != 'native' or o.reload):
-        a.error('--integrated requires --kind native and cannot be combined with --reload')
     failures = []
     for case in o.cases.split(','):
         if o.reload and case in VALID_CASES:
@@ -455,8 +410,6 @@ def main():
         folder = o.output.resolve() / f'{o.kind}-{case}'
         if o.verify_only:
             facts = json.loads((folder / 'outcome.json').read_text())
-        elif o.integrated:
-            facts = run_integrated(case, o.output.resolve(), o.binary, o.timeout)
         else:
             facts = run(o.kind, case, o.output.resolve(), o.binary, o.timeout, o.reload)
         try:

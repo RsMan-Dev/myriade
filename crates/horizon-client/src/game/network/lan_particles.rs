@@ -316,7 +316,7 @@ impl Game<'_> {
 
     /// `ParticleTypes.STREAM_CODEC`'s value for `options`: the type's
     /// network id and the data it carries (`state` for the block particles).
-    /// None while not serving, or for a particle whose data isn't sent from
+    /// None without a LAN hub, or for a particle whose data isn't sent from
     /// here (items, trails).
     pub(super) fn network_particle(
         &self,
@@ -335,9 +335,7 @@ impl Game<'_> {
     /// player, the guest too.
     pub(super) fn lan_send_particles(&mut self, request: QueuedParticle) {
         if self.lan.is_none() {
-            if self.serving.is_some() || self.options.dedicated.is_some() {
-                self.creatures.lan_particles.push(request);
-            }
+            self.creatures.lan_particles.push(request);
             return;
         }
         let QueuedParticle {
@@ -579,7 +577,7 @@ impl Game<'_> {
     }
 }
 
-/// `ClientboundExplodePacket` without a push, or None while not serving.
+/// `ClientboundExplodePacket` without a push, or None without a LAN hub.
 /// The sound is the level's, which the players hear already, so it isn't
 /// played from the packet.
 fn explosion_packet(
@@ -702,7 +700,6 @@ pub(in crate::game) mod tests {
             allow_flight: false,
             seed: 0,
             max_players: 20,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         };

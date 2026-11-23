@@ -5,7 +5,6 @@ use std::{hint::black_box, time::Instant};
 #[ignore = "measurement; needs prepared resources in HORIZON_TEST_RESOURCES"]
 fn unscoped_item_entity_reads() {
     super::native_entity_refs::tests::with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.spawn_item(
             horizon_client::items::ItemStack::new("minecraft:stone", 5),
             [0.0; 3],

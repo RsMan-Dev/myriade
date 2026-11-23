@@ -77,7 +77,6 @@ fn hub_answered(uuids: &[u128], answer: Answer) -> (Hub, Vec<Receiver<Out>>) {
         allow_flight: false,
         seed: 0,
         max_players: 20,
-        integrated: false,
         levels: Default::default(),
         level_seeds: Default::default(),
     };

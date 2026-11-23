@@ -72,14 +72,16 @@ import zlib
 
 try:
     from . import lab, oracle_harness as oh, test_rust_parity as base
-    from .integration_env import game_environment, run_game
+    from .integration_env import game_environment
     from .lab import free_port  # the other server harnesses import it from here
+    from .bot_lab import Bot
 except ImportError:
-    from integration_env import game_environment, run_game
+    from integration_env import game_environment
     import lab
     import oracle_harness as oh
     import test_rust_parity as base
     from lab import free_port
+    from bot_lab import Bot
 
 NAME = 'dedicated-server-parity'
 SEED = 12345
@@ -383,31 +385,28 @@ def run_side(label, command, directory, client):
 PROPERTIES_PORTS = {}
 
 
-def horizon_client_joins(vanilla_server, binary, world, build, reference):
-    """Horizon's client joins a vanilla dedicated server headless: it must
-    land where the vanilla client did, receive as many chunks, see its chat
-    and /list reply, and leave as a vanilla client does (the server's log)."""
-    label = 'vanilla-for-horizon-client'
-    PROPERTIES_PORTS[label] = port = free_port()
+def bot_joins(vanilla_server, world, build, reference):
+    """The joined bot (Horizon's joueur-automate) joins a vanilla dedicated server: it must land where the vanilla
+    client did, receive as many chunks, see its chat and /list reply, and leave as a vanilla client does (the
+    server's log)."""
+    label = 'vanilla-for-bot'
+    port = free_port()
     directory = build / label
     write_server_dir(directory, port, world)
-    client_dir = build / 'horizon-client'
-    shutil.rmtree(client_dir, ignore_errors=True)
-    client_dir.mkdir()
-    report = build / 'horizon-client-report.json'
-    report.unlink(missing_ok=True)
     server = Server(vanilla_server, directory, label)
     try:
         server.wait_for(r'Done \(')
-        env = lab.game_env(HORIZON_NET_REPORT=report)
-        with (build / 'horizon-client-run.log').open('w') as log:
-            run_game([str(c) for c in [binary, '--resources', lab.RESOURCES, '--render-distance', 2,
-                                             '--server', f'127.0.0.1:{port}', '--name', PLAYER]],
-                           cwd=client_dir, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=300, check=True)
+        with Bot() as bot:
+            bot.join('127.0.0.1', port, PLAYER, render_distance=2)
+            bot.wait_for('loaded', timeout=300)
+            bot.chat('hello from the horizon client')
+            bot.command('list')
+            bot.wait_for('message There are 1 of a max of 5 players online: Tester', timeout=60)
+            got = bot.report()
+            bot.leave()
         server.wait_for(r'left the game', timeout=30)
     finally:
         server.stop()
-    got = json.loads(report.read_text())
     move = next(l for l in reference if l.startswith('play-move'))
     want_position = [float(v) for v in re.match(r'play-move \(([^,]+), ([^,]+), ([^)]+)\)', move).groups()]
     want_chunks = int(next(l for l in reference if l.startswith('play-counts')).split()[-1])
@@ -429,7 +428,7 @@ def horizon_client_joins(vanilla_server, binary, world, build, reference):
         '/list reply shown': any('There are 1 of a max of 5 players online: Tester' in c for c in got['chat']),
         'server log': [k for k in expected['server log'] if k in log],
     }
-    return [f'horizon-client {k}: {"ok" if actual[k] == v else f"expected {v!r}, got {actual[k]!r}"}'
+    return [f'bot {k}: {"ok" if actual[k] == v else f"expected {v!r}, got {actual[k]!r}"}'
             for k, v in expected.items()]
 
 
@@ -498,7 +497,7 @@ def main():
         write_server_dir(directory, PROPERTIES_PORTS[label], world)
         results[label] = run_side(label, command, directory, client)
         (build / f'{label}.txt').write_text('\n'.join(results[label]) + '\n', encoding='utf-8')
-    client_checks = horizon_client_joins(vanilla_server, binary, world, build, results['vanilla'])
+    client_checks = bot_joins(vanilla_server, world, build, results['vanilla'])
     vanilla, horizon = results['vanilla'], results['horizon']
     # The one intended difference: MinecraftServer.getServerModName is "vanilla" there, and Horizon's server names
     # itself "horizon" as a modded server does (#3756). Check that, then compare the rest as vanilla's.
@@ -520,7 +519,7 @@ def main():
         if a != b:
             differences.append(f'chunk {key}: vanilla {a} horizon {b}')
     if differences or errors:
-        notes = [line for name in ('vanilla', 'vanilla-client', 'horizon', 'horizon-client')
+        notes = [line for name in ('vanilla', 'vanilla-client', 'horizon')
                  for line in notable_lines(build / f'{name}.log')]
         raise AssertionError(f'{len([d for d in differences if d[:1] in "+-" and d[:3] not in ("+++", "---")])} differing lines '
                              f'(see {build}/vanilla.txt and horizon.txt):\n' + '\n'.join(differences[:80] + notes))

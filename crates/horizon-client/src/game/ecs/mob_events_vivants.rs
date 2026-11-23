@@ -34,7 +34,7 @@ impl Game<'_> {
             self.ecs_with(|ecs, mw| ecs.set_target(mw, mob, None));
             return;
         }
-        if self.native_authoritative() && mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
+        if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
             let Some(epoch) = self.native_lifecycle.epoch() else { return };
             let target_id = match target {
                 Who::Mob(t) => Some(t),

@@ -124,7 +124,8 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
             return;
         }
         let (Some(b), Some(s), Some(_)) = (world.get::<Bounds>(c), world.get::<SpeciesId>(c), world.get::<Pos>(c)) else { return };
-        if Some(s.0) != me && b.0.intersects(area) {
+        // `FollowMobGoal.canUse`: an invisible animal is passed over (`Invisible` is absent on a visible one).
+        if Some(s.0) != me && b.0.intersects(area) && world.get::<crate::effects::Invisible>(c).is_none() {
             found = Some(c);
         }
     });

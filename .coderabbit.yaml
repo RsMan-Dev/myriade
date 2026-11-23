@@ -27,7 +27,7 @@ reviews:
       enabled: false
     resolve_merge_conflict:
       enabled: false
-  # Machine translations stay unreviewed (docs/translations.md); lockfiles, vendored code and data aren't code.
+  # Lockfiles, vendored code and data (lang files included) aren't code.
   path_filters:
     - "!**/lang/**"
     - "!**/Cargo.lock"
@@ -44,25 +44,11 @@ reviews:
         Hold changed code to CONTRIBUTING.md "Vanilla first, then better" (with "When it doesn't have to be 1:1")
         and docs/layers.md. Parity harnesses decide vanilla behaviour: don't state it from memory, and never
         suggest a rewrite that changes a vanilla result.
-    - path: "{crates/horizon-client/**,crates/horizon-client-render/**,launcher/**}"
-      instructions: >-
-        Hold changed UI to docs/design-system.md and to AGENTS.md's rules on translated strings and controller
-        registration.
-    - path: "crates/horizon-client-render/src/{gfx.rs,gfx/**,*.wgsl}"
-      instructions: "Hold changed render passes to docs/hdr-passes.md."
     - path: "{**/tests/**,**/*_tests.rs}"
       instructions: >-
         Hold changed tests to AGENTS.md "Write tests with signal". Request tests only as those rules allow.
-    - path: "crates/horizon-shaders/**"
-      instructions: >-
-        Clean-room code: judge it only against docs/cleanroom/shader-packs-spec.md, and never describe or cite
-        another shader loader's implementation.
 knowledge_base:
   code_guidelines:
     filePatterns:
       - files: "CONTRIBUTING.md,docs/layers.md"
         applyTo: "**/*.rs"
-      - files: "docs/design-system.md"
-        applyTo: "crates/horizon-client/**,crates/horizon-client-render/**,launcher/**"
-      - files: "docs/hdr-passes.md"
-        applyTo: "crates/horizon-client-render/src/gfx.rs,crates/horizon-client-render/src/gfx/**,crates/horizon-client-render/src/*.wgsl"

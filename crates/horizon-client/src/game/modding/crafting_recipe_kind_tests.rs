@@ -94,7 +94,7 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
     .into();
     super::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
-        super::native_entity_refs::tests::with_game(|game| {
+        super::native_guest_turn_tests::with_acting_guest(horizon_core::geometry::Vec3::new(8.5, 70.0, 8.5), |game| {
             let recipes = horizon_client::crafting::Recipes::from_sources(
                 &game.options.resources,
                 game.items(),
@@ -174,13 +174,6 @@ fn registered_crafting_remainder_drops_through_server_item_toss() {
                     .recipe_book
                     .recipes
                     .contains("recipe_probe:literal")
-            );
-            game.player = Some(
-                horizon_client::motion::PlayerMotion::new(
-                    game.motion,
-                    horizon_core::geometry::Vec3::new(8.5, 70.0, 8.5),
-                )
-                .unwrap(),
             );
             game.craft_size = 2;
             game.creative = false;

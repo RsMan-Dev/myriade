@@ -110,7 +110,6 @@ fn with_parts(test: impl FnOnce(&mut Game<'_>, &Answers)) {
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.resolve_parts().unwrap();
             test(game, &answers);
             // The resources may be shared with the next test's game: retire the answers.

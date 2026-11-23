@@ -160,10 +160,6 @@ static CORE: &[BEntry] = &[
 /// The profession of a farmer, in configuration: the crops it harvests (full grown: the `age` of the crop at its largest) and what it leaves
 /// (it carries no seeds: the crop is broken; a villager with seeds would replant it at age 0).
 const CROPS: &[(&str, i32)] = &[("minecraft:wheat", 7), ("minecraft:carrots", 7), ("minecraft:potatoes", 7), ("minecraft:beetroots", 3)];
-fn crop_ripe(mw: &'static horizon_client_lib::mobs::MobWorld<'static>, p: [i32; 3]) -> bool {
-    let name = mw.block_name(p[0], p[1], p[2]);
-    CROPS.iter().any(|&(n, max)| n == name && crate::blocks::int_property(mw, p, "age") == Some(max))
-}
 fn crop_leaves(mw: &'static horizon_client_lib::mobs::MobWorld<'static>, _: [i32; 3]) -> Option<horizon_world::registry::BlockStateId> {
     crate::blocks::resolve(mw, "minecraft:air", &[])
 }
@@ -217,7 +213,7 @@ fn is_meeting(t: PoiType) -> bool {
     t == PoiType::Meeting
 }
 /// Le métier donné par un point de travail (`villager_professions.rs`, `job` : POI vanilla → nom du métier).
-static JOB_PROFESSIONS: &[(PoiType, &str)] = &[
+pub static JOB_PROFESSIONS: &[(PoiType, &str)] = &[
     (PoiType::Armorer, "armorer"),
     (PoiType::Butcher, "butcher"),
     (PoiType::Cartographer, "cartographer"),
@@ -258,14 +254,27 @@ static WORK_KIDS: &[Kid] = &[
     Kid { behaviour: &stroll_near_block::BEHAVIOUR, weight: 2, params: &stroll_near_block::Params { memory: &JOB_SITE, speed: 0.4, max_dist: 4.0 }, needs: &[(&JOB_SITE, Need::Present)], duration: None },
     Kid { behaviour: &poi_strolls::TO_POI, weight: 5, params: &(), needs: &[(&JOB_SITE, Need::Present)], duration: None },
     Kid { behaviour: &poi_strolls::TO_POI_LIST, weight: 5, params: &(), needs: &[(&JOB_SITE, Need::Present)], duration: None },
-    Kid { behaviour: &crop_harvest::BEHAVIOUR, weight: 2, params: &crop_harvest::Params { ripe: crop_ripe, replant: crop_leaves }, needs: &[(&JOB_SITE, Need::Present), (&SECONDARY_JOB_SITE, Need::Present)], duration: None },
+    Kid { behaviour: &crop_harvest::BEHAVIOUR, weight: 2, params: &crop_harvest::Params { ripe: crop_harvest::ripe, replant: crop_leaves }, needs: &[(&JOB_SITE, Need::Present), (&SECONDARY_JOB_SITE, Need::Present)], duration: None },
     // `HarvestFarmland` for the other professions: weight 5 (`farmer ? 2 : 5`, jar `getWorkPackage`)
-    Kid { behaviour: &crop_harvest::BEHAVIOUR, weight: 5, params: &crop_harvest::Params { ripe: crop_ripe, replant: crop_leaves }, needs: &[(&JOB_SITE, Need::Present), (&SECONDARY_JOB_SITE, Need::Absent)], duration: None },
+    Kid { behaviour: &crop_harvest::BEHAVIOUR, weight: 5, params: &crop_harvest::Params { ripe: crop_harvest::ripe, replant: crop_leaves }, needs: &[(&JOB_SITE, Need::Present), (&SECONDARY_JOB_SITE, Need::Absent)], duration: None },
 ];
 
+/// `Villager.getAmbientSound`: silent asleep, `villager.trade` in a trade, `villager.ambient` otherwise. The delay is `Mob.baseTick`'s,
+/// with `Mob.getAmbientSoundInterval` (80, not overridden by the villager).
+static AMBIENT: crate::behaviours::ambient_sound::Params = crate::behaviours::ambient_sound::Params { interval: Some(80), choose: Some(villager_sound), ..crate::behaviours::ambient_sound::Params::DEFAULT };
+fn villager_sound(w: &mut World, e: Entity) -> &'static str {
+    if w.get::<crate::behaviours::bed::Sleeping>(e).is_some() {
+        ""
+    } else if w.get::<crate::behaviours::trade_session::Trading>(e).is_some() {
+        "entity.villager.trade"
+    } else {
+        "entity.villager.ambient"
+    }
+}
 pub static DEF: Def = Def {
     name: "minecraft:villager",
-    rules: &[crate::rules::RuleEntry::new(&crate::leash::NEVER, &())],
+    goals: &[crate::behaviours::Entry::new(&crate::behaviours::ambient_sound::MODULE, 14, &AMBIENT)],
+    rules: &[crate::rules::RuleEntry::new(&crate::leash::NEVER, &()), crate::rules::RuleEntry::new(&crate::behaviours::gossip::WITNESS, &())],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     brain: BrainDef {
         // The order of the `Mob`'s sensors (its draws of the first due, `make_brain`): living, players, items, bed, hurt, hostiles, babies, secondary, golem.

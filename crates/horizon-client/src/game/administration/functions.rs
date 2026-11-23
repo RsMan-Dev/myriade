@@ -1681,12 +1681,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn prepared_function_calls_keep_causality_and_fallback_boundaries() {
-        use crate::game::native_entity_refs::tests::with_game;
-        use horizon_client::motion::PlayerMotion;
+        use crate::game::native_guest_turn_tests::with_acting_guest;
         use horizon_core::geometry::Vec3;
-        with_game(|game| {
-            game.options.dedicated = None;
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 202.0, 4.5)).unwrap());
+        with_acting_guest(Vec3::new(4.5, 202.0, 4.5), |game| {
             game.creative = true;
             // Supply the synthetic chunk before forceload's synchronous load barrier.
             game.world.chunks.insert(
@@ -1985,12 +1982,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn forked_function_replies_keep_task_order_and_actual_callbacks() {
-        use crate::game::native_entity_refs::tests::with_game;
-        use horizon_client::motion::PlayerMotion;
+        use crate::game::native_guest_turn_tests::with_acting_guest;
         use horizon_core::geometry::Vec3;
-        with_game(|game| {
-            game.options.dedicated = None;
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 202.0, 4.5)).unwrap());
+        with_acting_guest(Vec3::new(4.5, 202.0, 4.5), |game| {
             game.creative = true;
             // Supply the synthetic chunk before forceload's synchronous load barrier.
             game.world.chunks.insert(
@@ -2495,19 +2489,18 @@ mod tests {
             &root,
             &settings,
             Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &crate::game::Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -2661,19 +2654,18 @@ mod tests {
             &root,
             &settings,
             Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &crate::game::Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -2762,19 +2754,18 @@ mod tests {
             &root,
             &settings,
             Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &crate::game::Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -3013,19 +3004,18 @@ mod entity_score_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -3110,19 +3100,18 @@ mod entity_score_tests {
             &root,
             &settings,
             Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &crate::game::Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -3237,19 +3226,18 @@ mod required_tag_tests {
             &root,
             &settings,
             Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &crate::game::Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         let dir = std::env::temp_dir().join(format!(

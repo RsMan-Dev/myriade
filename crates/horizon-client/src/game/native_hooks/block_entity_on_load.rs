@@ -33,12 +33,7 @@ impl Game<'_> {
         if !self.world.block_entities.has_pending_on_load() {
             return;
         }
-        let level = if self.is_logical_server() {
-            self.level(self.dim.id())
-        } else {
-            None
-        };
-        let Some(level) = level else { return };
+        let Some(level) = self.level(self.dim.id()) else { return };
         let mut remaining = self.world.block_entities.pending_on_load_len();
         while let Some((pos, _)) = self
             .world

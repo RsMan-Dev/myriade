@@ -208,7 +208,6 @@ fn native_tick_publishes_or_rejects_item_proposals_with_writeback() {
                 std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
             let root = super::mods::content_root(&base, &Default::default()).unwrap();
             super::native_entity_refs::tests::with_game_at(root.prepared().to_owned(), |game| {
-                game.options.dedicated = Some(Vec::new());
                 assert!(game.block_entity_tick_items.is_none());
                 game.world
                     .chunks

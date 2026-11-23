@@ -1,5 +1,5 @@
-//! Generates the native mod API, and gives the Windows executable Horizon's icon and its stack
-//! (`packaging/windows/exe.rs`, shared with the official executable's build script).
+//! Generates the native mod API, and gives the Windows executable its stack
+//! (`packaging/windows/exe.rs`, shared with the dedicated server's build script).
 #[path = "../../packaging/windows/exe.rs"]
 mod windows_exe;
 
@@ -30,8 +30,7 @@ fn main() {
     .expect("writing ingredient test modules");
     horizon_mod_api_gen::generate(&root, &out_dir, horizon_mod_api_gen::Target::Client)
         .expect("generating native mod API");
-    // Whether a native mod can run in a mob's turn (`game/creatures/mob_islands.rs`). The
-    // launcher adds trait packages to the workspace's members.
+    // The launcher adds trait packages to the workspace's members.
     println!(
         "cargo:rerun-if-changed={}",
         root.join("Cargo.toml").display()

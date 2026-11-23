@@ -63,7 +63,7 @@ impl EcsWorld {
                 return false;
             }
         }
-        crate::despawn::keep(w, e);
+        w.entity_mut(e).insert(crate::despawn::FromBucket);
         true
     }
 

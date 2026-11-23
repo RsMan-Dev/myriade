@@ -40,8 +40,7 @@ impl FileRoot {
 
 impl Game<'_> {
     /// The calling mod's own files in the game's `config/` folder, beside
-    /// `options.txt` (beside `server.properties` on a dedicated server):
-    /// its folder `config/<mod id>/` and the files beside it named
+    /// `server.properties`: its folder `config/<mod id>/` and the files beside it named
     /// `<mod id>.<ext>` or `<mod id>-<rest>`, as Fabric and NeoForge mods
     /// keep theirs. The service is bound to the mod whose hook or part is
     /// running, so a mod never names its id and can't reach another mod's

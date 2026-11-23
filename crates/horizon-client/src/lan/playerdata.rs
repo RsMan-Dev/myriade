@@ -135,7 +135,7 @@ pub fn save_owner(guest: &Guest, level: &mut Level, world: &Path) {
 }
 
 /// Move a world that older Horizon builds named by the offline profile to the account's
-/// (`IntegratedServer.setSingleplayerProfile`): `players/data/<offline uuid>.dat` becomes
+/// (`integrated server setSingleplayerProfile`): `players/data/<offline uuid>.dat` becomes
 /// `players/data/<account uuid>.dat` — the newer of the two when both exist — with its
 /// `UUID` rewritten, and level.dat's `singleplayer_uuid` follows. Entity `Owner`
 /// references are migrated as their chunks load (`entity_nbt::migrate_player_uuid`).

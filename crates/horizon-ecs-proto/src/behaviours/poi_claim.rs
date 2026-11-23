@@ -6,6 +6,7 @@ use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::cow::{now_of, Pos, Rng};
 use super::profession::Profession;
+use super::trade_offers;
 use crate::poi::PoiRegistry;
 use crate::rules::poi_claim::retry_after;
 use horizon_world::poi::PoiType;
@@ -82,6 +83,9 @@ fn mark_retry(w: &mut World, e: Entity, key: &MemKey) {
 
 /// Le premier point libre dans la portée, que `filter` laisse passer.
 fn nearest(w: &World, e: Entity, p: &Params) -> Option<[i32; 3]> {
+    if p.filter == Filter::OwnJob && !trade_offers::profession_known(w, e) {
+        return None;
+    }
     let found = w.resource::<PoiRegistry>().in_range(block_of(w, e), p.range, true, p.accept);
     let own = w.get::<Profession>(e).map(|j| j.0);
     found.into_iter().find_map(|(q, k)| {

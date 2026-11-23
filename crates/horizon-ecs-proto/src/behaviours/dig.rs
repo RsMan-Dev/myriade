@@ -5,6 +5,7 @@ use super::Inst;
 use super::act_phase::{self, ActPhase, Phase};
 use super::{params, Module};
 use crate::rules::dig::may_dig;
+use crate::despawn::Persistent;
 use crate::{cow::*, goals::*, mount, targeting::Target};
 use bevy_ecs::prelude::*;
 
@@ -33,8 +34,29 @@ pub static MODULE: Module = Module {
     stop,
     fired,
     interruptable: false,
+    tick: Some(keep_cooldown),
     ..Module::DEFAULT
 };
+
+/// `Warden.tick` (`WardenAi.setDigCooldown`): while the warden is persistent, a passenger or leashed, its dig cooldown is restarted to 1200
+/// ticks every tick, so it never digs away from its owner.
+const KEPT_COOLDOWN: u64 = 1200;
+fn keep_cooldown(w: &mut World) {
+    let es: Vec<Entity> = w.query_filtered::<Entity, With<Cfg>>().iter(w).collect();
+    for e in es {
+        if w.get::<Persistent>(e).is_none() && !mount_bound(w, e) {
+            continue;
+        }
+        let now = now_of(w, e);
+        if let Some(mut st) = w.get_mut::<ActPhase>(e) {
+            st.dig_cooldown_until = now + KEPT_COOLDOWN;
+        }
+    }
+}
+/// `Mob.requiresCustomPersistence`: a passenger or a leashed creature.
+fn mount_bound(w: &World, e: Entity) -> bool {
+    crate::bridge::host_vehicle::is_passenger(w, e) || crate::leash::is_leashed(w, e)
+}
 
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Cfg(params::<Params>(p)));

@@ -137,7 +137,6 @@ pub(super) fn with_mod_parts(name: &str, test: impl FnOnce(std::path::PathBuf)) 
 }
 
 pub(super) fn mod_holder(game: &mut super::Game<'_>) -> mod_api::BlockEntityRef {
-    game.options.dedicated = Some(Vec::new());
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -314,7 +313,6 @@ fn a_declared_type_ticks_once_whichever_path_named_it() {
         let base = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
         let root = super::mods::content_root(&base, &Default::default()).unwrap();
         super::native_entity_refs::tests::with_game_at(root.prepared().to_path_buf(), |game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

@@ -43,9 +43,6 @@ impl Game<'_> {
     /// functions are admitted (world open and each reload), so both function checks see them.
     pub(in crate::game) fn build_native_commands(&mut self, features: &[String]) {
         // A server hook: a client's tree is the one its server sends.
-        if !self.is_logical_server() {
-            return;
-        }
         let mut usages = Vec::new();
         self.native_register_commands(&mut usages);
         let vanilla = horizon_client::command::vanilla::session_dispatcher(

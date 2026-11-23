@@ -7,7 +7,7 @@
 //! or a server) show whenever `LivingEntityRenderer.shouldShowName` allows,
 //! and the player's own in third person with the `ownNameTag` extra.
 use super::Game;
-use horizon_client::mobs::{Mob, Who};
+use horizon_client::mobs::Who;
 
 impl Game<'_> {
     /// A named name tag names the mob under the crosshair.
@@ -62,45 +62,4 @@ impl Game<'_> {
     pub(super) fn own_profile_name(&self) -> String {
         self.acting_player_name().to_owned()
     }
-
-}
-
-/// `Entity.DATA_CUSTOM_NAME` of a mob named `name`: its component with its style (a name
-/// summoned or set as `{text: "..", color: "red"}` keeps its colour), else the plain text.
-pub(super) fn name_component(m: &Mob, name: &str) -> horizon_core::nbt::Tag {
-    match &m.custom_name_text {
-        Some(text) => horizon_client::scoreboard::component_tag(&text.component()),
-        None => horizon_protocol::text::literal(name),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use horizon_core::geometry::Vec3;
-    use std::sync::Arc;
-
-    #[test]
-    fn a_mobs_name_is_sent_with_its_style() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.local/horizon-client")
-            .join(horizon_core::VANILLA_VERSION);
-        let Ok(types) = horizon_client::mobs::MobTypes::load(&root) else {
-            return;
-        };
-        let cow = Arc::new(types.types["minecraft:cow"].clone());
-        let mut m = Mob::new(1, cow, Vec3::new(0.0, 64.0, 0.0), 0.0);
-        m.custom_name = Some("RED NAME".into());
-        let plain = horizon_protocol::text::literal("RED NAME");
-        assert_eq!(name_component(&m, "RED NAME"), plain);
-        let styled = horizon_core::nbt::Tag::compound([
-            ("text", horizon_core::nbt::Tag::String("RED NAME".into())),
-            ("color", horizon_core::nbt::Tag::String("red".into())),
-        ]);
-        m.custom_name_text = Some(horizon_client::entity_nbt::name_text(&styled));
-        let sent = horizon_client::entity_nbt::name_text(&name_component(&m, "RED NAME"));
-        assert_eq!(sent, horizon_client::entity_nbt::name_text(&styled));
-        assert_ne!(sent, horizon_client::entity_nbt::name_text(&plain));
-    }
-
 }

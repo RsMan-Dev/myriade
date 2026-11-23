@@ -343,7 +343,7 @@ impl Game<'_> {
         Some(id)
     }
     /// The raids of the level in place, once they are read (`read_raids`).
-    pub(super) fn raids_in_place(&self) -> Option<&Raids> {
+    pub(in crate::game) fn raids_in_place(&self) -> Option<&Raids> {
         self.raiding.raids(self.dim.id())
     }
     /// `ServerLevel.getRaidAt`.

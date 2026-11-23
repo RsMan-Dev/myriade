@@ -371,7 +371,6 @@ impl Game<'_> {
         }
         self.world.block_entities.insert(key, new);
         self.world.set_block_lock(key, &tag);
-        self.update_spawner_display(key);
         self.command_block_loaded(key, was_auto);
         self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         true
@@ -659,7 +658,6 @@ impl Game<'_> {
                         self.world.block_entities.insert(key, new);
                     }
                     self.world.set_block_lock(key, &tag);
-                    self.update_spawner_display(key);
                     self.command_block_loaded(key, was_auto);
                     // BlockDataAccessor.setData: setChanged and sendBlockUpdated(3),
                     // even when the block state itself stays the same.
@@ -692,7 +690,6 @@ impl Game<'_> {
         self.load_block_name(key, &new, tag);
         self.world.block_entities.insert(key, new);
         self.world.set_block_lock(key, tag);
-        self.update_spawner_display(key);
         true
     }
     /// What `BlockDataAccessor.setData` tells the world after a load: `setChanged` and
@@ -1123,19 +1120,18 @@ mod loot_table_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -1238,19 +1234,18 @@ mod modern_literal_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -1338,11 +1333,11 @@ mod modern_literal_tests {
 #[cfg(test)]
 mod bell_command_identity_tests {
     use super::*;
-    use horizon_client::{chunk::Chunk, motion::PlayerMotion};
+    use horizon_client::chunk::Chunk;
     use horizon_core::{geometry::Vec3, position::ChunkPos};
     use std::sync::Arc;
     fn with_game(test: impl FnOnce(&mut Game<'_>)) {
-        crate::game::native_entity_refs::tests::with_game(|game| {
+        crate::game::native_guest_turn_tests::with_acting_guest(Vec3::new(2.5, 200.0, 2.5), |game| {
             game.build_registries();
             game.set_allow_commands(true);
 
@@ -1352,7 +1347,6 @@ mod bell_command_identity_tests {
             game.block_ticks
                 .add_empty_chunk(ChunkPos::new(0, 0))
                 .unwrap();
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5)).unwrap());
             game.creative = true;
             assert!(game.run_command("forceload add 0 0"));
             assert!(game.run_command("tick freeze"));

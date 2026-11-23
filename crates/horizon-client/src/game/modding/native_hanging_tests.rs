@@ -11,7 +11,6 @@ const PAINTING: u32 = 901;
 /// A server's game with a south-facing item frame and painting hanging at 4, 70, 4 and 4, 70, 6.
 fn with_hanging(test: impl FnOnce(&mut super::Game<'_>)) {
     with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
         with_hanging_in(game);
         test(game);
     });
@@ -113,7 +112,6 @@ fn tracked_facing(game: &mut super::Game<'_>, id: u32) -> Option<i32> {
 #[ignore = "daily"]
 fn a_hanging_entity_turned_back_to_south_is_sent_south() {
     super::native_guest_turn_tests::with_guests(|game| {
-        game.options.dedicated = Some(Vec::new());
         with_hanging_in(game);
         let frame = game.entity(FRAME).expect("the frame's handle");
         let painting = game.entity(PAINTING).expect("the painting's handle");

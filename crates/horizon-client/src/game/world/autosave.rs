@@ -10,7 +10,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    pub(super) fn save_game(&mut self) -> Result<()> {
+    pub(in crate::game) fn save_game(&mut self) -> Result<()> {
         self.save_game_with(true)
     }
 
@@ -70,11 +70,7 @@ impl Game<'_> {
             // from the owner's last consistent state.
             self.level.write_keeping_player(&self.world_root)?;
         } else {
-            write_level_for_role(
-                &mut self.level,
-                &self.world_root,
-                self.options.execution_role,
-            )?;
+            self.level.write_without_player(&self.world_root)?;
         }
         // PlayerEvent.SaveToFile for the owner, once level.dat is written.
         if let Some((uuid, name)) = stored_owner {
@@ -85,9 +81,7 @@ impl Game<'_> {
         // their own file (`PlayerDataStorage.save`); the owner is also in the
         // file level.dat names, which is the one it loads from
         // (`playerdata::load_owner`).
-        if self.options.execution_role == execution_role::ExecutionRole::DedicatedServer
-            && let Some(host) = self.lan.as_mut()
-        {
+        if let Some(host) = self.lan.as_mut() {
             // The vehicle tree goes into a player's file when they leave
             // (`take_parent_vehicle`); here it stays in the chunk saves.
             host.hub.guests.update_all(|g| {
@@ -107,9 +101,7 @@ impl Game<'_> {
                 }
             });
         }
-        if self.options.execution_role == execution_role::ExecutionRole::DedicatedServer
-            && let Some(host) = self.lan.as_ref()
-        {
+        if let Some(host) = self.lan.as_ref() {
             self.save_connected_guest_statistics(host);
             for guest in host.hub.guests.iter() {
                 if host
@@ -135,18 +127,13 @@ impl Game<'_> {
         self.admit_level_save()?;
         // `DedicatedServer.saveAllChunks` tells the management protocol's clients when a save starts and when
         // it ends without failing, for every save: the command, the autosave, the pause.
-        let dedicated = self.is_dedicated_server();
-        if dedicated {
-            dedicated::events::record_server("saving", serde_json::json!({}));
-        }
+        dedicated::events::record_server("saving", serde_json::json!({}));
         self.save_level(wait)?;
         self.save_parked_levels(wait)?;
         self.save_game_metadata()?;
         let _ = self.finish_player_autosaves(wait);
         self.native_world_saved(wait);
-        if dedicated {
-            dedicated::events::record_server("saved", serde_json::json!({}));
-        }
+        dedicated::events::record_server("saved", serde_json::json!({}));
         Ok(())
     }
 }

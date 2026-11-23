@@ -792,8 +792,7 @@ impl GameLevel<'_> {
             mut experience,
             mut canceled,
         } = dropped;
-        if self.native_authoritative
-            && mod_api::__private::listened(mod_api::HookId::BlockDrops)
+        if mod_api::__private::listened(mod_api::HookId::BlockDrops)
             && let Ok(mut snapshots) = items.try_into_api()
         {
             let (block_entity, breaker_entity) = self.drop_event_refs(pos, breaker);
@@ -1246,7 +1245,6 @@ mod tests {
         use horizon_core::random::LegacyRandom;
         use std::sync::Arc;
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));
@@ -1307,7 +1305,6 @@ mod tests {
         use std::sync::atomic::Ordering;
         crate::game::native_entity_refs::tests::with_game(|game| {
             let _mods = game_thread();
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1388,7 +1385,6 @@ mod tests {
             return;
         };
         crate::game::native_entity_refs::tests::with_game_at(root, |game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

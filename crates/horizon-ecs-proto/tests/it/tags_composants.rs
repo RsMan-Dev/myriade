@@ -4,7 +4,7 @@
 use crate::common::*;
 use bevy_ecs::prelude::*;
 use horizon_ecs_proto::{
-    cow::{spawn_species, species_table, Species},
+    cow::{spawn_species, species_table, Herd, Species},
     type_tags,
 };
 
@@ -22,7 +22,7 @@ fn vanilla_tags_mark_exactly_the_species_they_list() {
     if !have_data() {
         return;
     }
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let made: Vec<(Entity, Species)> =
         species_table().0.into_iter().enumerate().map(|(i, sp)| (spawn_species(&mut h.world, &sp, 0.5 + 4.0 * i as f64, 0.5, 9 + i as u64), sp)).collect();
     for name in TAGS {
@@ -39,7 +39,7 @@ fn a_tag_declared_at_run_time_is_posed_at_creation() {
     if !have_data() {
         return;
     }
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let table = species_table().0;
     let cow = *table.iter().find(|s| s.name == "minecraft:cow").expect("the cow species");
     let zombie = *table.iter().find(|s| s.name == "minecraft:zombie").expect("the zombie species");

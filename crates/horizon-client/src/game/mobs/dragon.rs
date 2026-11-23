@@ -489,8 +489,9 @@ impl Game<'_> {
             SpawnSite::Finalizing(horizon_client::mobs::spawn_rules::Reason::Command) => 0.0,
             _ => mod_api::client::camera::wrap_degrees(self.world.random.next_float() * 360.0),
         };
+        let mut sheet = horizon_ecs_proto::spawn_sheet::SpawnSheet::default();
         let finalized = match site {
-            SpawnSite::Finalizing(reason) => self.finalize_spawn_at("minecraft:ender_dragon", at, reason, None).0,
+            SpawnSite::Finalizing(reason) => self.finalize_spawn_at("minecraft:ender_dragon", at, reason, None, Some(&mut sheet)).0,
             SpawnSite::Plain | SpawnSite::Raw => Finalized::Done,
         };
         match finalized {
@@ -505,7 +506,7 @@ impl Game<'_> {
         let id = self.take_entity_id();
         self.next_entity += 8;
         let summoned = self.ecs_with(|ecs, mw| {
-            ecs.summon_dragon(mw, at, yaw, seed, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || id)
+            ecs.summon_dragon(mw, at, yaw, seed, horizon_ecs_proto::species::ender_dragon::START_PHASE, &sheet, &mut || id)
         });
         self.native_joins_flush(false, summoned).then_some(summoned)
     }

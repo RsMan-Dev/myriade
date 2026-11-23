@@ -7,7 +7,8 @@ use horizon_perf_format::v1::*;
 use prost::Message;
 
 const SERVER: i32 = Side::Server as i32;
-const CLIENT: i32 = Side::Client as i32;
+// Side 1 is reserved now; the frozen fixture still holds the retired client's records under it.
+const CLIENT: i32 = 1;
 
 fn health(side: i32, t: f64) -> HealthSample {
     HealthSample {
@@ -76,16 +77,12 @@ fn expected() -> Capture {
             },
             Start {
                 side: CLIENT,
-                kind: Kind::Client as i32,
+                // Kind 3 is reserved now; the fixture holds it as a number.
+                kind: 3,
                 trigger: Trigger::Ctl as i32,
                 started_unix_ms: 1_794_580_324_250,
-                machine: Some(Machine {
-                    gpu: "AMD Radeon RX 7800 XT".into(),
-                    ..Default::default()
-                }),
                 options: Some(Options {
                     hz: 250,
-                    gpu: GpuMode::Passes as i32,
                     timeline: true,
                     ..Default::default()
                 }),
@@ -184,13 +181,6 @@ fn expected() -> Capture {
                 ..health(SERVER, 1.0)
             },
             HealthSample {
-                fps: Some(144.0),
-                frame_ms_p50: Some(6.875),
-                frame_ms_p95: Some(9.5),
-                frame_ms_p99: Some(12.25),
-                frame_ms_max: Some(16.0),
-                frame_cpu_ms_p50: Some(4.5),
-                frame_gpu_ms_p50: Some(5.75),
                 rss_mb: 2048.0,
                 ..health(CLIENT, 1.0)
             },

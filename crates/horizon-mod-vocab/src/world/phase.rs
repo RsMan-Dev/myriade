@@ -6,8 +6,6 @@
 pub enum DataLoadOrigin {
     /// Server data loading, including a reload.
     ServerDataLoad,
-    /// Client resource preloading.
-    ClientPreload,
 }
 
 /// The side that owns a resource-generation loop.
@@ -17,8 +15,6 @@ pub enum DataLoadOrigin {
 pub enum LoopSide {
     /// A server loop.
     Server,
-    /// A client loop.
-    Client,
 }
 use std::{collections::BTreeMap, sync::Arc};
 

@@ -128,6 +128,24 @@ pub fn stand_up_instantly(w: &mut World, e: Entity) {
     release(w, e, OCC_SITTING);
     w.entity_mut(e).remove::<Holding>();
 }
+/// `CamelMoveControl.tick` (`Camel.java`): a walk target stands a sitting camel up with its stand sound, once its sit-down is over and
+/// it is not leashed and the standing box fits (`canCamelChangePose`). The walk waits for the stand-up through `refuses_to_move`.
+pub fn stand_for_walk(w: &mut World, e: Entity) {
+    let now = crate::cow::game_now(w);
+    let Some(p) = w.get::<Posture>(e).copied() else { return };
+    if !p.sat(now) || crate::leash::is_leashed(w, e) || !fits_standing(w, e) {
+        return;
+    }
+    stand_up(w, e);
+    // `Camel.standUp` plays the stand sound through `Mob.makeSound`: volume 1, the voice pitch of the entity.
+    let pitch = super::ram::voice_pitch(w, e);
+    super::act_phase::sound(w, e, "entity.camel.stand", 1.0, pitch);
+}
+/// `wouldNotSuffocateAtTargetPose(STANDING)`: `noBlockCollision` of the standing box at the position.
+fn fits_standing(w: &World, e: Entity) -> bool {
+    let (Some(pos), Some(body)) = (w.get::<Pos>(e), w.get::<Body>(e)) else { return false };
+    w.get_resource::<Level>().is_none_or(|l| l.no_collision(box_at(pos.0, body.width, body.height)))
+}
 pub fn is_sitting(w: &World, e: Entity) -> bool {
     w.get::<Posture>(e).is_some_and(|p| p.sitting)
 }
@@ -259,5 +277,15 @@ mod tests {
         };
         assert!(pose_time(&h.world, e) >= 52, "pose_time {}", pose_time(&h.world, e));
         assert!(!refuses_to_move(&h.world, e));
+    }
+}
+
+/// `Camel.finalizeSpawn`: `resetLastPoseChangeTickToFullStand(gameTime)`, the camel stands and its last change of pose is 53 ticks back
+/// (the stand-up is over at its birth). A `Store::Call` of the species draws.
+pub(crate) fn spawn_full_stand(w: &mut World, e: Entity, _: u32) {
+    let since = (crate::cow::game_now(w) - 53).max(0);
+    if let Some(mut p) = w.get_mut::<Posture>(e) {
+        p.sitting = false;
+        p.since = since;
     }
 }

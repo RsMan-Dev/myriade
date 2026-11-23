@@ -30,7 +30,7 @@ pub static DEF: Def = Def {
     name: "minecraft:sniffer",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     goals: &[Entry::new(&float::MODULE, 0, &float::Params::DEFAULT)],
-    rules: &[RuleEntry::new(&breed::LOVE, &breed::Params { foods: FOOD, baby_age: 48000, ..breed::Params::DEFAULT })],
+    rules: &[RuleEntry::new(&breed::LOVE, &breed::Params { foods: FOOD, baby_age: 48000, ..breed::Params::DEFAULT }), RuleEntry::new(&crate::leash::QUAD_LEASHEE, &crate::leash::QuadParams { front: -0.01, front_back: 0.63, left_right: 0.38, up: 1.15 })],
     brain: BrainDef {
         sensors: &[
             SensorEntry::new(&living::SENSOR, 20),

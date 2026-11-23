@@ -9,11 +9,11 @@ use horizon_client::items::ItemStack;
 use horizon_client::motion::PlayerMotion;
 use horizon_core::geometry::Vec3;
 
+// TODO(phase 2): joueur local retiré — à faire agir par un joueur connecté (as_guest).
 #[test]
 #[ignore = "daily"]
 fn carving_with_off_hand_shears_breaks_the_off_hand() {
     let mut game = server_game();
-    game.options.dedicated = None;
     game.set_mode_id(0);
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
     // A guest's break is queued with its entity event; the local player's is

@@ -2,7 +2,7 @@
 //! builds both from `{id:..}` through their `(EntityType, Level)` factory, so
 //! the orb is never unstuck, and an empty item is discarded while loading
 //! (`ItemEntity.readAdditionalSaveData`) yet the command still succeeds.
-use super::super::{Audio, Game, Options, Progress, Settings, execution_role, load_resources};
+use super::super::{Game, Options, Progress, Settings, execution_role, load_resources};
 use horizon_client::chunk::Chunk;
 use horizon_core::geometry::Vec3;
 use std::sync::Arc;
@@ -17,19 +17,18 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();

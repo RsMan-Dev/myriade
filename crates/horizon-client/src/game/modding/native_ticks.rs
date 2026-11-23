@@ -74,13 +74,10 @@ impl Game<'_> {
     /// server, never a client), and only while a mod listens
     /// (`native_entity_tick_listened`). Its list is kept between ticks.
     pub(super) fn native_tick_round(&mut self) -> TickRound {
-        let server = self.serving.is_some() || self.options.dedicated.is_some();
         let mut listened = false;
-        if server {
-            self.native_entity_tick_listened(&mut listened);
-        }
+        self.native_entity_tick_listened(&mut listened);
         let listening = server && listened;
-        let sections = self.is_logical_server() && self.entity_section_scope().is_some();
+        let sections = self.entity_section_scope().is_some();
         TickRound {
             listening,
             sections,

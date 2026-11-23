@@ -49,6 +49,11 @@ pub struct HurtAt {
 #[component(storage = "SparseSet")]
 pub struct InvulnerableUntil(pub u64);
 
+/// The permanent `Invulnerable` flag (`Entity.invulnerable`): the NBT key of the entity's free state, set by `/data`, `/summon` or a save.
+pub fn has_invulnerable_flag(w: &World, e: Entity) -> bool {
+    w.get::<crate::invulnerable::Invulnerable>(e).is_some()
+}
+
 /// `Entity.isInvulnerableToBase` for the `Invulnerable` flag (`flag`) or the `invulnerableTime` window (`window`): refused unless the
 /// source is in `#bypasses_invulnerability` (`out_of_world`, `generic_kill`) or its causing entity is a creative player.
 pub fn invulnerability_refuses(flag: bool, window: bool, cause: Cause, creative_attacker: bool) -> bool {
@@ -108,10 +113,12 @@ pub struct Burning {
 }
 
 /// `Entity.igniteForSeconds`: on fire for `ticks` more (the later end wins); the first burn comes with the wheel as for a fire under it.
+/// A living entity's `igniteForTicks` scales them by `Attributes.BURNING_TIME` and rounds up (`Mth.ceil`).
 pub fn set_on_fire(w: &mut World, e: Entity, ticks: u64) {
     if w.get::<Health>(e).is_none() || w.get::<Immune>(e).is_some_and(|i| i.has(crate::effects::IMMUNE_FIRE)) {
         return;
     }
+    let ticks = (ticks as f64 * crate::attr_mod::read(w, e, "burning_time", 1.0).clamp(0.0, 1024.0)).ceil() as u64;
     let now = now_of(w, e);
     let until = now as i64 + ticks as i64;
     match w.get::<Burning>(e).map(|b| b.until) {
@@ -166,31 +173,38 @@ pub struct Hit {
     pub direct: bool,
     /// The knockback's power when the attacker sets it (a goat's ram); `None`: the default 0.4.
     pub power: Option<f64>,
+    /// A second knockback after the default one (`causeExtraKnockback`): the direction (x, z) and the power; `None` elsewhere.
+    pub extra: Option<(f64, f64, f64)>,
     /// The projectile that carried the blow (`DamageSource.getDirectEntity` is it): its type id; `None` for a blow with no projectile.
     pub projectile: Option<&'static str>,
 }
 
 impl DamageQueue {
     pub fn add(&mut self, target: Entity, amount: f32, cause: Cause) {
-        self.0.push(Hit { target, amount, cause, damage: cause_name(cause, None), from: None, by: None, direct: false, power: None, projectile: None });
+        self.0.push(Hit { target, amount, cause, damage: cause_name(cause, None), from: None, by: None, direct: false, power: None, extra: None, projectile: None });
     }
     pub fn add_by(&mut self, target: Entity, amount: f32, from: (f64, f64), player: u32) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "player_attack", from: Some(from), by: Some(crate::targeting::Who::Player(player)), direct: true, power: None, projectile: None });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "player_attack", from: Some(from), by: Some(crate::targeting::Who::Player(player)), direct: true, power: None, extra: None, projectile: None });
     }
     /// A blow of a creature standing at `from`: the victim may take it as its target.
     pub fn add_by_entity(&mut self, target: Entity, amount: f32, from: (f64, f64), attacker: Entity) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "mob_attack", from: Some(from), by: Some(crate::targeting::Who::Entity(attacker)), direct: true, power: None, projectile: None });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "mob_attack", from: Some(from), by: Some(crate::targeting::Who::Entity(attacker)), direct: true, power: None, extra: None, projectile: None });
     }
     /// A blow of `who` through a projectile: the victim may take `who` as its target, but the blow is not direct.
     pub fn add_via(&mut self, target: Entity, amount: f32, from: (f64, f64), who: crate::targeting::Who, projectile: &'static str) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: cause_name(Cause::Entity, Some(who)), from: Some(from), by: Some(who), direct: false, power: None, projectile: Some(projectile) });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: cause_name(Cause::Entity, Some(who)), from: Some(from), by: Some(who), direct: false, power: None, extra: None, projectile: Some(projectile) });
     }
     /// A blow of a creature at `from` that pushes its target with `power` (`LivingEntity.knockback`), as a ram does.
     pub fn add_ram(&mut self, target: Entity, amount: f32, from: (f64, f64), power: f64) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "mob_attack", from: Some(from), by: None, direct: false, power: Some(power), projectile: None });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "mob_attack", from: Some(from), by: None, direct: false, power: Some(power), extra: None, projectile: None });
     }
     pub fn add_from(&mut self, target: Entity, amount: f32, cause: Cause, from: (f64, f64)) {
-        self.0.push(Hit { target, amount, cause, damage: cause_name(cause, None), from: Some(from), by: None, direct: false, power: None, projectile: None });
+        self.0.push(Hit { target, amount, cause, damage: cause_name(cause, None), from: Some(from), by: None, direct: false, power: None, extra: None, projectile: None });
+    }
+    /// A blast's blow: `player_explosion` when the blast has a causing entity (`DamageSources.explosion`), else `explosion`.
+    pub fn add_blast(&mut self, target: Entity, amount: f32, from: (f64, f64), caused: bool) {
+        let damage = if caused { "player_explosion" } else { "explosion" };
+        self.0.push(Hit { target, amount, cause: Cause::Blast, damage, from: Some(from), by: None, direct: false, power: None, extra: None, projectile: None });
     }
 }
 
@@ -498,7 +512,7 @@ pub struct Intake(pub fn(&mut World, Entity, Cause));
 pub(crate) fn apply_damage(
     clock: Res<Clock>,
     mut queue: ResMut<DamageQueue>,
-    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>, Option<&SpeciesId>, Has<crate::behaviours::guardian_thorns::Spiky>, Has<Dying>, Has<crate::item::BlastResist>)>,
+    mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>, Option<&SpeciesId>, Has<crate::behaviours::guardian_thorns::Spiky>, Has<Dying>, Has<crate::item::BlastResist>, Option<&crate::effects::Resistance>)>,
     species: Res<SpeciesTable>,
     mut hurts: ResMut<crate::goals::Hurts>,
     mut ps: ResMut<crate::hostile::PlayerState>,
@@ -506,8 +520,9 @@ pub(crate) fn apply_damage(
     mut causes: ResMut<HurtCauses>,
     mut events: ResMut<crate::goals::Events>,
     watched: Option<Res<HitWatched>>,
+    mut absorbs: Query<&mut crate::absorption::Absorption>,
     intakes: Query<&Intake>,
-    flags: Query<&crate::nbt::NbtData>,
+    flags: Query<(), With<crate::invulnerable::Invulnerable>>,
     // The limit is 16 parameters: the new read-only queries go in this group.
     (windows, mut links, netids, raiders, dead): (Query<&InvulnerableUntil>, Query<&mut crate::damage_link::DamageLink>, Query<&crate::bridge::ids::NetId>, Query<&crate::raids::Raider>, Query<(), crate::tear_down::Dead>),
     mut commands: Commands,
@@ -523,7 +538,7 @@ pub(crate) fn apply_damage(
                 continue;
             }
         }
-        let Ok((mut h, mut hurt, _, pos, mut v, c, rng, resist, immune, armor, sid, spiky, dying, blast_resist)) = q.get_mut(e) else {
+        let Ok((mut h, mut hurt, _, pos, mut v, c, rng, resist, immune, armor, sid, spiky, dying, blast_resist, damage_resist)) = q.get_mut(e) else {
             continue;
         };
         // A stack that resists fire or explosions takes no such hit, and no event of it.
@@ -549,7 +564,7 @@ pub(crate) fn apply_damage(
                 }
             }
         }
-        let flag = flags.get(e).is_ok_and(|d| matches!(d.0.get(&horizon_core::nbt::JavaString::from("Invulnerable")), Some(horizon_core::nbt::Tag::Byte(v)) if *v != 0));
+        let flag = flags.contains(e);
         let window = windows.get(e).is_ok_and(|u| u.0 > clock.of(e));
         let creative = matches!(hit.by, Some(crate::targeting::Who::Player(id)) if ps.creative(id));
         if invulnerability_refuses(flag, window, hit.cause, creative) {
@@ -571,8 +586,19 @@ pub(crate) fn apply_damage(
         };
         // `LivingEntity.getDamageAfterArmorAbsorb`: what the worn armor stops, unless the hurt is in `#bypasses_armor`.
         if crate::equipment::armor_applies(hit.cause) {
+            // `LivingEntity.hurtArmor` takes the hurt before the absorb: each worn piece wears by what the hit was.
+            let pre = applied;
+            commands.queue(move |w: &mut World| {
+                crate::equipment_wear::hurt_armor(w, e, pre);
+                crate::equipment_wear::hurt_body(w, e, pre);
+            });
             let (a, t) = armor.map_or_else(|| sid.map_or((0.0, 0.0), |s| crate::equipment::base_armor(&species.0[s.0 as usize])), |a| (a.armor, a.toughness));
             applied = crate::equipment::absorb(applied, a, t);
+        }
+        // `LivingEntity.getDamageAfterMagicAbsorb`: Resistance takes `(amp + 1) * 5` of 25 off (none at level 5 or more); `starve` bypasses
+        // the effects, `out_of_world` and `generic_kill` bypass Resistance (`bypasses_effects`, `bypasses_resistance` tags, jar).
+        if let Some(r) = damage_resist && !matches!(hit.damage, "starve" | "out_of_world" | "generic_kill") {
+            applied = (applied * (25 - 5 * r.0) as f32 / 25.0).max(0.0);
         }
         *hurt = HurtAt { at: now, last: hit.amount };
         // `Raider.hurtServer`: the raid's bar is recomputed before the damage, with the health the raider has now.
@@ -582,7 +608,21 @@ pub(crate) fn apply_damage(
         {
             events.host.raider_hurt(raid, id, h.0);
         }
+        // `LivingEntity.getDamageAfterAbsorb`: the absorption hearts take the hit after the armor and Resistance; what they took is
+        // credited to a player who dealt it (`dealt_absorbed`).
+        let mut absorbed = 0.0_f32;
+        if let Ok(mut a) = absorbs.get_mut(e) {
+            absorbed = a.0.min(applied).max(0.0);
+            a.0 -= absorbed;
+            if a.0 <= 0.0 {
+                commands.entity(e).remove::<crate::absorption::Absorption>();
+            }
+        }
+        applied -= absorbed;
+        let health_before = h.0;
         h.0 -= applied;
+        let health_after = h.0;
+        commands.queue(move |w: &mut World| crate::behaviours::crack_sound::hurt(w, e, health_before, health_after));
         // `Mob.doHurtTarget`'s `hurtServer` returned true: what follows a landed melee blow (`hostile::landed`).
         if let (Some(crate::targeting::Who::Entity(attacker)), true, "mob_attack") = (hit.by, hit.direct, hit.damage) {
             commands.queue(move |w: &mut World| crate::hostile::landed(w, attacker, crate::targeting::Who::Entity(e), applied));
@@ -590,9 +630,9 @@ pub(crate) fn apply_damage(
         let (damage_type, by_log, direct_log, projectile) = (hit.damage, hit.by, hit.direct, hit.projectile);
         commands.queue(move |w: &mut World| record_combat(w, e, damage_type, by_log, direct_log, projectile, applied));
         if let Some(who) = hit.by
-            && watched.as_ref().is_some_and(|w| w.0)
+            && (watched.as_ref().is_some_and(|w| w.0) || (absorbed > 0.0 && matches!(who, crate::targeting::Who::Player(_))))
         {
-            events.host.hit_dealt(who, e, applied);
+            events.host.hit_dealt(who, e, applied, absorbed);
         }
         let by_who = hit.by;
         commands.queue(move |w: &mut World| crate::item::hurt_event(w, e, by_who));
@@ -603,10 +643,12 @@ pub(crate) fn apply_damage(
         if h.0 <= 0.0 {
             // A totem may save it, the host may keep it `Dying`: `using::lethal` ends the hit once the commands run.
             let (damage, at, left) = (hit.damage, [pos.0.x, pos.0.y, pos.0.z], h.0);
+            commands.queue(move |w: &mut World| crate::sound_slots::death(w, e));
             commands.queue(move |w: &mut World| crate::using::lethal(w, e, damage, by_who, at, left));
             continue;
         }
         hurts.0.push(e);
+        commands.queue(move |w: &mut World| crate::sound_slots::hurt(w, e));
         events.hurt.push(e);
         if let Ok(&crate::bridge::ids::NetId(id)) = netids.get(e) {
             let cause = match hit.by {
@@ -614,7 +656,11 @@ pub(crate) fn apply_damage(
                 Some(crate::targeting::Who::Entity(a)) => netids.get(a).map_or(0, |n| n.0),
                 None => 0,
             };
-            events.host.hurt(id, hit.damage, cause, hit.direct, [pos.0.x, pos.0.y, pos.0.z]);
+            let attacker = match hit.by {
+                Some(crate::targeting::Who::Entity(a)) => Some(a),
+                _ => None,
+            };
+            events.host.hurt(id, hit.damage, cause, hit.direct, [pos.0.x, pos.0.y, pos.0.z], attacker);
         }
         events.vibration.push(crate::behaviours::vibration_listen::Vibration { pos: [pos.0.x, pos.0.y, pos.0.z], source: hit.by, owner: None, projectile: false });
         if hit.by.is_some() {
@@ -661,6 +707,48 @@ pub(crate) fn apply_damage(
                 v.0 = Vec3::new(v.0.x / 2.0 - kx, y, v.0.z / 2.0 - kz);
                 commands.entity(e).insert(Moving);
             }
+            // `causeExtraKnockback`: a second push along `(x, z)`, its power cut by the same resistance, after the default one.
+            if let Some((sx, sz, extra)) = hit.extra {
+                let p = extra * (1.0 - resist.map_or(0.0, |r| r.0));
+                let l = (sx * sx + sz * sz).sqrt();
+                if p > 0.0 && l > 0.0 {
+                    let y = if c.on_ground { (v.0.y / 2.0 + p).min(0.4) } else { v.0.y };
+                    v.0 = Vec3::new(v.0.x / 2.0 - sx / l * p, y, v.0.z / 2.0 - sz / l * p);
+                    commands.entity(e).insert(Moving);
+                }
+            }
+        }
+    }
+}
+
+/// `Entity.playEntityOnFireExtinguishedSound`: volume 0.7, pitch 1.6 and two draws of the body's generator times 0.4.
+fn hiss(events: &mut crate::goals::Events, at: Vec3, rng: Option<Mut<Rng>>) {
+    let spread = rng.map_or(0.0, |mut r| (r.next_float() - r.next_float()) * 0.4);
+    events.host.sound("entity.generic.extinguish_fire", [at.x, at.y, at.z], 0.7, 1.6 + spread);
+}
+
+/// `Entity.isInWaterOrRain`: a burning body in rain, at its block or at the block of its top, is put out as in water. Only the
+/// burning bodies are visited.
+pub(crate) fn rain_out(
+    clock: Res<Clock>,
+    level: Res<Level>,
+    mut events: ResMut<crate::goals::Events>,
+    mut q: Query<(Entity, &Pos, &Bounds, &Burning, Option<&mut Rng>)>,
+    mut commands: Commands,
+) {
+    let mw = level.mw.0;
+    if !mw.raining {
+        return;
+    }
+    for (e, pos, b, fire, rng) in &mut q {
+        let (x, y, z) = (pos.0.x.floor() as i32, pos.0.y.floor() as i32, pos.0.z.floor() as i32);
+        if mw.raining_at(x, y, z) || mw.raining_at(x, b.0.max_position().y.floor() as i32, z) {
+            // The hiss only from a fire that was burning before this tick (more than one tick left).
+            if fire.until - clock.of(e) as i64 > 1 {
+                hiss(&mut events, pos.0, rng);
+            }
+            commands.entity(e).remove::<Burning>();
+            events.extinguished.push(e);
         }
     }
 }
@@ -669,17 +757,24 @@ pub(crate) fn apply_damage(
 /// 8 s, a cactus hurts 1, powder snow counts the freezing (1 damage every 40 ticks once frozen for 140), water puts
 /// the fire out. The fire's own damage (1 every 20 ticks) is in the timer wheel.
 #[allow(clippy::type_complexity)]
+/// `ItemTags.FREEZE_IMMUNE_WEARABLES` (`tags/item/freeze_immune_wearables.json`).
+const FREEZE_IMMUNE_WEARABLES: &[&str] = &["minecraft:leather_boots", "minecraft:leather_leggings", "minecraft:leather_chestplate", "minecraft:leather_helmet", "minecraft:leather_horse_armor"];
+/// `LivingEntity.canFreeze`: a stack of the tag worn in an armour slot (head to feet, and the body: slots 2 to 6) refuses the freezing.
+fn wears_freeze_immune(worn: &Query<&crate::equip_stack::Equipment>, e: Entity) -> bool {
+    worn.get(e).is_ok_and(|q| q.slots[2..7].iter().flatten().any(|s| FREEZE_IMMUNE_WEARABLES.contains(&&*s.item)))
+}
 pub(crate) fn hazard_tick(
     clock: Res<Clock>,
     level: Res<Level>,
     mut wheel: ResMut<Wheel>,
     mut queue: ResMut<DamageQueue>,
     mut events: ResMut<crate::goals::Events>,
-    mut q: Query<(Entity, &Hazard, &mut Frozen, Option<&Burning>, &Pos, &Bounds, &FluidParams, Option<&Immune>)>,
+    mut q: Query<(Entity, &Hazard, &mut Frozen, Option<&Burning>, &Pos, &Bounds, &FluidParams, Option<&Immune>, Option<&mut Rng>)>,
+    worn: Query<&crate::equip_stack::Equipment>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
-    for (e, h, mut frozen, burning, pos, b, sid, immune) in &mut q {
+    for (e, h, mut frozen, burning, pos, b, sid, immune, rng) in &mut q {
         // A stack that resists fire does not catch fire from the lava or the flames (its hits are refused in `apply_damage`).
         let fire_proof = immune.is_some_and(|i| i.has(crate::effects::IMMUNE_FIRE));
         let now = clock.of(e);
@@ -693,7 +788,11 @@ pub(crate) fn hazard_tick(
         };
         let lit = f & HAZ_FIRE != 0 || in_lava;
         if in_water {
-            if burning.is_some() {
+            if let Some(fire) = burning {
+                // The hiss only from a fire that was burning before this tick (more than one tick left).
+                if fire.until - now as i64 > 1 {
+                    hiss(&mut events, pos.0, rng);
+                }
                 commands.entity(e).remove::<Burning>();
                 events.extinguished.push(e);
             }
@@ -725,7 +824,8 @@ pub(crate) fn hazard_tick(
         if f & HAZ_CACTUS != 0 {
             queue.add(e, 1.0, Cause::Cactus);
         }
-        if f & HAZ_SNOW != 0 {
+        // `Entity.baseTick`: the powder snow counts only where `canFreeze` (no `IMMUNE_FREEZE` bit).
+        if f & HAZ_SNOW != 0 && !immune.is_some_and(|i| i.has(crate::effects::IMMUNE_FREEZE)) && !wears_freeze_immune(&worn, e) {
             frozen.0 = (frozen.0 + 1).min(140);
             if frozen.0 >= 140 && now % 40 == 0 {
                 queue.add(e, 1.0, Cause::Freeze);

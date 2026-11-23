@@ -12,15 +12,14 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         &root,
         &settings,
         Instant::now(),
-        execution_role::ExecutionRole::IntegratedServer,
+        execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
-    let mut g = Game::new(&loaded.resources, loaded.pack, options, settings, Audio::default()).unwrap();
-    g.options.dedicated = Some(Vec::new());
+    options.execution_role = execution_role::ExecutionRole::DedicatedServer;
+    let mut g = Game::new(&loaded.resources, loaded.pack, options, settings).unwrap();
     g.world = World::new(g.res.facts().air, 1);
     g.player = Some(PlayerMotion::new(g.motion, Vec3::new(30.0, 64.0, 0.5)).unwrap());
     g.player.as_mut().unwrap().entity_id = 77;

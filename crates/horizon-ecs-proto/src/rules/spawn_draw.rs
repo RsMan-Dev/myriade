@@ -29,6 +29,12 @@ pub enum Roll {
     Pow2(&'static Roll),
     /// `nextFloat() < chance` takes `then`, else `otherwise` (no draw for the branch not taken).
     Chance { chance: f32, then: &'static Roll, otherwise: &'static Roll },
+    /// `nextDouble() < chance` takes `then`, else `otherwise` (`Goat.finalizeSpawn`'s screaming chance is a double).
+    ChanceD { chance: f64, then: &'static Roll, otherwise: &'static Roll },
+    /// `nextBoolean()`: `then` when true, else `otherwise`.
+    Coin { then: u32, otherwise: u32 },
+    /// `UniformInt.sample`: `min + nextInt(max - min + 1)`.
+    Between { min: i32, max: i32 },
     /// No draw: the row whose key the biome matches (`#tag` for a tag, else the biome id without `minecraft:`), else `otherwise`.
     ByBiome { rows: &'static [(&'static str, &'static Roll)], otherwise: &'static Roll },
     /// No draw: `baby` for a baby, `adult` for an adult.
@@ -71,6 +77,15 @@ pub fn roll(t: &Roll, c: &Ctx, r: &mut impl RandomSource) -> u32 {
                 roll(otherwise, c, r)
             }
         }
+        Roll::ChanceD { chance, then, otherwise } => {
+            if r.next_double() < chance {
+                roll(then, c, r)
+            } else {
+                roll(otherwise, c, r)
+            }
+        }
+        Roll::Coin { then, otherwise } => if r.next_boolean() { then } else { otherwise },
+        Roll::Between { min, max } => (min + r.next_int_bound(max - min + 1).unwrap_or(0)) as u32,
         Roll::ByBiome { rows, otherwise } => {
             let own = c.biome.strip_prefix("minecraft:").unwrap_or(c.biome);
             let row = rows.iter().find(|(k, _)| match k.strip_prefix('#') {

@@ -1001,7 +1001,7 @@ def parse_rust(path):
 
 
 def rust_files():
-    out = subprocess.run(["git", "ls-files", "crates/*.rs", "launcher/*.rs"], cwd=ROOT, capture_output=True, text=True).stdout
+    out = subprocess.run(["git", "ls-files", "crates/*.rs"], cwd=ROOT, capture_output=True, text=True).stdout
     return [f for f in out.split() if f.endswith(".rs")]
 
 
@@ -2712,7 +2712,7 @@ def changed_ranges(base):
     mb = subprocess.run(["git", "merge-base", base, "HEAD"], cwd=ROOT, capture_output=True, text=True)
     if mb.returncode:
         sys.exit(f"No merge base with {base}: {mb.stderr.strip()}")
-    diff = subprocess.run(["git", "diff", "-U0", mb.stdout.strip(), "--", "crates", "launcher"],
+    diff = subprocess.run(["git", "diff", "-U0", mb.stdout.strip(), "--", "crates"],
                           cwd=ROOT, capture_output=True, text=True).stdout
     ranges, path = defaultdict(list), None
     for line in diff.splitlines():
@@ -2723,11 +2723,11 @@ def changed_ranges(base):
             start, n = int(m.group(1)), int(m.group(2) or 1)
             ranges[path].append((start, start + max(n, 1) - 1))
     # A brand-new, untracked source file is uncommitted work too: cover the whole file so cmd_check
-    # sees every fn in it. Keep the same crates/launcher scope as the diff above.
+    # sees every fn in it. Keep the same crates scope as the diff above.
     new = subprocess.run(["git", "ls-files", "--others", "--exclude-standard", "*.rs"],
                          cwd=ROOT, capture_output=True, text=True).stdout
     for path in new.splitlines():
-        if not path.endswith(".rs") or not (path.startswith("crates/") or path.startswith("launcher/")):
+        if not path.endswith(".rs") or not path.startswith("crates/"):
             continue
         try:
             count = len((ROOT / path).read_text(encoding="utf-8").splitlines())

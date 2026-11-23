@@ -77,7 +77,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// IntegratedServer.MAX_PLAYERS.
+/// integrated serverMAX_PLAYERS.
 pub const MAX_PLAYERS: usize = 8;
 
 /// Messages from the connection threads to the game thread.
@@ -210,7 +210,7 @@ impl OnlineMode {
             prevent_proxy,
         })
     }
-    /// IntegratedServer.initServer (`setUsesAuthentication(true)`): a LAN or
+    /// integrated serverinitServer (`setUsesAuthentication(true)`): a LAN or
     /// friends world authenticates its guests when the host is signed in;
     /// an offline name hosts in offline mode.
     pub fn lan() -> Option<Arc<Self>> {
@@ -300,7 +300,7 @@ pub struct NetConfig {
     /// An integrated server's owner profile: the properties the window's own
     /// (memory) connection logs in with.
     pub owner_profile: Option<Arc<OwnerProfile>>,
-    /// `IntegratedServer.getSingleplayerProfile` (`Minecraft.getGameProfile`): the
+    /// `integrated servergetSingleplayerProfile` (`Minecraft.getGameProfile`): the
     /// integrated server's own player's name and UUID. A memory login whose name matches
     /// is that profile (the account's UUID); every other login derives the offline one.
     pub singleplayer_profile: Option<(String, u128)>,
@@ -339,7 +339,7 @@ impl NetConfig {
     pub fn enforces_secure_chat(&self) -> bool {
         self.secure_chat.as_ref().is_some_and(|s| s.enforced())
     }
-    /// IntegratedServer.publishServer.
+    /// integrated serverpublishServer.
     pub fn lan(port: u16, motd: String, max_players: usize) -> Self {
         Self {
             bind: None,
@@ -375,7 +375,7 @@ impl NetConfig {
     }
 }
 
-/// `IntegratedServer.getSingleplayerProfile` (`Minecraft.getGameProfile`):
+/// `integrated servergetSingleplayerProfile` (`Minecraft.getGameProfile`):
 /// the signed-in account's profile properties, its signed `textures` among
 /// them, which the player list gives the owner so that LAN guests see the
 /// owner's skin. Fetched in the background from the world's start; nothing
@@ -924,7 +924,7 @@ impl Lan {
     }
     /// Start accepting connections on `port` (0 picks a free one), and
     /// announce the world on the local network when `announce`
-    /// (`IntegratedServer.publishServer`'s LanServerPinger). Returns the port.
+    /// (`integrated serverpublishServer`'s LanServerPinger). Returns the port.
     pub fn listen(&mut self, port: u16, announce: bool) -> io::Result<u16> {
         if self.listener.is_some() {
             return Err(io::Error::new(
@@ -1360,7 +1360,7 @@ mod tests {
     }
 
     /// `IntegratedPlayerList.canPlayerLogin`: a login whose name is the
-    /// singleplayer owner's (`IntegratedServer.isSingleplayerOwner`, ignoring
+    /// singleplayer owner's (`integrated serverisSingleplayerOwner`, ignoring
     /// case) is refused with `multiplayer.disconnect.name_taken` while a player
     /// of that name is online. The owner's own first login, and any other name,
     /// get in; a server with no owner profile (a dedicated one) has no such rule.

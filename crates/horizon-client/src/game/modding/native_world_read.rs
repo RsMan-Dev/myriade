@@ -757,7 +757,6 @@ mod tests {
                     api_fluid_state(EngineFluidState::WATER)
                 );
             });
-            game.options.dedicated = Some(Vec::new());
             let bounds = game.level_height(level).unwrap();
             use super::super::api_values::TryIntoApi;
             let stone = stone.try_into_api().unwrap();

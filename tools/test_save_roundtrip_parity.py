@@ -29,10 +29,8 @@ import os
 import queue
 import re
 import shutil
-import socket
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from pathlib import Path
@@ -40,6 +38,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import anvil_dump  # noqa: E402
 import save_roundtrip_scene as scene  # noqa: E402
+from server_lab import Server  # noqa: E402
 
 try:
     from . import lab
@@ -339,49 +338,16 @@ def entity_uuid_text(i):
 
 # ---------------------------------------------------------------- Horizon
 
-def vscreen_env():
-    text = subprocess.run(['vscreen', 'env'], capture_output=True, text=True, check=True).stdout
-    env = lab.game_env()
-    env.pop('DISPLAY', None)
-    for match in re.finditer(r'(\w+)=(\S+)', text.split('unset')[0]):
-        env[match.group(1)] = match.group(2)
-    return env
-
-
 def horizon_resave(source, destination, bin_dir):
     shutil.rmtree(destination, ignore_errors=True)
-    saves = destination / 'saves'
-    saves.mkdir(parents=True)
-    shutil.copytree(source, saves / 'world')
-    socket = Path(tempfile.mkdtemp(prefix='hzrt')) / 'control.sock'  # sockets need short paths
-    ctl = [str(lab.binary(bin_dir, 'horizon-ctl')), '--socket', str(socket)]
-    extra = []
-    # Offscreen on macOS, and on a Linux without vscreen (never a window on a real monitor).
-    if sys.platform == 'darwin' or not shutil.which('vscreen'):
-        env = lab.game_env()
-        extra = ['--offscreen']
-    else:
-        alsa = destination / 'null-asound.conf'
-        alsa.write_text('pcm.!default { type null }\nctl.!default { type null }\n')
-        env = vscreen_env()
-        env['ALSA_CONFIG_PATH'] = str(alsa)
-        subprocess.run(['vscreen', 'up'], check=False, capture_output=True)
-    launch = subprocess.run(
-        ctl + ['launch', '--resources', str(RESOURCES), '--world', 'world', '--render-distance', '6'] + extra,
-        cwd=destination, env=env, capture_output=True, text=True)
-    print(launch.stdout.strip())
-    if launch.returncode:
-        sys.exit('horizon failed to launch: ' + launch.stdout + launch.stderr)
-    steps = [['wait-ready', '240']]
-    steps += [['command', f'gamerule {rule} {new}'] for rule, (_, new) in HORIZON_RULES.items()]
-    steps += [['save-all'], ['quit']]
-    for step in steps:
-        result = subprocess.run(ctl + step, cwd=destination, env=env, capture_output=True, text=True)
-        print(' '.join(step), '->', result.stdout.strip() or result.stderr.strip())
-        if step[0] != 'quit' and result.returncode:
-            sys.exit('horizon-ctl failed: ' + result.stdout)
+    destination.mkdir(parents=True)
+    shutil.copytree(source, destination / 'world')
+    with Server(bin_dir, destination, RESOURCES, {'view-distance': '6'}) as server:
+        for rule, (_, new) in HORIZON_RULES.items():
+            print(f'gamerule {rule} {new} ->', server.command(f'gamerule {rule} {new}'))
+        print('save-all ->', server.command('save-all'))
     time.sleep(3)
-    return saves / 'world'
+    return destination / 'world'
 
 
 # ---------------------------------------------------------------- NBT comparison
@@ -649,7 +615,7 @@ def summarize(report):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--keep', action='store_true')
-    parser.add_argument('--bin-dir', help='prebuilt horizon-client and horizon-ctl (default: build them with the fast profile)')
+    parser.add_argument('--bin-dir', help='prebuilt horizon-client (default: build it with the fast profile)')
     parser.add_argument('--vanilla', help='an existing vanilla world folder (skips generation)')
     parser.add_argument('--horizon', help='an existing Horizon-saved world folder (skips the Horizon run)')
     parser.add_argument('--skip-vanilla-load', action='store_true')

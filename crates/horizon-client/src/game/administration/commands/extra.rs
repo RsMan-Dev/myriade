@@ -1,7 +1,7 @@
 //! Commands that act on the player and the hosted game rather than the world:
 //! `/spectate` (SpectateCommand), `/waypoint` (WaypointCommand), `/dialog`
 //! (DialogCommand), `/posteffect` (PostEffectCommand), `/kick`,
-//! `/fetchprofile`, `/publish`, `/unpublish`, `/debug`, `/jfr` and
+//! `/fetchprofile`, `/debug`, `/jfr` and
 //! `/version`, with vanilla's feedback and failures.
 use super::{Arg, Context, Game, R, Target, err};
 use horizon_client::{
@@ -734,7 +734,7 @@ impl Game<'_> {
         if host.is_empty() && guests.is_empty() {
             return Err(err("argument.entity.notfound.player", &[]));
         }
-        if self.lan.is_none() || (self.serving() && self.published_port().is_none()) {
+        if self.lan.is_none() {
             return Err(err("commands.kick.singleplayer.failed", &[]));
         }
         let reason_raw = match ctx.get("reason") {
@@ -923,16 +923,6 @@ impl Game<'_> {
             ClickEvent::CopyToClipboard(encoded_component),
         ));
         self.feedback_unbroadcast(Text::translate(message_id, &[argument, clickable]));
-    }
-
-    // ---- /publish, /unpublish -------------------------------------------
-
-    /// `PublishCommand.publish` with `IntegratedServer.publishServer`.
-    pub(super) fn cmd_publish(&mut self, ctx: &Context) -> R<i32> {
-        horizon_gameplay::commands::publish::publish(self, ctx)
-    }
-    pub(super) fn cmd_unpublish(&mut self) -> R<i32> {
-        horizon_gameplay::commands::publish::unpublish(self)
     }
 
     // ---- /debug, /jfr, /version -----------------------------------------

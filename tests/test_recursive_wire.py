@@ -23,7 +23,6 @@ POLICIES = {
     "TextHover": "cycle broken by TextForm; generic envelope; wire/depth_tests.rs",
     "TextObject": "cycle broken by TextForm; generic envelope; wire/depth_tests.rs",
     "TextStyle": "cycle broken by TextForm; generic envelope; wire/depth_tests.rs",
-    "ModelPart": "JSON preflight before serde; wire/depth_tests.rs",
     "serde_json::Value": "iterative preflight before serde; wire/depth_tests.rs",
     "serde_json::Map": "iterative preflight before serde; wire/depth_tests.rs",
     "WalkedIngredient": "no Wire; private parser work tree",

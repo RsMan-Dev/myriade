@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Server load bench: the same horizon-bots load on Horizon, vanilla 26.3 or Pumpkin.
+"""Server load bench: the same myriade-bot load on Horizon, vanilla 26.3 or Pumpkin.
 
     python3 tools/bench.py --server horizon --exe target/release/horizon-server --bots 50
     python3 tools/bench.py --server vanilla --jar ~/mc/server.jar --bots 50 --pre-generated ~/worlds/seed12345
     python3 tools/bench.py --server pumpkin --exe ./pumpkin --bots 50
 
 Every run uses a fresh scratch folder (bound to 127.0.0.1, offline, creative so the bots can fly), starts the
-server, lets `horizon-bots` join one every --join-every seconds, warms up, then measures for --seconds:
+server, lets `myriade-bot` join one every --join-every seconds, warms up, then measures for --seconds:
 
 - TPS: `time query gametime` at the start and the end of the window, as game ticks per wall-clock second;
 - MSPT: `tick query` every 5 s (average, P50, P95, P99 over the last 100 ticks), averaged over the window;
@@ -20,7 +20,7 @@ Vanilla is the owner's own server.jar (--jar): nothing of Mojang's is fetched or
 binary run as a black box (--exe); its Bedrock listeners, LAN broadcast and telemetry are turned off in the
 config this script writes (--pumpkin-config adds a TOML file of your own on top if a release names a key
 differently). `--pre-generated DIR` copies a finished world into every run's scratch folder as `world`, so runs
-repeat on the same terrain. Build the bots first: cargo build --release -p horizon-bots
+repeat on the same terrain. Build the bots first: cargo build --release -p myriade-bot
 """
 
 import argparse
@@ -139,7 +139,7 @@ def tps(start_ticks, end_ticks, seconds):
 
 
 def percentile(values, p):
-    """Nearest-rank percentile, as in startup_trace.step_stats: the smallest sample whose rank is at least p%.
+    """Nearest-rank percentile: the smallest sample whose rank is at least p%.
 
     p50 of four samples is the 2nd, and p99 of 100 samples is the 99th, not the maximum.
     """
@@ -418,7 +418,7 @@ def check(args):
     if any(k != 'vanilla' for k in args.server) and not args.exe:
         sys.exit('horizon and pumpkin need --exe, the server binary')
     if not Path(args.bots_bin).exists():
-        sys.exit(f'{args.bots_bin} is missing: cargo build --release -p horizon-bots')
+        sys.exit(f'{args.bots_bin} is missing: cargo build --release -p myriade-bot')
     if args.pre_generated and not Path(args.pre_generated).is_dir():
         sys.exit(f'--pre-generated {args.pre_generated} is not a folder')
 
@@ -429,7 +429,7 @@ def main(argv=None):
                         help='horizon, vanilla or pumpkin (comma-separated, one run each)')
     parser.add_argument('--exe', help='the horizon-server or Pumpkin binary')
     parser.add_argument('--jar', help="vanilla's server.jar (your own copy)")
-    parser.add_argument('--bots-bin', default=str(ROOT / 'target/release' / f'horizon-bots{EXE}'))
+    parser.add_argument('--bots-bin', default=str(ROOT / 'target/release' / f'myriade-bot{EXE}'))
     parser.add_argument('--bots', type=int, default=50)
     parser.add_argument('--behaviour', default='mixed')
     parser.add_argument('--join-every', type=float, default=0.5)

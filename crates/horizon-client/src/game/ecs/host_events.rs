@@ -22,8 +22,19 @@ impl Game<'_> {
         for ev in evs {
             match ev {
                 HostEvent::SetBlock { pos, state } => self.level_set(pos, state)?,
+                HostEvent::BlockPlace { entity, at, state } => {
+                    let id = self.entity_id(entity);
+                    let ctx = self.mob_context(id, Some(state));
+                    self.post_game_event("minecraft:block_place", at, ctx)
+                }
+                HostEvent::BlockBreak { at, drop, breaker } => {
+                    let by = breaker.map(|e| self.ecs_id_of(e));
+                    if let Err(error) = self.destroy_block_as(at, drop, by) {
+                        log::warn!("an entity's block break failed: {:?}", error.message);
+                    }
+                }
                 HostEvent::Sound { name, at, volume, pitch, source } => {
-                    let name = horizon_client::mobs::entity_sounds::full_id(name);
+                    let name = horizon_client::mobs::entity_sounds::full_id(&name);
                     match source {
                         Some(source) => self.audio.play_on(source, &name, Some(at), volume, pitch),
                         None => self.audio.play(&name, Some(at), volume, pitch),
@@ -35,6 +46,8 @@ impl Game<'_> {
                         self.lan_level_particles(&options, at, spread, speed, count, None);
                     }
                 }
+                // The bridge turns it into `MobEvent::LandingDust` first: nothing is left here.
+                HostEvent::BlockParticles { .. } => {}
                 HostEvent::EntityEvent { entity, code } => {
                     let id = self.entity_id(entity);
                     if let Some(at) = self.ecs.position(id) {
@@ -117,7 +130,7 @@ impl Game<'_> {
                 HostEvent::RaiderJoined { raid, id, wave, leader, loaded } => self.ecs_raider_joined(raid, id, wave, leader, loaded),
                 HostEvent::RaiderLeads { raid, id, wave } => self.ecs_raider_leads(raid, id, wave),
                 HostEvent::RaiderHurt { raid, id, before } => self.ecs_raider_hurt(raid, id, before),
-                HostEvent::Hurt { id, damage, cause, direct, at } => self.ecs_hurt_event(id, damage, cause, direct, at),
+                HostEvent::Hurt { id, damage, cause, direct, at, .. } => self.ecs_hurt_event(id, damage, cause, direct, at),
                 HostEvent::DeathAnimation { id, at } => self.lan_entity_event(id as i32, 3, at),
                 HostEvent::DeathSmoke { id, at, .. } => {
                     self.lan_entity_event(id as i32, 60, at);
@@ -126,6 +139,7 @@ impl Game<'_> {
                 // The `Some` case reached the mob handler through `apply`; a cleared target is told to `living_change_target`.
                 HostEvent::TargetChanged { entity, target: None, previous } => self.ecs_target_cleared(entity, previous),
                 HostEvent::TargetChanged { target: Some(_), .. } => {}
+                HostEvent::TargetAsk { entity, proposed } => self.ecs_target_asked(entity, proposed),
                 HostEvent::TotemAsk { entity, off_hand, cause, attacker } => self.ecs_totem_asked(entity, off_hand, cause, attacker),
                 HostEvent::Spawned { entity, natural, .. } => self.ecs_spawned_event(entity, natural),
                 HostEvent::Tamed { entity, owner } => self.ecs_tamed_event(entity, owner),

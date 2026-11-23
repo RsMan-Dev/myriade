@@ -130,7 +130,6 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 }
                 let seeds = resource("minecraft:wheat_seeds");
                 let pie = resource("minecraft:pumpkin_pie");
-                game.options.dedicated = Some(Vec::new());
                 let bone = resource("minecraft:bone_meal");
                 let stone = resource("minecraft:stone");
                 assert_eq!(storage_input.amount(game, &seeds), Ok(0));

@@ -36,7 +36,6 @@ fn in_child(group: &str) -> bool {
         .env("HORIZON_CONTAINER_LOOT_TEST", group)
         .env("HORIZON_CONTAINER_LOOT_MARKER", root.join("executed"))
         .env("HORIZON_HOME", root.join("home"))
-        .env("HORIZON_LAUNCHER_HOME", root.join("launcher"))
         .env("XDG_DATA_HOME", root.join("data"))
         .env("XDG_CONFIG_HOME", root.join("config"))
         .env("HORIZON_NO_AUDIO", "1")
@@ -744,7 +743,6 @@ impl mod_api::Hooks for DurableStickListener {
 
 fn container_fill_preserves_explicit_zero_damage_on_custom_durable_item() {
     with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
         mod_platform::testing::with_mods(
             vec![mod_api::ModEntry::new(
                 "durable_stick",

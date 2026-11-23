@@ -2,7 +2,7 @@
 //! `TrialSpawnerState` does (`tick_and_get_next`). No species passes `valid`, so no mob is born: the wave's numbers are the ones read.
 use bevy_ecs::prelude::*;
 use horizon_client_lib::items::ItemStack;
-use horizon_ecs_proto::cow::{Clock, Species};
+use horizon_ecs_proto::cow::{Clock, Herd, Level, Species};
 use horizon_ecs_proto::goals::{Events, Online, Player};
 use horizon_ecs_proto::spawn_spawner::ensure;
 use horizon_ecs_proto::spawn_trial::{self as tr, Cfg, Env, Omen, PlayerState, State, Wave};
@@ -50,6 +50,9 @@ fn cfg(total: f32, cooldown: u64) -> Cfg {
 
 fn world() -> World {
     let mut w = World::new();
+    // The level of a harness world: a birth finalizes through it (`born_finalized`). The herd is leaked, its level lives on with it.
+    let herd: &'static Herd = Box::leak(Box::new(Herd::with_slab_awake(4, true, false)));
+    w.insert_resource(*herd.world.resource::<Level>());
     w.insert_resource(Clock::default());
     w.insert_resource(Online::default());
     w.insert_resource(Events::default());

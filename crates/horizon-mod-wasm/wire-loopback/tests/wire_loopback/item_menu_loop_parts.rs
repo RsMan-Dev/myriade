@@ -4,7 +4,7 @@ thread_local! {
     static HEARD: std::cell::RefCell<Vec<(&'static str, bool)>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 /// A part on the amethyst shard: the grindstone repairs it, the crafting grid doesn't combine
-/// it, and it fits inside container items only on the client.
+/// it, and it never fits inside container items.
 struct Part;
 impl mod_api::ItemPart for Part {
     fn item_subscribed(&self) -> &'static [Option<mod_api::HookId>] {
@@ -33,12 +33,12 @@ impl mod_api::ItemPart for Part {
     }
     fn can_fit_inside_container_items(
         &self,
-        context: &dyn LoopContext,
+        _context: &dyn LoopContext,
         event: &mut mod_api::CanFitInsideContainerItemsEvent<'_>,
     ) {
         assert_eq!(event.stack.count(), 3);
         HEARD.with_borrow_mut(|heard| heard.push(("fits", event.fits)));
-        event.fits = context.side() == mod_api::LoopSide::Client;
+        event.fits = false;
     }
 }
 pub(super) fn register(registrar: &mut dyn mod_api::Registrar) {

@@ -22,7 +22,7 @@ pub fn native_sound_type(
     cause: BlockSoundCause,
     sound: &mut BlockSoundType,
 ) {
-    crate::native_client_hooks::sound_type(context, pos, state, entity, cause, sound);
+    crate::native_level_hooks::sound_type(context, pos, state, entity, cause, sound);
 }
 
 /// `sounds`, a state's own sound type (`BlockState.getSoundType()`), as the mod API's record.
@@ -56,6 +56,7 @@ pub fn sound_type(
 impl MobWorld<'_> {
     /// The sound type of `state` at `pos` that the mob `m` steps or lands on (`cause`), as the
     /// block's parts answer.
+    // TODO(phase 1 Mob): pas d'équivalent ECS
     pub(crate) fn block_sound_type(
         &self,
         m: &Mob,

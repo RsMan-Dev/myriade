@@ -1,40 +1,18 @@
 #!/usr/bin/env python3
-"""Compare actual vanilla and Horizon client boat ticks across ownership changes.
-
-An empty stand-in vanilla client level isolates cached motion from block effects
-and displacement, while AbstractBoat.tick and floatBoat remain real. Horizon
-loads its resources headlessly and runs tick_boat plus the actual remote boat
-ticker. Both report velocity and angular-velocity bits after each tick, including
-controlled ticks and dismount/reboard transitions. Real ice/control/network
-behavior is covered separately by lan_e2e --check boat_ice_reboard.
-
-Paddle cases additionally exercise actual AbstractBoat.tick/getRowingTime against
-Horizon's controlled ticker and remote-copy ticker. Synced flag values and the
-first passenger are controlled inputs, including stale true flags after a
-player leaves and a non-player first passenger. These checks compare animation
-phase and interpolation, not rendered screenshots or network packet delivery.
-
-Bare-hand and enchanted-stick attacks additionally run Horizon's real boat strike and vanilla's
-Player.attack for bare-hand hits and Player.causeExtraKnockback for the
-enchanted/creative controls, checking retained boat motion, upward impulse, the
-attacker's slowdown and sprint cancellation. The enchanted/creative Java
-knockback amount and removal flag are controlled; the vanilla server attack
-and enchantment lookup are not run.
+"""Boats on a server: a rider bot (Alpha) boards a boat, drives it, rows and strikes it; an observer bot (Beta) reads
+the boat in `entities` (pos, data) tick by tick. Server part only, qualitative: the authority of the pilot over the
+boat's moves, the paddle bits seen as the boat's data (index 11 left, 12 right), the destruction of the boat by a hit.
+The bit-for-bit comparison with VanillaBoatAuthorityOracle was abandoned (see the journal). Families a client runs
+(the boat's motion predicted on its own screen, the remote rowers' animation) are not checked here.
+Dismounting is a crouch: player_input(shift=True).
 """
-import argparse
-import json
-import os
+import sys
 from pathlib import Path
-import subprocess
-import tempfile
-try:
-    from . import lab, test_rust_parity as base, test_model_baking_parity as baking
-    from .integration_env import run_game
-except ImportError:
-    import lab
-    import test_rust_parity as base
-    import test_model_baking_parity as baking
-    from integration_env import run_game
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import lab  # noqa: E402
+from bot_lab import Bot  # noqa: E402
+from server_lab import Server  # noqa: E402
 
 
 def cases():
@@ -101,60 +79,140 @@ def cases():
     return out
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--resources', type=Path, default=lab.RESOURCES)
-    args = parser.parse_args()
-    lock, jars, _ = base.verify_artifacts()
-    source_paths = [lab.ROOT / path for path in (
-        'crates/horizon-client/src/game/entities/boats/mod.rs',
-        'crates/horizon-client/src/game/network/remote_vehicles.rs',
-        'crates/horizon-client/src/game/network/lan_vehicles.rs',
-        'crates/horizon-client/src/game/entities/boat_authority_fixture.rs',
-        'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaBoatAuthorityOracle.java',
-        'tools/test_boat_authority_parity.py')]
-    source_hashes = base.source_hashes(source_paths)
-    work = lab.LOCAL / 'boat-authority-parity'
-    work.mkdir(parents=True, exist_ok=True)
-    (work / 'report.json').unlink(missing_ok=True)
-    inputs = cases()
-    lab.write_json(work / 'inputs.json', inputs)
-    classes = work / 'classes'
-    classes.mkdir(exist_ok=True)
-    sources = lab.ROOT / 'mods/horizon/src/test/java'
-    package = sources / 'dev/horizonlab/parity'
-    dependencies = os.pathsep.join(map(str, [jars['client'], *baking.client_libraries()]))
+FLOOR = 99
+ALPHA, BETA = 'Alpha', 'Beta'
+BOAT = 'minecraft:oak_boat'
+ZOMBIE = 'minecraft:zombie'
+PADDLE_INDEX = {'left': 11, 'right': 12}
 
-    def run(command, name):
-        with (work / f'{name}.log').open('w') as log:
-            result = subprocess.run(list(map(str, command)), cwd=lab.ROOT, stdout=log, stderr=subprocess.STDOUT,
-                                    timeout=900)
-        if result.returncode:
-            raise RuntimeError(f'{name} failed: {(work / f"{name}.log").read_text()[-4000:]}')
-    run(['javac', '--release', lock['minecraft']['java_major'], '-proc:none', '-nowarn',
-         '-sourcepath', sources, '-cp', dependencies, '-d', classes,
-         *(package / f'{name}.java' for name in ('ParityData', 'VanillaVehicleContainerOracle', 'VanillaRemoteAttackOracle', 'VanillaBoatAuthorityOracle'))],
-        'compile-java')
-    run(['java', '-cp', str(classes) + os.pathsep + dependencies, 'dev.horizonlab.parity.VanillaBoatAuthorityOracle',
-         work / 'inputs.json', work / 'vanilla.json'], 'vanilla')
-    run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'horizon-client'], 'compile-rust')
-    binary = lab.cargo_target() / 'fast' / ('horizon-client.exe' if os.name == 'nt' else 'horizon-client')
-    with (work / 'rust.log').open('w') as log, tempfile.TemporaryDirectory(prefix='boat-authority-') as game_dir:
-        run_game([str(binary), '--headless', '--resources', str(args.resources.resolve()), '--game-dir', game_dir], cwd=game_dir,
-                 env=lab.game_env(HORIZON_BOAT_AUTHORITY_FIXTURE=work), stdout=log,
-                 stderr=subprocess.STDOUT, check=True, timeout=180)
-    native = json.loads((work / 'vanilla.json').read_text())
-    rust = json.loads((work / 'rust.json').read_text())
-    assert len(native) == len(rust) == len(inputs)
-    errors = [(case['name'], n, r) for case, n, r in zip(inputs, native, rust) if n != r]
-    if errors:
-        raise AssertionError(f'{len(errors)}/{len(inputs)} boat authority cases differ: {errors[:2]}')
-    ticks = sum(len(case.get('owned', case.get('paddles', {}).get('steps', []))) for case in inputs)
-    base.ensure_sources_unchanged(source_paths, source_hashes)
-    lab.write_json(work / 'report.json', dict(minecraft=lock['minecraft']['version'], cases=len(inputs), ticks=ticks,
-                                            sources_sha256=source_hashes, client_jar_sha256=lab.digest(jars['client'], 'sha256'),
-                                            output_sha256=lab.digest(work / 'rust.json', 'sha256'), scope=__doc__))
-    print(f'boat authority: {len(inputs)}/{len(inputs)} cases and {ticks} tick states match vanilla bit-for-bit')
+
+def family(case):
+    return case['name'].rsplit('-', 1)[0]
+
+
+def arena(server, rider, observer, mob_first):
+    """A flat stone floor under open air; the rider stands on it and boards a boat summoned beside it. With mob_first,
+    a zombie takes the first seat before the rider boards."""
+    server.command(f'fill -8 {FLOOR} -8 8 {FLOOR} 8 minecraft:stone')
+    server.command(f'fill -8 {FLOOR + 1} -8 8 {FLOOR + 8} 8 minecraft:air')
+    server.command(f'kill @e[type={BOAT}]')
+    server.command(f'kill @e[type={ZOMBIE}]')
+    rider.command(f'tp {ALPHA} 0.5 {FLOOR + 1} 0.5 0 0')
+    observer.command(f'tp {BETA} 4.5 {FLOOR + 1} 0.5 0 0')
+    server.command(f'summon {BOAT} 0.5 {FLOOR + 1} 0.5')
+    boat = observer.entities(entity_type=BOAT)['entities'][0]['id']
+    if mob_first:
+        server.command(f'summon {ZOMBIE} 0.5 {FLOOR + 1} 0.5')
+        server.command(f'ride @e[type={ZOMBIE},limit=1] mount @e[type={BOAT},limit=1]')
+    rider.interact(boat)
+    return boat
+
+
+def boat_of(observer, boat):
+    return next((e for e in observer.entities(entity_type=BOAT)['entities'] if e['id'] == boat), None)
+
+
+def paddle_bits(entity):
+    data = {d['index']: d['value'] for d in (entity or {}).get('data', [])}
+    return [data.get(PADDLE_INDEX['left']), data.get(PADDLE_INDEX['right'])]
+
+
+def dismount(rider, observer):
+    """Leaves the boat by a crouch (shift held for one tick, then released)."""
+    rider.player_input(shift=True)
+    observer.wait_ticks(1)
+    rider.player_input()
+
+
+def drive_owned(rider, observer, case, boat, problems):
+    """Authority: while the rider is the boat's controller, the server takes its moves (the boat follows them)."""
+    riding = True
+    for i, owned in enumerate(case['owned']):
+        if not owned:
+            if riding:
+                dismount(rider, observer)
+                riding = False
+            observer.wait_ticks(1)
+            continue
+        if not riding:
+            rider.interact(boat)
+            riding = True
+        pos = [0.5 + 0.1 * i, FLOOR + 1.0, 0.5]
+        rider.vehicle_move(pos, 0.0, 0.0)
+        observer.wait_ticks(1)
+        seen = (boat_of(observer, boat) or {}).get('pos')
+        if seen is None or max(abs(a - b) for a, b in zip(seen, pos)) > 1e-6:
+            problems.append(f'tick {i}: boat at {seen}, rider moved it to {pos}')
+
+
+def drive_paddles(rider, observer, case, boat, problems):
+    """Paddles: the rider's paddle bits reach an observer as the boat's synced data, while the rider sits in it."""
+    riding = True
+    for i, step in enumerate(case['paddles']['steps']):
+        if not step['occupied']:
+            if riding:
+                dismount(rider, observer)
+                riding = False
+            observer.wait_ticks(1)
+            continue
+        if not riding:
+            rider.interact(boat)
+            riding = True
+        flags = step['flags']
+        rider.paddle(flags[0], flags[1])
+        observer.wait_ticks(1)
+        seen = paddle_bits(boat_of(observer, boat))
+        if seen != flags:
+            problems.append(f'tick {i}: observer sees paddles {seen}, rider sent {flags}')
+
+
+def strike(rider, observer, case, boat, problems):
+    """One hit on the boat. VehicleEntity.hurtServer (javap -p -c, runtime/vanilla-26.3/server-26.3.jar) : a creative
+    attacker discards the boat with no drop (`instabuild` then `discard()`); otherwise it adds 10 * amount to damage
+    and destroys the boat only past 40 (`getDamage() > 40`). A player's bare hand is 1.0 (createAttributes dconst_1),
+    at most 1.5 with a critical hit and no enchantment (Player.attack `fload_2 * 1.5`), so 15 at most: one survival
+    hit leaves the boat. Destruction by survival hits (5 hits of 1.0, 3 of 1.5) and the dropped oak_boat are not
+    driven: no case reaches it."""
+    spec = case['attack']
+    rider.look(spec['yaw'], 0)
+    if spec['sprint']:
+        rider.player_input(forward=True, sprint=True)
+    observer.wait_ticks(spec['ticks'])
+    rider.attack(boat)
+    observer.wait_ticks(2)
+    now = boat_of(observer, boat)
+    if spec['creative'] != (now is None):
+        problems.append(f"boat present={now is not None}, creative hit={spec['creative']}")
+
+
+def main():
+    bins = Path(lab.cargo_target()) / 'fast'
+    out = lab.LOCAL / 'boat-authority-parity'
+    out.mkdir(parents=True, exist_ok=True)
+    report = {}
+    with Server(bins, out / 'server', lab.RESOURCES.resolve(), {'level-seed': '42', 'view-distance': '4'}) as server, \
+            Bot() as rider, Bot() as observer:
+        server.command(f'op {ALPHA}')
+        server.command(f'op {BETA}')
+        rider.join('127.0.0.1', server.port, ALPHA)
+        observer.join('127.0.0.1', server.port, BETA)
+        for case in cases():
+            problems = []
+            mob_first = any('first_player' in s for s in case.get('paddles', {}).get('steps', []))
+            boat = arena(server, rider, observer, mob_first)
+            kind = family(case)
+            if kind in ('authority', 'reboard'):
+                drive_owned(rider, observer, case, boat, problems)
+            elif kind.startswith('paddles'):
+                drive_paddles(rider, observer, case, boat, problems)
+            else:
+                strike(rider, observer, case, boat, problems)
+            report[case['name']] = {'family': kind, 'pass': not problems, 'problems': problems}
+    lab.write_json(out / 'report.json', report)
+    for kind in sorted({r['family'] for r in report.values()}):
+        bad = [n for n, r in report.items() if r['family'] == kind and not r['pass']]
+        print(f"{'FAIL' if bad else 'pass'}  {kind} ({sum(r['family'] == kind for r in report.values())} cas)")
+    assert all(r['pass'] for r in report.values()), [n for n, r in report.items() if not r['pass']]
 
 
 if __name__ == '__main__':

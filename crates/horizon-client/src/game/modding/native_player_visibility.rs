@@ -18,9 +18,6 @@ impl Game<'_> {
     ) -> Result<(), mod_api::TerrainViewError> {
         use mod_api::{TerrainViewError, content::crash::current_native_mod};
         let owner = current_native_mod().ok_or(TerrainViewError::Unavailable)?;
-        if !self.is_logical_server() {
-            return Err(TerrainViewError::Unavailable);
-        }
         let index =
             super::api_values::block_state::current().map_err(|_| TerrainViewError::Unavailable)?;
         let host = self.lan.as_mut().ok_or(TerrainViewError::Unavailable)?;
@@ -37,9 +34,6 @@ impl Game<'_> {
     ) -> Result<(), mod_api::TerrainViewError> {
         use mod_api::{TerrainViewError, content::crash::current_native_mod};
         let owner = current_native_mod().ok_or(TerrainViewError::Unavailable)?;
-        if !self.is_logical_server() {
-            return Err(TerrainViewError::Unavailable);
-        }
         if dimension.len() > 256 || mod_api::Identifier::parse_namespaced(dimension).is_none() {
             return Err(TerrainViewError::UnknownView);
         }
@@ -74,9 +68,6 @@ impl Game<'_> {
     }
     /// The connection of a player a client stands behind, in their turn or out of it.
     pub(super) fn player_connection(&self, player: PlayerRef) -> Result<u32, Refusal> {
-        if !self.is_logical_server() {
-            return Err(Refusal::Client);
-        }
         let conn = match self.player_handle_read(player).ok_or(Refusal::Stale)? {
             PlayerRead::Acting { .. } => self.lan_acting.ok_or(Refusal::NoConnection)?,
             PlayerRead::Guest(g) if !g.is_fake() => g.conn,
@@ -136,9 +127,6 @@ impl Game<'_> {
         viewer: PlayerRef,
         target: PlayerRef,
     ) -> Result<bool, Refusal> {
-        if !self.is_logical_server() {
-            return Err(Refusal::Client);
-        }
         let (v, t) = (self.listed_guest(viewer)?, self.listed_guest(target)?);
         if v.uuid == t.uuid {
             return Ok(true);

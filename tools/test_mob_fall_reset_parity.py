@@ -3,7 +3,7 @@
 
 The Java cow runs through real travel/movement, stopping before inside-block effects.
 Its fluid query is fixed to dry air; active effects are controlled and NoAI is real.
-Horizon runs its complete production mob tick in an empty resource-backed world.
+Horizon runs one ECS tick of a cow on a dedicated server, in air filled by the harness.
 Gravity is disabled. No effect, Levitation and Slow Falling are compared for both
 NoAI states and zero/upward/downward movement. Positions, damage and landing are
 outside this scoped comparison.
@@ -11,11 +11,15 @@ outside this scoped comparison.
 import argparse
 import os
 from pathlib import Path
-import tempfile
+import subprocess
 try:
-    from . import lab, oracle_harness as harness, test_rust_parity as base, integration_env
+    from . import lab, oracle_harness as harness, test_rust_parity as base
+    from .bot_lab import Bot
+    from .server_lab import Server
 except ImportError:
-    import lab, oracle_harness as harness, test_rust_parity as base, integration_env
+    import lab, oracle_harness as harness, test_rust_parity as base
+    from bot_lab import Bot
+    from server_lab import Server
 
 
 def main():
@@ -35,11 +39,10 @@ def main():
     oracle = java_root / 'dev/horizonlab/parity/VanillaMobFallResetOracle.java'
     sources = [Path(__file__), oracle, lab.ROOT / 'tools/lab.py',
                lab.ROOT / 'tools/oracle_harness.py', lab.ROOT / 'tools/test_rust_parity.py',
-               lab.ROOT / 'tools/integration_env.py', lab.ROOT / 'Cargo.toml', lab.ROOT / 'Cargo.lock',
-               lab.ROOT / 'crates/horizon-client/src/mobs.rs',
-               lab.ROOT / 'crates/horizon-client/src/mobs/ai.rs',
-               lab.ROOT / 'crates/horizon-client/src/mobs/living.rs',
-               lab.ROOT / 'crates/horizon-client/src/mobs/world.rs',
+               lab.ROOT / 'tools/server_lab.py', lab.ROOT / 'Cargo.toml', lab.ROOT / 'Cargo.lock',
+               lab.ROOT / 'crates/horizon-client/src/game/interface/dedicated/command_ops_air_fall.rs',
+               lab.ROOT / 'crates/horizon-ecs-proto/src/fall_reset.rs',
+               lab.ROOT / 'crates/horizon-ecs-proto/src/effects.rs',
                java_root / 'dev/horizonlab/parity/ParityData.java',
                java_root / 'dev/horizonlab/parity/VanillaBlockUpdateOracle.java']
     hashes = base.source_hashes(sources)
@@ -53,15 +56,19 @@ def main():
                         str(classes) + os.pathsep + dependencies,
                         'dev.horizonlab.parity.VanillaMobFallResetOracle', build / 'server.txt'],
                        build, 'server')
-    with tempfile.TemporaryDirectory(prefix='horizon-mob-fall-reset-') as scratch:
-        env = integration_env.game_environment(os.environ, scratch)
-        env.update(HORIZON_TEST_RESOURCES=str(resources),
-                   HORIZON_MOB_FALL_RESET_OUTPUT=str(build / 'rust.txt'))
-        env.setdefault('CARGO_BUILD_JOBS', '1')
-        env.setdefault('RUST_TEST_THREADS', '2')
-        harness.run_logged(['cargo', 'test', '--locked', '-p', 'horizon-client-lib', '--lib',
-                            'mobs::ai::flight_effect_fall_tests::flight_effects_reset_accumulated_fall_distance_even_without_ai',
-                            '--', '--exact', '--ignored'], build, 'rust', env=env)
+    subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client', '--bin', 'horizon-client'],
+                   cwd=lab.ROOT, check=True, timeout=900,
+                   stdout=(build / 'compile-rust.log').open('w'), stderr=subprocess.STDOUT)
+    bins = Path(lab.cargo_target()) / 'fast'
+    with Server(bins, build / 'server', resources, {'level-seed': '42', 'view-distance': '4'}) as server, \
+            Bot(timeout=600) as bot:
+        bot.join('127.0.0.1', server.port, 'Player')
+        bot.wait_for('loaded', 300)
+        server.command('fill 0 60 0 5 70 5 minecraft:air')
+        rows = server.op('Player', {'op': 'mob_fall_reset'})
+    lines = [f"{r['effect']} {'true' if r['no_ai'] else 'false'} {r['velocity_y']} {r['fall_distance']}"
+             for r in rows]
+    (build / 'rust.txt').write_text('\n'.join(lines) + '\n')
     matched = harness.compare(build / 'server.txt', build / 'rust.txt', 18)
     base.ensure_sources_unchanged(sources, hashes)
     lab.write_json(report, dict(schema=1, minecraft=lock['minecraft']['version'],

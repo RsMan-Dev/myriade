@@ -103,10 +103,6 @@ pub struct HubConfig {
     pub allow_flight: bool,
     pub seed: i64,
     pub max_players: usize,
-    /// An integrated server: the owner's level from `ops`, the others' from Allow Commands
-    /// and the guests' command access, and the integrated-only commands. Otherwise a
-    /// dedicated server: operators from `ops`, the dedicated-only commands.
-    pub integrated: bool,
     /// The shapes of the world's levels (their dimension types).
     pub levels: crate::chunk::LevelShapes,
     /// The own seeds of the runtime levels a mod opened with one, by id; the world's seed for
@@ -517,11 +513,11 @@ fn string(s: &str) -> Tag {
 /// A player's display name was formatted. Replace `displayname` to change it. Both sides.
 #[inline(never)]
 pub fn native_player_name_format(context: &LoopContext, username: &Text, displayname: &mut Text) {
-    crate::native_client_hooks::player_name_format(context, username, displayname);
+    crate::native_level_hooks::player_name_format(context, username, displayname);
 }
 
 fn formatted_player_name(context: &LoopContext, name: &str, component: Tag) -> Tag {
-    if !crate::native_client_hooks::has_mods() {
+    if !crate::native_level_hooks::has_mods() {
         return component;
     }
     let username = crate::text::Text::literal(name);
@@ -578,7 +574,7 @@ pub fn native_player_tab_list_name_format(
     name: &str,
     display_name: &mut Option<Text>,
 ) {
-    crate::native_client_hooks::player_tab_list_name_format(context, player, name, display_name);
+    crate::native_level_hooks::player_tab_list_name_format(context, player, name, display_name);
 }
 
 /// `LivingEntity.DATA_ARROW_COUNT_ID` (12) and `DATA_STINGER_COUNT_ID` (13):
@@ -1552,18 +1548,9 @@ impl Hub {
         conn
     }
 
-    /// The permission level a player gets: an integrated server gives every
-    /// guest the game masters' level when commands are allowed
-    /// (IntegratedServer.setGuestCommandAccess); a dedicated server its
-    /// operators' level (`ops`).
+    /// The permission level a player gets: its operators' level (`ops`).
     fn default_permission(&self, uuid: u128) -> u8 {
-        if self.config.integrated {
-            // IntegratedServer.getProfilePermissions / getCustomPermissionLevel.
-            let guests = if self.config.guest_commands { 2 } else { 0 };
-            self.ops.get(&uuid).copied().unwrap_or(guests)
-        } else {
-            self.ops.get(&uuid).copied().unwrap_or(0)
-        }
+        self.ops.get(&uuid).copied().unwrap_or(0)
     }
 
     /// PlayerList.placeNewPlayer for a guest whose saved state is loaded.
@@ -2105,10 +2092,9 @@ impl Hub {
     fn commands_packet(&self, permission: u8) -> play::Commands {
         match &self.sync.commands {
             Some(tree) => {
-                let dedicated = !self.config.integrated;
                 tree.packet_with_features(
                     permission,
-                    dedicated,
+                    true,
                     &self.sync.builtin,
                     &super::commands::with_session_tools(&self.mod_commands.0),
                     &self.sync.features,
@@ -5580,7 +5566,7 @@ pub const MAX_LISTED_PROPERTIES: usize = 16;
 
 /// The profile properties the player list gives a player: those it logged
 /// in with, or for the integrated server's owner (who logs in with none) the
-/// signed-in account's, once fetched (`IntegratedServer.getSingleplayerProfile`),
+/// signed-in account's, once fetched (`integrated server getSingleplayerProfile`),
 /// with the properties a mod set (`overrides`) over them by name. An override neither takes the
 /// account's other properties away nor, set before the fetch finished, keeps the fetched skin
 /// from showing. At most 16 are listed (a client refuses more): the overrides win, and the
@@ -5673,6 +5659,24 @@ fn neighbours_ready(
 mod tests {
     #[path = "../far_tests.rs"]
     mod far_tests;
+    mod bundle_sound_tests;
+    mod cave_air_tests;
+    mod chunk_ready_tests;
+    mod collision_exclusion_tests;
+    mod effect_meta_tests;
+    mod glide_motion_tests;
+    mod impulse_grace_tests;
+    mod live_player_limit_tests;
+    mod main_hand_tests;
+    mod menu_sync_tests;
+    mod ordered_inbox_tests;
+    mod pending_move_bound_tests;
+    mod pending_move_scope_tests;
+    mod pending_move_tests;
+    mod pong_tests;
+    mod skin_outer_layer_tests;
+    mod sound_tests;
+    mod terrain_view_tests;
     use super::*;
     use crate::fast_hash::FxHashSet;
 
@@ -6351,7 +6355,6 @@ mod tests {
             allow_flight: false,
             seed: 0,
             max_players: 20,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         };

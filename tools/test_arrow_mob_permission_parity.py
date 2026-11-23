@@ -77,10 +77,7 @@ def main():
     java=read(ref/'java.jsonl');admit(java)
     (out/'java.jsonl').write_bytes(reference_bytes)
     binary_sha=sha(binary);cwd=out/'native';cwd.mkdir()
-    env=runner.lab.game_env(HORIZON_PLAYER_NAME='Player',HORIZON_COMMAND_SCRIPT=source,HORIZON_COMMAND_OUTPUT=out/'native.jsonl',HORIZON_API_DISCOVERY='http://127.0.0.1:9/')
-    with (out/'native.log').open('w') as log:
-        result=runner.run_game([str(binary),'--resources',str(runner.lab.RESOURCES),'--world','harness','--seed',str(runner.SEED),'--radius','4'],cwd=cwd,env=env,stdout=log,stderr=subprocess.STDOUT)
-    assert result.returncode==0,result.returncode
+    runner.run_as_player(binary, source, out/'native.jsonl', None, cwd=cwd)
     native=read(out/'native.jsonl')
     report=dict(records=len(java),matched=0,admissions=0,failed_admissions=[],permission_total=0,permission_matched=0,drop_total=0,drop_matched=0,differences=[],binary_sha256=binary_sha,reference_sha256=reference_sha)
     for i,(op,a,b) in enumerate(zip(recorded,java,native)):

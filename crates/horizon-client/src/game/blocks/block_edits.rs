@@ -432,9 +432,7 @@ mod tests {
             StateConstraint, StatePredicate, StatePredicateRecord, StatePredicateTarget,
         };
         crate::game::native_entity_refs::tests::with_game(|game| {
-            // The shared fixture is unticked; expose the dedicated-server bulk surface.
-            game.options.dedicated = Some(Vec::new());
-            let dimension = game.dim.id().to_owned();
+            // The shared fixture is unticked; expose the dedicated-server bulk surface.            let dimension = game.dim.id().to_owned();
             game.world
                 .chunks
                 .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));

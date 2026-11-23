@@ -109,14 +109,8 @@ fn hand_game<'a>(
 ) -> Game<'a> {
     let mut game = server_game(resources);
     game.settings.simulation_distance = 4;
-    game.settings.render_distance = 8;
-    game.player = Some(
-        horizon_client::motion::PlayerMotion::new(
-            game.motion,
-            horizon_core::geometry::Vec3::new(6.5, 64.0, 8.5),
-        )
-        .unwrap(),
-    );
+    game.settings.view_distance = 8;
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     for x in -1..=1 {
         for z in -1..=1 {
             let mut chunk = horizon_client::chunk::Chunk::empty(x, z);
@@ -177,11 +171,18 @@ fn insert_by_hand(game: &mut Game<'_>, stack: ItemStack) -> bool {
         face: [-1, 0, 0],
         point: [8.0, 64.5, 8.5],
     };
-    game.forced_hit = Some(hit);
-    *game.held_mut() = Some(stack);
-    let used = game.use_hand(Some(&hit)).unwrap();
-    game.forced_hit = None;
-    *game.held_mut() = None;
+    let mut used = false;
+    crate::game::native_guest_turn_tests::with_acting_guest_on(
+        game,
+        horizon_core::geometry::Vec3::new(6.5, 64.0, 8.5),
+        |game| {
+            game.forced_hit = Some(hit);
+            *game.held_mut() = Some(stack);
+            used = game.use_hand(Some(&hit)).unwrap();
+            game.forced_hit = None;
+            *game.held_mut() = None;
+        },
+    );
     used
 }
 

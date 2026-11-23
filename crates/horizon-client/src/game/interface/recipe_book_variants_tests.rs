@@ -31,20 +31,19 @@ fn game<'a>(
         &root,
         &settings,
         std::time::Instant::now(),
-        execution_role::ExecutionRole::IntegratedServer,
+        execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::DedicatedServer;
     let res = resources.insert(loaded.resources);
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();
@@ -55,6 +54,7 @@ fn game<'a>(
             .insert((x, 0), Arc::new(Chunk::empty(x, 0)));
     }
     assert!(game.run_command("fill 0 99 0 31 99 15 stone"));
+    // TODO(phase 2): la fixture ouvre son propre hub par lan_host après la pose (recipe_book_variants_tests.rs:57) ; lan_guests_on en ouvrirait un second
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(28.5, 100.0, 10.5)).unwrap());
     let net = NetConfig {
         announce: false,
@@ -78,7 +78,6 @@ fn game<'a>(
             allow_flight: false,
             seed: 0,
             max_players: 2,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         },

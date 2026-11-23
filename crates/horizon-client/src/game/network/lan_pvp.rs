@@ -456,11 +456,6 @@ impl Game<'_> {
             .as_ref()
             .and_then(|host| host.hub.guest(victim))
             .map(|g| g.name.clone());
-        let in_place = self.lan_acting.is_none()
-            && self
-                .player
-                .as_ref()
-                .is_some_and(|p| p.entity_id as u32 == id);
         let guest = self.lan.as_ref().and_then(|host| {
             host.hub
                 .guests
@@ -470,10 +465,7 @@ impl Game<'_> {
                 .find(|g| g.entity_id as u32 == id && g.conn != victim)
                 .map(|g| g.conn)
         });
-        if in_place {
-            self.award_custom_stat("player_kills", 1);
-            self.score_player_killed_named(name, true);
-        } else if let Some(kconn) = guest {
+        if let Some(kconn) = guest {
             self.as_guest(kconn, |g| {
                 g.award_custom_stat("player_kills", 1);
                 g.score_player_killed_named(name, true);

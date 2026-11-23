@@ -51,9 +51,6 @@ impl Game<'_> {
     /// never a client) and a mod asked to hear the impacts
     /// (`native_hears_projectile_impacts`).
     pub(in crate::game) fn native_hears_impacts(&self) -> bool {
-        if self.serving.is_none() && self.options.dedicated.is_none() {
-            return false;
-        }
         let mut hears = false;
         self.native_hears_projectile_impacts(&mut hears);
         hears
@@ -236,6 +233,7 @@ mod pearl_hit_tests {
                     0.0,
                     0,
                     horizon_ecs_proto::species::ender_dragon::START_PHASE,
+                    &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(),
                     &mut || 225009,
                 )
             });
@@ -294,6 +292,7 @@ mod pearl_hit_tests {
                         0.0,
                         0,
                         horizon_ecs_proto::species::ender_dragon::START_PHASE,
+                        &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(),
                         &mut || 225009,
                     )
                 });

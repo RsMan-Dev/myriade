@@ -26,6 +26,11 @@ pub trait TraderLevel: CustomSpawnerLevel {
     fn trader_has_space(&self, pos: [i32; 3]) -> bool;
     /// The closest bell within `range` blocks ([`nearest_bell`]).
     fn nearest_bell(&self, from: [i32; 3], range: i32) -> Option<[i32; 3]>;
+    /// A trader was made at `reference` (the bell or the player): its `setDespawnDelay(48000)` starts and it goes to visit there
+    /// (`WanderingTrader.startVisit`). Default: nothing.
+    fn trader_spawned(&mut self, _trader: u32, _reference: [i32; 3]) {}
+    /// A llama was made for `trader`: `setLeashedTo(trader)` and its own delay start.
+    fn trader_llama_spawned(&mut self, _trader: u32, _llama: u32) {}
 }
 
 /// The spawner's clock and the `WanderingTraderData` saved with the world.
@@ -157,10 +162,10 @@ pub fn spawn(l: &mut impl TraderLevel) -> bool {
     ) else {
         return false;
     };
+    l.trader_spawned(id, reference);
     for _ in 0..2 {
         l.spawn_trader_llama(id, 4);
     }
-    // RESTE-SANS-ECS: the visit state (`trader::start_visit`) has no ECS setter yet.
     true
 }
 
@@ -183,13 +188,14 @@ pub fn spawn_llama(l: &mut impl TraderLevel, trader: u32, radius: i32) {
         f64::from(pos[1]),
         f64::from(pos[2]) + 0.5,
     ];
-    // RESTE-SANS-ECS: EntitySpawnReason.EVENT's age 0 and the lead on the trader have no ECS setter yet.
-    let _ = l.spawn_mob(
+    if let Some(llama) = l.spawn_mob(
         "minecraft:trader_llama",
         spot,
         false,
         spawn_rules::Reason::Event,
-    );
+    ) {
+        l.trader_llama_spawned(trader, llama);
+    }
 }
 
 /// `findSpawnPositionNear`: ten tries at a column near the reference

@@ -1,7 +1,7 @@
 //! `IronGolem` `DefendVillageTargetGoal` (target flag): a golem takes as target the player whom a villager near it holds in bad
 //! reputation (`Gossips::reputation` at or below -100). The box is the golem's, inflated (10, 8, 10); the villagers in it, within 64
-//! blocks, that the golem sees count; the player must be in the box, within 64 blocks, not creative or spectator, and seen. The nearest
-//! such player (then the lowest id) is taken. The `Mob` asks every tick; the ecs asks on the events that can change the answer, never on a
+//! blocks, that the golem sees count; the player must be in the box, within 64 blocks scaled by its visibility, not creative or spectator,
+//! and seen. A golem a player built takes none. The nearest such player (then the lowest id) is taken. The `Mob` asks every tick; the ecs asks on the events that can change the answer, never on a
 //! timer: the golem's creation, a gossip that makes a villager hold a player in bad reputation (`wake_golems`, from `gossip::add` and `meet`),
 //! and a player's move near it (`Online.seen`). Not an event: a villager or the golem walking into reach while the player stands still.
 use super::gossip::Gossips;
@@ -12,6 +12,7 @@ use crate::hostile::PlayerState;
 use crate::targeting::{self, Target, Who};
 use horizon_core::geometry::Vec3;
 use crate::rules::defend_village_target::nearest_player;
+use crate::behaviours::hurt_by::PlayerCreated;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -98,7 +99,12 @@ fn grudge(w: &World, e: Entity, p: Params) -> bool {
 }
 /// The player this golem defends against now, if any.
 fn pick(w: &World, e: Entity, p: Params) -> Option<u32> {
+    // `IronGolem.canAttack`: a golem a player built never takes a player for its target.
+    if w.get::<PlayerCreated>(e).is_some() {
+        return None;
+    }
     let pos = w.get::<Pos>(e)?.0;
+    let looker = w.get::<SpeciesId>(e).map(|s| s.0);
     let area = w.get::<Bounds>(e)?.0.inflate(Vec3::new(p.across, p.up, p.across));
     let reach = p.range * p.range;
     let mut villagers = Vec::new();
@@ -120,7 +126,10 @@ fn pick(w: &World, e: Entity, p: Params) -> Option<u32> {
         if ps.creative.get(i).copied().unwrap_or(false) || ps.spectator.get(i).copied().unwrap_or(false) {
             return;
         }
-        if area.contains(at) && pos.distance_squared(at) <= reach && villagers.iter().any(|g| g.reputation(pl.id) <= p.reputation) && targeting::sees(w, e, Who::Player(pl.id)) {
+        // `forCombat().range(64)`: the reach is scaled by the player's visibility (`Player.getVisibilityPercent`, worn head).
+        let vis = ps.visibility(pl.id) * targeting::head_factor(ps.helmet(pl.id), looker);
+        let sight = targeting::sight_range(p.range, vis);
+        if area.contains(at) && pos.distance_squared(at) <= sight * sight && villagers.iter().any(|g| g.reputation(pl.id) <= p.reputation) && targeting::sees(w, e, Who::Player(pl.id)) {
             players.push((pos.distance_squared(at), pl.id));
         }
     });

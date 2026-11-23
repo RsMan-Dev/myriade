@@ -5,7 +5,7 @@ use horizon_ecs_proto::goals::Events;
 use horizon_ecs_proto::host_out::HostEvent;
 use horizon_ecs_proto::make_mad::make_mad;
 
-fn sounds(h: &mut Herd) -> Vec<&'static str> {
+fn sounds(h: &mut Herd) -> Vec<std::borrow::Cow<'static, str>> {
     h.world.resource_mut::<Events>().host.drain().filter_map(|e| if let HostEvent::Sound { name, .. } = e { Some(name) } else { None }).collect()
 }
 

@@ -358,13 +358,13 @@ mod tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            execution_role::ExecutionRole::IntegratedServer,
+            execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let res = resources.insert(loaded.resources);
         // Keep nested fixture helpers from copying the large Game value
         // through several test-thread stack frames.
@@ -374,12 +374,9 @@ mod tests {
                 loaded.pack,
                 options,
                 settings,
-                Audio::default(),
             )
             .unwrap(),
-        );
-        game.options.dedicated = Some(Vec::new());
-        // Entity ticking waits for every chunk within 2 columns
+        );        // Entity ticking waits for every chunk within 2 columns
         // (`ChunkMap.prepareEntityTickingChunk`).
         for z in -2..=2 {
             for x in -2..=2 {
@@ -457,6 +454,182 @@ mod tests {
                 "seed {seed}: portal must not attenuate rays"
             );
         }
+    }
+
+    /// The 7-block cube around (8, 64, 8) of the blast tests: air inside, a shell
+    /// at distance 3 of stone on the +x half and glass on the other.
+    fn fill_shell(game: &mut crate::game::Game<'_>) {
+        let registry = game.pack.assets.registry;
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        let glass = registry.default_state("minecraft:glass").unwrap();
+        let air = game.world.air;
+        for x in -3i32..=3 {
+            for y in -3i32..=3 {
+                for z in -3i32..=3 {
+                    let state = match x.abs().max(y.abs()).max(z.abs()) {
+                        3 if x >= 0 => stone,
+                        3 => glass,
+                        _ => air,
+                    };
+                    game.world.set(8 + x, 64 + y, 8 + z, state).unwrap();
+                }
+            }
+        }
+    }
+
+    /// The shell after `fill_shell` and a blast: per cell, 0 air, 1 stone, 2 glass.
+    fn shell_states(game: &crate::game::Game<'_>) -> Vec<u8> {
+        let registry = game.pack.assets.registry;
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        let air = game.world.air;
+        let mut cells = Vec::new();
+        for x in -3i32..=3 {
+            for y in -3i32..=3 {
+                for z in -3i32..=3 {
+                    if x.abs().max(y.abs()).max(z.abs()) == 3 {
+                        let state = game.world.block(8 + x, 64 + y, 8 + z);
+                        cells.push(if state == air { 0 } else if state == stone { 1 } else { 2 });
+                    }
+                }
+            }
+        }
+        cells
+    }
+
+    /// `USED_PORTAL_DAMAGE_CALCULATOR` only changes the portal: stone and glass
+    /// keep the normal calculator's resistance and breaking (oracle: other blocks).
+    #[test]
+    #[ignore = "daily"]
+    fn portal_blast_other_blocks_keep_the_normal_calculator() {
+        use super::super::explosion::{BlockInteraction, ExplosionSource};
+        let mut resources = None;
+        let mut game = server_game(&mut resources).expect("set HORIZON_TEST_RESOURCES");
+        for seed in [0, 1, 19, 314159] {
+            let mut outcomes = Vec::new();
+            for used_portal in [false, true] {
+                fill_shell(&mut game);
+                game.world.random.set_seed(seed);
+                game.server_explode_from(
+                    [8.5, 64.5, 8.5],
+                    2.0,
+                    BlockInteraction::Destroy,
+                    false,
+                    ExplosionSource::default().with_portal_proof(used_portal),
+                )
+                .unwrap();
+                outcomes.push(shell_states(&game));
+            }
+            assert!(outcomes[0].contains(&0), "seed {seed}: the blast reaches the shell");
+            assert_eq!(
+                outcomes[0], outcomes[1],
+                "seed {seed}: the used-portal calculator must not change other blocks"
+            );
+        }
+    }
+
+    /// `USED_PORTAL_DAMAGE_CALCULATOR` spares a nether portal (oracle: portal
+    /// block, no resistance and no breaking); the normal calculator breaks it.
+    #[test]
+    #[ignore = "daily"]
+    fn portal_blast_portal_survives_only_the_used_calculator() {
+        use super::super::explosion::{BlockInteraction, ExplosionSource};
+        let mut resources = None;
+        let mut game = server_game(&mut resources).expect("set HORIZON_TEST_RESOURCES");
+        let registry = game.pack.assets.registry;
+        let portal = registry.default_state("minecraft:nether_portal").unwrap();
+        let air = game.world.air;
+        for (used_portal, survives) in [(false, false), (true, true)] {
+            for x in -1i32..=1 {
+                for y in -1i32..=1 {
+                    for z in -1i32..=1 {
+                        game.world.set(8 + x, 64 + y, 8 + z, air).unwrap();
+                    }
+                }
+            }
+            game.world.set(8, 64, 9, portal).unwrap();
+            game.server_explode_from(
+                [8.5, 64.5, 8.5],
+                2.0,
+                BlockInteraction::Destroy,
+                false,
+                ExplosionSource::default().with_portal_proof(used_portal),
+            )
+            .unwrap();
+            assert_eq!(
+                game.world.block(8, 64, 9) == portal,
+                survives,
+                "used_portal {used_portal}"
+            );
+        }
+    }
+
+    /// A sulfur cube's blast (`MobEvent::Explode`) spares the portal only when
+    /// the cube came through one (`PortalCooldown` > 0, `portal_proof`).
+    #[test]
+    #[ignore = "daily"]
+    fn portal_blast_sulfur_cube_spares_a_portal_only_after_its_trip() {
+        use crate::game::ecs::test_support::place_test_mob;
+        use horizon_client::mobs::{MobEvent, Species};
+        use horizon_core::nbt::Tag;
+        let mut resources = None;
+        let mut game = server_game(&mut resources).expect("set HORIZON_TEST_RESOURCES");
+        let registry = game.pack.assets.registry;
+        let portal = registry.default_state("minecraft:nether_portal").unwrap();
+        let air = game.world.air;
+        for (n, (cooldown, survives)) in [(300, true), (0, false)].into_iter().enumerate() {
+            for x in -1i32..=1 {
+                for y in -1i32..=1 {
+                    for z in -1i32..=1 {
+                        game.world.set(8 + x, 64 + y, 8 + z, air).unwrap();
+                    }
+                }
+            }
+            game.world.set(8, 64, 9, portal).unwrap();
+            let cube = place_test_mob(&mut game, 50 + n as u32, "minecraft:sulfur_cube", [8.5, 64.0, 8.5])
+                .expect("the sulfur cube spawns");
+            game.restore_portal_cooldown_of(cube, Some(&Tag::Int(cooldown)));
+            game.handle_mob_events_legacy(MobEvent::Explode(
+                [8.5, 64.0625, 8.5],
+                4.0,
+                Species::SulfurCube,
+                false,
+            ))
+            .unwrap();
+            assert_eq!(
+                game.world.block(8, 64, 9) == portal,
+                survives,
+                "cooldown {cooldown}"
+            );
+        }
+    }
+
+    /// The sulfur cube's blast after a portal trip changes no other block
+    /// (`VanillaSulfurPortalBlastOracle`: the other blocks, as the normal calculator).
+    #[test]
+    #[ignore = "daily"]
+    fn portal_blast_sulfur_cube_other_blocks_keep_the_normal_calculator() {
+        use crate::game::ecs::test_support::place_test_mob;
+        use horizon_client::mobs::{MobEvent, Species};
+        use horizon_core::nbt::Tag;
+        let mut resources = None;
+        let mut game = server_game(&mut resources).expect("set HORIZON_TEST_RESOURCES");
+        let mut outcomes = Vec::new();
+        for (n, cooldown) in [300, 0].into_iter().enumerate() {
+            fill_shell(&mut game);
+            let cube = place_test_mob(&mut game, 60 + n as u32, "minecraft:sulfur_cube", [8.5, 64.0, 8.5])
+                .expect("the sulfur cube spawns");
+            game.restore_portal_cooldown_of(cube, Some(&Tag::Int(cooldown)));
+            game.handle_mob_events_legacy(MobEvent::Explode(
+                [8.5, 64.0625, 8.5],
+                4.0,
+                Species::SulfurCube,
+                false,
+            ))
+            .unwrap();
+            outcomes.push(shell_states(&game));
+        }
+        assert!(outcomes[1].contains(&0), "the blast reaches the shell");
+        assert_eq!(outcomes[0], outcomes[1], "the portal trip must not change other blocks");
     }
 
 }

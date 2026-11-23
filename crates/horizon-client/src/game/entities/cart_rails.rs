@@ -54,11 +54,7 @@ impl Game<'_> {
             return vanilla;
         };
         let read = ReadLevel { game: self, level };
-        let side = if self.is_logical_server() {
-            mod_api::LevelSide::Server(&read)
-        } else {
-            mod_api::LevelSide::Client(&read)
-        };
+        let side = mod_api::LevelSide::Server(&read);
         let mut shape = RailShape::from_name(text).unwrap_or(RailShape::NorthSouth);
         let cart = cart.map(|id| mod_api::EntityRef::new(epoch, id));
         mod_api::dispatch_rail_direction(side, self.dim.level(), api_state, pos, cart, &mut shape);

@@ -44,13 +44,12 @@ _G = r"crates/horizon-client(?:-render|-core|-input)?/src/"  # the client's crat
 _GAME = _G + r"(?:game/(?:[^/]+/)?)?"
 # Area: (label, description, the paths). First match wins for each file.
 AREAS = [
-    ("launcher", "Changes the launcher", r"^launcher/"),
     ("mods", "Area: mods, mod SDK, modpack porting",
      r"^crates/(?:horizon-mod|cargo-horizon-mod|horizon-port-pack)|" + _GAME
      + r"(?:native_hooks/|(?:mods|mod_content|mod_list|native_\w+)\.rs$)|^docs/(?:mods|native-mods|modpacks)"),
     ("worldgen", "Area: world generation", r"^crates/horizon-world/src/worldgen/|/vanillagen\.rs$"),
     ("mobs", "Area: mobs, their AI, spawning and models",
-     r"/mobs/|/mobs\.rs$|" + _GAME + r"(?:creatures|natural_spawning|spawners?|dragon|wither|villagers|piglins|golems"
+     r"/mobs/|/mobs\.rs$|" + _GAME + r"(?:creatures|spawn_level|spawners?|dragon|wither|villagers|piglins|golems"
      r"|raids|llamas|wardens?)\.rs$"),
     ("rendering", "Area: the renderer, shaders, models, particles",
      r"\.wgsl$|/gfx(?:\.rs$|/)|/mesher(?:\.rs$|/)|/lod(?:\.rs$|/)|^crates/(?:horizon-shader|horizon-assets|horizon-hdr)|"
@@ -79,7 +78,7 @@ AREAS = [
      r"^crates/horizon-theme/|/title(?:\.rs$|/)|" + _GAME + r"(?:\w+_ui|\w+_screen|screens|screen_draw|ui|hud\w*"
      r"|chat|tab_list|startup_menu|options|sign_edit|books|containers)\.rs$"),
     ("website", "Area: what playhorizon.dev reads from this repository",
-     r"^docs/api/|^roadmap/|^README\.md$|^launcher/links\.json$"),
+     r"^docs/api/|^roadmap/|^README\.md$"),
 ]
 AREA_RES = [(label, re.compile(paths)) for label, _, paths in AREAS]
 MAX_AREAS = 3

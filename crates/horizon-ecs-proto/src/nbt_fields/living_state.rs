@@ -25,7 +25,7 @@ pub const CREATORS: &[Field] = &[
     Field { key: Cow::Borrowed("attributes"), write: write_attributes, read: read_attributes, accepts: is_list, owner: Some(owner::<AttrMods>) },
     Field { key: Cow::Borrowed("equipment"), write: write_equipment, read: read_equipment, accepts: is_compound, owner: Some(owner::<Equipment>) },
     Field { key: Cow::Borrowed("drop_chances"), write: write_drop_chances, read: read_drop_chances, accepts: is_compound, owner: Some(owner::<DropChances>) },
-    Field { key: Cow::Borrowed("CustomName"), write: write_name, read: read_name, accepts: accept::string, owner: Some(owner::<CustomName>) },
+    Field { key: Cow::Borrowed("CustomName"), write: write_name, read: read_name, accepts: accept_name, owner: Some(owner::<CustomName>) },
     Field { key: Cow::Borrowed("CustomNameVisible"), write: write_name_visible, read: read_name_visible, accepts: is_byte, owner: Some(owner::<NameVisible>) },
     Field { key: Cow::Borrowed("NoGravity"), write: write_no_gravity, read: read_no_gravity, accepts: is_byte, owner: Some(owner::<NoGravity>) },
     Field { key: Cow::Borrowed("FallFlying"), write: write_fall_flying, read: read_fall_flying, accepts: is_byte, owner: Some(owner::<FallFlying>) },
@@ -213,16 +213,22 @@ fn read_drop_chances(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-/// `CustomName`: the JSON text of the name, as the host gave it.
+/// `CustomName`: the whole text component, a string or a styled compound, as the host gave it.
 fn write_name(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(n) = w.get::<CustomName>(e) {
-        c.insert("CustomName".into(), Tag::String(n.0.as_str().into()));
+    if let Some(t) = custom_name::tag(w, e) {
+        c.insert("CustomName".into(), t);
     }
 }
 fn read_name(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Tag::String(s) = t else { return false };
-    custom_name::set(w, e, Some(s.to_string_lossy()));
+    match t {
+        Tag::String(s) => custom_name::set(w, e, Some(s.to_string_lossy())),
+        Tag::Compound(_) => custom_name::set_component(w, e, t.clone()),
+        _ => return false,
+    }
     true
+}
+fn accept_name(t: &Tag) -> bool {
+    matches!(t, Tag::String(_) | Tag::Compound(_))
 }
 
 /// `CustomNameVisible`: a byte, 1 while the marker is there.

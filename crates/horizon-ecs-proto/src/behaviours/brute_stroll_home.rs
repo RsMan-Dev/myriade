@@ -163,4 +163,20 @@ mod tests {
         let x = h.world.get::<Pos>(b).unwrap().0.x;
         assert!(x - 0.5 <= 2.5, "retour à moins de 2 blocs de la maison (x = {x})");
     }
+
+    /// À 24 blocs de sa maison (dans la bande 10 à 100) : il part pour rentrer, comme à 30 blocs.
+    #[test]
+    fn a_brute_twenty_four_blocks_from_home_walks_back() {
+        let Some((mut h, b)) = world() else {
+            eprintln!("skipped: HORIZON_TEST_RESOURCES unset");
+            return;
+        };
+        away(&mut h, b, 24.0);
+        let mut started = false;
+        for _ in 0..200 {
+            h.tick();
+            started |= running(&h, b);
+        }
+        assert!(started, "départ à 24 blocs");
+    }
 }

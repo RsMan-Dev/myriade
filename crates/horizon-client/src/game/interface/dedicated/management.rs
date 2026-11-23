@@ -747,10 +747,10 @@ impl Game<'_> {
 
     /// `DedicatedServer.setViewDistance`, through `PlayerList.setViewDistance`: the players are told and
     /// tracked at the new radius (the hub), and `ChunkMap.setServerViewDistance` moves the server's own
-    /// tickets (`update_chunk_tickets` reads `settings.render_distance`, clamped to 2..32 as vanilla's).
+    /// tickets (`update_chunk_tickets` reads `settings.view_distance`, clamped to 2..32 as vanilla's).
     fn management_view_distance(&mut self, distance: i32) {
         self.set_view_distance(distance);
-        self.settings.render_distance = distance;
+        self.settings.view_distance = distance;
     }
 
     /// `addUserBan`, then the banned player, if online, is sent away.
@@ -912,13 +912,12 @@ mod tests {
                 allow_flight: false,
                 seed: 0,
                 max_players: 2,
-                integrated: false,
                 levels: Default::default(),
                 level_seeds: Default::default(),
             },
         )
         .unwrap();
-        game.settings.render_distance = 10;
+        game.settings.view_distance = 10;
         game.settings.simulation_distance = 10;
         game.management_simulation_distance(4);
         game.management_view_distance(6);
@@ -929,7 +928,7 @@ mod tests {
         );
         assert_eq!(
             (
-                game.settings.render_distance,
+                game.settings.view_distance,
                 game.settings.simulation_distance
             ),
             (6, 4),

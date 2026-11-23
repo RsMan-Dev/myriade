@@ -118,13 +118,11 @@ fn a_dedicated_server_keeps_ticking_while_a_player_walks() {
         .args(["--dedicated", "--nogui"])
         .current_dir(&game)
         .env("HORIZON_NO_AUDIO", "1")
-        .env("HORIZON_LAUNCHER_NO_SELF_UPDATE", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     for (key, folder) in [
         ("HORIZON_HOME", "home"),
-        ("HORIZON_LAUNCHER_HOME", "launcher"),
         ("XDG_DATA_HOME", "data"),
         ("XDG_CONFIG_HOME", "config"),
     ] {

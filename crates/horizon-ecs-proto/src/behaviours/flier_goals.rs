@@ -245,8 +245,11 @@ pub static PHANTOM_ATTACK_STRATEGY: Module = Module { name: "phantom_attack_stra
 fn strategy_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     target_of(w, e).is_some()
 }
+/// The first dive, in server ticks after the chase starts: `PhantomAttackStrategyGoal.start` draws `adjustedTickDelay(10)` = 5 goal ticks, and
+/// that goal ticks on the start tick and then every second one (`Mob.serverAiStep`), so the fifth falls on the eighth.
+const FIRST_DIVE: i32 = 8;
 fn strategy_start(w: &mut World, e: Entity, _: Inst) {
-    w.entity_mut(e).insert(Strategy { next_sweep: 2 * recalc_after(10) }).remove::<Diving>();
+    w.entity_mut(e).insert(Strategy { next_sweep: FIRST_DIVE }).remove::<Diving>();
     anchor_above_target(w, e);
 }
 fn strategy_stop(w: &mut World, e: Entity, _: Inst) {
@@ -328,6 +331,14 @@ fn sweep_tick(w: &mut World) {
         let reach = w.get::<Bounds>(e).map(|b| b.0.inflate(Vec3::new(0.2, 0.2, 0.2)));
         if reach.is_some_and(|r| r.intersects(t.bounds)) {
             hit(w, e, who);
+            // `PhantomSweepAttackGoal.tick`: the swoop sound (level event 1039) at the block of the phantom, unless it is `Silent`.
+            if w.get::<crate::behaviours::elder_curse::Silent>(e).is_none() {
+                let p = w.get::<Pos>(e).map(|p| p.0);
+                if let Some(p) = p {
+                    let at = [p.x.ifloor(), p.y.ifloor(), p.z.ifloor()];
+                    w.resource_mut::<Events>().host.level_event(1039, at, 0);
+                }
+            }
             set_diving(w, e, false);
         } else if w.get::<Contact>(e).is_some_and(|c| c.horizontal) {
             set_diving(w, e, false);

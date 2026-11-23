@@ -27,7 +27,7 @@ impl Game<'_> {
 impl Game<'_> {
     /// 300.. are the open container's slots.
     pub(in crate::game) fn slots(&self) -> Vec<usize> {
-        if let Some(v) = self.station_slots().or_else(|| self.mount_slots()) {
+        if let Some(v) = self.station_slots() {
             return v;
         }
         let mut v: Vec<usize> = (0..36).collect();

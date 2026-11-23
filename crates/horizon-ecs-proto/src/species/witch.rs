@@ -29,5 +29,6 @@ pub static DEF: Def = Def {
     spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
     rules: &[crate::rules::RuleEntry::new(&crate::raids::NO_RAID_WHEN_NATURAL, &())],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

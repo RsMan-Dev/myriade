@@ -1,7 +1,7 @@
 # Ignored-test policy rows
 
 `tools/ci/ignored_tests.py` reads every `*.txt` file here, in file-name order. Each file holds one topic: a
-policy (`parity-harness.txt`, `wasm-fixture.txt`, `gpu.txt`, `flaky.txt`, ...) or one tracked failure, named for
+policy (`parity-harness.txt`, `wasm-fixture.txt`, ...) or one tracked failure, named for
 its issue (`issue-2177.txt`). A lane that adds a known failure writes its own file; fixing it deletes that file.
 A test may be listed in one file only: a second listing fails naming both files.
 

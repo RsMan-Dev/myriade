@@ -365,7 +365,7 @@ pub(super) fn mem_ref(m: &Mob) -> Option<&Memories> {
 }
 
 impl Brain {
-    fn new(mob_id: &str, baby: bool, shuffle_seed: i64, farmer: bool) -> Self {
+    fn new(_mob_id: &str, baby: bool, shuffle_seed: i64, farmer: bool) -> Self {
         let mut b = Brain {
             mem: Memories::default(),
             sensors: [0; 9],
@@ -379,14 +379,6 @@ impl Brain {
             scan_items: false,
         };
         b.list = packages(baby, shuffle_seed, farmer);
-        // The parts' behaviors join before the sort, so each lands after
-        // vanilla's of its priority and activity (arismoko/horizon#824). Nothing joins a
-        // type no part attached to, and nothing is asked or built then.
-        let before = b.list.len();
-        attach_behaviors(mob_id, &mut b.list);
-        if b.list.len() > before {
-            b.list.sort_by_key(|e| (e.prio, e.act.slot()));
-        }
         b
     }
     fn requirements_met(&self, a: Act) -> bool {
@@ -1230,8 +1222,6 @@ enum B {
         what: LookAt,
     },
     UpdateActivity(bool),
-    /// A mod's behavior (arismoko/horizon#824), wrapped by `mod_behaviors`.
-    Mod(super::mod_behaviors::ModBehavior),
     WorkAtPoi {
         t: Timed,
         last_check: i64,
@@ -1414,9 +1404,7 @@ impl B {
             | B::CalmDown(r)
             | B::RingBell(r)
             | B::ResetRaidStatus(r)
-            | B::PlayTag(r) => *r,
-            B::Mod(e) => e.running(),
-            B::Gate(g) => g.running,
+            | B::PlayTag(r) => *r,            B::Gate(g) => g.running,
         }
     }
     /// `OneShot` behaviours stop at their first tick.
@@ -1467,9 +1455,7 @@ impl B {
     fn try_start(&mut self, m: &mut Mob, cx: &mut Bx) -> bool {
         let now = cx.now;
         match self {
-            B::Gate(g) => g.try_start(m, cx),
-            B::Mod(e) => e.try_start(m, cx.w, cx.level.random(), cx.now),
-            // -- Behaviours with a duration.
+            B::Gate(g) => g.try_start(m, cx),            // -- Behaviours with a duration.
             B::Swim(t) => {
                 if !swim_condition(m) {
                     return false;
@@ -2672,9 +2658,7 @@ impl B {
         }
         let now = cx.now;
         match self {
-            B::Gate(g) => g.tick_or_stop(m, cx),
-            B::Mod(e) => e.tick_or_stop(m, cx.w, cx.now),
-            B::Swim(t) => {
+            B::Gate(g) => g.tick_or_stop(m, cx),            B::Swim(t) => {
                 if now > t.end || !swim_condition(m) {
                     self.do_stop(m, cx);
                 } else if m.random.next_float() < 0.8 {
@@ -3083,9 +3067,7 @@ impl B {
         }
         let now = cx.now;
         match self {
-            B::Gate(g) => g.do_stop(m, cx),
-            B::Mod(e) => e.do_stop(m, cx.w),
-            B::Swim(t) | B::PanicTrigger(t) | B::DoNothing(t) => t.running = false,
+            B::Gate(g) => g.do_stop(m, cx),            B::Swim(t) | B::PanicTrigger(t) | B::DoNothing(t) => t.running = false,
             B::JumpOnBed {
                 t,
                 bed,
@@ -3343,9 +3325,6 @@ fn play_work_sound(m: &mut Mob, cx: &mut Bx) {
         }
     }
 }
-#[cfg(test)]
-#[path = "villager_farming_tests.rs"]
-mod farming_tests;
 
 /// `HarvestFarmland.validFarmlandAroundVillager`: ripe crops and bare
 /// farmland around the villager.
@@ -4266,62 +4245,6 @@ fn packages(baby: bool, seed: i64, farmer: bool) -> Vec<Entry> {
 
 // ---- Mod behaviors ------------------------------------------------------
 
-/// The parts' behaviors for this villager's brain (arismoko/horizon#824): each joins the
-/// list with its activity and priority, refused where the villager brain has
-/// no such activity.
-fn attach_behaviors(mob_id: &str, list: &mut Vec<Entry>) {
-    struct Reg<'a> {
-        list: &'a mut Vec<Entry>,
-        mob_id: &'a str,
-    }
-    impl mod_api::BehaviorRegistrarBackend for Reg<'_> {
-        fn add_behavior(
-            &mut self,
-            r: mod_api::RegisteredBehavior,
-        ) -> Result<(), mod_api::BehaviorRefusal> {
-            let act = act_of(r.activity)?;
-            self.list.push(Entry {
-                prio: r.priority,
-                act,
-                b: B::Mod(super::mod_behaviors::ModBehavior::new(r)),
-            });
-            Ok(())
-        }
-        fn mob_id(&self) -> &str {
-            self.mob_id
-        }
-    }
-    super::mod_behaviors::attach(mob_id, &mut Reg { list, mob_id });
-}
-
-/// The villager brain's slot for a mod-api activity.
-fn act_of(activity: mod_api::Activity) -> Result<Act, mod_api::BehaviorRefusal> {
-    use mod_api::Activity as A;
-    Ok(match activity {
-        A::Core => Act::Core,
-        A::Idle => Act::Idle,
-        A::Work => Act::Work,
-        A::Play => Act::Play,
-        A::Rest => Act::Rest,
-        A::Meet => Act::Meet,
-        A::Panic => Act::Panic,
-        A::Raid => Act::Raid,
-        A::PreRaid => Act::PreRaid,
-        A::Hide => Act::Hide,
-        other => return Err(mod_api::BehaviorRefusal::UnknownActivity(other)),
-    })
-}
-
-/// The list's `(prio, activity, is a mod's)` keys, in `Brain.tick`'s start
-/// order — the inspection the goal selector's `entries` gives goals' tests.
-pub fn entry_keys(m: &Mob) -> Option<Vec<(i32, Act, bool)>> {
-    brain(m).map(|b| {
-        b.list
-            .iter()
-            .map(|e| (e.prio, e.act, matches!(e.b, B::Mod(_))))
-            .collect()
-    })
-}
 
 // ---- The probe's view ---------------------------------------------------
 
@@ -4718,5 +4641,3 @@ mod poi_classification_tests {
 #[path = "villager_trades_tests.rs"]
 mod trades_tests;
 
-#[cfg(test)]
-mod reputation_witness_tests;

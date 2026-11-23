@@ -404,7 +404,6 @@ impl Game<'_> {
                 this.world.block_entities.get(&pos).map_or("", ticker_name),
             ));
             let suppressed = !matches!(kind, TickedKind::Mod)
-                && this.native_authoritative()
                 && crate::game::code_block_owners::suppressed(
                     this.pack.assets.registry,
                     this.world.block(pos.0, pos.1, pos.2),
@@ -452,15 +451,6 @@ impl Game<'_> {
         this.item_columns = None;
         this.pass_mobs = None;
         this.scan_for_hearts();
-        // The client ticks (particles, sounds, the turning mob) are for a
-        // window; a dedicated or integrated server has none.
-        if this.options.dedicated.is_none() {
-            let spawners = std::mem::take(&mut this.spawner_tick_positions);
-            this.spawner_tick_positions = spawners;
-            let trial_spawners = std::mem::take(&mut this.trial_spawner_tick_positions);
-
-            this.trial_spawner_tick_positions = trial_spawners;
-        }
         // `ShulkerBoxBlockEntity.tick`: the lids of the boxes this level
         // animates. Their grown collision shape reaches the collision queries
         // through `World::shulkers`, and an opening lid pushes what it runs
@@ -735,10 +725,9 @@ mod add_blocks_tests {
                 std::fs::create_dir_all(&scratch).unwrap();
                 let mut child = std::process::Command::new(std::env::current_exe().unwrap());
                 child.args(["--ignored", "--exact", "game::block_entity_ticks::add_blocks_tests::vanilla_template_membership_creates_ticks_and_saves", "--nocapture"])
-                    .current_dir(&scratch).env(FLAG, case).env("HORIZON_NO_AUDIO", "1").env("HORIZON_LAUNCHER_NO_SELF_UPDATE", "1");
+                    .current_dir(&scratch).env(FLAG, case).env("HORIZON_NO_AUDIO", "1");
                 for key in [
                     "HORIZON_HOME",
-                    "HORIZON_LAUNCHER_HOME",
                     "XDG_DATA_HOME",
                     "XDG_CONFIG_HOME",
                 ] {
@@ -851,7 +840,6 @@ mod add_blocks_tests {
         crate::game::native_entity_refs::tests::with_game_at(
             root.prepared().to_path_buf(),
             |game| {
-                game.options.dedicated = Some(Vec::new());
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));
@@ -1155,10 +1143,7 @@ mod slot_mutation_tests {
     fn with_blocks(blocks: &[(Pos, &str)], test: impl FnOnce(&mut Game<'_>)) {
         let mut game_resources = None;
         let mut game = server_game(&mut game_resources);
-        game.player = Some(
-            horizon_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5))
-                .unwrap(),
-        );
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
         game.update_chunk_tickets();
         assert!(game.block_ticking_area()(A.0, A.2));
         for (pos, block) in blocks {
@@ -1333,11 +1318,10 @@ mod slot_mutation_tests {
 mod own_block_entity_tests {
     use super::{BlockEntityTick, BlockEntityTickSlot, OwnBlockEntities, TickedKind};
     use crate::game::Game;
-    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
+    use crate::game::native_entity_refs::tests::run_fresh_cases;
     use crate::game::published_loops::LoopFlow;
     use horizon_client::block_entities::Pos;
     use horizon_client::containers::{BlockEntity, ModBlockEntity};
-    use horizon_core::geometry::Vec3;
     use mod_api::*;
     use std::sync::{Arc, OnceLock};
 
@@ -1441,18 +1425,10 @@ mod own_block_entity_tests {
             let base =
                 std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
             let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
-            with_game_at(root.prepared().to_path_buf(), |game| {
-                game.options.dedicated = Some(Vec::new());
+            crate::game::native_guest_turn_tests::with_guests_at(root.prepared().to_path_buf(), |game| {
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));
-                game.player = Some(
-                    horizon_client::motion::PlayerMotion::new(
-                        game.motion,
-                        Vec3::new(8.5, 65.0, 8.5),
-                    )
-                    .unwrap(),
-                );
                 game.update_chunk_tickets();
                 let level = game.level(game.dim.id()).unwrap();
                 for &((x, y, z), block) in placed {

@@ -37,9 +37,9 @@ rest of Horizon.
 with forced game mode, max players 200, difficulty easy, bound to 127.0.0.1. Pumpkin also ran with its
 Bedrock listeners, LAN broadcast, plugins and telemetry turned off, through its own `pumpkin.toml`.
 
-**Load.** `horizon-bots --behaviour mixed` (60 % walk within 48 blocks of spawn, 20 % explore outwards at
+**Load.** `myriade-bot --behaviour mixed` (60 % walk within 48 blocks of spawn, 20 % explore outwards at
 22 blocks/s, 20 % idle). One bot joins every 0.5 s, then a 30 s warm-up, then a 60 s window. The bots don't fight:
-`horizon-bots` has no combat yet (issue S-1, section 9.3).
+`myriade-bot` has no combat yet (issue S-1, section 9.3).
 
 **How each number is taken.** The server measures itself, the same way on all three:
 - MSPT: the console's `tick query` every 5 s, which reports the average, P50, P95 and P99 over the last
@@ -151,7 +151,7 @@ drift. Gameplay is about 420 000 lines (`game/` 133 k, `mobs/` 62 k, `lan/` 15 k
 | Fast path (8) | `horizon-protocol` (the `horizon:hello` payloads), `lan/conn.rs` (server), `net.rs` and `game/remote*.rs` (client) | every Horizon client against every Horizon server |
 | Operations (9.2) | `crates/horizon-server` (supervisor, panel, control API, MCP), `crates/horizon-server-files` | dedicated |
 | Plugin API (W9) | `crates/horizon-mod-package` and the server hooks from arismoko/horizon#3706 and arismoko/horizon#3878 | integrated server, LAN, dedicated |
-| Bench (W0) | `tools/server_bench.py`, `crates/horizon-bots`, `benchmarks/` | — |
+| Bench (W0) | `tools/server_bench.py`, `crates/myriade-bot`, `benchmarks/` | — |
 
 What changes for single player: it gets the exact parallel phases (4.1, 4.2 `tick = "vanilla"`), the cheaper
 hub and off-thread saving, at no cost in behaviour. `tick = "regions"` is a dedicated-server option and
@@ -238,7 +238,7 @@ with vanilla. Two modes:
     range and scheduled-tick queue. Groups merge and split at the barrier as players move.
   - Every rule stays vanilla's (the harnesses that compare outcomes still pass). What changes is only which
     random number a given chunk draws. The config says it in those words.
-  - Off by default, like every Horizon change to vanilla behaviour ([design-system.md](design-system.md)).
+  - Off by default, like every Horizon change to vanilla behaviour.
 - **What stays serial in both modes:** cross-level effects (4.1), commands and functions, the player list, chat
   order, advancements, the scoreboard, raids (one per village, but their spawning draws the level random),
   block events (vanilla runs them to a fixed point in one queue), and the order of packets to one player.
@@ -325,7 +325,7 @@ allow = "any"        # "any" (vanilla Java and Horizon) or "horizon" (Horizon cl
   account is checked by the session service, and the whitelist and bans apply on top.
   - `online_mode` stays the owner's setting. hosting.md's warnings about offline mode stay as they are: an
     offline server checks no accounts, so keep it on a LAN or a tailnet.
-  - No other auth providers. Horizon's own sign-in: [microsoft-account.md](microsoft-account.md).
+  - No other auth providers.
 - With `allow = "horizon"`, the server refuses a client that didn't send brand `horizon` and the fast-path
   hello (section 8) in configuration. The refusal message names the Horizon launcher.
   - **Be honest about what this is:** a convenience filter, not security. Horizon's client is open source, so
@@ -400,7 +400,7 @@ in configuration:
 | `server-stats` | TPS, MSPT and the player's own ping, for the client's debug overlay | none (a feature) |
 
 Each capability has its own harness. A Horizon client with the capability, and one without, must end up with
-identical client state (`horizon-ctl state` digests). The client half lands in horizon behind the same
+identical client state (state digests). The client half lands in horizon behind the same
 negotiation, so a Horizon client still plays on every vanilla server.
 
 ## 9. Plan

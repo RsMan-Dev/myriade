@@ -104,7 +104,6 @@ mod tests {
         ) {
             let stack = match host {
                 HostSide::Server(host) => dirt_stack_size(host),
-                HostSide::Client(host) => dirt_stack_size(host),
             };
             self.0.lock().unwrap().push((event.cause, stack));
         }

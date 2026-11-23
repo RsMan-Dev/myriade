@@ -5,8 +5,6 @@
 //! sensor. `Entity.baseTick`'s burning, which runs before the move, posts where
 //! the tick started from, and a hit that destroys the item ends the tick's hits.
 use horizon_client::items::ItemStack;
-use horizon_client::motion::PlayerMotion;
-use horizon_core::geometry::Vec3;
 
 type Posted = (&'static str, [f64; 3], Option<horizon_client::mobs::Who>);
 
@@ -23,7 +21,7 @@ fn take_events() -> Vec<Posted> {
 fn a_cactus_hurts_an_item_a_point_a_tick_and_posts_entity_damage_for_each_hit() {
     let mut resources = None;
     let mut game = crate::game::ecs::test_support::active_server_game(&mut resources);
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 70.0, 8.5)).unwrap());
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     game.update_chunk_tickets();
     assert!(
         game.entity_ticking_area()(10, 8),
@@ -83,7 +81,7 @@ fn a_cactus_hurts_an_item_a_point_a_tick_and_posts_entity_damage_for_each_hit() 
 fn a_burning_item_that_dies_in_a_cactus_is_heard_once_where_its_tick_started() {
     let mut resources = None;
     let mut game = crate::game::ecs::test_support::active_server_game(&mut resources);
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 70.0, 8.5)).unwrap());
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     game.update_chunk_tickets();
     assert!(
         game.entity_ticking_area()(10, 8),
@@ -125,7 +123,7 @@ fn a_burning_item_that_dies_in_a_cactus_is_heard_once_where_its_tick_started() {
 fn an_item_expiring_in_a_cactus_is_hurt_before_it_despawns() {
     let mut resources = None;
     let mut game = crate::game::ecs::test_support::active_server_game(&mut resources);
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 70.0, 8.5)).unwrap());
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     game.update_chunk_tickets();
     let cactus = game
         .pack

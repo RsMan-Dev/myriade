@@ -8,7 +8,7 @@ It only measures. It does not change the build.
 ## What it measures
 
 Every build is the one a developer runs, `cargo build --locked -p horizon-game --profile <profile> --timings`
-(the game and `horizon-ctl`), in a target folder of its own.
+(the game), in a target folder of its own.
 
 - **Cold:** a build from an empty target folder, for the `dev` and `fast` profiles. Its timings page gives the
   time of each crate and the critical path: the chain of units, each one waiting for the one before it, that
@@ -117,7 +117,7 @@ What the cold build's timings page shows (`dev`, Windows):
   (`windows` itself 20 s), `wgpu-hal` (7 s), `wgpu-core` (7 s) and `horizon-client-render` (14 s), and ends with
   `horizon-client` the library (21 s, from second 50 to 72) and then `horizon-client` the binary (35 s, from 72
   to 107). Beside the library only `horizon-client-render` runs, for its last 4 s; beside the binary nothing runs
-  but `horizon-ctl` for 3 s. A third of the build is one rustc on one crate.
+  but `the control socket` for 3 s. A third of the build is one rustc on one crate.
 - The crates that cost most compiler time added up: `horizon-client` 60 s, `windows` 35 s, `horizon-world` 27 s,
   `naga` 17 s, `windows-sys` 15 s, `ash` 15 s, `horizon-client-render` 14 s.
 - In `fast`, `horizon-client` costs 160 s added up, `horizon-world` 67 s, `windows` 57 s, `naga` 54 s,

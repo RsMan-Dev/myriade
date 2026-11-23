@@ -3,7 +3,7 @@
 //! opposite face, which the client's own raycast (`VoxelShape.clip`) supplies
 //! and `BlockHitResult.isInside` carries.
 use crate::game::{Game, Hit, game_tests::tests::server_game};
-use horizon_client::{command::args::GameMode, items::ItemStack, motion::PlayerMotion};
+use horizon_client::{command::args::GameMode, items::ItemStack};
 use horizon_core::geometry::Vec3;
 
 /// The block name at `pos`.
@@ -17,13 +17,25 @@ fn name(game: &Game<'_>, pos: [i32; 3]) -> String {
 /// so the click is an inside one, its face the side the look comes from.
 /// Sneaking then sends the placement up the column; a click that lost the flag
 /// goes to the clicked side instead, and one that lost the face beside it.
+// TODO(phase 2): joueur local retiré — à faire agir par un joueur connecté (as_guest).
+/// `server_game`, with its body run as a guest standing at `feet`.
+fn server_game_acting_guest(feet: Vec3, f: impl FnOnce(&mut Game<'_>)) {
+    let mut resources = None;
+    let mut game = server_game(&mut resources);
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+    crate::game::native_guest_turn_tests::with_acting_guest_on(&mut game, feet, f);
+}
+
 #[test]
 #[ignore = "daily"]
 fn a_click_from_inside_a_scaffolding_block_places_on_the_opposite_face() {
     const COLUMN: [i32; 3] = [2, 5, 0];
-    let mut resources = None;
-    let mut game = server_game(&mut resources);
-    game.options.dedicated = None;
+    let feet = Vec3::new(
+        f64::from(COLUMN[0]) + 0.5,
+        f64::from(COLUMN[1]) - 1.0,
+        f64::from(COLUMN[2]) + 0.5,
+    );
+    server_game_acting_guest(feet, |game| {
     game.set_mode(GameMode::Creative);
     let scaffolding = game
         .pack
@@ -38,17 +50,6 @@ fn a_click_from_inside_a_scaffolding_block_places_on_the_opposite_face() {
     game.world
         .set(COLUMN[0], COLUMN[1], COLUMN[2], supported)
         .unwrap();
-    game.player = Some(
-        PlayerMotion::new(
-            game.motion,
-            Vec3::new(
-                f64::from(COLUMN[0]) + 0.5,
-                f64::from(COLUMN[1]) - 1.0,
-                f64::from(COLUMN[2]) + 0.5,
-            ),
-        )
-        .unwrap(),
-    );
     *game.held_mut() = Some(ItemStack::new("minecraft:scaffolding", 1));
     game.yaw = 0.0;
     game.pitch = -90.0;
@@ -71,4 +72,5 @@ fn a_click_from_inside_a_scaffolding_block_places_on_the_opposite_face() {
         "minecraft:air",
         "a ray that lost the face places beside the column"
     );
+    });
 }

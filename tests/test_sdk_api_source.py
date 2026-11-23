@@ -159,7 +159,7 @@ class ManifestTests(unittest.TestCase):
 
 class FeatureTests(unittest.TestCase):
     TREE = "\n".join([
-        "0horizon-mod-host v0.1.0 (/w/crates/horizon-mod-host)|",
+        "0horizon-game v0.1.0 (/w/crates/horizon-game)|",
         "1bytemuck v1.25.2|bytemuck_derive,derive,extern_crate_alloc",
         "2bytemuck_derive v1.12.1 (proc-macro)|",
         "3proc-macro2 v1.0.107|default,proc-macro",
@@ -175,7 +175,7 @@ class FeatureTests(unittest.TestCase):
 
     def test_target_features_leave_proc_macros_and_their_trees_out(self):
         self.assertEqual(api_source.target_features(self.TREE), {
-            "horizon-mod-host 0.1.0": set(),
+            "horizon-game 0.1.0": set(),
             "bytemuck 1.25.2": {"bytemuck_derive", "derive", "extern_crate_alloc"},
             "serde_json 1.0.151": {"default", "raw_value", "std"},
             "memchr 2.8.3": {"alloc", "default", "std"},

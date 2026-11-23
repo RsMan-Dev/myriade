@@ -4,7 +4,7 @@
 Java (VanillaCommandExecOracle) starts a stand-in integrated server: a real
 MinecraftServer with a generated world, Commands.CommandSelection.INTEGRATED
 and one single-player owner named Player. Rust runs the same script through
-Horizon's integrated server with a connected headless client (HORIZON_COMMAND_SCRIPT). Both run each command as
+Horizon's dedicated server with a connected bot (run_as_player: `run_as` on the control socket). Both run each command as
 the player through Commands.performPrefixedCommand and record every system or
 chat message the player receives (text and resolved style: colour, bold,
 italic, underlined, strikethrough, obfuscated) together with the results the
@@ -34,14 +34,20 @@ try:
     from .integration_env import run_game
     from . import command_exec_corpus as corpus_module
     from . import seed_agent
+    from .bot_lab import Bot
+    from .server_lab import Server
 except ImportError:
     import lab
     import seed_agent
+    from bot_lab import Bot
+    from server_lab import Server
     from integration_env import run_game
     import test_rust_parity as base
     import command_exec_corpus as corpus_module
 
 SEED = 1
+# Every server gets a discovery address that refuses at once, rather than Mojang's over the network.
+SERVER_ENV = {'HORIZON_API_DISCOVERY': 'http://127.0.0.1:9/'}
 
 # vanilla::session_dispatcher adds this documented platform command outside the
 # reference vanilla dispatcher. Do not infer exclusions from unexpected output:
@@ -88,6 +94,62 @@ def install_datapack_fixtures(world, predicates, functions, jar, advancements=No
         target = pack / 'data' / namespace / 'recipe' / (path + '.json')
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(recipe), encoding='utf-8')
+
+
+def run_console(binary, universe, commands, out):
+    """Phase 1: start the dedicated server and send each command on its console; one reply line per command is kept."""
+    import socket
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        port = probe.getsockname()[1]
+    server = subprocess.Popen([str(binary), '--dedicated', '--nogui', '--port', str(port), '--universe', str(universe)],
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8')
+    try:
+        with out.open('w', encoding='utf-8') as log:
+            for command in commands:
+                server.stdin.write(command + '\n')
+                server.stdin.flush()
+                log.write(json.dumps({'command': command, 'reply': server.stdout.readline().rstrip('\n')}, ensure_ascii=False) + '\n')
+    finally:
+        server.stdin.write('stop\n')
+        server.stdin.flush()
+        server.wait(timeout=120)
+
+
+# The ops the command harness records (its reference-only list); the others run and write nothing.
+RECORDED_OPS = ('player_state', 'player_loop', 'map_state', 'frame_map_state', 'mob_anger', 'projectile_saved_type',
+                'raid_state', 'menu_state', 'craft_menu_state', 'map_files', 'merchant_state', 'merchant_saved_stats')
+
+
+def is_recorded(op):
+    return op['op'] in RECORDED_OPS or (op['op'] == 'cmd' and op.get('record', True)) or (op['op'] == 'tick' and op.get('record'))
+
+
+def run_as_player(binary, script_path, out, env, cwd, properties=None, config=None):
+    """Runs the script on a dedicated server, for a bot joined as Player: each line goes to the server's `op` (one
+    operation of the command harness, its record back in one line), in order. The world is saves/harness in the
+    server folder, where the harness's own game had it. `env` adds variables to SERVER_ENV for the server's environment,
+    `properties` to its server.properties; `config`, when given, receives the view and simulation distances the bot got
+    at login."""
+    ops = [json.loads(line) for line in Path(script_path).read_text(encoding='utf-8').splitlines() if line.strip()]
+    records = []
+    with Server(binary.parent, cwd, lab.RESOURCES, properties={'level-name': 'saves/harness', **(properties or {})},
+                ready_seconds=300, env={**SERVER_ENV, **(env or {})}) as server, Bot(timeout=600) as bot:
+        bot.join('127.0.0.1', server.port, 'Player')
+        bot.wait_for('loaded', 300)
+        if config:
+            state = bot.state()
+            config.write_text(json.dumps({'view_distance': state['view_distance'],
+                                          'simulation_distance': state['simulation_distance'],
+                                          'joined': state['loaded']}) + '\n', encoding='utf-8')
+        for op in ops:
+            if op['op'] == 'merchant_saved_stats':
+                # The raw stats file is written next to the record, under its label.
+                op = dict(op, output=str(out.resolve()))
+            reply = server.op('Player', op)
+            if is_recorded(op):
+                records.append(reply)
+    out.write_text(''.join(json.dumps(r, ensure_ascii=False) + '\n' for r in records), encoding='utf-8')
 
 
 def main():
@@ -541,14 +603,6 @@ def main():
     advancements = corpus_module.advancement_reward_fixtures([name for name, _ in groups])
     loot_advancements, loot_tables = corpus_module.advancement_loot_fixtures([name for name, _ in groups])
     advancements.update(loot_advancements)
-    if os.environ.get('HORIZON_FISHING_FALLBACK_FIXTURE') == '1':
-        # No random_sequence: FishingHook.retrieve must use the level stream.
-        loot_tables['minecraft:gameplay/fishing'] = {
-            'type': 'minecraft:fishing', 'pools': [{'rolls': 1, 'entries': [
-                {'type': 'minecraft:item', 'name': 'minecraft:cod', 'weight': 1},
-                {'type': 'minecraft:item', 'name': 'minecraft:salmon', 'weight': 1},
-            ]}]}
-
     if args.pufferfish_contact_fixture:
         from pufferfish_contact_corpus import advancements as contact_advancements
         advancements.update(contact_advancements())
@@ -612,7 +666,7 @@ def main():
     if args.binary:
         binary = args.binary.resolve(strict=True)
     else:
-        run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'horizon-client'], 'compile-rust', cwd=lab.ROOT)
+        run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client', '--bin', 'horizon-client'], 'compile-rust', cwd=lab.ROOT)
         metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'], cwd=lab.ROOT, text=True))
         binary = Path(metadata['target_directory']) / 'fast' / ('horizon-client.exe' if os.name == 'nt' else 'horizon-client')
     rust_dir = build / 'rust'
@@ -626,18 +680,15 @@ def main():
         shutil.copyfile(source, target)
     # The oracle's Services resolve no profile (/fetchprofile fails on the next tick): the game gets no services
     # either, a discovery address that refuses at once, rather than Mojang's over the network.
-    env = lab.game_env(HORIZON_PLAYER_NAME="Player", HORIZON_COMMAND_SCRIPT=script_path,
-                       HORIZON_COMMAND_OUTPUT=build / 'rust.jsonl', HORIZON_API_DISCOVERY='http://127.0.0.1:9/')
+    env = {}
     if synced:
         env.update(seed_agent.ENV)
     if args.raid_village_fixture and not args.raid_release_command_diagnostic:
         env['HORIZON_DEV_COMMANDS'] = '1'
-    elif args.raid_release_command_diagnostic:
-        env.pop('HORIZON_DEV_COMMANDS', None)
-    if args.loaded_fixture:
-        env['HORIZON_HARNESS_LOADED_FIXTURE'] = '1'
-        env['HORIZON_HARNESS_CLIENT_CONFIG'] = str(build / 'rust-client-config.json')
-    run([binary, '--resources', Path(os.environ.get('HORIZON_TEST_RESOURCES', lab.RESOURCES)), '--world', 'harness', '--seed', SEED, '--radius', 2 if args.loaded_fixture else 4], 'rust', game=True, cwd=rust_dir, env=env)
+    # The loaded fixture runs at distance 2 (the Java server's setting too).
+    loaded = {'view-distance': '2', 'simulation-distance': '2'} if args.loaded_fixture else None
+    config = build / 'rust-client-config.json' if args.loaded_fixture else None
+    run_as_player(binary, script_path, build / 'rust.jsonl', env, cwd=rust_dir, properties=loaded, config=config)
 
     if any(op['op'] == 'raid_state' for op in script):
         from raid_village_corpus import validate_native_inputs
@@ -661,8 +712,8 @@ def main():
                         for (n, ms), ticks, upper in zip(waits, [40, 120], [4000, 10000])):
                     sys.exit(f'bounded paced-wait prerequisite failed: {name}: {waits}')
         native = json.loads((build / 'rust-client-config.json').read_text())
-        if native.get('render_setting') != 2 or native.get('simulation_setting') != 2 or not native.get('joined'):
-            sys.exit(f'native settings/join prerequisite failed: {native}')
+        if not native.get('joined'):
+            sys.exit(f'native join prerequisite failed: {native}')
     vanilla = [json.loads(l) for l in (build / 'vanilla.jsonl').open(encoding='utf-8')]
     rust = [json.loads(l) for l in (build / 'rust.jsonl').open(encoding='utf-8')]
     if len(vanilla) != len(rust):

@@ -1,25 +1,16 @@
 #!/usr/bin/env python3
 """Select CI checks from one fail-closed Git diff.
 
-The default answers Rust selection; --launcher uses the launcher's dependency paths.
---all emits the shared Rust, launcher and tooling decisions in one answer.
+The default answers Rust selection, with tooling and mod point decisions alongside.
 server_build: needs_server_build's answer, which no job reads (see SERVER_BUILD_CHECK).
 """
 
 import argparse
 import subprocess
 import sys
-from pathlib import Path
 
-# The repository root, appended so a script run finds `tools` without shadowing anything already importable.
-sys.path.append(str(Path(__file__).resolve().parents[2]))
-from tools import release_train  # noqa: E402
-
-# The root workspace's manifest and toolchain files: the launcher's path crates inherit from them.
+# The root workspace's manifest and toolchain files.
 ROOT_RUST = {"Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rustfmt.toml", "clippy.toml"}
-# The check itself: a change to it runs it. install_rust.sh sets the job up (needs_rust already counts it: tools/ shell).
-LAUNCHER_CHECK = {".github/workflows/ci.yml", "tools/ci/rust_changes.py", "tools/release_train.py",
-                  "tools/ci/install_rust.sh"}
 
 
 # The Python under tools/ and tests/: verify's Python steps and the parity jobs run it, and no Rust build or test reads
@@ -33,9 +24,6 @@ RUST_DECIDES = {"tools/ci/rust_changes.py", "tools/release_train.py"}
 # tests/test_ci_rust_changes.py, which finds every embed in the Rust sources.
 EMBEDDED = {
     "crates/horizon-mod-api-gen/coverage-notes.md": ("crates/horizon-mod-api-gen/src/wire/host.rs",),
-    "docs/media/nether.webp": ("launcher/src/glass_server_dialog.rs",),
-    "docs/media/underwater.webp": ("launcher/src/glass_server_dialog.rs",),
-    "docs/media/village.webp": ("launcher/src/glass_server_dialog.rs",),
     "docs/modpacks/atm10-mods.csv": ("crates/horizon-port-pack/src/classify.rs",),
     "docs/parity/random-chance-seeded.jsonl": (
         "crates/horizon-client/src/advancements.rs",
@@ -70,14 +58,6 @@ SERVER_BUILD_CHECK = {".github/workflows/ci.yml", "tools/ci/rust_changes.py"}
 def needs_server_build(paths):
     return any(path.startswith("crates/horizon-client") or path.endswith("Cargo.toml") or path in ROOT_RUST
                or path.startswith(".cargo/") or path in SERVER_BUILD_CHECK for path in paths)
-
-
-def needs_launcher(paths):
-    return any(path in ROOT_RUST or path in LAUNCHER_CHECK or (
-        path.startswith(tuple(release_train.LAUNCHER_PATHS))
-        and not path.startswith(tuple(release_train.LAUNCHER_IGNORED))
-        and not path.endswith(".md")
-    ) for path in with_embedders(paths))
 
 
 # Stands for "everything changed" when no diff can be computed: a root manifest every check and shard selector
@@ -135,7 +115,6 @@ def needs_mod_points(paths, mentions=lambda rust_files: False):
 def selections(changes):
     paths = [path for _, path in changes]
     return {"rust_required": needs_rust(paths),
-            "launcher_required": needs_launcher(paths),
             "tooling_required": needs_tooling(changes)}
 
 
@@ -165,8 +144,7 @@ if __name__ == "__main__":
     parser.add_argument("base")
     parser.add_argument("head")
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--launcher", action="store_true", help="answer for the launcher instead")
-    mode.add_argument("--all", action="store_true", help="emit the Rust, launcher and tooling selections at once")
+    mode.add_argument("--all", action="store_true", help="emit the Rust and tooling selections at once")
     args = parser.parse_args()
     changes = changed_entries(args.base, args.head)
     paths = [path for _, path in changes]
@@ -174,9 +152,7 @@ if __name__ == "__main__":
         for name, required in selections(changes).items():
             print(f"{name}={str(required).lower()}")
     else:
-        needs = needs_launcher if args.launcher else needs_rust
-        print(f"required={str(needs(paths)).lower()}")
+        print(f"required={str(needs_rust(paths)).lower()}")
         print(f"server_build={str(needs_server_build(paths)).lower()}")
-        if not args.launcher:
-            mod_points = needs_mod_points(paths, lambda files: mentions_replaceable(args.base, args.head, files))
-            print(f"mod_points={str(mod_points).lower()}")
+        mod_points = needs_mod_points(paths, lambda files: mentions_replaceable(args.base, args.head, files))
+        print(f"mod_points={str(mod_points).lower()}")

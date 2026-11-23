@@ -96,7 +96,8 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
 
 /// `BreathAirGoal.findAirPosition`: the centre, north, east, south and west columns, each from `y` up to `y + reach_up`; the
 /// first block with no fluid (or a bubble column) that the land navigation can stand in. `None`: none found.
-fn air_position(w: &World, [x, y, z]: [i32; 3], reach_up: i32) -> Option<[i32; 3]> {
+/// The first air cell the dolphin searches: the columns in vanilla order (offsets (0,0), (0,-1), (1,0), (0,1), (-1,0) in x, z), bottom up within `reach_up`.
+pub fn air_position(w: &World, [x, y, z]: [i32; 3], reach_up: i32) -> Option<[i32; 3]> {
     let mw = w.resource::<Level>().mw.0;
     let air_ok = |[x, y, z]: [i32; 3]| {
         let s = mw.world.block(x, y, z);

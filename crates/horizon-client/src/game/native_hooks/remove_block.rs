@@ -12,9 +12,6 @@ impl GameLevel<'_> {
         moved_by_piston: bool,
         vanilla: BlockStateId,
     ) -> BlockStateId {
-        if !self.native_authoritative {
-            return vanilla;
-        }
         let mut answer = None;
         self.native_remove_block(super::fire::RemoveBlockCall {
             dimension: self.dimension,

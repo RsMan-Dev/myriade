@@ -284,7 +284,7 @@ impl Game<'_> {
         RANKED_JOINS.store(true, Ordering::Relaxed);
     }
 
-    /// `digest-sync U E S`: the command harness's `sync_randoms`, from a dedicated server's console or the integrated server's owner console (`horizon-ctl command`).
+    /// `digest-sync U E S`: the command harness's `sync_randoms`, from a dedicated server's console or the integrated server's owner console (the control socket's `command`).
     pub(super) fn state_digest_sync(&mut self, args: &[&str]) -> Result<(), String> {
         let [u, e, s] = args else {
             return Err("digest-sync UNIQUIFIER ENTITY_ID LEVEL_SEED".into());

@@ -68,7 +68,7 @@ impl Modifier {
                         let category = value
                             .as_str()
                             .ok_or_else(|| at("categories: expected names".into()))?;
-                        if !crate::mobs::spawn_selection::Category::ALL
+                        if !crate::mobs::spawn_place::Category::ALL
                             .iter()
                             .any(|known| known.name() == category)
                         {

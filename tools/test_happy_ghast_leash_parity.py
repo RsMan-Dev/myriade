@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Compare adult/baby Happy Ghast leash dispatch and forces with pinned vanilla.
+"""Compare adult/baby Happy Ghast leash dispatch and forces with pinned vanilla, on the whole server.
 
 A pre-existing path and move-control target expose unwanted close-range navigation
 and the elastic-pull callback. Cow cases retain the ordinary six/twelve-block leash.
-This checks one leash update, not a rendered flight trajectory.
+The vanilla rows come from the Java reference; `op happy_ghast_leash` runs the same cases on the
+dedicated server through a bot joined as Player. This checks one leash update, not a rendered flight trajectory.
 """
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -14,10 +16,14 @@ import tempfile
 
 try:
     from . import lab
+    from .bot_lab import Bot
     from .integration_env import game_environment
+    from .server_lab import Server
 except ImportError:
     import lab
+    from bot_lab import Bot
     from integration_env import game_environment
+    from server_lab import Server
 
 
 def main():
@@ -31,11 +37,20 @@ def main():
     rows = json.loads(reference.read_text())
     if len(rows) != 36 or sum(r["snapped"] for r in rows) != 7:
         raise SystemExit("vanilla fixture must cover 36 leash cases and seven snapped leads")
-    env["HORIZON_HAPPY_GHAST_LEASH_REFERENCE"] = str(reference)
-    env["HORIZON_TEST_RESOURCES"] = os.environ.get("HORIZON_TEST_RESOURCES", str(lab.RESOURCES))
-    subprocess.run(["cargo", "test", "-p", "horizon-client-lib", "--lib",
-                    "mobs::leash::tests::happy_ghast_leash_dispatch_matches_vanilla",
-                    "--", "--exact", "--ignored"], cwd=lab.ROOT, env=env, check=True)
+    subprocess.run(["cargo", "build", "--profile", "fast", "-p", "horizon-client", "--bin", "horizon-client"],
+                   cwd=lab.ROOT, check=True)
+    bins = Path(lab.cargo_target()) / "fast"
+    with Server(bins, work / "server", lab.RESOURCES.resolve(), {"level-seed": "42", "view-distance": "4"}) as server, \
+            Bot(timeout=600) as bot:
+        bot.join("127.0.0.1", server.port, "Player")
+        bot.wait_for("loaded", 300)
+        actual = server.op("Player", {"op": "happy_ghast_leash", "rows": rows})
+    assert len(actual) == len(rows) == 36, "missing leash cases"
+    for want, got in zip(rows, actual):
+        for key in ["kind", "distance", "phase", "snapped", "wanted", "path"]:
+            assert want[key] == got[key], (key, want, got)
+        for a, b in zip(want["velocity"], got["velocity"]):
+            assert math.isclose(a, b, rel_tol=0, abs_tol=1e-10), (want, got)
     print("Happy Ghast leash: 36 adult/baby/cow dispatch, threshold and force cases match vanilla")
 
 

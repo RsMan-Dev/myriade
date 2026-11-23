@@ -341,9 +341,6 @@ impl Game<'_> {
             .collect();
         let carried = self.carried.clone();
         let creative = self.creative;
-        // CreativeModeInventoryScreen clicks the menu itself and sends every
-        // changed slot, which the server sets by player.
-        let equipment_before = (self.screen == Screen::Creative).then(|| self.player_equipment());
         let station_menu = self.station.as_ref().map(|s| {
             (
                 s.loom.selected.map_or(-1, |i| i as i32),
@@ -604,13 +601,8 @@ impl Game<'_> {
             // AbstractFurnaceBlockEntity.setItem: only a new input restarts cooking.
             f.input_clicked(&self.loop_context, world_recipes!(self), before[0].clone());
         }
-        match equipment_before {
-            Some(before) => self.player_equipment_changed(&before),
-            None => {
-                for (slot, stack) in equipped {
-                    self.player_equipped(slot, stack.as_ref());
-                }
-            }
+        for (slot, stack) in equipped {
+            self.player_equipped(slot, stack.as_ref());
         }
         self.apply_equipment();
         if let Some(maps) = level_maps {
@@ -647,8 +639,6 @@ impl Game<'_> {
         let at = [p.position.x, p.position.y, p.position.z];
         let (volume, pitch) =
             horizon_client::bundle::sound_volume_pitch(sound, || self.world.random.next_float());
-        if self.is_logical_server() {
-            self.audio.play(sound, Some(at), volume, pitch);
-        }
+        self.audio.play(sound, Some(at), volume, pitch);
     }
 }

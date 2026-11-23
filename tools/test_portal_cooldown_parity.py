@@ -1,80 +1,89 @@
 #!/usr/bin/env python3
-"""Compare actual vanilla portal cadence with silent in-memory Game handlers.
+"""Compare the player's PortalCooldown after a nether portal handoff, on the whole server, through the same commands.
 
-No server/world bootstrap; full entity loops and destination resolution are not covered.
+The player stands in a nether portal (the same setup as the command corpus's portal case), the portal op runs the
+vanilla handoff on both sides, then `data get` reads PortalCooldown at the handoff and after each tick count. The vanilla
+side runs VanillaCommandExecOracle on the script; the Horizon side runs it through run_as_player on a dedicated server.
+Contact counters are not compared: they have no command or NBT readout.
 """
-import argparse
 import json
 import os
 from pathlib import Path
-import re
+import shutil
 import subprocess
-import tempfile
+import sys
+
 try:
-    from . import lab, test_rust_parity as base
+    from . import lab, test_rust_parity as base, test_command_exec_parity as commands
 except ImportError:
     import lab
     import test_rust_parity as base
+    import test_command_exec_parity as commands
 
-TEST = 'game::nether_portal::cooldown_tests::portal_contact_and_waiting_handoff_match_vanilla_counters'
+SEED = 1
+READ = '/data get entity @s PortalCooldown'
+
+
+def script():
+    def cmd(text):
+        return {'op': 'cmd', 'cmd': text, 'label': text, 'admission': True}
+
+    ops = [
+        cmd('/gamemode survival @s'),
+        cmd('/fill 2 231 12 5 236 12 minecraft:obsidian'),
+        cmd('/fill 3 232 12 4 235 12 minecraft:nether_portal[axis=x]'),
+        cmd('/tp @s 3.5 232 12.5 0 0'),
+        cmd('/forceload add 0 0'),
+        {'op': 'portal'},
+        {'op': 'settle'},
+        cmd(READ),
+    ]
+    for ticks in (1, 100, 200, 300):
+        ops += [{'op': 'tick', 'n': ticks}, cmd(READ)]
+    return ops
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--work-dir', type=Path)
-    parser.add_argument('--resources', type=Path, default=lab.RESOURCES)
-    parser.add_argument('--reference-only', action='store_true')
-    args = parser.parse_args()
-    build = (args.work_dir or lab.LOCAL / 'rust-portal-cooldown-parity').resolve()
-    build.mkdir(parents=True, exist_ok=True)
     lock, jars, libraries = base.verify_artifacts()
+    build = lab.LOCAL / 'portal-cooldown-parity'
+    shutil.rmtree(build, ignore_errors=True)
+    build.mkdir(parents=True)
+    ops = script()
+    script_path = build / 'script.jsonl'
+    script_path.write_text(''.join(json.dumps(op, ensure_ascii=False) + '\n' for op in ops), encoding='utf-8')
+    oracle = lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaCommandExecOracle.java'
     classes = build / 'classes'
-    classes.mkdir(exist_ok=True)
-    source = lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaPortalCooldownOracle.java'
-    reference = build / 'reference.json'
-    dependency_path = os.pathsep.join(map(str, [jars['server'], *libraries]))
-    def run(command, name, env=None):
+    classes.mkdir()
+    dependency_path = os.pathsep.join(map(str, libraries))
+
+    def run(command, name, **kwargs):
         with (build / (name + '.log')).open('w', encoding='utf-8') as log:
-            subprocess.run(list(map(str, command)), cwd=lab.ROOT if name == 'build-native' else build, env=env,
-                           stdout=log, stderr=subprocess.STDOUT, check=True)
-    run(['javac', '--release', lock['minecraft']['java_major'], '-proc:none',
-         '-cp', dependency_path, '-d', classes, source], 'compile-java')
-    run(['java', '-Xmx512M', '-cp', str(classes) + os.pathsep + dependency_path,
-         'dev.horizonlab.parity.VanillaPortalCooldownOracle', reference], 'java')
-    observed = json.loads(reference.read_text())
-    if len(observed['contact']) != 5 or any(len(row) != 4 for row in observed['contact']):
-        raise SystemExit('actual vanilla reference shape failed')
-    print('Actual vanilla methods: 4 classes, 20 guarded observations', flush=True)
-    if args.reference_only:
-        return
-    inherited = dict(os.environ)
-    for key in ('HORIZON_HOME', 'HORIZON_LAUNCHER_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME'):
-        inherited.pop(key, None)
-    env = lab.game_env(inherited, HORIZON_TELEMETRY_URL="off", HORIZON_TEST_RESOURCES=args.resources.resolve(strict=True),
-                       HORIZON_PORTAL_REFERENCE=reference.resolve(),
-                       HORIZON_PORTAL_REPORT=(build / 'native.json').resolve())
-    run(['cargo', 'test', '-p', 'horizon-client', '--lib', '--no-run',
-         '--message-format=json'], 'build-native', env)
-    records = (json.loads(line) for line in (build / 'build-native.log').read_text(encoding='utf-8').splitlines()
-               if line.startswith('{'))
-    executables = [row['executable'] for row in records if row.get('reason') == 'compiler-artifact'
-                   and row.get('executable') and row.get('profile', {}).get('test')]
-    if len(executables) != 1:
-        raise SystemExit(f'expected one production test binary, got {executables}')
-    with tempfile.TemporaryDirectory(prefix='horizon-portal-cooldown-') as scratch:
-        with (build / 'native.log').open('w', encoding='utf-8') as log:
-            subprocess.run([executables[0], TEST, '--ignored', '--exact', '--nocapture'],
-                           cwd=scratch, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
-    output = (build / 'native.log').read_text(encoding='utf-8', errors='replace')
-    if not re.search(r'test result: ok\. 1 passed; 0 failed;', output):
-        raise SystemExit('native test did not execute exactly one passing production regression')
-    native = json.loads((build / 'native.json').read_text())
-    for field in ('runtime',):
-        if native[field] != observed['contact']:
-            raise SystemExit(f'{field} differs from actual vanilla methods')
-    if native['handoff'] != observed['delays']:
-        raise SystemExit('arrival handoff differs from actual vanilla delays')
-    print('Production contact and arrival handoff match actual vanilla counters', flush=True)
+            result = subprocess.run(list(map(str, command)), stdout=log, stderr=subprocess.STDOUT, **kwargs)
+        if result.returncode:
+            tail = (build / (name + '.log')).read_text(errors='replace')[-3000:]
+            sys.exit(f'{name} failed ({result.returncode}):\n{tail}')
+
+    run(['javac', '--release', lock['minecraft']['java_major'], '-proc:none', '-cp',
+         str(jars['server']) + os.pathsep + dependency_path, '-d', classes, oracle], 'compile-java')
+    vanilla_dir = build / 'vanilla'
+    vanilla_dir.mkdir()
+    run(['java', '-Xmx3G', '-Duser.timezone=UTC', '-cp',
+         os.pathsep.join([str(classes), str(jars['server']), dependency_path]),
+         'dev.horizonlab.parity.VanillaCommandExecOracle', vanilla_dir / 'universe', script_path,
+         build / 'vanilla.jsonl', str(SEED)], 'java', cwd=vanilla_dir)
+    run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client', '--bin', 'horizon-client'], 'compile-rust',
+        cwd=lab.ROOT)
+    metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'],
+                                                  cwd=lab.ROOT, text=True))
+    binary = Path(metadata['target_directory']) / 'fast' / 'horizon-client'
+    rust_dir = build / 'rust'
+    rust_dir.mkdir()
+    commands.run_as_player(binary, script_path, build / 'rust.jsonl', commands.SERVER_ENV, rust_dir)
+    expected = (build / 'vanilla.jsonl').read_text(encoding='utf-8').splitlines()
+    actual = (build / 'rust.jsonl').read_text(encoding='utf-8').splitlines()
+    if expected != actual:
+        sys.exit(f'portal cooldown differs: {len(expected)} vanilla records, {len(actual)} Horizon records')
+    print(f'portal cooldown: {len(expected)} records match the vanilla server')
 
 
 if __name__ == '__main__':

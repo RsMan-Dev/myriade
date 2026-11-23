@@ -155,12 +155,12 @@ pub trait ChunkGenerator: Send + Sync + 'static {
         None
     }
     /// What the generator's shared caches hold: (name, entries, bytes, if
-    /// known), for `horizon-ctl memory`.
+    /// known), for `the control socket's memory command`.
     fn cache_census(&self) -> Vec<(&'static str, usize, Option<usize>)> {
         Vec::new()
     }
     /// A proto chunk's heap bytes by part, and its sections by bits per
-    /// block, for `horizon-ctl memory` (`ProtoChunk::heap_bytes`).
+    /// block, for `the control socket's memory command` (`ProtoChunk::heap_bytes`).
     fn proto_heap_bytes(&self, _proto: &Proto) -> ([usize; 6], [usize; 16]) {
         ([0; 6], [0; 16])
     }
@@ -1474,7 +1474,7 @@ impl Streaming {
     }
     /// The proto chunks held (not checked out): how many, their heap bytes by
     /// part and their sections by bits per block; and the light views of
-    /// them with their bytes. For `horizon-ctl memory`.
+    /// them with their bytes. For `the control socket's memory command`.
     pub fn proto_census(&self) -> ProtoCensus {
         let mut census = ProtoCensus::default();
         for proto in self.protos.values().flatten() {

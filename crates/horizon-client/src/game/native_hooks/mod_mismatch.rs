@@ -126,12 +126,9 @@ mod tests {
         mod_platform::testing::with_mods(
             vec![ModEntry::new("listener", Box::new(Listener(heard.clone())))].into(),
             || {
-                for role in [
-                    execution_role::ExecutionRole::Client,
-                    execution_role::ExecutionRole::DedicatedServer,
-                ] {
+                {
                     super::super::super::native_entity_refs::tests::with_game(|game| {
-                        game.options.execution_role = role;
+                        game.options.execution_role = execution_role::ExecutionRole::DedicatedServer;
                         game.level.saved_mods = None;
                         game.check_mod_mismatch();
                         game.level.saved_mods = Some(vec![]);

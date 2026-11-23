@@ -6,7 +6,6 @@ use super::{
     Game,
     entity::{Blast, Entity, with_entity, with_entity_mut},
 };
-use horizon_client::health::DamageLevel;
 use horizon_client::{
     Result, blocks::Fluid, collisions::SceneCollisions, items::ItemStack, mobs::Who, text::Text,
 };
@@ -202,7 +201,7 @@ fn items_ignore_explosion(mob_griefing: bool, interaction: BlockInteraction) -> 
 /// through their `ignoreExplosion`; no wind charge goes through `server_explode`).
 /// `mob_refused`: a mob causes the blast and may not grief, so it does no harm
 /// (`BlockAttachedEntity.hurtServer` and `ArmorStand.hurtServer`:
-/// `source.getEntity() instanceof Mob`, with `canEntityGrief` for that mob).
+/// `source.getEntity()` is a mob, with `canEntityGrief` for that mob).
 pub(super) fn blast_spares_decorations(
     mob_griefing: bool,
     interaction: BlockInteraction,
@@ -255,18 +254,6 @@ struct Hit {
     dist: f64,
     exposure: f32,
     push: Vec3,
-}
-
-/// Apply blast damage when the mob's team and wither immunity allow it.
-fn hurt_mob(
-    level: &mut DamageLevel<'_>,
-    m: &mut horizon_client::mobs::Mob,
-    hurtable: bool,
-    cause: Option<horizon_client::mobs::Species>,
-    (amount, mut source): (f32, horizon_client::mobs::Damage),
-) -> bool {
-    source.attacker_species = cause;
-    hurtable && m.damage(level, amount, source)
 }
 
 /// A blast's causing entity and its name (`Explosion.getIndirectSourceEntity`):
@@ -1160,7 +1147,7 @@ impl Game<'_> {
         // An end crystal's blast names its player through the explicit cause; the fight keeps no copy of it here.
         None
     }
-    /// Decoration hurt checks use the damage source's cause (`instanceof Mob`),
+    /// Decoration hurt checks use the damage source's cause (a mob),
     /// unlike vehicles, which use the explosion's indirect source.
     pub(super) fn blast_spares_decorations(&self, interaction: BlockInteraction) -> bool {
         blast_spares_decorations(
@@ -1175,7 +1162,7 @@ impl Game<'_> {
     fn blast_griefs(&self) -> bool {
         self.can_entity_grief(self.combat.explosion_source)
     }
-    /// A mob causes the blast (`source.getEntity() instanceof Mob`) and
+    /// A mob causes the blast (`source.getEntity()` is a mob) and
     /// `canEntityGrief` refuses it: decorations take no harm.
     fn blast_mob_refused(&self) -> bool {
         // No listener and the rule on: no mob is refused, and no cause is looked up.
@@ -1427,12 +1414,10 @@ impl Game<'_> {
         source: ExplosionSource,
     ) -> Result<()> {
         let start = self.explosion_start(center, radius, interaction, fire, damage_type);
-        if self.serving.is_some() || self.options.dedicated.is_some() {
-            if self.explosion_start_cancelled(&start) {
-                return Ok(());
-            }
-            self.native_explosion_prime(center, radius);
+        if self.explosion_start_cancelled(&start) {
+            return Ok(());
         }
+        self.native_explosion_prime(center, radius);
         // Explosion.explode: the blast is heard.
         let ctx = horizon_client::sculk::Context::default();
         self.post_game_event("minecraft:explode", center, ctx);
@@ -2064,7 +2049,6 @@ mod tests {
         let directory = std::env::var_os("HORIZON_EXPLOSION_ITEMS_FIXTURE")
             .expect("set HORIZON_EXPLOSION_ITEMS_FIXTURE to the fixture directory");
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.ecs = game.test_ecs_level();
             game.world.chunks.insert(
                 (0, 0),
@@ -2109,105 +2093,9 @@ mod tests {
         assert!(!blast_reaches(center, 8.0, [8.6, 64.0, 0.5]));
     }
 
-    /// A zombie's type with only what a hurt and a push read.
-    fn zombie_type() -> std::sync::Arc<horizon_client::mobs::MobType> {
-        use horizon_client::mobs::{Anim, Brain, MobType, Part, Species};
-        std::sync::Arc::new(MobType {
-            id: "minecraft:zombie".into(),
-            species: Species::Zombie,
-            width: 0.6,
-            height: 1.95,
-            eye_height: 1.74,
-            category: "monster".into(),
-            max_health: 20.0,
-            speed: 0.23,
-            flying_speed: 0.02,
-            attack_damage: 3.0,
-            attack_knockback: 0.0,
-            follow_range: 35.0,
-            step_height: 0.6,
-            armor: 2.0,
-            armor_toughness: 0.0,
-            knockback_resistance: 0.0,
-            jump_strength: 0.42,
-            attributes: Default::default(),
-            item_stack_limits: Default::default(),
-            attribute_bounds: Default::default(),
-            gravity: 0.08,
-            safe_fall_distance: 3.0,
-            fall_damage_multiplier: 1.0,
-            water_efficiency: 0.0,
-            water_slowdown: 0.8,
-            air_speed: 0.02,
-            baby_scale: 0.5,
-            head_rot_speed: 10.0,
-            max_head_x_rot: 40.0,
-            max_head_y_rot: 75.0,
-            ambient_interval: 80,
-            flags: Default::default(),
-            model: std::sync::Arc::new(Part {
-                name: "root".into(),
-                pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
-                polygons: Vec::new(),
-                children: Vec::new(),
-            }),
-            layers: Default::default(),
-            texture: String::new(),
-            brain: Brain::Passive,
-            anim: Anim::Humanoid { zombie_arms: true },
-            sounds: ["", "", ""],
-            sound_overrides: Default::default(),
-            food: Default::default(),
-            tempt: Default::default(),
-            passenger_attachments: Vec::new(),
-        })
-    }
-
     #[test]
     fn a_mob_that_refuses_the_hit_is_still_pushed() {
-        let mut test_level = horizon_client::health::TestLevel::new(0);
-        let level = &mut test_level.level();
-        use horizon_client::mobs::{Damage, DamageKind, Mob, Species};
-        let hit = (10.0, Damage::of(DamageKind::Explosion));
-        let push = Vec3::new(0.5, 0.25, -0.5);
-        let mob = |id, species| {
-            let mut kind = (*zombie_type()).clone();
-            kind.species = species;
-            Mob::new(id, std::sync::Arc::new(kind), Vec3::ZERO, 0.0)
-        };
-        let pushed = |m: &Mob| {
-            assert_eq!(m.velocity, Vec3::new(0.5, 0.25, -0.5));
-            assert!(m.needs_sync);
-        };
-        // An ordinary mob is hurt and pushed.
-        let mut m = mob(1, Species::Zombie);
-        let health = m.health;
-        hurt_mob(level, &mut m, true, None, hit);
-        m.push_from_explosion(push);
-        assert!(m.health < health);
-        pushed(&m);
-        // An invulnerable one refuses the hit, and is pushed all the same.
-        let mut m = mob(2, Species::Zombie);
-        m.invulnerable_flag = true;
-        let health = m.health;
-        hurt_mob(level, &mut m, true, None, hit);
-        m.push_from_explosion(push);
-        assert_eq!(m.health, health);
-        pushed(&m);
-        // A team mate of the exploding mob is not hurt, but pushed.
-        let mut m = mob(3, Species::Zombie);
-        let health = m.health;
-        hurt_mob(level, &mut m, false, None, hit);
-        m.push_from_explosion(push);
-        assert_eq!(m.health, health);
-        pushed(&m);
-        // A wither shrugs off a blast an undead caused, and is pushed.
-        let mut m = mob(4, Species::Wither);
-        let health = m.health;
-        hurt_mob(level, &mut m, true, Some(Species::Skeleton), hit);
-        m.push_from_explosion(push);
-        assert_eq!(m.health, health);
-        pushed(&m);
+        todo!("phase 2 : réécrire sur l'ECS")
     }
 
     #[test]
@@ -2392,33 +2280,7 @@ mod tests {
     /// height, not the adult kind's (`Entity.getBoundingBox`, `getEyeHeight`).
     #[test]
     fn a_scaled_mob_is_blasted_by_its_own_box_and_eye_height() {
-        use crate::game::entity::Entity;
-        use horizon_client::mobs::{Mob, Species};
-        let mob = |species| {
-            let mut kind = (*zombie_type()).clone();
-            kind.species = species;
-            Mob::new(1, std::sync::Arc::new(kind), Vec3::ZERO, 0.0)
-        };
-        let adult = mob(Species::Zombie);
-        assert_eq!(adult.explosion_box(), adult.bounds());
-        let mut baby = mob(Species::Zombie);
-        baby.extra.age = -24000;
-        let mut slime = mob(Species::Slime);
-        slime.extra.size = 4;
-        for m in [&baby, &slime] {
-            let b = Entity::explosion_box(m);
-            assert_eq!(b, m.bounds());
-            assert_eq!(Entity::explosion_eye_height(m), m.eye_height());
-            assert_ne!(
-                f64::from(m.height()),
-                f64::from(adult.height()),
-                "the case must scale the box"
-            );
-            assert_eq!(
-                b.max_position().y - b.min_position().y,
-                f64::from(m.height())
-            );
-        }
+        todo!("phase 2 : réécrire sur l'ECS")
     }
 }
 

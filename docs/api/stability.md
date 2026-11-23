@@ -18,7 +18,7 @@ promise, how something is deprecated and removed, and the tests that keep old mo
 | --- | --- | --- |
 | Content mods | the manifest's `api` line | `api = "0.2"` in `horizon-mod.toml` |
 | Native mods | the exact Horizon and horizon-mixins revisions the mod pins | `[native] horizon` and `mixins` in `horizon-mod.toml` |
-| Agent control | the control protocol's version (`hello` replies it; MCP `serverInfo` carries the release) | `horizon-ctl --api 0.1` (planned) |
+| Agent control | the control protocol's version (`hello` replies it; MCP `serverInfo` carries the release) | none yet (planned) |
 | Server control API | the path (`/api/v1/`) | the path |
 | `server.toml` | the file's keys; a key is never renamed in place | nothing: old files keep loading |
 | Launcher commands | the command names and their `--json` output | nothing |
@@ -91,13 +91,13 @@ Deprecations and breaking changes are in bold. The release notes of the game rel
 | Content mods (`registries`: data-driven blocks, items, mob effects, thrown entity types and menu types) | preview | manifest `api = "0.2"` |
 | Native mods (flat Rust projects, [../modding/src/how-to/native-mods.md](../modding/src/how-to/native-mods.md)) | experimental | the pinned revisions |
 | `cargo horizon-mod` (`new`, `build`, `run`, `check`) | preview | none yet (unversioned) |
-| Shader API (linear light, [hdr-linear-light.md](../design/hdr-linear-light.md)) | preview | 0.2 |
-| `horizon-ctl` commands and MCP tools | preview | none yet (unversioned) |
-| The game's own control-socket commands outside `horizon-ctl`'s table (test hooks) | experimental | |
+| Shader API (linear light, hdr-linear-light.md) | preview | 0.2 |
+| `the control socket` commands and MCP tools | preview | none yet (unversioned) |
+| The game's own control-socket commands outside `the control socket`'s table (test hooks) | experimental | |
 | `horizon-server` commands, `server.toml` | stable | `horizon-server --version` |
 | Server control API | stable | `/api/v1` |
 | `horizon-launcher` commands and MCP tools | preview | none yet (unversioned) |
-| Launch API: `horizon-client`'s launch options, session JSON, exit codes; `horizon-prepare`'s output and progress | experimental | 0.1.1, `horizon-client --launch-api` and `horizon-prepare --launch-api` |
+| Launch API: `horizon-client`'s launch options, exit codes; `horizon-prepare`'s output and progress | experimental | 0.2.0, `horizon-client --launch-api`; 0.1.1, `horizon-prepare --launch-api` |
 | Benchmark report | stable | `"version": 1` |
 | `horizon-graphics.txt`, `horizon-extras.txt`, `horizon-mods.txt` | preview | none |
 | `SHA256SUMS` and `SHA256SUMS.sig` | stable | |

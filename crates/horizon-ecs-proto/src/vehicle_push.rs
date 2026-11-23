@@ -47,9 +47,10 @@ fn is_vehicle(w: &World, e: Entity) -> bool {
     is_boat(w, e) || is_cart(w, e)
 }
 
-/// `Entity.isPushable` and `moved_by_push`: an object (`PushFree`) is not pushed, nor is a rider, nor a vehicle that carries riders.
+/// `Entity.isPushable` and `moved_by_push`: an object (`PushFree`) is not pushed, nor is a rider, nor a vehicle that carries riders, nor a
+/// living body on a climbable (`LivingEntity.isPushable`).
 pub fn pushable(w: &World, e: Entity) -> bool {
-    w.get::<PushFree>(e).is_none() && w.get::<Seated>(e).is_none() && !w.get::<Seats>(e).is_some_and(|s| s.riders.iter().any(Option::is_some))
+    w.get::<PushFree>(e).is_none() && w.get::<Seated>(e).is_none() && !w.get::<Seats>(e).is_some_and(|s| s.riders.iter().any(Option::is_some)) && !crate::rules::climbable::on_climbable_entity(w, e)
 }
 
 /// Adds `impulse` to the velocity of `e` and wakes it: a sleeping creature first, a cart by `cart_move::push`, a boat in its velocity, any

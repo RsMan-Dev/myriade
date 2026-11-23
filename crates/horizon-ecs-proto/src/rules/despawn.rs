@@ -8,14 +8,17 @@ pub enum Removable {
     Never,
     /// `Cat.removeWhenFarAway`: while untamed and older than this many ticks.
     UntamedAfter(u32),
+    /// `AbstractFish.removeWhenFarAway` and `Axolotl`: a creature with a custom name (or from a bucket) stays.
+    UnlessNamed,
 }
 
-/// Whether a creature may go, given its rule, whether it is tamed and its age in ticks.
-pub fn removable(rule: Removable, tamed: bool, age: u64) -> bool {
+/// Whether a creature may go, given its rule, whether it is tamed, whether it is named and its age in ticks.
+pub fn removable(rule: Removable, tamed: bool, named: bool, age: u64) -> bool {
     match rule {
         Removable::Always => true,
         Removable::Never => false,
         Removable::UntamedAfter(t) => !tamed && age > u64::from(t),
+        Removable::UnlessNamed => !named,
     }
 }
 

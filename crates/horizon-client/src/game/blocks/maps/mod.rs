@@ -16,7 +16,7 @@ use std::collections::HashMap;
 /// connection, the banner at a position (`MapBanner.getId`), a framed map's
 /// frame by its entity (`getFrameKey`).
 #[derive(Clone, Debug, PartialEq)]
-pub(super) enum Key {
+pub(in crate::game) enum Key {
     Player(u32),
     /// A named entry of an item's `minecraft:map_decorations`.
     Item(JavaString),
@@ -131,8 +131,6 @@ fn direction_2d(facing: u8) -> i32 {
         _ => -1,
     }
 }
-/// The host among a map's holders (the guests are their connections).
-const HOST: u32 = u32::MAX;
 /// `MapDecorationTypes` the markers use: the player's arrow, the arrows that
 /// replace it past the map's edge, the item frame's, the white banner's (the
 /// fallback colour).
@@ -852,7 +850,7 @@ impl Game<'_> {
         )
     }
     /// The map's data, loaded from `data/minecraft/maps/<id>.dat` on first use.
-    pub(super) fn map(&mut self, id: i32) -> Option<&mut MapData> {
+    pub(in crate::game) fn map(&mut self, id: i32) -> Option<&mut MapData> {
         if !self.maps.data.contains_key(&id) && !self.maps.missing.contains(&id) {
             let loaded = horizon_client::save::read_dat(&self.map_path(&format!("{id}.dat")))
                 .and_then(|t| MapData::from_nbt(&t));
@@ -1234,7 +1232,7 @@ impl Game<'_> {
             .any(|s| tag.is_some_and(|t| t.contains(&*s.item)))
     }
     /// Held maps update; every carried map tracks the player marker.
-    pub(super) fn tick_maps(&mut self) {
+    pub(in crate::game) fn tick_maps(&mut self) {
         let Some(p) = self.player.as_ref().map(|p| p.position) else {
             return;
         };
@@ -1265,8 +1263,10 @@ impl Game<'_> {
         let (yaw, dim) = (self.yaw, self.dimension_id());
         let game_time = self.world.game_time;
         let invisible = self.map_invisibility_worn(&self.armor);
-        // The guest whose turn it is, else the host.
-        let me = self.lan_acting.unwrap_or(HOST);
+        // The guest whose turn it is.
+        let Some(me) = self.lan_acting else {
+            return;
+        };
         for (id, targets) in carried {
             let Some(m) = self.map(id) else { continue };
             let h = m.holder(me);
@@ -1414,7 +1414,10 @@ impl Game<'_> {
         if has_ceiling {
             radius /= 2;
         }
-        let h = m.holder(self.lan_acting.unwrap_or(HOST));
+        let Some(me) = self.lan_acting else {
+            return;
+        };
+        let h = m.holder(me);
         h.step += 1;
         let step = h.step;
         let mut changes: Vec<(i32, i32, u8)> = Vec::new();
@@ -1542,7 +1545,7 @@ impl Game<'_> {
         }
     }
     /// Writes changed maps and the id counter (`MapItemSavedData`, `MapIndex`).
-    pub(super) fn save_maps(&mut self) {
+    pub(in crate::game) fn save_maps(&mut self) {
         for (id, m) in &mut self.maps.data {
             if m.dirty {
                 let path = self
@@ -1687,7 +1690,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn map_on_banner_in_adventure_mode_honours_can_place_on() {
-        use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+        use crate::game::{Game, Options, Progress, Settings, load_resources};
         use horizon_client::{chunk::Chunk, command::args::GameMode};
         use std::sync::Arc;
 
@@ -1703,19 +1706,18 @@ mod tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
 

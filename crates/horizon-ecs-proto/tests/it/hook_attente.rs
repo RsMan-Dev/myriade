@@ -139,7 +139,7 @@ fn the_draws_stay_within_vanillas_bounds() {
 /// The player `1` set at `x` holding `main`, with the fact of a living player.
 fn set_1(h: &mut Herd, main: u32, x: f64) {
     let p = Player { id: 1, x, y: at().y, z: at().z, main, ..Default::default() };
-    horizon_ecs_proto::bridge::players::set_player(&mut h.world, p, PlayerFact { alive: true, targetable: true, hero: None });
+    horizon_ecs_proto::bridge::players::set_player(&mut h.world, p, PlayerFact { alive: true, targetable: true, hero: None, ..Default::default() });
 }
 
 #[test]

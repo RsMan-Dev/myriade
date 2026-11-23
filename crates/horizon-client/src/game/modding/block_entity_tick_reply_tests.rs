@@ -111,7 +111,6 @@ fn native_and_compiled_wasm_tick_reply_matrix() {
                 std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
             let root = super::mods::content_root(&base, &Default::default()).unwrap();
             super::native_entity_refs::tests::with_game_at(root.prepared().to_owned(), |game| {
-                game.options.dedicated = Some(Vec::new());
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

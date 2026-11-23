@@ -28,7 +28,7 @@ def write_build_data(root: Path, identity: dict | None = None, commit: str = COM
     so, exe = prebuilt_game.dylib_suffix(), ".exe" if sys.platform == "win32" else ""
     lib = prebuilt_game.dylib_prefix()
     members = {"runtime": [f"bin/horizon-client{exe}",
-                           f"deps/{lib}horizon_mod_host{so}", f"deps/{lib}horizon_mod_wasm{so}",
+                           f"deps/{lib}horizon_game{so}", f"deps/{lib}horizon_mod_wasm{so}",
                            *[f"deps/{lib}{crate}{so}" for crate in ("mod_api", "mod_vocab", "mod_points")]],
                "api": [prebuilt_game.NATIVE_MODS_TEMPLATE, "deps/libmod_api-1.rmeta", "deps/libmod_points-1.rmeta"]}
     for name in members["runtime"] + members["api"]:
@@ -218,7 +218,7 @@ class RegistryPatchTests(unittest.TestCase):
             declared = patch / "Cargo.toml"
             declared.write_text("manifest")
             (sdk / "deps").mkdir()
-            for crate in ("horizon_mod_wasm", "horizon_mod_host"):
+            for crate in ("horizon_mod_wasm", "horizon_game"):
                 (sdk / "deps" / f"lib{crate}.so").write_bytes(b"")
             write_build_data(sdk, {"patch_files": {
                 "patches/allocator-sys/Cargo.toml": prebuilt_game.sha256(declared)}})
@@ -238,7 +238,7 @@ class RegistryPatchTests(unittest.TestCase):
 
 
 class SdkAssetTests(unittest.TestCase):
-    RUNTIME = ["deps/libhorizon_mod_host.so", "deps/libhorizon_mod_wasm.so", "bin/horizon-client",
+    RUNTIME = ["deps/libhorizon_game.so", "deps/libhorizon_mod_wasm.so", "bin/horizon-client",
                "deps/libmod_api.so", "deps/libmod_vocab.so", "deps/libmod_points.so"]
     API = ["deps/libmod_api-1.rmeta", "deps/libmod_points-1.rmeta", "host/libserde_derive.so"]
     ENGINE = ["deps/libhorizon_client-1.rmeta", "native/libwindows.a"]
@@ -330,7 +330,7 @@ class SdkAssetTests(unittest.TestCase):
     def test_check_refuses_slices_naming_absent_or_shared_files(self):
         api = [*self.API, *prebuilt_game.API_BUILD_DATA, prebuilt_game.NATIVE_MODS_TEMPLATE]
         for change, why in (({"api": [*api, "deps/libgone-1.rmeta"]}, "absent files"),
-                            ({"api": [*api, "deps/libhorizon_mod_host.so"]}, "overlap"),
+                            ({"api": [*api, "deps/libhorizon_game.so"]}, "overlap"),
                             # Each slice holds the members the required inputs name (so neither is empty).
                             ({"api": []}, "lack required members"),
                             ({"runtime": [prebuilt_game.IDENTITY, *self.RUNTIME[:2]]}, "lack required members"),
@@ -344,7 +344,7 @@ class SdkAssetTests(unittest.TestCase):
                 (out / prebuilt_game.IDENTITY).write_text(json.dumps(identity))
                 with self.assertRaisesRegex(SystemExit, why):
                     prebuilt_game.check(out)
-        # The API executable carries the holder marker in its own bytes, or the launcher plays it the wrong way.
+        # The API executable carries the holder marker in its own bytes, or the game plays it the wrong way.
         with tempfile.TemporaryDirectory() as directory, patch.object(sys, "platform", "linux"):
             out = self.out(Path(directory), 1000)
             prebuilt_game.check(out)
@@ -364,7 +364,7 @@ class SdkAssetTests(unittest.TestCase):
             package("macros", "proc-macro", deps=[("syn", None)]),
             package("syn"),
             package("tool"),
-            package("horizon-mod-host", "dylib", deps=[("horizon-mod-api", None), ("engine", None)]),
+            package("horizon-game", "dylib", deps=[("horizon-mod-api", None), ("engine", None)]),
             package("horizon-mod-wasm", "dylib"),
             package("engine"),
         )
@@ -374,11 +374,11 @@ class SdkAssetTests(unittest.TestCase):
         copied = {name: [f"deps/lib{name}-1.rmeta"] for name in ("horizon-mod-api", "horizon-mod-points", "vocab",
                                                                   "serde", "syn", "tool", "engine")}
         copied["macros"] = ["host/libmacros-1.so"]
-        copied["horizon-mod-host"] = ["deps/libhorizon_mod_host.so"]
+        copied["horizon-game"] = ["deps/libhorizon_game.so"]
         copied["horizon-mod-wasm"] = ["deps/libhorizon_mod_wasm.so"]
         sliced = prebuilt_game.slices(metadata, copied, ["bin/horizon-client"])
         self.assertEqual(sliced["runtime"], sorted([prebuilt_game.IDENTITY, "bin/horizon-client",
-                                                    "deps/libhorizon_mod_host.so", "deps/libhorizon_mod_wasm.so"]))
+                                                    "deps/libhorizon_game.so", "deps/libhorizon_mod_wasm.so"]))
         self.assertEqual(sliced["api"], sorted([
             "deps/libhorizon-mod-api-1.rmeta", "deps/libhorizon-mod-points-1.rmeta", "deps/libvocab-1.rmeta",
             "deps/libserde-1.rmeta", "host/libmacros-1.so", *prebuilt_game.API_BUILD_DATA,
@@ -671,28 +671,28 @@ class PrebuiltContentsTests(unittest.TestCase):
             ]}
 
         metadata = {
-            "packages": [package("horizon-mod-host", "dylib"), package("horizon-client"),
+            "packages": [package("horizon-game", "dylib"), package("horizon-client"),
                          package("horizon-mod-wasm", "rlib"), package("point_shape"), package("horizon_core"),
                          package("build_tool"), package("derive", "proc-macro"), package("macro_helper")],
             "resolve": {"nodes": [
-                node("horizon-mod-host", ("horizon-client", None), ("horizon-mod-wasm", None),
+                node("horizon-game", ("horizon-client", None), ("horizon-mod-wasm", None),
                      ("build_tool", "build")), node("horizon-mod-wasm"),
                 node("horizon-client", ("point_shape", None), ("horizon_core", None), ("derive", None)),
                 node("point_shape"), node("horizon_core"), node("build_tool"),
                 node("derive", ("macro_helper", None)), node("macro_helper"),
             ]},
         }
-        runtime = prebuilt_game.runtime_crates(metadata, "horizon-mod-host")
-        self.assertEqual(runtime, {"horizon_mod_host", "horizon_mod_wasm", "horizon_client", "point_shape", "horizon_core"})
+        runtime = prebuilt_game.runtime_crates(metadata, "horizon-game")
+        self.assertEqual(runtime, {"horizon_game", "horizon_mod_wasm", "horizon_client", "point_shape", "horizon_core"})
         deps = self.folder("libpoint_shape-host.rmeta", "libpoint_shape-target.rmeta",
                            "libhorizon_core-one.rmeta", "libbuild_tool-one.rmeta", "libmacro_helper-one.rmeta",
-                           "libhorizon_mod_host.so", "libhorizon_mod_wasm-one.rmeta", "libhorizon_client-one.rmeta")
+                           "libhorizon_game.so", "libhorizon_mod_wasm-one.rmeta", "libhorizon_client-one.rmeta")
         eligible = prebuilt_game.facade_crates(deps, runtime)
-        self.assertEqual(eligible, ["horizon_client", "horizon_core", "horizon_mod_host", "horizon_mod_wasm"])
+        self.assertEqual(eligible, ["horizon_client", "horizon_core", "horizon_game", "horizon_mod_wasm"])
 
     def test_native_link_inventory_uses_package_identity_not_a_same_named_host_variant(self):
         def package(package_id, version, library=None):
-            return {"id": package_id, "name": "native-sys" if library else "horizon-mod-host",
+            return {"id": package_id, "name": "native-sys" if library else "horizon-game",
                     "version": version, "links": library,
                     "targets": [{"name": "native_sys" if library else "horizon_client", "kind": ["lib"]}]}
         metadata = {
@@ -704,7 +704,7 @@ class PrebuiltContentsTests(unittest.TestCase):
                 {"id": "target", "deps": []}, {"id": "host", "deps": []},
             ]},
         }
-        self.assertEqual(prebuilt_game.native_links(metadata, "horizon-mod-host"), [
+        self.assertEqual(prebuilt_game.native_links(metadata, "horizon-game"), [
             {"name": "native-sys", "version": "1.0.0", "library": "native"},
         ])
 
@@ -726,7 +726,7 @@ class PrebuiltContentsTests(unittest.TestCase):
             prebuilt_game.extern_args(root, "horizon_mod_package")
 
     def test_host_macros_pass_but_host_dependency_metadata_is_refused(self):
-        root = self.folder("deps/libhorizon_client.so", "deps/libhorizon_mod_wasm.so", "deps/libhorizon_mod_host.so",
+        root = self.folder("deps/libhorizon_client.so", "deps/libhorizon_mod_wasm.so", "deps/libhorizon_game.so",
                            "host/libderive.so", "host/derive.dll", "host/libderive.dylib")
         write_build_data(root)
         prebuilt_game.check(root)
@@ -745,13 +745,13 @@ class PrebuiltContentsTests(unittest.TestCase):
             "horizon-prebuilt.json", "Cargo.lock", "native_main.rs.template", "deps/libhorizon_client.so", "deps/libmod_api-1.rmeta",
             "native/libwindows.0.52.0.a",
             "deps/libserde_derive-2.so", "deps/libhorizon_client.dll.a", "deps/libhorizon_mod_wasm.so",
-            "deps/horizon_mod_wasm.dll", "deps/libhorizon_mod_wasm.dylib", "deps/libhorizon_mod_host.so",
+            "deps/horizon_mod_wasm.dll", "deps/libhorizon_mod_wasm.dylib", "deps/libhorizon_game.so",
         )
         write_build_data(root)
         prebuilt_game.check(root)
 
     def test_build_data_without_its_header_for_this_commit_is_refused(self):
-        root = self.folder("deps/libhorizon_mod_host.so", "deps/libhorizon_mod_wasm.so")
+        root = self.folder("deps/libhorizon_game.so", "deps/libhorizon_mod_wasm.so")
         for name in prebuilt_game.BUILD_DATA:
             for broken in ('{"build": {"commit": "%s"}}' % COMMIT, '{"schema": 2, "build": {"commit": "%s"}}' % COMMIT,
                            '{"schema": 1, "build": {"commit": "%s"}}' % ("d" * 40), '{"schema": 1}', "[]", None):
@@ -770,17 +770,17 @@ class PrebuiltContentsTests(unittest.TestCase):
                 prebuilt_game.check(self.folder("deps/libhorizon_client.so", "deps/libhorizon_mod_wasm.so", stray))
 
     def test_a_folder_without_either_runtime_is_refused(self):
-        for present, missing in (("horizon_mod_host", "horizon-mod-wasm"), ("horizon_mod_wasm", "horizon-mod-host")):
+        for present, missing in (("horizon_game", "horizon-mod-wasm"), ("horizon_mod_wasm", "horizon-game")):
             with self.subTest(present), self.assertRaisesRegex(SystemExit, missing):
                 prebuilt_game.check(self.folder(f"deps/lib{present}.so"))
 
     def test_host_carries_engine_code_with_engine_metadata_for_mods(self):
-        root = self.folder("deps/libhorizon_mod_host.so", "deps/libhorizon_mod_wasm.so", "deps/libhorizon_client-123.rmeta")
+        root = self.folder("deps/libhorizon_game.so", "deps/libhorizon_mod_wasm.so", "deps/libhorizon_client-123.rmeta")
         write_build_data(root)
         prebuilt_game.check(root)
 
     def test_engine_and_wasm_without_host_are_refused(self):
-        with self.assertRaisesRegex(SystemExit, "horizon-mod-host"):
+        with self.assertRaisesRegex(SystemExit, "horizon-game"):
             prebuilt_game.check(self.folder("deps/libhorizon_client.so", "deps/libhorizon_mod_wasm.so"))
 
     def dll(self, root: Path, name: str, count: int, pe64: bool = True) -> None:
@@ -861,7 +861,7 @@ class SmokeStartTests(unittest.TestCase):
                         with self.assertRaises(SystemExit):
                             prebuilt_game.start(root / "out")
                 environment = run.call_args.kwargs["env"]
-                for key in ("HORIZON_HOME", "HORIZON_LAUNCHER_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME"):
+                for key in ("HORIZON_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME"):
                     self.assertTrue(Path(environment[key]).is_relative_to(root))
 
 

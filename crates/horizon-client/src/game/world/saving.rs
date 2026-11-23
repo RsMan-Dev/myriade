@@ -51,32 +51,20 @@ impl Game<'_> {
             return Ok(());
         }
 
-        // Stop client-side terrain work before the integrated server is shut down. The
-        // server's own stop path aborts its workers, but the window's streaming registration
-        // is dropped only after the event loop exits and would otherwise wait for queued work.
+        // Stop terrain work before the server is shut down: the server's own stop path aborts
+        // its workers, but the streaming registration is dropped only after the event loop exits.
         self.streaming.abort_generation();
-        if let Some(integrated) = &self.integrated {
-            integrated.request_stop();
-            self.pending_save = Some(ClosingSave {
-                quit,
-                close: true,
-                reply: None,
-                started: Instant::now(),
-                stage: Stage::Server,
-            });
-        } else {
-            self.close_container();
-            self.award_custom_stat("leave_game", 1);
-            self.lan_close(false);
-            self.free_player_beds()?;
-            self.pending_save = Some(ClosingSave {
-                quit,
-                close: true,
-                reply: None,
-                started: Instant::now(),
-                stage: Stage::Generation,
-            });
-        }
+        self.close_container();
+        self.award_custom_stat("leave_game", 1);
+        self.lan_close(false);
+        self.free_player_beds()?;
+        self.pending_save = Some(ClosingSave {
+            quit,
+            close: true,
+            reply: None,
+            started: Instant::now(),
+            stage: Stage::Generation,
+        });
         Ok(())
     }
 

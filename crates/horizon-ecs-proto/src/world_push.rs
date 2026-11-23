@@ -311,8 +311,8 @@ fn push_by(w: &mut World, e: Entity, want: Vec3, dir: Direction, now: u64, gate:
 }
 
 /// `Entity.restituteMovementAfterCollisions` after a push: an axis the collision cut off loses its velocity, and a cut-off fall
-/// onto a slime block (the block 0.2 under the feet) bounces by the block's restitution times the entity's own (`Restitution`
-/// declared by its kind, else `OBJECT_RESTITUTION`) and its gravity (`Body`), with the
+/// bounces by the restitution of the block it landed on (`getBlockPosBelowThatAffectsMyMovement`, the data's `bounceRestitution`)
+/// times the entity's own (`Restitution` declared by its kind, else `OBJECT_RESTITUTION`) and its gravity (`Body`), with the
 /// gravity and the air drag (0.98) the rest of the tick would have added.
 fn restitute(w: &mut World, e: Entity, limited: Vec3, moved: Vec3) {
     let differs = |a: f64, b: f64| (b - a).abs() >= f64::from(1.0e-5_f32);
@@ -331,10 +331,11 @@ fn restitute(w: &mut World, e: Entity, limited: Vec3, moved: Vec3) {
     }
     if vertical {
         let gravity = w.get::<Gravity>(e).map_or(crate::rules::minecart::GRAVITY, |g| g.0);
-        let restitution = w.get::<Restitution>(e).map_or(OBJECT_RESTITUTION, |r| r.0);
+        let own = w.get::<Restitution>(e).map_or(OBJECT_RESTITUTION, |r| r.0);
         let p = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
-        let on = [p.x.floor() as i32, (p.y - 0.2).floor() as i32, p.z.floor() as i32];
-        v.y = if limited.y < 0.0 && crate::level::block_name(w, on) == "minecraft:slime_block" && -old.y > gravity {
+        let landed = support_below(w, e, p, moved);
+        let restitution = f64::from(crate::level::bounce_restitution(w, landed)) * own;
+        v.y = if limited.y < 0.0 && restitution > 0.0 && -old.y > gravity {
             let portion = moved.y / old.y;
             (portion * gravity - old.y) * (1.0 + portion * (f64::from(0.98_f32) - 1.0)) * restitution
         } else {
@@ -343,5 +344,21 @@ fn restitute(w: &mut World, e: Entity, limited: Vec3, moved: Vec3) {
     }
     if let Some(mut vel) = w.get_mut::<Vel>(e) {
         vel.0 = v;
+    }
+}
+
+/// `Entity.getBlockPosBelowThatAffectsMyMovement` (0.500001 below the feet): the column of the support the footprint finds
+/// (`GroundState`, as `setOnGroundWithMovement` does), else the column under the centre.
+pub fn support_below(w: &World, e: Entity, p: Vec3, moved: Vec3) -> BlockPos {
+    let y = (p.y - 0.500001).floor() as i32;
+    let column = BlockPos::new(p.x.floor() as i32, y, p.z.floor() as i32);
+    let Some(bounds) = bounds_of(w, e) else { return column };
+    let mw = w.resource::<Level>().mw.0;
+    let mut scene = SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
+    let mut ground = GroundState::default();
+    let read = ground.check_support(true, bounds, Some(moved), |foot| find_supporting_block(&mut scene, CollisionContext::empty(false), p, foot, 1_000_000));
+    match (read.is_ok(), ground.supporting_block) {
+        (true, Some(s)) => BlockPos::new(s.x, y, s.z),
+        _ => column,
     }
 }

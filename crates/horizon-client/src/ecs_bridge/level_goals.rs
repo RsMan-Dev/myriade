@@ -37,7 +37,7 @@ static IDS: &[(&Module, &str)] = &[
     (&hurt_by::MODULE, "hurt_by_target"),
 ];
 
-fn api_id(m: &'static Module) -> &'static str {
+pub(super) fn api_id(m: &'static Module) -> &'static str {
     IDS.iter().find(|(k, _)| std::ptr::eq(*k, m)).map_or(m.name, |(_, id)| id)
 }
 

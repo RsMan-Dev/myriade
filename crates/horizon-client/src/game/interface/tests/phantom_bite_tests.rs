@@ -7,7 +7,6 @@ use horizon_core::random::{LegacyRandom, RandomSource};
 fn with_game(test: impl FnOnce(&mut Game<'_>)) {
     let mut resources = None;
     let mut g = crate::game::game_tests::tests::server_game(&mut resources);
-    g.options.dedicated = Some(Vec::new());
     g.world = World::new(g.res.facts().air, 1);
     // The guests' copy of a level event is recorded only while capturing.
     g.audio.capture = Some(Vec::new());

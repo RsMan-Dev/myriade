@@ -118,11 +118,7 @@ impl ActionHost for GameHost<'_, '_> {
         if let Some(world) = self.game.native_lifecycle.epoch() {
             identity.world = world;
         }
-        identity.side = if self.game.is_logical_server() {
-            Side::Server
-        } else {
-            Side::Client
-        };
+        identity.side = Side::Server;
         identity
     }
 
@@ -130,13 +126,6 @@ impl ActionHost for GameHost<'_, '_> {
         use horizon_client::join_seq::residency::table::EntityLookup;
         if self.game.native_lifecycle.epoch() != Some(holder.epoch()) {
             return Residence::Missing;
-        }
-        if self.identity().side == Side::Client {
-            return if false {
-                Residence::Found
-            } else {
-                Residence::Missing
-            };
         }
         // The shared entity table includes players and parked dimensions. A
         // missing row refuses the original holder; never fall back to a scan.

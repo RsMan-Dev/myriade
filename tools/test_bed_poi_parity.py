@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare bed POI classification with the actual vanilla 26.3 block objects.
 
-Checks both runtime and saved POI classifiers. Outputs are private dev data, not game resources.
+Checks the ECS POI registry and the saved POI classifier. Outputs are private dev data, not game resources.
 """
 import os
 from pathlib import Path
@@ -22,10 +22,10 @@ def main():
     oracle_harness.java_run(build, classes, dependencies, "VanillaBedPoiOracle", [expected], "vanilla")
     env = dict(lab.game_env(), HORIZON_BED_POI_ORACLE=str(expected))
     oracle_harness.run_logged([
-        "cargo", "test", "--locked", "-p", "horizon-client-lib", "--lib",
-        "mobs::villager_brain::poi_classification_tests::vanilla_bed_poi_states", "--", "--include-ignored", "--nocapture",
+        "cargo", "test", "--locked", "-p", "horizon-ecs-proto", "--test", "it",
+        "regles_poi_lits::vanilla_bed_poi_states", "--", "--include-ignored", "--nocapture",
     ], build, "rust", env=env)
-    print(f"{len(expected.read_text().splitlines())} vanilla block states match; runtime and saved bed POI classifiers agree")
+    print(f"{len(expected.read_text().splitlines())} vanilla block states match; the ECS POI registry and the saved bed POI classifier agree")
 
 
 if __name__ == "__main__":

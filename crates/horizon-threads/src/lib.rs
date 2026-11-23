@@ -593,7 +593,7 @@ pub mod allocation_count;
 pub use allocation_count::{ALLOCATOR, Allocator};
 
 /// The global allocator of a build with the `alloc-census` feature: live
-/// heap bytes by startup step and thread, for `horizon-ctl memory`.
+/// heap bytes by startup step and thread, for `the control socket's memory command`.
 pub use heap_census::CensusAllocator;
 /// Whether this build counts the heap by tag (feature `alloc-census`).
 pub const HEAP_CENSUS: bool = cfg!(feature = "alloc-census");
@@ -637,7 +637,7 @@ pub fn configure_allocator() {
 }
 
 /// The bytes the allocator has committed now and at its peak (mimalloc's
-/// process info), for `horizon-ctl memory`.
+/// process info), for `the control socket's memory command`.
 pub fn allocator_commit() -> (usize, usize) {
     let mut info = [0usize; 8];
     let [
@@ -817,10 +817,10 @@ pub fn junction(target: &std::path::Path, at: &std::path::Path) -> std::io::Resu
 
 /// Keep this process's standard handles out of the processes it starts. Windows hands a child
 /// every inheritable handle of its parent, not only the three standard handles it is given
-/// (CreateProcessW with bInheritHandles, as `std::process::Command` starts it). horizon-ctl's own
+/// (CreateProcessW with bInheritHandles, as `std::process::Command` starts it). the control socket's own
 /// standard handles are inheritable when its caller gave it pipes (a script that reads its output,
 /// an MCP client), so the game it launches would hold the caller's pipe open for its whole life and
-/// the caller, waiting for the end of horizon-ctl's output, would wait until the game quits. A
+/// the caller, waiting for the end of the control socket's output, would wait until the game quits. A
 /// child given `Stdio::inherit()` still gets them: `Command` duplicates the handles it passes.
 /// Unix needs none of this: a child's 0-2 are replaced and the rest are close-on-exec.
 #[cfg(windows)]

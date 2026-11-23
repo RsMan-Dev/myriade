@@ -1,6 +1,6 @@
 // game-module-visibility: pub(crate)
 //! The `sound_type` Part method (`IBlockExtension.getSoundType`). The client library asks through
-//! `native_client_hooks`; only a state whose block has a subscribing part is converted, and only
+//! `native_level_hooks`; only a state whose block has a subscribing part is converted, and only
 //! then is its own sound type kept to fall back on.
 use super::api_values::{TryIntoApi, block_state};
 use super::{Game, GameLevel};
@@ -187,7 +187,7 @@ mod tests {
         // an event with no namespace, and a snow layer as glass but only when asked at y 64.
         mod_platform::__private::part_tests::sound_type_game_thread();
         // The client library asks the mods through the executable's callbacks.
-        crate::entry::install_client_hooks();
+        crate::entry::install_level_hooks();
         with_game(|game| {
             let registry = game.pack.assets.registry;
             let player = Some((7, "minecraft:player"));

@@ -1,11 +1,7 @@
 //! FallingBlockEntity's impact damage, anvil wear, saved impact settings and
 //! the blocks it moves through (cobwebs, bubble columns).
-use crate::health::DamageLevel;
 use crate::motion::BubbleColumn;
-use crate::{
-    mobs::{Damage as MobDamage, DamageKind, Mob},
-    save::{float, number, put},
-};
+use crate::save::{float, number, put};
 use horizon_core::{
     geometry::{Aabb, Axis, Direction, Vec3, sweep_intersected_blocks},
     position::BlockPos,
@@ -292,40 +288,6 @@ fn inside_blocks(
         check(to, to, 1);
     }
 }
-pub fn hurt_mobs<'a>(
-    level: &mut DamageLevel<'_>,
-    mobs: impl IntoIterator<Item = &'a mut Mob>,
-    position: Vec3,
-    amount: f32,
-) {
-    hurt_mobs_with_kind(level, mobs, position, amount, DamageKind::FallingBlock);
-}
-
-pub fn hurt_mobs_with_kind<'a>(
-    level: &mut DamageLevel<'_>,
-    mobs: impl IntoIterator<Item = &'a mut Mob>,
-    position: Vec3,
-    amount: f32,
-    kind: DamageKind,
-) {
-    if amount <= 0.0 {
-        return;
-    }
-    let bounds = bounds(position);
-    let source = MobDamage {
-        kind,
-        attacker: None,
-        from: Some([position.x, position.y, position.z]),
-        attacker_species: None,
-    };
-    for mob in mobs
-        .into_iter()
-        .filter(|m| m.alive() && bounds.intersects(m.bounds()))
-    {
-        mob.damage(level, amount, source);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -522,34 +484,6 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn impact_hurts_only_living_intersecting_noninvulnerable_mobs() {
-        let mut test_level = crate::health::TestLevel::new(0);
-        let level = &mut test_level.level();
-        use crate::mobs::{Mob, MobTypes};
-        use std::{path::Path, sync::Arc};
-        let root = std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES");
-        let types = MobTypes::load(Path::new(&root)).unwrap();
-        let cow = Arc::new(types.types["minecraft:cow"].clone());
-        let mut mobs = vec![
-            Mob::new(1, cow.clone(), Vec3::ZERO, 0.0),
-            Mob::new(2, cow.clone(), Vec3::new(3.0, 0.0, 0.0), 0.0),
-            Mob::new(3, cow.clone(), Vec3::ZERO, 0.0),
-            Mob::new(4, cow, Vec3::ZERO, 0.0),
-        ];
-        mobs[2].invulnerable_flag = true;
-        mobs[3].extra.set_slot_id(
-            horizon_items::equipment::HEAD,
-            Some("minecraft:carved_pumpkin".into()),
-        );
-        let initial = mobs.iter().map(|m| m.health).collect::<Vec<_>>();
-        hurt_mobs(
-            level,
-            &mut mobs,
-            Vec3::ZERO,
-            Damage::anvil().impact(5.0).unwrap().amount,
-        );
-        assert_eq!(mobs[0].health, initial[0] - 8.0);
-        assert_eq!(mobs[1].health, initial[1]);
-        assert_eq!(mobs[2].health, initial[2]);
-        assert_eq!(mobs[3].health, initial[3] - 6.0);
+        todo!("phase 2 : réécrire sur l'ECS")
     }
 }

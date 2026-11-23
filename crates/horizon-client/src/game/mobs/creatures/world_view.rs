@@ -3,9 +3,7 @@ use super::*;
 
 impl Game<'_> {
     pub(in crate::game) fn mob_world_base<'s>(&'s self, others: &'s [Seen]) -> MobWorld<'s> {
-        if self.is_logical_server() {
-            self.world.enable_path_type_cache();
-        }
+        self.world.enable_path_type_cache();
         let (rain, thunder) = self.weather_levels(1.0);
         let weather = self.can_have_weather();
         let player = self.player_view();
@@ -75,27 +73,22 @@ impl Game<'_> {
             mod_effects: {
                 Some(self)
             },
-            mob_hooks: (self.native_authoritative()
-                && ([
-                    mod_api::HookId::EndermanAnger,
-                    mod_api::HookId::EntityMobGriefing,
-                    mod_api::HookId::LivingVisibility,
-                    mod_api::HookId::LivingChangeTarget,
+            mob_hooks: ([
+                mod_api::HookId::EndermanAnger,
+                mod_api::HookId::EntityMobGriefing,
+                mod_api::HookId::LivingVisibility,
+                mod_api::HookId::LivingChangeTarget,
+            ]
+            .into_iter()
+            .any(mod_api::__private::listened)
+                || [
+                    mod_api::HookId::CanEntityDestroy,
+                    mod_api::HookId::BlockPathType,
+                    mod_api::HookId::AdjacentBlockPathType,
                 ]
                 .into_iter()
-                .any(mod_api::__private::listened)
-                    || [
-                        mod_api::HookId::CanEntityDestroy,
-                        mod_api::HookId::BlockPathType,
-                        mod_api::HookId::AdjacentBlockPathType,
-                    ]
-                    .into_iter()
-                    .any(mod_api::__private::has_scoped_hook)))
+                .any(mod_api::__private::has_scoped_hook))
             .then_some(self as &dyn horizon_client::mobs::MobHooks),
-            goal_host: (self.native_authoritative()
-                && (mod_api::__private::has_entity_parts()
-                    || mod_api::__private::listened(mod_api::HookId::LivingChangeTarget)))
-            .then_some(self as &dyn horizon_client::mobs::part_goals::GoalHost),
             asks_animal_tame: true
                 && mod_api::__private::listened(mod_api::HookId::AnimalTame),
             asks_living_destroy_block: true

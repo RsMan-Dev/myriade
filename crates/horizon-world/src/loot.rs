@@ -372,6 +372,12 @@ pub struct LootEntity {
     pub frog_variant: Option<String>,
     /// A chicken's variant id (`minecraft:warm`).
     pub chicken_variant: Option<String>,
+    /// A mooshroom's colour (`minecraft:mooshroom/variant`: red, brown).
+    pub mooshroom_variant: Option<String>,
+    /// A horse's colour (`minecraft:horse/variant`).
+    pub horse_variant: Option<String>,
+    /// A llama's colour (`minecraft:llama/variant`).
+    pub llama_variant: Option<String>,
     /// A charged creeper (`Creeper.isPowered`).
     pub powered: bool,
     /// Worn and held items by `EquipmentSlot` name (mainhand, offhand,
@@ -3728,6 +3734,11 @@ impl LootData {
                 "minecraft:chicken/variant" => {
                     e.chicken_variant.is_some() && want.as_str() == e.chicken_variant.as_deref()
                 }
+                "minecraft:mooshroom/variant" => {
+                    e.mooshroom_variant.is_some() && want.as_str() == e.mooshroom_variant.as_deref()
+                }
+                "minecraft:horse/variant" => e.horse_variant.is_some() && want.as_str() == e.horse_variant.as_deref(),
+                "minecraft:llama/variant" => e.llama_variant.is_some() && want.as_str() == e.llama_variant.as_deref(),
                 _ => false,
             }),
             "minecraft:type_specific/sheep" => e

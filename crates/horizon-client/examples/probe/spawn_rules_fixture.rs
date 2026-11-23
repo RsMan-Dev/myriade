@@ -11,7 +11,7 @@ use horizon_client::{
         MobTypes,
         data::MobData,
         spawn_rules::{self, Reason, SpawnLevel},
-        spawn_selection::{
+        spawn_place::{
             self, Heightmap, MobType as SelectionMobType, NaturalLevel, SpawnCost, StructureAt,
             StructureSpawns, spawn_aabb,
         },
@@ -316,7 +316,7 @@ pub fn main() -> horizon_client::Result<()> {
                 kind.height as f32,
             );
             let obstruction =
-                spawn_selection::spawn_obstruction(s, &level, bounds, Some(&[]), x0, y, z0);
+                spawn_place::spawn_obstruction(s, &level, bounds, Some(&[]), x0, y, z0);
             let _ = writeln!(out, "{name} {obstruction}");
             continue;
         }

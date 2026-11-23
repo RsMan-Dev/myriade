@@ -37,11 +37,12 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 8.0, species: look_at_player::Params::ALL, ..look_at_player::Params::DEFAULT }),
         // `Ravager.getAmbientSound` = `RAVAGER_AMBIENT`, interval 80 (`Mob.getAmbientSoundInterval`); the game draws `nextInt(1000) < time`
         // each tick from -80 (median about 117 ticks, nearly all before 200): approximated by a uniform draw in 80..=200.
-        Entry::new(&ambient_sound::MODULE, 7, &ambient_sound::Params { sounds: &["entity.ravager.ambient"], min: 80, max: 200 }),
+        Entry::new(&ambient_sound::MODULE, 7, &ambient_sound::Params { sounds: &["entity.ravager.ambient"], min: 80, max: 200, ..ambient_sound::Params::DEFAULT }),
     ],
     caps: Some(&[crate::behaviours::Cap::Transform, crate::behaviours::Cap::Solid, crate::behaviours::Cap::Body, crate::behaviours::Cap::Living, crate::behaviours::Cap::Goals, crate::behaviours::Cap::Head, crate::behaviours::Cap::Targets, crate::behaviours::Cap::Locomotion]),
     // The raider's seat (`Ravager.getPassengers`): a carrier that only takes creatures, one seat at the centre.
     rules: &[RuleEntry::new(&RIDE, &RideParams::CARRIER)],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

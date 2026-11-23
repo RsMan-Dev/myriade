@@ -39,9 +39,6 @@ impl Game<'_> {
 
     /// The mob a pause names, or which of the named refusals it is.
     fn ai_pause_target(&self, entity: EntityRef) -> Result<u32, MobAiPauseRefusal> {
-        if !self.is_logical_server() {
-            return Err(MobAiPauseRefusal::Client);
-        }
         if self.native_lifecycle.epoch() != Some(entity.epoch()) {
             return Err(MobAiPauseRefusal::Stale);
         }
@@ -62,16 +59,15 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::{bind_local_player, with_game};
-    use horizon_client::{chunk::Chunk, motion::PlayerMotion};
+    use super::super::native_guest_turn_tests::with_acting_guest;
+    use horizon_client::chunk::Chunk;
     use horizon_core::{geometry::Vec3, nbt::Tag};
     use mod_api::{EntityRef, MobAiPauseRefusal, MobRef, WorldEpoch};
     use std::sync::Arc;
 
-    /// A server level with a stone floor at y 64 over chunk (0, 0) and a
-    /// player bound as entity 20.
+    /// A server level with a stone floor at y 64 over chunk (0, 0), in a turn
+    /// of guest 12, the acting player (entity 12).
     fn level(game: &mut super::Game<'_>) {
-        game.options.dedicated = Some(Vec::new());
         for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
             let mut chunk = Chunk::empty(x, z);
             chunk.lit = true;
@@ -88,8 +84,6 @@ mod tests {
                 game.world.set(x, 64, z, stone).unwrap();
             }
         }
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-        bind_local_player(game, 20, 123);
     }
 
     /// A `kind` mob of the ECS level at `at`, numbered `id`.
@@ -112,7 +106,7 @@ mod tests {
     #[ignore = "daily"]
     fn the_pause_round_trips_through_a_save_and_writes_no_no_ai() {
         use horizon_core::nbt::Compound;
-        with_game(|game| {
+        with_acting_guest(Vec3::ZERO, |game| {
             level(game);
             let pig = add(game, 40, "minecraft:pig", Vec3::new(3.5, 65.0, 3.5));
             let mods = Compound::from_iter([(
@@ -165,7 +159,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn each_refusal_is_named_and_changes_nothing() {
-        with_game(|game| {
+        with_acting_guest(Vec3::ZERO, |game| {
             level(game);
             let pig = add(game, 40, "minecraft:pig", Vec3::new(3.5, 65.0, 3.5));
             let epoch = pig.entity().epoch();
@@ -183,7 +177,7 @@ mod tests {
             refused(game, pig, MobAiPauseRefusal::HeldOut);
             game.held_out.pop();
 
-            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [8.0, 80.0, 8.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 50));
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [8.0, 80.0, 8.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(), &mut || 50));
             refused(
                 game,
                 MobRef::new(EntityRef::new(epoch, 50)),
@@ -195,7 +189,7 @@ mod tests {
                 MobAiPauseRefusal::NoAiStep,
             );
 
-            let player = MobRef::new(game.entity(20).unwrap());
+            let player = MobRef::new(game.entity(12).unwrap());
             refused(game, player, MobAiPauseRefusal::NotAMob);
 
             assert_eq!(pig.ai_paused(game), Some(false), "no refusal paused it");

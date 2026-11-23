@@ -568,7 +568,7 @@ mod tests {
             #[derive(PartialEq)] pub enum CartKind { Rideable, Tnt }
             pub const SEAT: u32 = 2;
         }
-        pub mod execution_role { #[derive(PartialEq)] pub enum ExecutionRole { Client } }
+        pub mod execution_role { #[derive(PartialEq)] pub enum ExecutionRole { DedicatedServer } }
         pub mod rails { pub const GAUGE: u32 = 3; }
         pub mod depots { pub const DEPTH: u32 = 4; }
         pub mod tracks { pub const WIDTH: u32 = 5; }
@@ -584,9 +584,9 @@ mod tests {
         use super::rails::*;
         use super::depots as yard;
         let kind = super::minecarts::CartKind::Rideable;
-        let role = execution_role::ExecutionRole::Client;
+        let role = execution_role::ExecutionRole::DedicatedServer;
         if matches!(kind, super::minecarts::CartKind::Rideable)
-            && role == execution_role::ExecutionRole::Client
+            && role == execution_role::ExecutionRole::DedicatedServer
         {
             value.api() + super::minecarts::SEAT + GAUGE + yard::DEPTH
                 + super::facade::carts::WIDTH + helper::lane()

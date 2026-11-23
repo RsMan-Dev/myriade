@@ -601,8 +601,8 @@ impl Game<'_> {
         self.fire_server_starting(dedicated);
     }
     /// Server teardown has finished, including the final save if possible.
-    pub(in crate::game) fn native_server_stopped(&mut self, dedicated: bool) {
-        self.fire_server_stopped(dedicated);
+    pub(in crate::game) fn native_server_stopped(&mut self) {
+        self.fire_server_stopped(true);
     }
     /// The server opened its worlds and is about to tick (NeoForge's
     /// `ServerStartedEvent`): every level loaded, no player joined. Where
@@ -616,8 +616,8 @@ impl Game<'_> {
     /// mod can save its own data or tell them. `native_world_lifecycle`'s
     /// `WorldCloseFinal` follows once the worlds are saved. A server whose loop
     /// fails still fires this before the final save attempt and `native_server_stopped`.
-    pub(in crate::game) fn native_server_stopping(&mut self, dedicated: bool) {
-        self.fire_server_stopping(dedicated);
+    pub(in crate::game) fn native_server_stopping(&mut self) {
+        self.fire_server_stopping(true);
     }
     /// The authoritative server tick's phases: `ServerTickStart` before any
     /// level is ticked (NeoForge's `ServerTickEvent.Pre`), `ServerTickEnd`
@@ -2234,12 +2234,14 @@ impl Game<'_> {
     pub(in crate::game) fn native_world_border_bounds_changed(&mut self) {
         crate::game::level_control_hooks::LevelControl::BorderBounds
             .hear(|| self.fire_world_border_bounds_changed());
+        self.ecs_border_changed();
     }
 
     /// The server world's border center changed.
     pub(in crate::game) fn native_world_border_center_changed(&mut self) {
         crate::game::level_control_hooks::LevelControl::BorderCenter
             .hear(|| self.fire_world_border_center_changed());
+        self.ecs_border_changed();
     }
 
     /// A Nether portal was built for a dimension travel, or an End platform
@@ -3636,11 +3638,10 @@ impl GameLevel<'_> {
     /// `flags::UPDATE_ALL` does both. `UPDATE_CLIENTS` sends a block update;
     /// `UPDATE_INVISIBLE` suppresses its notification only on clients, as in
     /// `Level.setBlock`. Any loaded position, not only
-    /// the hook's; true when the block changed, false off an authoritative
-    /// server, when the block has no such property or value, `pos` is not
-    /// loaded, or the property already has `value` (no write, as
-    /// `Level.setBlock` returns false for an unchanged state). Elsewhere,
-    /// `Game::native_set_block_property_with` does the same.
+    /// the hook's; true when the block changed, false when the block has no
+    /// such property or value, `pos` is not loaded, or the property already
+    /// has `value` (no write, as `Level.setBlock` returns false for an
+    /// unchanged state).
     pub(in crate::game) fn native_set_block_property(
         &mut self,
         ticks: &mut Ticks,
@@ -3649,9 +3650,6 @@ impl GameLevel<'_> {
         value: &str,
         flags: i32,
     ) -> bool {
-        if !self.native_authoritative {
-            return false;
-        }
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         let state = self.block_state(at);
         let Some(id) = property_change(self.registry, state, key, value) else {
@@ -3736,9 +3734,6 @@ impl Game<'_> {
         flags: i32,
     ) -> bool {
         // As `native_set_block`: a window that isn't a server holds a copy.
-        if self.serving.is_none() && self.options.dedicated.is_none() {
-            return false;
-        }
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let Some(id) = property_change(self.pack.assets.registry, state, key, value) else {
             return false;
@@ -3774,28 +3769,11 @@ impl Game<'_> {
             day_time: self.world.day_time,
         })
     }
-    /// The saved key and modifiers for an owner-bound registration, or its declared default.
-    pub(in crate::game) fn mod_key(
-        &self,
-        mod_id: &str,
-        name: &str,
-    ) -> Option<(String, ClientModifiers)> {
-        let (_, registration) = mod_api::__private::key_mappings()
-            .iter()
-            .find(|(owner, mapping)| *owner == mod_id && mapping.id == name)?;
-        let (key, modifiers) = self.settings.mods.binding(
-            mod_id,
-            name,
-            (&registration.key, registration.modifiers.bits),
-        );
-        Some((key, ClientModifiers::new(modifiers)))
-    }
     /// The instance (game) folder, which its players share: `saves/`,
     /// `resourcepacks/`, `shaderpacks/` and `horizon-mods/` are in it, and the
     /// title's screens create worlds and read packs there. A world's own
     /// `datapacks/` is in that world's folder (`saves/<world>/datapacks`).
-    /// The folder the game runs in (`--player-dir` moves a player's options
-    /// and servers only, not the instance). Nothing is created.
+    /// The folder the game runs in. Nothing is created.
     ///
     /// Not on wasm: a path in the game's file system, which a wasm mod has none of; a wasm mod
     /// reads its own data and assets through reload listeners.
@@ -3953,7 +3931,7 @@ mod held_break_slot_tests {
     #[test]
     #[ignore = "daily"]
     fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
-        use crate::game::{Audio, Game, Hand, Options, Progress, Settings, load_resources};
+        use crate::game::{Game, Hand, Options, Progress, Settings, load_resources};
         use horizon_client::{items::ItemStack, motion::PlayerMotion};
         use horizon_core::equipment_slot::EquipmentSlot;
         use horizon_core::geometry::Vec3;
@@ -3968,19 +3946,18 @@ mod held_break_slot_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.0, 70.0, 0.0)).unwrap());

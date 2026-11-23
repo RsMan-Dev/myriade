@@ -236,7 +236,7 @@ fn resource_ids(root: &Path) -> Arc<ResourceIds> {
     ids
 }
 
-/// `IntegratedServer.getProfilePermissions` for the owner: `OWNER` (4) when
+/// Vanilla's `getProfilePermissions` for the owner: `OWNER` (4) when
 /// commands are allowed, else `ALL` (0).
 fn owner_permission(allow_commands: bool) -> u8 {
     if allow_commands { 4 } else { 0 }
@@ -427,7 +427,7 @@ impl Game<'_> {
         self.session.markers = ids.markers.iter().cloned().collect();
         let mut sounds = Vec::new();
         for dir in [&self.options.resources, &self.session.vanilla_root] {
-            if let Some(export) = command_export(dir, self.options.dedicated.is_none()) {
+            if let Some(export) = command_export(dir, false) {
                 self.session.registries.fill_from_exported(&export);
                 sounds = export.ids("minecraft:sound_event").to_vec();
                 sounds.sort();
@@ -668,11 +668,11 @@ impl Game<'_> {
         };
         // The ECS reads the difficulty (raids, targeting) and drops what peaceful forbids.
         self.ecs.set_difficulty(self.session.difficulty);
-        // `ServerLevel.isSpawningMonsters`, read by the reinforcements a hurt creature calls.
+        // `ServerLevel.isSpawningMonsters`, read by the natural spawning and the reinforcements a hurt creature calls.
         let rules = &self.session.rules;
-        self.ecs.set_monster_spawning(
-            rules.bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS)
-                && rules.bool_at(horizon_client::gamerules::vanilla::SPAWN_MONSTERS),
+        self.ecs.set_spawn_rules(
+            rules.bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS),
+            rules.bool_at(horizon_client::gamerules::vanilla::SPAWN_MONSTERS),
         );
     }
     /// `ServerClockManager.ServerClockInstance.loadFrom`: restore the existing

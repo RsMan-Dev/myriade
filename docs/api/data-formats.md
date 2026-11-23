@@ -11,9 +11,7 @@ and worlds. Each entry names its version field, its documentation and its level 
 | Content mod package | `.hmod`: a zip with `horizon-mod.toml`, `assets/`, `data/` and optional `icon.png` | the manifest's `api` | preview | [../modding/src/reference/manifest.md](../modding/src/reference/manifest.md), [mods.md](../modding/src/how-to/content-mods.md#the-manifest), [../modding/src/reference/registry-index.md](../modding/src/reference/registry-index.md) |
 | Native mod package | `.hmod` with native code: the same flat package plus root `Cargo.toml` and `src/`, with `[native]` in `horizon-mod.toml` | the manifest's `api` for content; exact `horizon` and `mixins` source pins for code | experimental | [../modding/src/reference/manifest.md](../modding/src/reference/manifest.md), [../modding/src/how-to/native-mods.md](../modding/src/how-to/native-mods.md) |
 | Mods turned on | `horizon-mods.txt` | none | preview | [mods.md](../modding/src/start/installing.md#playing-with-mods) |
-| Horizon settings | `horizon-graphics.txt`, `horizon-extras.txt` (`key:value`, as `options.txt`) | none: unknown keys fall back to defaults | preview | [graphics.md](../graphics.md), [extras.md](../extras.md#options-storage) |
 | Server settings | `server.toml` | its keys | stable | [server-reference.md](server-reference.md) |
-| Control endpoints | the game's socket file (TCP form), `.horizon/api.json` | none | preview | [agent-control.md](agent-control.md), [server-reference.md](server-reference.md) |
 | Release checksums | `SHA256SUMS`, `SHA256SUMS.sig` on releases since signing began (#1011) | the signed text names the tag | stable | [security.md](../security.md) |
 | Worlds | the world folder | vanilla 26.3's (`DataVersion`) | vanilla's | [world-data.md](../world-data.md) |
 

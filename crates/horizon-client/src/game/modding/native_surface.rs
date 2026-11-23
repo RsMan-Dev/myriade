@@ -1,6 +1,6 @@
 // game-module-visibility: pub(crate)
 //! The `friction` Part method (`IBlockExtension.getFriction`). The client library asks through
-//! `native_client_hooks`; only a state whose block has a subscribing part is converted.
+//! `native_level_hooks`; only a state whose block has a subscribing part is converted.
 use super::api_values::{TryIntoApi, block_state};
 use super::{Game, boats::Boat};
 use horizon_core::position::BlockPos;
@@ -125,7 +125,7 @@ mod tests {
         // red wool NaN, blue wool 3.0, green wool infinity and black wool -0.5.
         let calls = mod_platform::__private::part_tests::friction_game_thread();
         // The client library asks the mods through the executable's callbacks.
-        crate::entry::install_client_hooks();
+        crate::entry::install_level_hooks();
         with_game(|game| {
             game.world.chunks.insert(
                 (0, 0),

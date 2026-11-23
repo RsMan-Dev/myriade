@@ -17,7 +17,6 @@ class IgnoredInventory(unittest.TestCase):
                 file.write_text(text)
 
             put("Cargo.toml", '[workspace]\nmembers = ["crates/horizon-client", "crates/horizon-relay"]\n')
-            put("launcher/Cargo.toml", '[package]\nname = "horizon-launcher"\n[workspace]\nmembers = []\n')
             put("crates/horizon-client/Cargo.toml", '[package]\nname = "horizon-client"\n')
             put("crates/horizon-client/src/lib.rs", "mod game;\n")
             put("crates/horizon-client/src/game.rs", 'include!(concat!(env!("OUT_DIR"), "/game_modules.rs"));\n')

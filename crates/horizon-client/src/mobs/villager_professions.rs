@@ -284,6 +284,17 @@ impl ResolvedProfessions {
         self.entries.get(index)
     }
 
+    /// The members of `horizon:villager_secondary_poi/<id>` join each profession's secondary blocks, once at load, the id read from the
+    /// entry itself (`minecraft:` dropped, `:` as `/`). A farmer also takes the farmland class: a mod block whose template is farmland.
+    pub fn add_secondary_tags(&mut self, block_tags: &std::collections::HashMap<String, std::collections::HashSet<String>>) {
+        for entry in &mut self.entries {
+            let name = entry.id.strip_prefix("minecraft:").unwrap_or(&entry.id).replace(':', "/");
+            let tagged = block_tags.get(&format!("horizon:villager_secondary_poi/{name}"));
+            let farmland = (entry.id == "farmer").then(|| block_tags.get("horizon:class/farmland")).flatten();
+            entry.secondary_blocks.extend(tagged.into_iter().chain(farmland).flatten().cloned());
+        }
+    }
+
     /// Resolve a custom workstation's acquisition identity in constant time.
     pub fn acquiring(&self, poi: &str) -> Option<usize> {
         self.custom_poi.get(poi).copied()

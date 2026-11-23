@@ -1680,6 +1680,7 @@ impl Game<'_> {
 
 /// A mob's content mod effects tick in its own tick (`ai::tick_effects`).
 impl horizon_client::mobs::ModEffectTicks for Game<'_> {
+    // TODO(phase 1 Mob): signature `mob: &mut Mob` du trait ModEffectTicks (crates/horizon-client/src/mobs), à passer sur l'ECS
     fn tick_mod_effect(
         &self,
         level: &mut DamageLevel<'_>,
@@ -2077,7 +2078,7 @@ mod potion_contents_tests;
 mod arrow_contents {
     //! Actual in-memory Game potion paths. No run loop, world load or server startup.
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, execution_role, load_resources};
+    use crate::game::{Options, Progress, Settings, execution_role, load_resources};
     use horizon_client::chunk::Chunk;
     use serde_json::{Value, json};
     use std::{path::PathBuf, sync::Arc, time::Instant};
@@ -2157,20 +2158,19 @@ mod arrow_contents {
             &root,
             &settings,
             Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.game_dir = Some(std::env::current_dir().unwrap());
-        options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.world

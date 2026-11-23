@@ -59,7 +59,6 @@ mod tests {
     fn level_players_name_host_and_guests_once_during_turns() {
         with_guests(|game| {
             park_the_nether(game);
-            let _serving = super::super::integrated::tests::install_serving(game, false);
             place_host(game);
             let level = game.level(game.dim.id()).unwrap();
             let players = level.online_players(game).unwrap();
@@ -104,7 +103,6 @@ mod tests {
     #[ignore = "daily"]
     fn level_players_leave_out_fake_players() {
         with_guests(|game| {
-            let _serving = super::super::integrated::tests::install_serving(game, false);
             place_host(game);
             game.next_entity = 100;
             let level = game.level(game.dim.id()).unwrap();
@@ -134,7 +132,6 @@ mod tests {
     fn chunk_watchers_follow_sent_chunks_inside_the_view() {
         with_guests(|game| {
             park_the_nether(game);
-            let _serving = super::super::integrated::tests::install_serving(game, false);
             let level = game.level(game.dim.id()).unwrap();
             let chunk = ChunkRef::new(level, [0, 0]);
             assert_eq!(

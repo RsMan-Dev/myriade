@@ -1,10 +1,5 @@
-//! A mob's custom name, saved whole when it is styled.
+//! A mob's display name: the styled text when there is one, else the plain name.
 use super::*;
-
-/// `Bucketable.saveDefaultDataToBucketTag`: `copyFrom(CUSTOM_NAME)`, whole.
-pub(super) fn bucket_custom_name(m: &Mob) -> Option<Tag> {
-    m.custom_name_tag()
-}
 
 impl Mob {
     /// `Entity.getCustomName`: the whole text, style included, else the plain name.

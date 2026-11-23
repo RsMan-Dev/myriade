@@ -56,10 +56,6 @@ impl Game<'_> {
         }
         self.edit_vehicle_slots(id, |slots| edit(slots, position))
     }
-    /// Whether this game simulates a world: a client's copy has no places to write.
-    fn places_simulated(&self) -> bool {
-        self.is_logical_server()
-    }
     /// The slot of the player in place that `place` names.
     fn player_place(&mut self, place: &ItemPlace) -> Option<&mut Option<ItemStack>> {
         match place {
@@ -128,9 +124,6 @@ impl Game<'_> {
     pub(super) fn entity_equipment_size(&self, entity: u32) -> Option<usize> {
         // The handler must not exist on a client: the same gate every read
         // and write of a slot answers (`equipment_stack`).
-        if !self.places_simulated() {
-            return None;
-        }
         (self.ecs.exists(entity)
             || self.armor_stand_list().iter().any(|a| a.id == entity))
         .then_some(7)
@@ -176,7 +169,7 @@ impl Game<'_> {
         if !self.transaction_holds(tx) {
             return 0;
         }
-        if !self.places_simulated() || stack.count == 0 {
+        if stack.count == 0 {
             return 0;
         }
         // A write to a backed mod menu's storage (arismoko/horizon#3385) is noticed; none is backed in vanilla.
@@ -313,9 +306,6 @@ impl Game<'_> {
         if !self.transaction_holds(tx) {
             return 0;
         }
-        if !self.places_simulated() {
-            return 0;
-        }
         self.notice_menu_place_write(place);
         if let ItemPlace::Scratch(id) | ItemPlace::ScratchSlots(id) = place {
             return self.scratch_extract(*id, &stack);
@@ -420,9 +410,6 @@ impl Game<'_> {
     /// own, `None` where the slot is empty. None where neither kind is
     /// there — and on a client, whose copy writes nothing.
     fn equipment_stack(&self, entity: u32, slot: EquipmentSlot) -> Option<Option<ItemStack>> {
-        if !self.places_simulated() {
-            return None;
-        }
         if self.ecs.exists(entity) {
             return Some(self.ecs.equipment_stack(entity, slot as usize));
         }
@@ -449,7 +436,7 @@ impl Game<'_> {
         if self.entity_ids_exhausted() {
             return;
         }
-        if self.places_simulated() && stack.count > 0 {
+        if stack.count > 0 {
             // `Block.popResource`'s default pickup delay, at the root commit.
             self.after_commit(After::Drop(pos, stack));
         }
@@ -476,7 +463,6 @@ pub(super) mod tests {
 
     /// A world open to LAN on a dedicated server, as a guest's actions run.
     pub(in crate::game) fn open_to_lan(game: &mut super::Game<'_>) {
-        game.options.dedicated = Some(Vec::new());
         let settings = super::super::lan::LanSettings {
             port: 0,
             guest_commands: false,
@@ -497,7 +483,6 @@ pub(super) mod tests {
             allow_flight: false,
             seed: 0,
             max_players: 2,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         };
@@ -868,7 +853,6 @@ pub(super) mod tests {
     fn a_kept_handler_reaches_nothing_once_its_cart_is_removed() {
         use super::super::minecarts::{CartKind, Minecart};
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:chest_minecart", [0.0; 3], 0.0, &mut || 500));
             let host: &mut dyn ServerHost = game;
             let entity = host.entity(500).unwrap();
@@ -968,7 +952,6 @@ pub(super) mod tests {
     fn a_kept_handler_reaches_nothing_once_its_world_closes() {
         use super::super::minecarts::{CartKind, Minecart};
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:chest_minecart", [0.0; 3], 0.0, &mut || 500));
             let host: &mut dyn ServerHost = game;
             let entity = host.entity(500).unwrap();
@@ -1591,7 +1574,6 @@ pub(super) mod tests {
     fn a_chest_minecarts_items_are_its_slots() {
         use super::super::minecarts::{CartKind, Minecart};
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             let position = horizon_core::geometry::Vec3::new(0.5, 65.0, 0.5);
             game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:chest_minecart", [position.x, position.y, position.z], 0.0, &mut || 500));
             let host: &mut dyn ServerHost = game;

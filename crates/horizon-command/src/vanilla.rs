@@ -58,8 +58,7 @@ fn build_for_features(
 }
 /// Commands(CommandSelection.DEDICATED) where it differs from INTEGRATED:
 /// `seed` and `version` check permissions (SeedCommand.register and
-/// VersionCommand.register get `selection != INTEGRATED`), `publish` and
-/// `unpublish` are not registered (`includeIntegrated`), and the dedicated
+/// VersionCommand.register get `selection != INTEGRATED`), and the dedicated
 /// commands are (`includeDedicated`: `/op`, `/ban`, `/whitelist`...).
 fn dedicated_selection(d: &mut Dispatcher) {
     for name in ["seed", "version"] {
@@ -67,13 +66,6 @@ fn dedicated_selection(d: &mut Dispatcher) {
             d.requires(n, GAMEMASTERS);
         }
     }
-    let kept: Vec<usize> = d.nodes[0]
-        .children
-        .iter()
-        .copied()
-        .filter(|&c| !matches!(d.nodes[c].name(), "publish" | "unpublish"))
-        .collect();
-    d.nodes[0].children = kept;
     super::tree_extra::register_dedicated(d, 0);
 }
 /// The tree in the order Horizon's code registers it, before

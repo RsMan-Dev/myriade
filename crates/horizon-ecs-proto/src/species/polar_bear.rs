@@ -19,6 +19,7 @@ static ANGRY: Cond = Cond::Is("neutral:angry");
 
 pub static DEF: Def = Def {
     name: "minecraft:polar_bear",
+    caps: Some(super::FREEZE_IMMUNE_CAPS),
     targets: &[
         Entry::new(&neutral_anger::MODULE, 255, &neutral_anger::Params::DEFAULT),
         Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert_if_baby: true, alert_when: Some(is_adult), ..hurt_by::Params::DEFAULT }),

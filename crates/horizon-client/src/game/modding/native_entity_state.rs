@@ -211,7 +211,7 @@ impl Game<'_> {
     /// not own, so it needs its own owner decision before it can reach them. False for a kind
     /// the read refuses or a stale handle.
     pub(super) fn entity_set_portal_cooldown(&mut self, entity: EntityRef, ticks: i32) -> bool {
-        if ticks < 0 || !self.is_logical_server() {
+        if ticks < 0 {
             return false;
         }
         match self.native_entity_target(entity) {
@@ -507,7 +507,6 @@ mod tests {
     fn mob_setters_update_stored_state() {
         use super::super::native_entity_refs::tests::with_game;
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.ecs = game.test_ecs_level();
             crate::game::ecs::test_support::place_test_mob(game, 42, "minecraft:zombie", [0.0; 3]).unwrap();
             let entity = game.entity(42).unwrap();
@@ -534,13 +533,9 @@ mod tests {
     }
 
     fn with_player(test: impl FnOnce(&mut Game<'_>, EntityRef)) {
-        use super::super::native_entity_refs::tests::with_game;
         use horizon_core::geometry::Vec3;
-        with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-            let player = game.entity(20).unwrap();
+        super::super::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
+            let player = game.entity(12).unwrap();
             test(game, player);
         });
     }
@@ -766,22 +761,20 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn portal_cooldown_write_blocks_entry_and_counts_down() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_guest_turn_tests::with_acting_guest;
         use horizon_client::chunk::Chunk;
-        use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
         use std::sync::Arc;
 
-        with_game(|game| {
+        with_acting_guest(Vec3::new(8.5, 65.0, 8.5), |game| {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             game.settings.simulation_distance = 4;
-            game.settings.render_distance = 12;
+            game.settings.view_distance = 12;
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let portal = registry.default_state("minecraft:nether_portal").unwrap();
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap());
             for z in [8, 12] {
                 game.world.set(0, 63, z, stone).unwrap();
             }

@@ -1,5 +1,6 @@
 //! The game's side of the ECS bridge: the tick, the players' facts, the host events, the chunks, the spawns and the tracking.
 mod tick;
+mod spawn_source;
 mod facts;
 mod host_events;
 mod chunks;

@@ -169,10 +169,6 @@ impl Game<'_> {
         let (mut source_now, mut volume_now, mut pitch_now, mut cancel) =
             (source, volume, pitch, false);
         let entity = emitter.and_then(|id| self.entity(id));
-        // A missing client emitter must not become an AtPosition request.
-        if emitter.is_some() && entity.is_none() && !self.is_logical_server() {
-            return None;
-        }
         match entity {
             Some(entity) => self.native_play_level_sound_at_entity(
                 mod_api::__private::PlayLevelSoundAtEntityCall {
@@ -284,7 +280,6 @@ mod tests {
             allow_flight: true,
             seed: 0,
             max_players: 3,
-            integrated: true,
             levels: game.level_shapes,
             level_seeds: game.levels.runtime.seeds(),
         };

@@ -6,10 +6,10 @@
 //! Spells: `Vexes` (fewer than a roll of 1 to 8 summons around it within 16 blocks: three of species `species`, owned, limited to 30 to
 //! 120 s of life), `Fangs` (a ring of 13 when the target is within 3 blocks, else a line of 16: they bite 6 magic damage when their
 //! delay `+ 9` ticks is over, everything but the caster and its `allies`), `Disappear` (invisible for 60 s).
-//! `Wololo` (no target, griefing on, a blue sheep within 16 x 4 x 16: it turns red when the warm-up is over; the entry is asked again
+//! `Wololo` (no target, griefing on, a blue sheep within 16 x 4 x 16 scaled by its visibility to the caster: it turns red when the warm-up is over; the entry is asked again
 //! every 2 ticks while the caster has no target, as the Mob's selector does), `Blindness` (not on the target it last blinded, only
 //! on hard: the Mob reads the local difficulty above 2, which the ECS does not carry; blindness 20 s on a creature or a player).
-//! Not done: the sounds, the game event of each vex, the visibility scaling of the wololo range; the fang floor test counts any
+//! Not done: the sounds, the game event of each vex; the fang floor test counts any
 //! solid block with air above.
 use super::spell_casting::Casting;
 use super::*;
@@ -138,9 +138,16 @@ fn wants(w: &mut World, e: Entity, inst: Inst) -> bool {
             if !w.contains_resource::<SheepQuery>() {
                 w.init_resource::<SheepQuery>();
             }
+            // The range is `forNonCombat().range(16)` scaled by the sheep's visibility to the caster (`sight_range`, at least 2 blocks).
+            let looker = w.get::<SpeciesId>(e).map(|s| s.0);
             let mut sheep: Vec<Entity> = w.resource_scope(|w: &mut World, mut qs: Mut<SheepQuery>| {
                 qs.0.iter(w)
-                    .filter(|(_, p, c, h)| c.color == 11 && h.0 > 0.0 && rules::near_sheep(p.0.x - me.x, p.0.y - me.y, p.0.z - me.z, d2(p.0, me)))
+                    .filter(|(x, p, c, h)| {
+                        c.color == 11 && h.0 > 0.0 && {
+                            let reach = targeting::sight_range(16.0, targeting::creature_visibility_to(w, *x, looker));
+                            rules::near_sheep(p.0.x - me.x, p.0.y - me.y, p.0.z - me.z, d2(p.0, me), reach)
+                        }
+                    })
                     .map(|(x, ..)| x)
                     .collect()
             });

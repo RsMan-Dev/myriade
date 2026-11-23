@@ -19,7 +19,7 @@ impl Game<'_> {
 
     /// The rain and thunder levels (`Level.getRainLevel`, `getThunderLevel`):
     /// the world's, where the level can have weather, else none.
-    pub(super) fn weather_levels(&self, partial: f32) -> (f32, f32) {
+    pub(in crate::game) fn weather_levels(&self, partial: f32) -> (f32, f32) {
         if self.can_have_weather() {
             self.world.weather.levels(partial)
         } else {
@@ -40,22 +40,7 @@ impl Game<'_> {
                 0.0,
             );
         }
-        let (rain, thunder) = self.weather_levels(1.0);
-        // Sampled once per (dimension, time, weather): every mob asks each tick.
-        let key = (
-            self.dim,
-            self.world.day_time,
-            rain.to_bits(),
-            thunder.to_bits(),
-        );
-        if let Some((k, darken)) = self.sky_darken_memo.get()
-            && k == key
-        {
-            return darken;
-        }
-        let darken = self.sky_darken_in(&self.world, self.dim);
-        self.sky_darken_memo.set(Some((key, darken)));
-        darken
+        self.sky_darken_in(&self.world, self.dim)
     }
 
     /// Whether precipitation at a column is snow (Biome.coldEnoughToSnow:
@@ -81,12 +66,5 @@ impl Game<'_> {
     /// highest block in `blocks_motion_in_heightmap` or holding a fluid.
     pub(super) fn rain_height(&self, x: i32, z: i32) -> i32 {
         self.mob_world_base(&[]).motion_blocking_height(x, z)
-    }
-
-    pub(super) fn tick_weather_effects(&mut self) {
-        if self.flash > 0 {
-            self.flash -= 1;
-        }
-        // The rain sounds come with the rain splashes (`tick_particles`).
     }
 }

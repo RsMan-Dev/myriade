@@ -500,7 +500,7 @@ struct Sources {
     /// The area modules `host.rs` includes.
     areas: String,
     fire: String,
-    goal_view: String,
+    step_view: String,
 }
 
 /// Parse and validate the catalog and hook/helper signatures.
@@ -560,7 +560,7 @@ fn sources(root: &Path, fill: FillMode) -> Result<Sources, String> {
         part("EntityPart"),
     );
     let code = complete_hook_constants(code, "Hooks", "hook_ids", "HookId")?;
-    let (host, goal_view) = host::generate(root)?;
+    let (host, step_view) = host::generate(root)?;
     let areas = host::areas_source(root)?;
     // A new hook's placeholder body becomes its dispatch call.
     if !fills.is_empty() && matches!(fill, FillMode::Require) {
@@ -573,7 +573,7 @@ fn sources(root: &Path, fill: FillMode) -> Result<Sources, String> {
             "{natives}: the let _ = (…); placeholder needs its dispatch call; run cargo run -p xtask -- mod-api"
         ));
     }
-    for code in [&code, &host, &areas, &goal_view] {
+    for code in [&code, &host, &areas, &step_view] {
         incremental::parses(code)?;
     }
     if matches!(fill, FillMode::Fill) {
@@ -597,7 +597,7 @@ fn sources(root: &Path, fill: FillMode) -> Result<Sources, String> {
         host,
         areas,
         fire,
-        goal_view,
+        step_view,
     })
 }
 

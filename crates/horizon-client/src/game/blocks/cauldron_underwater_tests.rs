@@ -18,10 +18,21 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
         .add_empty_chunk(ChunkPos::new(0, 0))
         .unwrap();
     assert!(game.run_command("forceload add 0 0"));
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 101.0, 8.5)).unwrap());
     game.selected = 0;
     game.set_mode_id(0);
     game
+}
+
+/// `game`, with the body run as a guest standing at (8.5, 101, 8.5).
+fn with_acting_guest_game(f: impl FnOnce(&mut Game<'_>)) {
+    let mut resources = None;
+    let mut game = game(&mut resources);
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+    crate::game::native_guest_turn_tests::with_acting_guest_on(
+        &mut game,
+        Vec3::new(8.5, 101.0, 8.5),
+        f,
+    );
 }
 
 fn name(game: &Game<'_>, at: [i32; 3]) -> String {
@@ -78,8 +89,7 @@ fn click_under(game: &mut Game<'_>, above: &str, bucket: &str) -> String {
 #[test]
 #[ignore = "daily"]
 fn a_cauldron_under_water_swallows_a_lava_or_powder_snow_bucket() {
-    let mut resources = None;
-    let mut game = game(&mut resources);
+    with_acting_guest_game(|game| {
     for (bucket, filled) in [
         ("minecraft:lava_bucket", "minecraft:lava_cauldron"),
         (
@@ -111,4 +121,5 @@ fn a_cauldron_under_water_swallows_a_lava_or_powder_snow_bucket() {
             assert_eq!(held(&game).as_deref(), Some("minecraft:bucket"));
         }
     }
+    });
 }

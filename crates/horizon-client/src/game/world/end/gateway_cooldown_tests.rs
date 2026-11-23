@@ -61,7 +61,7 @@ fn gateway_counters_match_actual_vanilla_methods() {
 
 // Exercise the real dispatch with cooldown-only states, so no teleport destination is resolved.
 fn game_gateway_phases() -> [[i32; 2]; 4] {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Game, Options, Progress, Settings, load_resources};
     use horizon_client::chunk::Chunk;
     use horizon_core::nbt::Tag;
     use std::sync::Arc;
@@ -74,25 +74,22 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.headless = true;
     options.game_dir = Some(std::env::current_dir().unwrap());
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.build_registries();
-    game.options.dedicated = Some(Vec::new());
     game.world = horizon_client::world::World::new(game.res.facts().air, 1);
     for z in -2..=2 {
         for x in -2..=2 {

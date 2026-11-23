@@ -1,24 +1,12 @@
 //! Repository tasks, run with `cargo run -p xtask -- TASK`.
 //!
-//! `package BINARY OUTDIR`: a playable Horizon folder with the game binary, horizon-ctl,
-//! horizon-prepare and horizon-server (built beside it: cargo build --release -p horizon-game -p horizon-client-lib
-//! --bins -p horizon-prepare -p horizon-server), the exporters horizon-prepare compiles, its sources (the launcher compares
-//! them to its own), and PLAY.txt. It holds none of Minecraft's files: players prepare those
-//! from their own copy. .github/workflows/release.yml makes the release folders with it.
+//! `package-server ENGINE OUTDIR` (also `package`): a server folder (docs/server.md): the server build of
+//! the game (`cargo build --release -p horizon-game --no-default-features --bin horizon-client`) as
+//! horizon-engine, with horizon-prepare and horizon-server from beside it, the exporters horizon-prepare
+//! compiles and the sources of the release folders. It holds none of Minecraft's files.
 //! First build the shared wasm standard library beside the programs with
 //! `cargo run --locked -p cargo-horizon-mod -- wasm-std PROGRAM_FOLDER/horizon-wasm-std.wasm`.
-//! Both package routes require and copy it; preflight never silently omits it.
-//!
-//! `package-server ENGINE OUTDIR`: a server folder (docs/server.md): the server build of the game
-//! (`cargo build --release -p horizon-game --no-default-features`, without sound or controllers)
-//! as horizon-engine, with horizon-prepare and horizon-server from beside it and the same sources.
-//!
-//! `tokens`: writes `crates/horizon-theme/tokens.css`, the design tokens of `crates/horizon-theme` as CSS
-//! custom properties (a horizon-theme test fails when the file is out of date).
-//!
-//! `icons`: renders the icon masters in `docs/media/brand` (with `rsvg-convert`, from librsvg)
-//! into every size the platforms and the website use, and packs `packaging/icons/horizon.ico`
-//! and `horizon.icns`. `docs/media/brand/README.md` lists what goes where.
+//! The route requires and copies it; preflight never silently omits it.
 //!
 //! `mixins-tool release | patch SOURCE | identity TARGET`: the pinned horizon-mixins tool's
 //! delivery contract. `release` prints its tag, pinned commit and source archive as `name=value`
@@ -30,9 +18,6 @@
 //! then reads it back and checks every asset against it. `--previous` names the SDK published
 //! before this one and DIFF the `horizon-stage surface-diff --json` of its surface against this
 //! one's, which fill the index's surface comparison.
-//! `perf-wasm`: builds `crates/horizon-perf` for `wasm32-unknown-unknown` with the `wasm` feature
-//! and writes `target/perf-wasm/{horizon_perf.wasm,horizon_perf.js}`, which horizon-rust/horizon-site imports into
-//! its static assets (docs/perf-platform.md §7.1).
 
 mod mod_api;
 
@@ -40,7 +25,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-const USAGE: &str = "usage: cargo run -p xtask -- package BINARY OUTDIR | package-server ENGINE OUTDIR | mod-api [notes|coverage] | tokens | icons | perf-wasm | mixins-tool release | mixins-tool patch SOURCE | mixins-tool identity TARGET | sdk-index DIST COMMIT DATE [--nightly NAME] [--previous BUILD DIFF]";
+const USAGE: &str = "usage: cargo run -p xtask -- package-server ENGINE OUTDIR | package ENGINE OUTDIR | mod-api [notes|coverage] | mixins-tool release | mixins-tool patch SOURCE | mixins-tool identity TARGET | sdk-index DIST COMMIT DATE [--nightly NAME] [--previous BUILD DIFF]";
 
 /// What the release folder takes from the repository at HEAD, as `git archive` writes it.
 /// `LICENSES/` holds the GPL text the LGPL in `LICENSE` builds on (LGPL-3.0 section 4b asks for
@@ -54,17 +39,13 @@ const ARCHIVED: [&str; 6] = [
     "LICENSES",
 ];
 
-// The programs that sit beside the client (horizon-ctl, the command line and MCP server that play
-// the game; horizon-prepare, which prepares the resources from the player's own Minecraft;
-// horizon-server, which hosts a server with the client as its engine, docs/server.md) and the
-// wasm runtime are listed, with the checkout's exporters, in the SDK's required inputs
-// (`horizon_mod_package::sdk::inputs`): routes `package` and `package-server`.
+// The programs beside the engine (horizon-prepare, horizon-server) and the wasm runtime are listed,
+// with the checkout's exporters, in the SDK's required inputs (`horizon_mod_package::sdk::inputs`).
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.as_slice() {
-        [task, binary, out] if task == "package" => package(Path::new(binary), Path::new(out)),
-        [task, engine, out] if task == "package-server" => {
+        [task, engine, out] if task == "package" || task == "package-server" => {
             package_server(Path::new(engine), Path::new(out))
         }
         [task] if task == "mod-api" => mod_api::run(),
@@ -73,8 +54,6 @@ fn main() -> ExitCode {
         [task, dist, commit, date, options @ ..] if task == "sdk-index" => {
             sdk_index(Path::new(dist), commit, date, options)
         }
-        [task] if task == "tokens" => tokens(),
-        [task] if task == "icons" => icons(),
         [task, what] if task == "mixins-tool" && what == "release" => {
             use horizon_mod_package::mixins_tool::{REV, release_tag};
             println!("tag={}\nrev={REV}", release_tag());
@@ -90,7 +69,6 @@ fn main() -> ExitCode {
             print!("{}", horizon_mod_package::mixins_tool::identity(target));
             Ok(())
         }
-        [task] if task == "perf-wasm" => perf_wasm(),
         _ => Err(USAGE.to_string()),
     };
     match result {
@@ -133,194 +111,6 @@ fn git(repo: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
         ));
     }
     Ok(output.stdout)
-}
-
-/// Builds the web UI's wasm and puts it and its JS wrapper in `target/perf-wasm/`.
-fn perf_wasm() -> Result<(), String> {
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or("xtask has no parent folder")?;
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let status = Command::new(&cargo)
-        .current_dir(repo)
-        .args([
-            "build",
-            "--release",
-            "--lib",
-            "-p",
-            "horizon-perf",
-            "--features",
-            "wasm",
-            "--target",
-            "wasm32-unknown-unknown",
-        ])
-        .status()
-        .map_err(|e| format!("{cargo} build: {e}"))?;
-    if !status.success() {
-        return Err(
-            "the wasm build failed; `rustup target add wasm32-unknown-unknown` installs the target"
-                .to_string(),
-        );
-    }
-    let target =
-        std::env::var_os("CARGO_TARGET_DIR").map_or_else(|| repo.join("target"), PathBuf::from);
-    let wasm = target.join("wasm32-unknown-unknown/release/horizon_perf.wasm");
-    let script = repo.join("crates/horizon-perf/web/horizon_perf.js");
-    let out = target.join("perf-wasm");
-    fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
-    fs::copy(&wasm, out.join("horizon_perf.wasm"))
-        .map_err(|e| format!("{}: {e}", wasm.display()))?;
-    fs::copy(&script, out.join("horizon_perf.js"))
-        .map_err(|e| format!("{}: {e}", script.display()))?;
-    let size = fs::metadata(out.join("horizon_perf.wasm"))
-        .map(|m| m.len())
-        .unwrap_or(0);
-    println!(
-        "wrote {} ({} KiB) and horizon_perf.js",
-        out.join("horizon_perf.wasm").display(),
-        size / 1024
-    );
-    Ok(())
-}
-
-fn tokens() -> Result<(), String> {
-    let path = repo_root()?.join("crates/horizon-theme/tokens.css");
-    fs::write(&path, horizon_theme::css()).map_err(|e| format!("{}: {e}", path.display()))?;
-    println!("wrote crates/horizon-theme/tokens.css");
-    Ok(())
-}
-
-/// The square icon's sizes: Linux's hicolor theme, and the ones the .ico holds.
-const HICOLOR: [u32; 8] = [16, 24, 32, 48, 64, 128, 256, 512];
-const ICO: [u32; 7] = [16, 24, 32, 48, 64, 128, 256];
-/// The .icns entries: type and pixel size, macOS's tile drawn on Apple's grid.
-const ICNS: [(&[u8; 4], u32); 11] = [
-    (b"icp4", 16),
-    (b"icp5", 32),
-    (b"icp6", 64),
-    (b"ic07", 128),
-    (b"ic08", 256),
-    (b"ic09", 512),
-    (b"ic10", 1024),
-    (b"ic11", 32),
-    (b"ic12", 64),
-    (b"ic13", 256),
-    (b"ic14", 512),
-];
-
-fn render(svg: &Path, size: (u32, u32)) -> Result<Vec<u8>, String> {
-    let output = Command::new("rsvg-convert")
-        .arg("-w")
-        .arg(size.0.to_string())
-        .arg("-h")
-        .arg(size.1.to_string())
-        .arg(svg)
-        .output()
-        .map_err(|e| format!("rsvg-convert (librsvg): {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "rsvg-convert {}: {}",
-            svg.display(),
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    Ok(output.stdout)
-}
-
-fn write(path: &Path, data: &[u8]) -> Result<(), String> {
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    }
-    fs::write(path, data).map_err(|e| format!("{}: {e}", path.display()))
-}
-
-/// An .ico whose images are PNGs (Windows Vista and later read them at every size).
-fn ico(images: &[(u32, Vec<u8>)]) -> Vec<u8> {
-    let mut out = vec![0, 0, 1, 0];
-    out.extend((images.len() as u16).to_le_bytes());
-    let mut offset = 6 + 16 * images.len();
-    for (size, png) in images {
-        // A width or height of 256 is written as 0.
-        let side = if *size >= 256 { 0 } else { *size as u8 };
-        out.extend([side, side, 0, 0]);
-        out.extend(1u16.to_le_bytes());
-        out.extend(32u16.to_le_bytes());
-        out.extend((png.len() as u32).to_le_bytes());
-        out.extend((offset as u32).to_le_bytes());
-        offset += png.len();
-    }
-    for (_, png) in images {
-        out.extend(png);
-    }
-    out
-}
-
-/// An .icns of PNG entries.
-fn icns(entries: &[(&[u8; 4], Vec<u8>)]) -> Vec<u8> {
-    let body: usize = entries.iter().map(|(_, png)| 8 + png.len()).sum();
-    let mut out = b"icns".to_vec();
-    out.extend(((8 + body) as u32).to_be_bytes());
-    for (kind, png) in entries {
-        out.extend(*kind);
-        out.extend(((8 + png.len()) as u32).to_be_bytes());
-        out.extend(png);
-    }
-    out
-}
-
-fn icons() -> Result<(), String> {
-    let repo = repo_root()?;
-    let brand = repo.join("docs/media/brand");
-    let square = brand.join("icon.svg");
-    let packaging = repo.join("packaging/icons");
-    for size in HICOLOR {
-        let png = render(&square, (size, size))?;
-        write(
-            &packaging.join(format!("hicolor/{size}x{size}/apps/horizon.png")),
-            &png,
-        )?;
-    }
-    write(
-        &packaging.join("hicolor/scalable/apps/horizon.svg"),
-        &fs::read(&square).map_err(|e| format!("{}: {e}", square.display()))?,
-    )?;
-    let images = ICO
-        .iter()
-        .map(|&s| render(&square, (s, s)).map(|png| (s, png)))
-        .collect::<Result<Vec<_>, _>>()?;
-    write(&packaging.join("horizon.ico"), &ico(&images))?;
-    let macos = brand.join("icon-macos.svg");
-    let entries = ICNS
-        .iter()
-        .map(|&(kind, s)| render(&macos, (s, s)).map(|png| (kind, png)))
-        .collect::<Result<Vec<_>, _>>()?;
-    write(&packaging.join("horizon.icns"), &icns(&entries))?;
-    // The window icon the game and the launcher set at run time (X11 and Windows title bars).
-    write(
-        &repo.join("crates/horizon-theme/icons/horizon-64.png"),
-        &render(&square, (64, 64))?,
-    )?;
-    // Avatars, and the website's icons (horizon-site copies docs/media/brand/web/ into its public/).
-    let avatar = brand.join("avatar.svg");
-    for (svg, size, out) in [
-        (
-            &avatar,
-            500,
-            "docs/media/brand/social/github-avatar-500.png",
-        ),
-        (&avatar, 180, "docs/media/brand/web/apple-touch-icon.png"),
-        (&square, 32, "docs/media/brand/web/favicon-32.png"),
-        (&square, 1024, "docs/media/brand/icon-1024.png"),
-        (&macos, 1024, "docs/media/brand/icon-macos-1024.png"),
-    ] {
-        write(&repo.join(out), &render(svg, (size, size))?)?;
-    }
-    write(
-        &repo.join("docs/media/brand/web/favicon.svg"),
-        &fs::read(&square).map_err(|e| format!("{}: {e}", square.display()))?,
-    )?;
-    println!("wrote packaging/icons, the window icon, the avatars and the website's icons");
-    Ok(())
 }
 
 fn sdk_index(dist: &Path, commit: &str, date: &str, options: &[String]) -> Result<(), String> {
@@ -367,16 +157,6 @@ fn sdk_index(dist: &Path, commit: &str, date: &str, options: &[String]) -> Resul
         index.assets.len()
     );
     Ok(())
-}
-
-fn package(binary: &Path, out: &Path) -> Result<(), String> {
-    preflight("package", binary)?;
-    let repo = new_folder(out)?;
-    copy_into(binary, out)?;
-    copy_runtime("package", binary, out)?;
-    copy_exporters(&repo.join("exporters"), &out.join("exporters"))?;
-    let play = repo.join("packaging/PLAY.txt");
-    copy(&play, &out.join("PLAY.txt"))
 }
 
 fn package_server(engine: &Path, out: &Path) -> Result<(), String> {
@@ -680,20 +460,14 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
         let bin = base.join("bin");
         fs::create_dir_all(&bin).unwrap();
-        for name in [
-            "horizon-client",
-            "horizon-ctl",
-            "horizon-prepare",
-            "horizon-server",
-        ] {
+        for name in ["horizon-client", "horizon-prepare", "horizon-server"] {
             fs::write(bin.join(name), b"").unwrap();
         }
         let out = base.join("out");
         fs::create_dir_all(&out).unwrap();
         fs::write(out.join("kept"), b"").unwrap();
-        let error = package(&bin.join("horizon-client"), &out).unwrap_err();
+        let error = package_server(&bin.join("horizon-client"), &out).unwrap_err();
         assert!(error.contains("horizon-wasm-std.wasm"), "{error}");
-        assert!(!error.contains("horizon-ctl,"), "{error}");
         assert!(
             out.join("kept").is_file(),
             "the packager ran before the check"

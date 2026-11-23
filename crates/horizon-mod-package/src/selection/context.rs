@@ -140,21 +140,7 @@ impl LaunchArguments {
                     rest.push(Argument::Switch(arg));
                     break;
                 }
-                "--developer-single-player"
-                | "--game-tests"
-                | "--fullscreen"
-                | "--profile"
-                | "--session-stdin"
-                | "--creative"
-                | "--test-terrain"
-                | "--no-pause"
-                | "--offscreen"
-                | "--headless"
-                | "--control"
-                | "--server-thread"
-                | "--in-frame"
-                | "--no-server-thread"
-                | "--pregen" => {
+                "--game-tests" | "--pregen" => {
                     rest.push(Argument::Switch(arg));
                 }
                 _ => {
@@ -192,7 +178,7 @@ mod tests {
                 "workspace/source",
                 "--resources",
                 "--home",
-                "--creative",
+                "--pregen",
             ]);
         let launch = LaunchArguments::for_command(&command).unwrap();
         assert_eq!(launch.context.game_dir, cwd.join("instance"));
@@ -202,7 +188,7 @@ mod tests {
             launch.rest,
             [
                 Argument::Value("--resources".into(), "--home".into()),
-                Argument::Switch("--creative".into())
+                Argument::Switch("--pregen".into())
             ]
         );
         assert!(!launch.is_information_request());
@@ -292,7 +278,7 @@ mod tests {
             &[
                 "--resources",
                 "--home",
-                "--creative",
+                "--pregen",
                 "--game-dir",
                 "actual",
                 "--name",
@@ -307,7 +293,7 @@ mod tests {
             parsed.rest,
             [
                 Argument::Value("--resources".into(), "--home".into()),
-                Argument::Switch("--creative".into()),
+                Argument::Switch("--pregen".into()),
                 Argument::Value("--name".into(), "--dev-mod".into())
             ]
         );

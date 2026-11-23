@@ -17,7 +17,7 @@ pub fn native_makes_open_trapdoor_above_climbable(
     trapdoor: BlockStateId,
     climbable: &mut bool,
 ) {
-    crate::native_client_hooks::makes_open_trapdoor_above_climbable(
+    crate::native_level_hooks::makes_open_trapdoor_above_climbable(
         context, state, pos, trapdoor, climbable,
     );
 }

@@ -77,7 +77,7 @@ VANILLA = lab.GAME
 SEED = 1234
 WORLD = "PerfBench"
 # (name, from xyz, to xyz, pitch): straight 192-block flights over fixed
-# scenery of seed 1234 (the same paths as tools/graphics_bench.py).
+# scenery of seed 1234.
 SCENES = [
     ("village", (-960.0, 125.0, 80.0), (-960.0, 125.0, 272.0), 35.0),
     ("forest", (-1100.0, 120.0, -560.0), (-1100.0, 120.0, -368.0), 25.0),
@@ -567,9 +567,9 @@ class LocalServer:
         return self
 
     def crowd(self, args):
-        """--server-bots: horizon-bots walking around the spawn for the whole run (they need a few seconds to join
+        """--server-bots: myriade-bot walking around the spawn for the whole run (they need a few seconds to join
         and settle), and the scene that flies over them: (name, from, to, pitch)."""
-        binary = Path(args.bots_build or args.build).resolve() / ("horizon-bots.exe" if sys.platform == "win32" else "horizon-bots")
+        binary = Path(args.bots_build or args.build).resolve() / ("myriade-bot.exe" if sys.platform == "win32" else "myriade-bot")
         self.bots = subprocess.Popen([str(binary), "--server", self.address, "--bots", str(args.server_bots),
                                       "--behaviour", "walk", "--view-distance", "10", "--join-every", "0.1",
                                       "--seconds", "100000", "--seed", str(SEED)],
@@ -580,12 +580,12 @@ class LocalServer:
                 sx, sy, sz = json.loads(line)["spawn"]
                 break
             if time.time() > deadline:
-                raise RuntimeError("horizon-bots: no spawn position")
+                raise RuntimeError("myriade-bot: no spawn position")
         else:
-            raise RuntimeError("horizon-bots ended before a bot spawned")
+            raise RuntimeError("myriade-bot ended before a bot spawned")
         threading.Thread(target=self.bots.stdout.read, daemon=True).start()
         time.sleep(args.server_bots * 0.1 + 10)
-        # Bots fly 24 blocks above the spawn, 8 to 48 blocks out (horizon-bots' walk).
+        # Bots fly 24 blocks above the spawn, 8 to 48 blocks out (myriade-bot' walk).
         return ("crowd", (sx - 32.0, sy + 40.0, sz), (sx + 32.0, sy + 40.0, sz), 50.0)
 
     def __exit__(self, *_):
@@ -1215,8 +1215,8 @@ def main():
                         "a world: startup.join_ms is connect to loaded")
     p.add_argument("--server-build", help="--server horizon: the server's binary folder (default --build)")
     p.add_argument("--server-bots", type=int, default=0,
-                   help="--server: this many horizon-bots walk around the spawn, and a 'crowd' scene flies over them")
-    p.add_argument("--bots-build", help="--server-bots: horizon-bots' folder (default --build)")
+                   help="--server: this many myriade-bot walk around the spawn, and a 'crowd' scene flies over them")
+    p.add_argument("--bots-build", help="--server-bots: myriade-bot' folder (default --build)")
     p.add_argument("--table", nargs="+", metavar="LABEL", help="compare saved runs with matching recorded conditions, and exit")
     args = p.parse_args()
     SEED = args.seed

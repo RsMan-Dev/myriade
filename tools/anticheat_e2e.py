@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The dedicated server's anticheat (docs/anticheat.md), end to end: a real `horizon-client --dedicated`
-and horizon-bots, legit bots beside cheating ones.
+and myriade-bot, legit bots beside cheating ones.
 
     python3 tools/anticheat_e2e.py --bin-dir target/fast            # every check
     python3 tools/anticheat_e2e.py --bin-dir target/fast --check timer
@@ -20,12 +20,11 @@ Checks:
          ground in every move (no-fall) and one walking on water that does (jesus) are flagged, their claim
          dropped (never sent back), and kicked by the anticheat, warned of the ban the next kick brings, never
          by vanilla's floating kick; bots walking on the ground and standing still are never flagged.
-- prediction: `[anticheat]` on, survival: a real Horizon client, through a relay that holds every packet
-         20-120 ms, walks, sprint-jumps, strafes and sneaks, with effects given and cleared, over ice and
-         soul sand, swims, walks into cows, has blocks changed around it, flies in creative, glides with an
-         elytra and a firework, launches with riptide, rides a boat and hits a cow mid-sprint: it is never
-         flagged. A bot, which
-         moves by its own rules and sends no keys, is flagged and sent back.
+- prediction: `[anticheat]` on, survival: the vanilla client (vanilla_client.py, VanillaMover), through a relay
+         that holds every packet 20-120 ms, plays honest_play (walks, sprint-jumps, strafes and sneaks with effects,
+         over ice and soul sand, swims, walks into cows, flies in creative, glides with an elytra, launches with
+         riptide) and water_play and items_play: it is never flagged. A bot, which moves by its own rules and sends
+         no keys, beside it is flagged and sent back. Only with --check.
 - combat: no server.toml (the anticheat's defaults: `combat` acts), survival: a bot attacking a player
          twice a second and swinging each time, as vanilla's client does, is never flagged and its hits
          land; one that doesn't swing, and one that attacks two players in the same tick, are flagged,
@@ -44,8 +43,8 @@ Checks:
 
 Each server runs in a fresh folder with fresh HORIZON_HOME and XDG folders (lab.game_env), on a free port,
 in a flat world (creative unless the check says otherwise: the bots fly). Build first:
-    cargo build --profile fast -p horizon-game -p horizon-client-lib --bin horizon-client --bin horizon-ctl
-    cargo build --profile fast -p horizon-bots
+    cargo build --profile fast -p horizon-client --bin horizon-client
+    cargo build --profile fast -p myriade-bot
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
@@ -91,6 +90,8 @@ kick = 20
 enabled = false
 '''
 OFF = '[anticheat]\nenabled = false\n'
+PREDICTION = ('[anticheat]\nenabled = true\n[anticheat.timer]\nenabled = false\n[anticheat.ground]\nenabled = false\n'
+              '[anticheat.prediction]\nsetback = 5\nalert = 15\nkick = 60\n')
 
 
 class Failed(Exception):
@@ -130,9 +131,9 @@ def start(bins, folder, anticheat, out, name, **extra):
 
 
 def bots(bins, port, out, name, count, behaviour, seconds, *extra):
-    """horizon-bots, run to the end; its report."""
+    """myriade-bot, run to the end; its report."""
     report = out / f'{name}.json'
-    subprocess.run([bins / f'horizon-bots{EXE}', '--server', f'127.0.0.1:{port}', '--bots', str(count),
+    subprocess.run([bins / f'myriade-bot{EXE}', '--server', f'127.0.0.1:{port}', '--bots', str(count),
                     '--behaviour', behaviour, '--seconds', str(seconds), '--join-every', '0.2',
                     '--name', name, '--report', report, *extra],
                    check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=seconds + 180)
@@ -372,216 +373,202 @@ class Jitter:
         self.listener.close()
 
 
-def honest_play(game, console):
-    """What the honest client does on the prediction's server, in a survival, peaceful flat world."""
-    def at(command):
-        console(f'execute as Walker at Walker run {command}')
-    game.raw('move', 'forward', 2)
-    game.raw('move', 'forward', 3, '--sprint', '--jump')
-    game.raw('turn', 90, 0, '--over', 1)
-    game.raw('move', 'left', 2)
-    game.raw('move', 'back', 2, '--sneak')
-    console('effect give Walker minecraft:speed 30 2')
-    console('effect give Walker minecraft:jump_boost 30 1')
-    game.wait(10)
-    game.raw('move', 'forward', 2, '--sprint', '--jump')
-    console('effect clear Walker')
-    game.wait(10)
-    # Ice, then soul sand, under a sprint; a pool to swim across.
+def honest_play(keys, console, wait_for):
+    """What the honest client does on the prediction's server, in a survival, peaceful flat world: walks,
+    sprint-jumps, strafes and sneaks, with Speed and Jump Boost given and cleared, over packed ice and soul sand,
+    swims, riptides, flies in creative, glides with an elytra and a firework, and hits a cow."""
+    at = lambda command: console(f'execute as Vanilla at Vanilla run {command}')  # noqa: E731
+    keys('look 0 0', 'down forward', then=3)
+    keys('down sprint', 'down jump', then=4)
+    keys('up jump', 'up sprint', 'down left', 'look 45 0', then=2)
+    keys('up left', 'up forward', 'down sneak', 'down back', then=2)
+    keys('up sneak', 'up back')
+    console('effect give Vanilla minecraft:speed 30 2 true')
+    console('effect give Vanilla minecraft:jump_boost 30 1 true')
+    keys('down forward', 'down jump', then=4)
+    keys('up jump', 'up forward')
+    console('effect clear Vanilla')
     at('fill ~-3 ~-1 ~-3 ~3 ~-1 ~12 minecraft:packed_ice')
-    game.wait(10)
-    game.raw('move', 'forward', 2, '--sprint', '--jump')
+    keys('down forward', 'down sprint', 'down jump', then=3)
+    keys('up jump', 'up sprint', 'up forward', then=1)
     at('fill ~-3 ~-1 ~-3 ~3 ~-1 ~12 minecraft:soul_sand')
-    game.wait(10)
-    game.raw('move', 'forward', 2, '--sprint')
-    at('fill ~-3 ~-3 ~-3 ~3 ~-1 ~12 minecraft:water')
-    game.wait(20)
-    game.raw('move', 'forward', 3, '--jump')
-    # Riptide, from the pool: a trident drawn for 25 ticks.
-    console('item replace entity Walker weapon.mainhand with minecraft:trident'
+    keys('down forward', 'down sprint', then=3)
+    keys('up sprint', 'up forward', then=1)
+    at('fill ~-3 ~-2 ~-3 ~3 ~-1 ~12 minecraft:water')
+    keys('down forward', then=4)
+    keys('down jump', then=2)
+    keys('up jump', 'up forward')
+    # Riptide, from the pool: a trident drawn for 25 ticks, then let go.
+    console('item replace entity Vanilla weapon.mainhand with minecraft:trident'
             '[minecraft:enchantments={"minecraft:riptide":3}]')
-    game.wait(5)
-    game.script(['mouse right down', 'wait 25', 'mouse right up', 'wait 60'])
-    console('item replace entity Walker weapon.mainhand with minecraft:air')
+    keys('down use', then=1.25)
+    keys('up use', then=3)
+    console('item replace entity Vanilla weapon.mainhand with minecraft:air')
     at('fill ~-4 ~-4 ~-4 ~4 ~-1 ~13 minecraft:stone')
-    game.wait(20)
-    # Cows to walk into, blocks changed in front, under and around.
-    for ahead in (1, 2):
-        at(f'summon minecraft:cow ^ ^ ^{ahead}')
-    game.wait(10)
-    game.raw('move', 'forward', 2)
+    time.sleep(2)
+    # Creative flight (double jump), then back to survival in the air.
+    console('gamemode creative Vanilla')
+    time.sleep(1)
+    keys('down jump', then=0.1)
+    keys('up jump', then=0.1)
+    keys('down jump', then=0.1)
+    keys('up jump', then=1)
+    keys('down forward', then=3)
+    keys('up forward', then=0.5)
+    keys('down sneak', then=2)
+    keys('up sneak', then=1)
+    console('gamemode survival Vanilla')
+    time.sleep(3)
+    # Hits on a cow, half a second apart, looking down at it (for `combat`).
+    at('summon minecraft:cow ~ ~ ~2')
+    keys('look 0 25', then=0.5)
+    for _ in range(4):
+        keys('attack', then=0.5)
+    keys('look 0 0', 'down forward', then=2)
+    keys('up forward')
     console('kill @e[type=minecraft:cow]')
     at('setblock ^ ^ ^1 minecraft:stone')
-    game.wait(2)
-    game.raw('move', 'forward', 1, '--jump')
-    at('fill ~-1 ~-1 ~-1 ~1 ~-1 ~1 minecraft:air')
-    game.wait(30)
-    at('fill ~-2 ~-1 ~-2 ~2 ~-1 ~2 minecraft:stone')
-    game.wait(10)
-    # Creative flight (double jump), then back to survival on the ground.
-    console('gamemode creative Walker')
-    game.wait(10)
-    game.script(['key space tap', 'wait 2', 'key space tap', 'wait 2', 'key space down', 'wait 10',
-                 'key space up', 'key w down', 'wait 30', 'key w up', 'key shift down', 'wait 40',
-                 'key shift up'])
-    console('gamemode survival Walker')
-    game.wait(60)
-    # An elytra from 60 blocks up (Resistance V against the landing), with a firework, then a teleport
-    # back down.
-    console('effect give Walker minecraft:resistance 60 4 true')
-    console('item replace entity Walker armor.chest with minecraft:elytra')
-    console('item replace entity Walker weapon.mainhand with minecraft:firework_rocket')
+    keys('down forward', 'down jump', then=2)
+    keys('up forward', 'up jump', then=1)
+    # An elytra from 60 blocks up (Resistance V against the landing), with a firework, then a teleport back down.
+    console('effect give Vanilla minecraft:resistance 60 4 true')
+    console('item replace entity Vanilla armor.chest with minecraft:elytra')
+    console('item replace entity Vanilla weapon.mainhand with minecraft:firework_rocket')
     at('tp @s ~ ~60 ~ 0 0')
-    game.wait(6)
-    game.script(['key space down', 'wait 1', 'key space up', 'wait 20', 'mouse right click', 'wait 40'])
+    time.sleep(1)
+    keys('down jump', then=0.2)
+    keys('up jump', then=0.5)
+    keys('down jump', then=0.2)
+    keys('up jump', then=0.5)
+    keys('down use', then=0.2)
+    keys('up use', then=4)
     at('tp @s ~ -60 ~')
-    game.wait(40)
-    console('item replace entity Walker armor.chest with minecraft:air')
-    console('effect clear Walker')
-    # A boat on a pool: in, paddle, out.
-    from lan_e2e import board, leave_vehicle  # noqa: E402
-    x, y, z = game('state')['player']['position']
+    time.sleep(3)
+    # A boat on a pool: placed, boarded with a click on it, paddled forward, left with a sneak.
     at('fill ~-2 ~-1 ~-2 ~2 ~-1 ~10 minecraft:water')
-    console(f'summon minecraft:oak_boat {x:.2f} {y - 0.1:.2f} {z + 2:.2f}')
-    game.wait(30)
-    board(game, 'oak_boat', (x, y, z + 2))
-    game.script(['key w down', 'wait 40', 'key w up'])
-    leave_vehicle(game, 'boat')
-    game.wait(20)
+    time.sleep(1)
+    at('summon minecraft:oak_boat ~ ~-0.1 ~2')
+    time.sleep(1.5)
+    keys('look 0 0', then=0.2)
+    keys('down use', then=0.1)
+    keys('up use', then=1)
+    keys('down forward', then=2)
+    keys('up forward', then=0.5)
+    keys('down sneak', then=0.1)
+    keys('up sneak', then=1)
     at('fill ~-3 ~-2 ~-3 ~3 ~-1 ~11 minecraft:stone')
-    game.raw('move', 'back', 2, '--sprint')
-    game.wait(40)
-    # A cow hit mid-sprint, the sprint key held: the server stops the sprint (causeExtraKnockback), the
-    # client starts it again as the flag reaches it and says nothing, and sprints on for 4 seconds. On
-    # untouched flat ground, looking down at the cow so the hit lands.
-    console('tp Walker 0.5 -60 -40.5 0 25')
-    game.wait(40)
-    console('summon minecraft:cow 0.5 -60 -36.5 {NoAI:1b}')
-    game.wait(10)
-    game.script(['key w down', 'key ctrl down', 'wait 5', 'mouse left click', 'wait 80', 'key ctrl up',
-                 'key w up', 'wait 20'])
-    # The hit landed: the cow lost half a heart (a fist).
-    console('data get entity @e[type=minecraft:cow,limit=1] Health')
-    console.__self__.wait_for(r'Cow has the following entity data: 9\.0f', 10)
-    console('kill @e[type=minecraft:cow]')
+    time.sleep(2)
 
 
-def water_play(game, console):
-    """In water as players are on the official server: sprint-swimming down and up a deep pool, held at
-    the surface by jump, sinking, sneaking down, climbing out onto a ledge; standing in, against and with
-    a current; carried up a bubble column. Then the blocks #5879 names as unknown around the flags: a kelp
-    forest, a waterfall against a cliff, a current that dries up and comes back while the player swims in
-    it, and waterlogged slabs, fences and stairs."""
+def water_play(keys, console, wait_for):
+    """In water as players are on the official server: sprint-swimming down and up a deep pool, held at the
+    surface by jump, sinking, sneaking down, climbing out onto a ledge; then carried up a bubble column."""
     def tp(x, y, z, yaw=0, pitch=0):
-        console(f'tp Walker {x} {y} {z} {yaw} {pitch}')
-        game.wait(20)
+        console(f'tp Vanilla {x} {y} {z} {yaw} {pitch}')
+        time.sleep(1)
 
     def expect(*blocks):
-        """Each (x, y, z, name, state) is in the client's world as built, so no case passes empty."""
-        for x, y, z, name, state in blocks:
-            got = game('block', x=x, y=y, z=z)
-            if got['block'] != name or state not in got['state']:
-                raise Failed(f'{x} {y} {z} is {got["block"]} {got["state"]}, not {name} {state}')
+        """Each (x, y, z, block) is in the server's world as built: `execute if block` says so, and the server
+        answers with the tag (the old check read the client's world, which the server's world replaces)."""
+        for x, y, z, block in blocks:
+            tag = f'built-{x}-{y}-{z}'
+            console(f'execute if block {x} {y} {z} {block} run say {tag}')
+            try:
+                wait_for(tag, 10)
+            except RuntimeError:
+                raise Failed(f'{x} {y} {z} is not {block} in the server world') from None
     # Above the flat ground (its top is at -61): a pool 10 deep, with a ledge one block above the water at its far end.
     console('fill 40 -60 0 50 -50 31 minecraft:stone')
     console('fill 41 -59 1 49 -50 29 minecraft:water')
     console('fill 41 -49 30 49 -49 31 minecraft:stone')
-    # A current: a source at one end of a channel one block deep.
-    console('fill 59 -50 -1 63 -49 13 minecraft:stone')
-    console('fill 61 -49 0 61 -49 12 minecraft:air')
-    console('setblock 61 -49 0 minecraft:water')
     # A bubble column over soul sand.
     console('fill 70 -60 0 72 -50 2 minecraft:stone')
     console('fill 71 -59 1 71 -50 1 minecraft:water')
     console('setblock 71 -60 1 minecraft:soul_sand')
-    game.wait(40)
+    time.sleep(2)
     tp(45.5, -51, 3.5)
-    game.raw('look', 0, 40)
-    game.raw('move', 'forward', 2, '--sprint')
-    game.raw('look', 0, -40)
-    game.raw('move', 'forward', 2, '--sprint')
-    game.raw('look', 0, 0)
-    game.script(['key space down', 'wait 60', 'key space up', 'wait 40', 'key shift down', 'wait 30',
-                 'key shift up', 'wait 20'])
+    keys('look 0 40', 'down forward', 'down sprint', then=1.5)
+    keys('up forward', 'up sprint', 'look 0 -40', then=0.5)
+    keys('down forward', 'down sprint', then=1.5)
+    keys('up forward', 'up sprint', 'look 0 0', then=0.5)
+    keys('down jump', then=3)
+    keys('up jump', then=2)
+    keys('down sneak', then=1.5)
+    keys('up sneak', then=1)
     tp(45.5, -50.5, 25.5)
-    game.raw('move', 'forward', 3, '--jump')
-    game.raw('move', 'forward', 1)
-    tp(61.5, -49, 6.5)
-    game.wait(60)
-    game.raw('look', 180, 0)
-    game.raw('move', 'forward', 2)
-    game.raw('look', 0, 0)
-    game.raw('move', 'forward', 2, '--sprint')
-    tp(71.5, -58, 1.5)
-    game.wait(80)
-    tp(45.5, -48, 33.5)
-    game.wait(20)
-    # Each case below is built once the player stands beside it: the server only fills loaded chunks.
-    # A kelp forest in a pool 10 deep: kelp from the floor up to two blocks under the surface, grown
-    # (age 25), so it doesn't change while the player swims in it.
+    keys('down jump', 'down forward', then=1.5)
+    keys('up jump', 'up forward', then=1)
+    tp(71.5, -59, 1.5)
+    time.sleep(4)
+    # A kelp forest in a pool 10 deep: kelp from the floor up to two blocks under the surface, grown (age 25),
+    # so it doesn't change while the player swims in it.
     tp(85.5, -60, -2.5)
     console('fill 80 -60 0 90 -50 31 minecraft:stone')
     console('fill 81 -59 1 89 -50 29 minecraft:water')
     console('fill 81 -59 1 89 -53 29 minecraft:kelp_plant')
     console('fill 81 -52 1 89 -52 29 minecraft:kelp[age=25]')
-    game.wait(40)
-    expect((85, -56, 10, 'minecraft:kelp_plant', ''), (85, -52, 10, 'minecraft:kelp', 'age=25'),
-           (85, -51, 10, 'minecraft:water', 'level=0'))
+    time.sleep(2)
+    expect((85, -56, 10, 'minecraft:kelp_plant'), (85, -52, 10, 'minecraft:kelp[age=25]'),
+           (85, -51, 10, 'minecraft:water[level=0]'))
     tp(85.5, -51, 3.5)
-    game.raw('look', 0, 40)
-    game.raw('move', 'forward', 2, '--sprint')
-    game.raw('look', 0, -40)
-    game.raw('move', 'forward', 2, '--sprint')
-    game.raw('look', 0, 0)
-    game.script(['key space down', 'wait 60', 'key space up', 'wait 40', 'key shift down', 'wait 30',
-                 'key shift up', 'wait 20'])
+    keys('look 0 40', 'down forward', 'down sprint', then=1.5)
+    keys('up forward', 'up sprint', 'look 0 -40', then=0.5)
+    keys('down forward', 'down sprint', then=1.5)
+    keys('up forward', 'up sprint', 'look 0 0', then=0.5)
+    keys('down sneak', then=1.5)
+    keys('up sneak', then=1)
     tp(85.5, -59, 20.5)
-    game.raw('move', 'forward', 2)
-    game.raw('move', 'forward', 3, '--jump')
-    # A waterfall: a source 11 blocks up against a cliff falls to the ground and spreads over it.
+    keys('down forward', then=2)
+    keys('down jump', then=1)
+    keys('up jump', 'up forward', then=0.5)
+    # A waterfall: a source 11 blocks up against a cliff falls to the ground and spreads over it. Jump held at
+    # its foot, walking into it across the water it spreads, sinking down it from its top; then stopped and
+    # started again over the player standing at its foot.
     tp(95.5, -60, -2.5)
     console('fill 101 -60 3 101 -48 7 minecraft:stone')
     console('setblock 100 -49 5 minecraft:water')
-    game.wait(120)
-    expect((100, -55, 5, 'minecraft:water', 'level=8'), (100, -60, 5, 'minecraft:water', 'level=8'),
-           (97, -60, 5, 'minecraft:water', ''))
-    # Jump held at its foot, walking into it across the water it spreads, sinking down it from its top.
+    time.sleep(6)
+    expect((100, -55, 5, 'minecraft:water[level=8]'), (100, -60, 5, 'minecraft:water[level=8]'),
+           (97, -60, 5, 'minecraft:water'))
     tp(100.5, -60, 5.5)
-    game.script(['key space down', 'wait 60', 'key space up', 'wait 20'])
+    keys('down jump', then=3)
+    keys('up jump', then=1)
     tp(96.5, -60, 5.5, -90)
-    game.raw('move', 'forward', 2)
-    game.raw('move', 'forward', 2, '--jump')
+    keys('down forward', then=2)
+    keys('down jump', then=2)
+    keys('up jump', 'up forward', then=0.5)
     tp(100.5, -51, 5.5)
-    game.wait(60)
-    # The waterfall stops and starts again over the player standing at its foot.
+    time.sleep(3)
     tp(100.5, -60, 5.5)
     console('setblock 100 -49 5 minecraft:air')
-    game.wait(80)
+    time.sleep(4)
     console('setblock 100 -49 5 minecraft:water')
-    game.wait(80)
-    # A current that changes: a channel one deep whose source goes (the current dries up block by block)
-    # and comes back, while the player stands and walks in it.
+    time.sleep(4)
+    # A current: a channel one block deep whose source goes (the current dries up block by block) and comes
+    # back, while the player stands and walks in it.
     tp(118.5, -60, -2.5)
     console('fill 120 -60 -1 124 -60 9 minecraft:stone')
     console('fill 122 -60 0 122 -60 8 minecraft:air')
     console('setblock 122 -60 0 minecraft:water')
-    game.wait(60)
-    expect((122, -60, 3, 'minecraft:water', 'level=3'), (122, -60, 8, 'minecraft:air', ''))
+    time.sleep(3)
+    expect((122, -60, 3, 'minecraft:water[level=3]'), (122, -60, 8, 'minecraft:air'))
     tp(122.5, -60, 2.5)
-    game.raw('move', 'forward', 1)
-    game.raw('look', 180, 0)
-    game.raw('move', 'forward', 1)
+    keys('down forward', then=1)
+    keys('up forward', 'look 180 0', then=0.2)
+    keys('down forward', then=1)
+    keys('up forward', then=0.5)
     tp(122.5, -60, 4.5)
     console('setblock 122 -60 0 minecraft:air')
-    game.wait(60)
+    time.sleep(3)
     console('setblock 122 -60 0 minecraft:water')
-    game.wait(60)
-    game.raw('move', 'forward', 1)
+    time.sleep(3)
+    keys('down forward', then=1)
+    keys('up forward', then=0.5)
     console('setblock 122 -60 0 minecraft:air')
-    game.raw('move', 'back', 2)
-    game.wait(40)
-    # Waterlogged blocks in a pool 3 deep: bottom slabs for a floor, a row of fences across it, and two
-    # rows of stairs up to its rim.
+    keys('down back', then=2)
+    keys('up back', then=1)
+    # Waterlogged blocks in a pool 3 deep: bottom slabs for a floor, a row of fences across it, and two rows of
+    # stairs up to its rim.
     tp(135.5, -60, -2.5)
     console('fill 130 -60 0 140 -57 12 minecraft:stone')
     console('fill 131 -59 1 139 -57 11 minecraft:water')
@@ -589,91 +576,80 @@ def water_play(game, console):
     console('fill 131 -58 5 135 -58 5 minecraft:oak_fence[waterlogged=true]')
     console('fill 131 -59 10 139 -59 10 minecraft:oak_stairs[facing=south,waterlogged=true]')
     console('fill 131 -58 11 139 -58 11 minecraft:oak_stairs[facing=south,waterlogged=true]')
-    game.wait(40)
-    expect((133, -59, 3, 'minecraft:stone_slab', 'waterlogged=true'),
-           (133, -58, 5, 'minecraft:oak_fence', 'waterlogged=true'),
-           (133, -58, 11, 'minecraft:oak_stairs', 'waterlogged=true'))
+    time.sleep(2)
+    expect((133, -59, 3, 'minecraft:stone_slab[waterlogged=true]'),
+           (133, -58, 5, 'minecraft:oak_fence[waterlogged=true]'),
+           (133, -58, 11, 'minecraft:oak_stairs[waterlogged=true]'))
     # Standing on the slabs, walking into the fences, around them, and up the stairs.
     tp(133.5, -58, 1.5)
-    game.wait(20)
-    game.raw('move', 'forward', 2)
-    game.raw('move', 'left', 2)
-    game.raw('move', 'forward', 4, '--jump')
-    game.wait(20)
+    time.sleep(1)
+    keys('down forward', then=2)
+    keys('up forward', 'down left', then=2)
+    keys('up left', 'down forward', 'down jump', then=4)
+    keys('up forward', 'up jump', then=1)
     tp(30.5, -60, -10.5)
 
 
-def items_play(game, console):
-    """Items used on the move, as on the official server: a shield raised from the off hand while
-    walking, trying to sprint, switching hotbar slots and swinging at a cow; raised and lowered in
-    quick taps; a golden apple eaten and a bow drawn while walking."""
+def items_play(keys, console, wait_for):
+    """Items used on the move, as on the official server: a shield raised from the off hand while walking,
+    hotbar slots switched with keys 1..4, a golden apple eaten and a bow drawn while walking; the shield raised
+    and lowered in quick taps."""
     for slot, item in (('weapon.offhand', 'shield'), ('hotbar.0', 'diamond_sword'),
                        ('hotbar.1', 'golden_apple 8'), ('hotbar.2', 'bow'), ('hotbar.3', 'dirt 32'),
                        ('hotbar.4', 'arrow 32')):
-        console(f'item replace entity Walker {slot} with minecraft:{item}')
-    game.wait(20)
-    game.script(['key 1 tap', 'mouse right down', 'key w down', 'wait 40', 'key ctrl down', 'wait 20',
-                 'key ctrl up', 'key 4 tap', 'wait 20', 'key 1 tap', 'wait 20', 'key a down', 'wait 20',
-                 'key a up', 'key space down', 'wait 20', 'key space up', 'key w up', 'mouse right up',
-                 'wait 20'])
-    console('execute as Walker at Walker run summon minecraft:cow ^ ^ ^2')
-    game.wait(10)
-    game.script(['mouse right down', 'wait 10', 'mouse left click', 'wait 10', 'mouse left click',
-                 'wait 10', 'mouse right up', 'wait 10'])
-    console('kill @e[type=minecraft:cow]')
-    game.script(['key w down'] + ['mouse right down', 'wait 3', 'mouse right up', 'wait 3'] * 6
-                + ['key w up', 'wait 10'])
-    game.script(['wait 20'])
-    game.script(['key 2 tap', 'wait 10', 'key w down', 'mouse right down', 'wait 45', 'mouse right up',
-                 'wait 10', 'key 3 tap', 'wait 10', 'mouse right down', 'wait 30', 'mouse right up',
-                 'wait 10', 'key w up', 'wait 20'])
+        console(f'item replace entity Vanilla {slot} with minecraft:{item}')
+    time.sleep(1)
+    keys('hotbar 1', 'down use', 'down forward', then=2)
+    keys('down sprint', then=1)
+    keys('up sprint', 'hotbar 4', then=1)
+    keys('down left', then=1)
+    keys('up left', 'down jump', then=0.5)
+    keys('up jump', 'up use', 'up forward', then=1)
+    keys('hotbar 2', 'down forward', 'down use', then=2)
+    keys('up use', 'up forward', then=1)
+    keys('hotbar 3', 'down use', then=1.5)
+    keys('up use', then=1)
+    keys('hotbar 1', then=0.5)
+    for _ in range(6):
+        keys('down use', then=0.15)
+        keys('up use', then=0.15)
+    keys('up use', then=0.5)
 
 
-def check_prediction(bins, scratch, out, seconds, name='prediction', play=None):
+def check_prediction(bins, scratch, out, seconds, name='prediction', play=honest_play):
+    """The honest player is the vanilla client, through a relay, playing `play`: it is never flagged. A bot, which
+    moves by its own rules and sends no keys, beside it is flagged and sent back."""
     folder = scratch / name
-    # The other checks stay out of it: this one is about the prediction alone, with the thresholds it gets
-    # once trusted (it logs only by default).
-    toml = ('[anticheat]\nenabled = true\n[anticheat.timer]\nenabled = false\n[anticheat.ground]\nenabled = false\n'
-            '[anticheat.prediction]\nsetback = 5\nalert = 15\nkick = 60\n')
-    server, port = start(bins, folder, toml, out, name, gamemode='survival', difficulty='peaceful')
-    from lan_e2e import Game  # noqa: E402 (only this check drives a client)
-    game = Game('client', bins / f'horizon-ctl{EXE}', lab.RESOURCES.resolve())
-    for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'HORIZON_LAUNCHER_HOME'):
-        game.d.env[key] = str(game.work / key.lower())
-    game.d.env['HORIZON_LAUNCHER_NO_SELF_UPDATE'] = '1'
+    server, port = start(bins, folder, PREDICTION, out, name, gamemode='survival', difficulty='peaceful')
     relay = Jitter(port)
+    client = None
     try:
-        try:
-            game('launch', wait=False,
-                     offscreen=sys.platform == 'darwin' or bool(os.environ.get('HORIZON_E2E_HEADLESS')))
-            game.raw('connect', f'127.0.0.1:{relay.port}', 'Walker')
-            game.raw('wait-for', 'loaded', '--timeout', 300)
-            game.wait(60)
-            (play or honest_play)(game, server.console)
-        except Exception as e:
-            raise Failed(f'{name}: the honest client could not play: {e}') from e
-        finally:
-            (out / f'{name}-client.log').write_text(game.close())
-            relay.close()
-            shutil.rmtree(game.work, ignore_errors=True)
-            log = folder / 'logs/anticheat.log'
-            if log.exists():
-                shutil.copy(log, out / f'{name}-anticheat.log')
-        if log.exists() and 'Walker' in log.read_text():
-            raise Failed(f'{name}: the honest client was flagged:\n{log.read_text()}')
-        if play:
-            print(f'{name}: the honest client (20-120 ms jitter) was never flagged')
-            return
-        cheat = bots(bins, port, out, 'Cheat', 1, 'walk', seconds)
+        with ThreadPoolExecutor(1) as pool:
+            cheat = pool.submit(bots, bins, port, out, 'Cheat', 1, 'walk', seconds)
+            try:
+                client = VanillaClient(f'127.0.0.1:{relay.port}', 'Vanilla', folder / 'vanilla',
+                                       out / f'{name}-client.log')
+                if not client.ready.wait(300):
+                    raise Failed(f'{name}: the vanilla client never got into the world')
+                time.sleep(5)
+                play(client, server.console, server.wait_for)
+            finally:
+                if client:
+                    client.close()
+                relay.close()
+            cheat = cheat.result()
     finally:
         server.stop()
+    log = folder / 'logs/anticheat.log'
     log = log.read_text() if log.exists() else ''
+    if player_lines(log, 'Vanilla', 'prediction'):
+        raise Failed(f'{name}: the vanilla client was flagged:\n{log}')
     cheater = cheat['per_bot'][0]
     flags = log.count(f'{cheater["name"]} failed prediction')
     if flags < 3 or 'sent back' not in log or cheater['pulled_back'] == 0:
-        raise Failed(f'prediction: the bot was flagged {flags} times, sent back {cheater["pulled_back"]}:\n{log}')
-    print(f'prediction: the honest client (20-120 ms jitter) was never flagged; the bot was flagged {flags} '
-          f'times and sent back {cheater["pulled_back"]} times')
+        raise Failed(f'{name}: the bot was flagged {flags} times, sent back {cheater["pulled_back"]}:\n{log}')
+    print(f'{name}: the vanilla client (20-120 ms jitter) was never flagged; the bot was flagged {flags} times '
+          f'and sent back {cheater["pulled_back"]} times')
 
 
 class VanillaClient:
@@ -730,52 +706,12 @@ class VanillaClient:
         self.log.close()
 
 
-def vanilla_play(keys, console):
-    """What the vanilla client does: a second or a few per step, as a player would."""
-    at = lambda command: console(f'execute as Vanilla at Vanilla run {command}')  # noqa: E731
-    keys('look 0 0', 'down forward', then=3)
-    keys('down sprint', 'down jump', then=4)
-    keys('up jump', 'up sprint', 'down left', 'look 45 0', then=2)
-    keys('up left', 'up forward', 'down sneak', 'down back', then=2)
-    keys('up sneak', 'up back')
-    console('effect give Vanilla minecraft:speed 30 2 true')
-    keys('down forward', 'down jump', then=4)
-    keys('up jump', 'up forward')
-    console('effect clear Vanilla')
-    at('fill ~-3 ~-1 ~-3 ~3 ~-1 ~12 minecraft:packed_ice')
-    keys('down forward', 'down sprint', 'down jump', then=3)
-    keys('up jump', 'up sprint', 'up forward', then=1)
-    at('fill ~-3 ~-2 ~-3 ~3 ~-1 ~12 minecraft:water')
-    keys('down forward', then=4)
-    keys('down jump', then=2)
-    keys('up jump', 'up forward')
-    at('fill ~-4 ~-4 ~-4 ~4 ~-1 ~13 minecraft:stone')
-    time.sleep(2)
-    at('summon minecraft:cow ~ ~ ~2')
-    # Hits on it, half a second apart, looking down at it (for `combat`).
-    keys('look 0 25', then=0.5)
-    for _ in range(4):
-        keys('attack', then=0.5)
-    keys('look 0 0', 'down forward', then=2)
-    keys('up forward')
-    console('kill @e[type=minecraft:cow]')
-    at('setblock ^ ^ ^1 minecraft:stone')
-    keys('down forward', 'down jump', then=2)
-    keys('up forward', 'up jump', then=1)
-    # An elytra from 60 blocks up (Resistance V against the landing): a jump to open it, a firework.
-    console('effect give Vanilla minecraft:resistance 60 4 true')
-    console('item replace entity Vanilla armor.chest with minecraft:elytra')
-    console('item replace entity Vanilla weapon.mainhand with minecraft:firework_rocket')
-    at('tp @s ~ ~60 ~ 0 0')
-    time.sleep(1)
-    keys('down jump', then=0.2)
-    keys('up jump', then=0.5)
-    keys('down jump', then=0.2)
-    keys('up jump', then=0.5)
-    keys('down use', then=0.2)
-    keys('up use', then=4)
-    at('tp @s ~ -60 ~')
-    time.sleep(3)
+def vanilla_play(keys, console, wait_for):
+    """The scenes of the prediction checks in one vanilla session: the walk, the swim and the flight, then the
+    water and the items."""
+    honest_play(keys, console, wait_for)
+    water_play(keys, console, wait_for)
+    items_play(keys, console, wait_for)
 
 
 def check_prediction_vanilla(bins, scratch, out, seconds):
@@ -793,7 +729,7 @@ def check_prediction_vanilla(bins, scratch, out, seconds):
                 raise Failed('prediction-vanilla: the vanilla client never got into the world')
             time.sleep(5)
             client('where')
-            vanilla_play(client, server.console)
+            vanilla_play(client, server.console, server.wait_for)
             client('where', then=1)
         finally:
             if client:
@@ -978,9 +914,9 @@ CHECKS = {'off': check_off, 'timer': check_timer, 'ground': check_ground, 'predi
           'log-off': check_log_off,
           'prediction-vanilla': check_prediction_vanilla,
           'combat': check_combat, 'combat-restart': check_combat_restart, 'strikes-off': check_strikes_off}
-# Run when no --check is given: the vanilla client needs a screen session, so it runs only when asked.
-DEFAULT = ['combat', 'combat-restart', 'ground', 'log-off', 'off', 'prediction', 'prediction-items', 'prediction-water',
-           'strikes-off', 'timer']
+# Run when no --check is given. The vanilla client needs a screen session, so the prediction checks, which play
+# it, and prediction-vanilla run only when asked.
+DEFAULT = ['combat', 'combat-restart', 'ground', 'log-off', 'off', 'strikes-off', 'timer']
 
 
 def main():

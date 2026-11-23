@@ -77,7 +77,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='horizon-lava-cauldron-') as tmp:
         scratch = Path(tmp)
         env = lab.game_env(os.environ, **{key: scratch / key for key in
-                           ('HORIZON_HOME', 'HORIZON_LAUNCHER_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME')})
+                           ('HORIZON_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME')})
         run(['javac', '--release', lock['minecraft']['java_major'], '-proc:none', '-cp', cp,
              '-d', classes, java / 'VanillaLavaCauldronItemOracle.java', java / 'ParityData.java'],
             'javac', cwd=scratch, env=env)

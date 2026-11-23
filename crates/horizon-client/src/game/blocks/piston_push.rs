@@ -1214,7 +1214,7 @@ mod order_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -1223,13 +1223,12 @@ mod order_tests {
         options.game_dir = Some(
             std::env::temp_dir().join(format!("horizon-piston-order-unit-{}", std::process::id())),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -1333,7 +1332,7 @@ mod order_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -1342,13 +1341,12 @@ mod order_tests {
         options.game_dir = Some(
             std::env::temp_dir().join(format!("horizon-piston-budget-unit-{}", std::process::id())),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -1428,7 +1426,7 @@ mod order_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -1438,13 +1436,12 @@ mod order_tests {
             "horizon-piston-velocity-unit-{}",
             std::process::id()
         )));
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -1509,7 +1506,7 @@ mod order_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -1518,13 +1515,12 @@ mod order_tests {
         options.game_dir = Some(
             std::env::temp_dir().join(format!("horizon-piston-slime-unit-{}", std::process::id())),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -1593,12 +1589,12 @@ mod order_tests {
 mod h255_mob_piston_ground_tests {
     use super::*;
     use crate::game::{Audio, Options, Progress, Settings, load_resources};
-    use horizon_client::{chunk::Chunk, motion::PlayerMotion};
+    use horizon_client::chunk::Chunk;
     use horizon_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
     use std::sync::Arc;
     pub(super) fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         with_role_game(
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             test,
         );
     }
@@ -1617,7 +1613,7 @@ mod h255_mob_piston_ground_tests {
                 &root,
                 &settings,
                 std::time::Instant::now(),
-                crate::game::execution_role::ExecutionRole::IntegratedServer,
+                crate::game::execution_role::ExecutionRole::DedicatedServer,
                 &Progress::new(),
             )
             .unwrap();
@@ -1633,11 +1629,10 @@ mod h255_mob_piston_ground_tests {
                 loaded.pack,
                 options,
                 settings,
-                Audio::default(),
             )
             .unwrap();
             game.native_lifecycle
-                .begin_open(mod_api::Authority::IntegratedServer);
+                .begin_open(mod_api::Authority::DedicatedServer);
             game.build_registries();
             game.ecs = game.test_ecs_level();
             game.set_allow_commands(true);
@@ -1663,7 +1658,7 @@ mod h255_mob_piston_ground_tests {
                         .unwrap();
                 }
             }
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5)).unwrap());
+            crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
             game.load_ticking_neighbourhood(0, 0);
             game.creative = true;
             assert!(game.run_command("fill 0 199 0 31 199 31 stone"));
@@ -1677,13 +1672,7 @@ mod h255_mob_piston_ground_tests {
     #[test]
     #[ignore = "daily"]
     fn h255_added_tnt_authority_and_exhausted_budget() {
-        use crate::game::execution_role::ExecutionRole;
-        for role in [
-            ExecutionRole::Client,
-            ExecutionRole::IntegratedServer,
-            ExecutionRole::DedicatedServer,
-        ] {
-            with_role_game(role, |game| {
+        with_game(|game| {
                 assert!(game.run_command("setblock 5 199 5 slime_block"));
                 let tnt = super::order_tests::summon_tnt(
                     game,
@@ -1711,12 +1700,7 @@ mod h255_mob_piston_ground_tests {
                 assert_eq!(motion.position[1], 200.5);
                 assert_eq!(motion.velocity[1], -0.4);
                 push(game, &mut budget, Vec3::new(0.0, -0.51, 0.0));
-                let expected = if role.is_client() {
-                    0.0_f64
-                } else {
-                    0.3510000138133766
-                };
-                assert_eq!(game.ecs.motion(tnt).unwrap().velocity[1].to_bits(), expected.to_bits());
+                assert_eq!(game.ecs.motion(tnt).unwrap().velocity[1].to_bits(), 0.3510000138133766_f64.to_bits());
                 game.ecs_with(|ecs, mw| {
                     if let Some(e) = ecs.entity_of(tnt) {
                         ecs.teleport(mw, e, [5.5, 200.5, 5.5]);
@@ -1727,7 +1711,6 @@ mod h255_mob_piston_ground_tests {
                 let motion = game.ecs.motion(tnt).unwrap();
                 assert_eq!(motion.position[1], 200.5);
                 assert_eq!(motion.velocity[1], -0.4);
-            });
-        }
+        });
     }
 }

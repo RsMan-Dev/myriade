@@ -6,13 +6,14 @@
 //! back from its data at the release): here `enter_hive` asks it, `FullHives` is what the host tells back, `forget_hive` and `stay_out` its answers.
 //! The sting and the anger (`BeeAttackGoal`, `BeeBecomeAngryTargetGoal`, `BeeHurtByOtherGoal`) are the frame's melee, nearest_target, hurt_by and
 //! neutral_anger, configured in `species/bee.rs`; `sting` is the melee's `on_hit` hook. The poison follows the difficulty (`effects::Difficulty`) and is given when the
-//! blow lands (`StingPending`). Not ported (the frame has no block write nor sound output: the `Mob` hands them to the host): the honey level of the
-//! hive block, the crops grown, the sounds and the particles.
+//! blow lands (`StingPending`). The crops grown are written as state changes and sparked through the host. Not ported (the `Mob` hands them to the
+//! host): the honey level of the hive block, the sounds and the particles.
 use super::*;
 use crate::{cow::*, goals::*};
 use std::collections::HashMap;
 use crate::rules::bee::{close_to_hive, hop_plan, hover_offset, manhattan_box, may_stop_hover, unit_toward_xz, within_blocks};
 use crate::rules::nearest_target::reduced;
+use crate::blocks::{int_property, property, resolve, set_state_id, world_of};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {}
@@ -709,9 +710,78 @@ fn kf_tick(w: &mut World) {
     }
 }
 
-/// `BeeGrowCropGoal`: with nectar and a hive, fewer than 10 crops, one chance in 30 per ask: the crop 1 or 2 blocks below grows one stage.
-/// Not ported here: the block change (the frame has no `SetBlock` service for a bee): the goal counts the crops it would grow.
-pub static GROW_CROP: Module = Module { name: "bee_grow_crop", flags: 0, equip, requires: &[Cap::Locomotion], ..Module::DEFAULT };
+/// `BeeGrowCropGoal`: with nectar and a hive, fewer than 10 crops, one chance in 30 per tick: the crop 1 or 2 blocks below grows one stage.
+/// The level event (2011, data 15) comes first, then the block of the next stage (`StateChanges`).
+pub static GROW_CROP: Module = Module { name: "bee_grow_crop", tick: Some(gc_tick), flags: 0, equip, arm: gc_arm, fired: gc_fired, can_use: gc_can_use, start: gc_start, stop: gc_stop, requires: &[Cap::Locomotion], ..Module::DEFAULT };
+fn gc_arm(w: &mut World, e: Entity, _: Inst) {
+    ensure(w, e);
+    arm_in(w, e, &GROW_CROP, 2);
+}
+fn gc_fired(w: &mut World, e: Entity, _: Inst) -> bool {
+    arm_in(w, e, &GROW_CROP, 2);
+    true
+}
+/// The roll of 0.3 comes only once the cheap tests pass (it draws randomness).
+fn gc_can_use(w: &mut World, e: Entity, _: Inst) -> bool {
+    let ok = bee(w, e).is_some_and(|b| b.crops < 10 && b.nectar) && hive_valid(w, e);
+    ok && !chance(w, e, 0.3)
+}
+fn gc_start(w: &mut World, e: Entity, _: Inst) {
+    w.entity_mut(e).insert(GrowingCrops);
+}
+fn gc_stop(w: &mut World, e: Entity, _: Inst) {
+    w.entity_mut(e).remove::<GrowingCrops>();
+}
+/// `BeeGrowCropGoal.tick`: the blocks 1 and 2 below the bee, in that order; a grown one gets its spark, then its next stage.
+fn gc_tick(w: &mut World) {
+    let es: Vec<Entity> = crate::goals::entities::<With<GrowingCrops>>(w);
+    for e in es {
+        if bee(w, e).is_none_or(|b| b.crops >= 10 || !b.nectar) {
+            end(w, e, &GROW_CROP);
+            continue;
+        }
+        if with_rng(w, e, |r| r.next_int(30)) != 0 {
+            continue;
+        }
+        let here = block_of(w, e);
+        for i in 1..=2 {
+            let p = [here[0], here[1] - i, here[2]];
+            if let Some(id) = grown(w, p) {
+                w.resource_mut::<Events>().host.level_event(2011, p, 15);
+                set_state_id(w, p, id);
+                if let Some(mut b) = w.get_mut::<Bee>(e) {
+                    b.crops += 1;
+                }
+            }
+        }
+    }
+}
+/// The state the block at `p` grows to, if it can grow (`BeeGrowCropGoal`'s `grown`): a `minecraft:bee_growables` block, its `age` (or its
+/// berries) one stage on; a torchflower crop's second stage is the flower.
+fn grown(w: &World, p: [i32; 3]) -> Option<horizon_world::registry::BlockStateId> {
+    let mw = world_of(w);
+    let name = mw.block_name(p[0], p[1], p[2]);
+    if !mw.has_tag("minecraft:bee_growables", name) {
+        return None;
+    }
+    let (key, max) = match name {
+        "minecraft:torchflower_crop" => {
+            let age = int_property(mw, p, "age")?;
+            return if age + 1 >= 2 { resolve(mw, "minecraft:torchflower", &[]) } else { resolve(mw, name, &[("age", (age + 1).to_string().as_str())]) };
+        }
+        "minecraft:cave_vines" | "minecraft:cave_vines_plant" => {
+            return if property(mw, p, "berries").as_deref() == Some("true") { None } else { resolve(mw, name, &[("berries", "true")]) };
+        }
+        "minecraft:beetroots" | "minecraft:sweet_berry_bush" => ("age", 3),
+        "minecraft:wheat" | "minecraft:carrots" | "minecraft:potatoes" | "minecraft:melon_stem" | "minecraft:pumpkin_stem" => ("age", 7),
+        _ => return None,
+    };
+    let age = int_property(mw, p, key)?;
+    if age >= max {
+        return None;
+    }
+    resolve(mw, name, &[(key, (age + 1).to_string().as_str())])
+}
 
 
 // ---- events instead of probes ---------------------------------------------------------------------------------------

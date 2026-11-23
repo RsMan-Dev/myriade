@@ -11,6 +11,7 @@ pub static DEF: Def = Def {
         crate::rules::RuleEntry::new(&crate::hostile::NOT_ENEMY, &()),
         crate::rules::RuleEntry::new(&crate::keep_on_use::KEEP_ON_USE, &()),
         crate::rules::RuleEntry::new(&crate::mount_jump::JUMP_SOUND, &crate::mount_jump::JumpSound { sound: "entity.camel_husk.dash", volume: 1.0 }),
+        crate::rules::RuleEntry::new(&crate::leash::GATE, &crate::leash::GateParams(crate::leash::no_mob_rider)),
     ],
     changes: &[
         // jar: the tempting sensor asks `Animal.isFood`, and the husk's is the tag `#camel_husk_food` (rabbit foot), not the camel's cactus.

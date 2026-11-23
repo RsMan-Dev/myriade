@@ -23,7 +23,7 @@ method a vanilla block, block entity, item or menu overrides also gets a `scope`
 the generator also puts the method on that scope's part trait ([Parts](../modding/src/concepts/parts.md)). A body that is neither the
 placeholder nor already calls the dispatch is an error, and the generator never changes it. Hooks that are
 free functions outside `Game` are wired by hand: those crates can't see the mod list, so each calls a callback
-the executable installs once, such as `NativeLoadHooks` in `horizon-world` and `NativeClientHooks` in the
+the executable installs once, such as `NativeLoadHooks` in `horizon-world` and `NativeLevelHooks` in the
 client library (`living_breathe`, `ingredient`). A build reports a placeholder still to
 fill instead of changing hand-written source; run `cargo run -p xtask -- mod-api` to fill it. Mixin injections
 go at the head of the body, before the dispatch, so they still run first.

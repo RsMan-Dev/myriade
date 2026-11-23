@@ -2,7 +2,7 @@
 //! pinned 26.3 registries report, a native mod's block after vanilla's, and a data registry in the
 //! order a server synced it.
 use super::lan::LanSettings;
-use super::native_entity_refs::tests::{declared_part_root, with_client_game, with_game_at};
+use super::native_entity_refs::tests::{declared_part_root, with_game_at};
 use horizon_client::lan::{NetConfig, hub::HubConfig};
 use horizon_core::identifier::Identifier;
 use horizon_protocol::{
@@ -43,7 +43,6 @@ fn serve(game: &mut super::Game<'_>) {
         allow_flight: true,
         seed: 0,
         max_players: 2,
-        integrated: true,
         levels: game.level_shapes,
         level_seeds: game.levels.runtime.seeds(),
     };

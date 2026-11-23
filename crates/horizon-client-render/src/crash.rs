@@ -3,10 +3,8 @@
 //! Written to `crash-reports/crash-<yyyy-MM-dd_HH.mm.ss>-client.txt` in the game folder when
 //! the main thread panics or `main` gets an error back. It stays a local file: the player
 //! reads it and shares it by hand.
-pub use mod_api::content::crash::{
-    ConvertedCall, ConvertedPackage, ConvertedPackageGuard, ConvertedPackages, ModCall, ModGuard,
-    current_converted_call, current_native_mod,
-};
+pub use mod_api::content::crash::{ModCall, ModGuard};
+use mod_api::content::crash::{current_converted_call, current_native_mod};
 // Tests run without the executable's startup: the platform's versions install the crash
 // backend on first use and keep details, as the started game's do.
 #[cfg(not(test))]
@@ -20,7 +18,6 @@ pub use mod_platform::content::crash::{clear_detail, enter_native_mod, set_detai
 use std::cell::{Cell, RefCell};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::time::{Duration, Instant};
 
@@ -195,8 +192,8 @@ pub fn version() -> String {
 }
 
 /// The release this binary came with: the version release.yml built in (docs/versioning.md), else
-/// the folder the launcher installed it in, named after the tag (releases from before 0.2). A
-/// nightly is its version as the launcher installs it (`nightly-2026-10-28-0c02067`).
+/// the folder the installer put it in, named after the tag (releases from before 0.2). A
+/// nightly is its version as the installer names it (`nightly-2026-10-28-0c02067`).
 pub fn release_tag() -> Option<String> {
     if let Some(nightly) = horizon_core::release::nightly_version() {
         return Some(nightly);
@@ -451,55 +448,14 @@ fn thread_name(side: &str) -> String {
 }
 
 /// What starts the stderr line naming a saved report, the path follows: the Launch API's
-/// promise to launchers (docs/api/launch.md), so it never changes within a line of that API.
+/// promise (docs/api/launch.md), so it never changes within a line of that API.
 pub const SAVED_LINE: &str = "Horizon: crash report saved to ";
 
-/// What runs on each report before it is saved ([`on_report`]).
-pub type ReportHook = fn(&Path, &Report);
-
-static REPORT_HOOKS: std::sync::RwLock<Vec<ReportHook>> = std::sync::RwLock::new(Vec::new());
-
-/// Runs `hook` with every crash report, before it is saved: the game folder and the report. An
-/// extension point for what lives above the engine (Horizon's opt-in telemetry keeps the
-/// report). A hook runs inside the crash handler: it must not panic or block.
-pub fn on_report(hook: ReportHook) {
-    REPORT_HOOKS
-        .write()
-        .unwrap_or_else(|e| e.into_inner())
-        .push(hook);
-}
-
-type EmergencyHook = std::sync::Arc<dyn Fn() + Send + Sync>;
-static EMERGENCY_SAVE: Mutex<Option<EmergencyHook>> = Mutex::new(None);
 const SAVE_NOT_STARTED: u8 = 0;
 const SAVE_RUNNING: u8 = 1;
 const SAVE_FINISHED: u8 = 2;
 // Taking the hook must not let a second crashing worker exit before the save finishes.
 static EMERGENCY_SAVE_STATE: AtomicU8 = AtomicU8::new(SAVE_NOT_STARTED);
-
-/// Unregisters this emergency save, without removing a newer registration.
-#[must_use]
-pub struct EmergencySave(EmergencyHook);
-
-impl Drop for EmergencySave {
-    fn drop(&mut self) {
-        let mut hook = EMERGENCY_SAVE.lock().unwrap_or_else(|e| e.into_inner());
-        if hook
-            .as_ref()
-            .is_some_and(|f| std::sync::Arc::ptr_eq(f, &self.0))
-        {
-            *hook = None;
-        }
-    }
-}
-
-/// Replaces the process's emergency save. The callback must not panic and must
-/// bound its wait: it runs on the crashing worker, before the process exits.
-pub fn on_emergency_save(f: impl Fn() + Send + Sync + 'static) -> EmergencySave {
-    let hook: EmergencyHook = std::sync::Arc::new(f);
-    *EMERGENCY_SAVE.lock().unwrap_or_else(|e| e.into_inner()) = Some(hook.clone());
-    EmergencySave(hook)
-}
 
 fn emergency_save() {
     // Leave room for the integrated server's own 30 s save timeout.
@@ -526,11 +482,6 @@ fn emergency_save_with_timeout(timeout: Duration) {
         }
         return;
     }
-    // Never wait on the registry in a panic hook, or hold it while stopping the server.
-    let hook = EMERGENCY_SAVE.try_lock().ok().and_then(|mut h| h.take());
-    if let Some(hook) = hook {
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| hook()));
-    }
     EMERGENCY_SAVE_STATE.store(SAVE_FINISHED, Ordering::Release);
 }
 
@@ -554,15 +505,7 @@ fn deliver(home: &Path, report: Report) -> Option<PathBuf> {
         ),
     );
     crate::logging::flush();
-    for hook in REPORT_HOOKS
-        .read()
-        .unwrap_or_else(|e| e.into_inner())
-        .iter()
-    {
-        hook(home, &report);
-    }
-    // A player of a shared game folder (`--player-dir`) finds the report beside its own log.
-    match report.save(crate::logging::player_dir_override().unwrap_or(home)) {
+    match report.save(home) {
         Ok(path) => {
             eprintln!("{SAVED_LINE}{}", path.display());
             Some(path)
@@ -606,30 +549,6 @@ pub fn report_watchdog(
             log: crate::logging::recent_lines(),
         },
     )
-}
-
-/// The report for a game that went over the player's RAM limit (`ram_limit`), written by the
-/// watcher thread: it says nothing about where the memory went, so it carries no stack. The player
-/// chose this limit, and the game keeps running, over its limit, until the report is written.
-pub fn report_memory_limit(home: &Path, side: &'static str, message: String) {
-    if REPORTED.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    let report = Report {
-        time: Local::now(),
-        headers: mod_headers(),
-        description: "RAM limit reached".into(),
-        error: message,
-        stack: String::new(),
-        thread: thread_name(side),
-        side,
-        details: system_details(side),
-        log: crate::logging::recent_lines(),
-    };
-    match report.save(home) {
-        Ok(path) => eprintln!("{SAVED_LINE}{}", path.display()),
-        Err(e) => eprintln!("Horizon: could not save a crash report: {e}"),
-    }
 }
 
 fn payload_text(payload: &(dyn std::any::Any + Send)) -> String {
@@ -746,13 +665,6 @@ pub fn panic_report(info: &std::panic::PanicHookInfo, side: &'static str) -> Rep
 /// Shared with the integrated server spawn so reporting follows its exact name.
 pub const INTEGRATED_SERVER_THREAD: &str = "Server thread";
 
-static SERVER_CRASHED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Whether the server has already delivered the fatal report.
-pub fn server_crashed() -> bool {
-    SERVER_CRASHED.load(std::sync::atomic::Ordering::Acquire)
-}
-
 /// Whether `name` is one of the shared worker pool's threads (`horizon_threads::jobs`), vanilla's
 /// `Util` worker threads.
 fn is_worker_thread(name: Option<&str>) -> bool {
@@ -790,7 +702,6 @@ pub fn install(home: PathBuf, side: &'static str) {
                 ..panic_report(info, "server")
             };
             deliver(&home, report);
-            SERVER_CRASHED.store(true, std::sync::atomic::Ordering::Release);
         } else if main {
             deliver(&home, panic_report(info, side));
         } else if is_worker_thread(std::thread::current().name()) {
@@ -808,56 +719,12 @@ pub fn install(home: PathBuf, side: &'static str) {
     }));
 }
 
-/// Vanilla's debug crash (`key.debug.crash` held for ten seconds): the error `main` gets back,
-/// with the stack where it was raised.
-#[derive(Debug)]
-pub struct DebugCrash {
-    stack: String,
-}
-
-impl DebugCrash {
-    pub const MESSAGE: &str = "Manually triggered debug crash";
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self {
-            stack: stack_lines(
-                &std::backtrace::Backtrace::force_capture().to_string(),
-                false,
-            ),
-        }
-    }
-}
-
-impl std::fmt::Display for DebugCrash {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str(Self::MESSAGE)
-    }
-}
-
-impl std::error::Error for DebugCrash {}
-
 /// A report for an error `main` got back: the game ends with it.
 pub fn report_error(
     home: &Path,
     side: &'static str,
     error: &(dyn std::error::Error + 'static),
 ) -> Option<PathBuf> {
-    if let Some(debug) = error.downcast_ref::<DebugCrash>() {
-        return deliver(
-            home,
-            Report {
-                time: Local::now(),
-                headers: mod_headers(),
-                description: DebugCrash::MESSAGE.into(),
-                error: DebugCrash::MESSAGE.into(),
-                stack: debug.stack.clone(),
-                thread: thread_name(side),
-                side,
-                details: system_details(side),
-                log: crate::logging::recent_lines(),
-            },
-        );
-    }
     let mut message = error.to_string();
     let mut source = error.source();
     while let Some(e) = source {
@@ -880,33 +747,11 @@ pub fn report_error(
     )
 }
 
-/// Called every frame: panics once `HORIZON_DEBUG_CRASH` asks (development builds only).
-pub fn debug_crash_tick() {
-    static AT: std::sync::OnceLock<Option<(std::time::Instant, std::time::Duration)>> =
-        std::sync::OnceLock::new();
-    if let Some((first, after)) =
-        AT.get_or_init(|| debug_crash_after().map(|d| (std::time::Instant::now(), d)))
-        && first.elapsed() >= *after
-    {
-        panic!("Manually triggered debug crash");
-    }
-}
-
-/// Development builds crash on purpose when `HORIZON_DEBUG_CRASH` is set (vanilla has F3+C held
-/// for ten seconds): the number is seconds after the first frame (default 5).
-pub fn debug_crash_after() -> Option<std::time::Duration> {
-    if !cfg!(debug_assertions) {
-        return None;
-    }
-    let value = std::env::var("HORIZON_DEBUG_CRASH").ok()?;
-    let seconds = value.parse::<f64>().unwrap_or(5.0).max(0.0);
-    Some(std::time::Duration::from_secs_f64(seconds))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use mod_api::__private::game::*;
+    use mod_api::content::crash::ConvertedPackages;
 
     /// The panic hook is process-wide: tests that swap it hold this so they never overlap.
     static PANIC_HOOK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -989,89 +834,17 @@ mod tests {
                 }
             }
             REPORTED.store(false, Ordering::SeqCst);
-            SERVER_CRASHED.store(false, std::sync::atomic::Ordering::Release);
         }
-    }
-
-    static EMERGENCY_TEST_LOCK: Mutex<()> = Mutex::new(());
-
-    fn reset_emergency_save() {
-        *EMERGENCY_SAVE.lock().unwrap() = None;
-        EMERGENCY_SAVE_STATE.store(SAVE_NOT_STARTED, Ordering::Release);
-    }
-
-    #[test]
-    fn emergency_save_second_caller_waits_for_save() {
-        let _serial = EMERGENCY_TEST_LOCK.lock().unwrap();
-        reset_emergency_save();
-        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let saved = std::sync::Arc::new(AtomicBool::new(false));
-        let (started, running) = std::sync::mpsc::channel();
-        let (count, flag) = (calls.clone(), saved.clone());
-        let _hook = on_emergency_save(move || {
-            count.fetch_add(1, Ordering::Relaxed);
-            started.send(()).unwrap();
-            std::thread::sleep(Duration::from_millis(200));
-            flag.store(true, Ordering::Release);
-        });
-        let first = std::thread::spawn(emergency_save);
-        running.recv_timeout(Duration::from_secs(2)).unwrap();
-        let second = std::thread::spawn(move || {
-            emergency_save();
-            assert!(saved.load(Ordering::Acquire));
-        });
-        first.join().unwrap();
-        second.join().unwrap();
-        assert_eq!(calls.load(Ordering::Relaxed), 1);
     }
 
     #[test]
     fn emergency_save_waiter_times_out() {
-        let _serial = EMERGENCY_TEST_LOCK.lock().unwrap();
-        reset_emergency_save();
         EMERGENCY_SAVE_STATE.store(SAVE_RUNNING, Ordering::Release);
         let bound = Duration::from_millis(20);
         let started = Instant::now();
         emergency_save_with_timeout(bound);
         assert!(started.elapsed() >= bound);
         assert!(started.elapsed() < Duration::from_secs(1));
-    }
-
-    #[test]
-    fn emergency_save_registry_calls_once_replaces_and_unregisters() {
-        use std::sync::{Arc, atomic::AtomicUsize};
-        let _serial = EMERGENCY_TEST_LOCK.lock().unwrap();
-        reset_emergency_save();
-        let calls = Arc::new(AtomicUsize::new(0));
-        let count = calls.clone();
-        let old = on_emergency_save(move || {
-            count.fetch_add(1, Ordering::Relaxed);
-        });
-        emergency_save();
-        emergency_save();
-        assert_eq!(calls.load(Ordering::Relaxed), 1);
-        reset_emergency_save();
-        let count = calls.clone();
-        let replaced = on_emergency_save(move || {
-            count.fetch_add(10, Ordering::Relaxed);
-        });
-        let count = calls.clone();
-        let latest = on_emergency_save(move || {
-            count.fetch_add(100, Ordering::Relaxed);
-        });
-        drop(old);
-        drop(replaced);
-        emergency_save();
-        assert_eq!(calls.load(Ordering::Relaxed), 101);
-        reset_emergency_save();
-        let count = calls.clone();
-        let removed = on_emergency_save(move || {
-            count.fetch_add(1000, Ordering::Relaxed);
-        });
-        drop(removed);
-        emergency_save();
-        assert_eq!(calls.load(Ordering::Relaxed), 101);
-        drop(latest);
     }
 
     #[test]
@@ -1339,16 +1112,6 @@ mod tests {
         let outer = contain(|| contain(|| -> u8 { panic!("inner") }));
         assert!(outer.unwrap().unwrap_err().contains("inner"));
         assert_eq!(CONTAINED.with(Cell::get), 0);
-    }
-
-    #[test]
-    fn the_debug_crash_is_reported_as_vanillas() {
-        let error: Box<dyn std::error::Error> = DebugCrash::new().into();
-        assert_eq!(error.to_string(), "Manually triggered debug crash");
-        let debug = error.downcast_ref::<DebugCrash>().unwrap();
-        // The stack starts where the crash was raised (DebugCrash::new, in this file).
-        let first = debug.stack.lines().next().unwrap();
-        assert!(first.contains("crash.rs"), "{}", debug.stack);
     }
 
     #[test]

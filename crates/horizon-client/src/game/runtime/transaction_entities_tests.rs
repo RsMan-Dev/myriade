@@ -157,7 +157,6 @@ fn with_observer(name: &str, test: impl FnOnce(&mut Game<'_>)) {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("journal", Box::new(Observer))].into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -594,6 +593,7 @@ fn exhausted_ids_refuse_every_mod_spawn() {
             game.motion,
             horizon_core::geometry::Vec3::new(1.5, 70.0, 1.5),
         );
+        // TODO(phase 2): assertion sur l'hôte : bind_local_player(game, 20, 123) lie l'identité de l'hôte (transaction_entities_tests.rs:596)
         game.player = Some(player.unwrap());
         super::native_entity_refs::tests::bind_local_player(game, 20, 123);
         let mob = summon(game, "minecraft:zombie", "{}").unwrap();

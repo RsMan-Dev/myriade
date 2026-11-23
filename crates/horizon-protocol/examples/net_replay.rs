@@ -1,7 +1,7 @@
-//! Replays the play packets of a `horizon-bots --capture` file through the client's receive path on
+//! Replays the play packets of a `myriade-bot --capture` file through the client's receive path on
 //! one thread, and prints the CPU each stage takes and what each packet type costs to decode:
 //!
-//!   horizon-bots --server 127.0.0.1:25565 --bots 1 --behaviour explore --view-distance 32 \
+//!   myriade-bot --server 127.0.0.1:25565 --bots 1 --behaviour explore --view-distance 32 \
 //!       --seconds 60 --capture join.cap
 //!   cargo run --release -p horizon-protocol --example net_replay -- join.cap
 //!

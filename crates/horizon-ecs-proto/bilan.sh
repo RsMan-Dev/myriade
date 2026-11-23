@@ -3,7 +3,7 @@
 # directory: only the prototype crate recompiles). An incremental build is 5 to 8 % higher on every line: never compare two build modes.
 # bilan.sh : the reference table of the integrated branch, exact instruction counter (src/instr.rs, one counter per process: the figures do
 # not depend on the load of the machine), every scene in ITS OWN process, all at once (as many as cores). The `Mob` columns come from the
-# dated file `bilan.mob` (the Mob does not change while Horizon does not): `MOB=1 ./bilan.sh` measures them again and writes it.
+# dated file `bilan.mob` (the Mob does not change while Horizon does not): the Mob is gone, the file is its last measure.
 # HORIZON_TEST_RESOURCES: the prepared vanilla data; D: the directory of the benches (cargo build --profile fast --bins).
 : "${HORIZON_TEST_RESOURCES:?set HORIZON_TEST_RESOURCES}"
 export HORIZON_TEST_RESOURCES
@@ -47,24 +47,7 @@ job items_500 "$(it 500)"; job items_2000 "$(it 2000)"; job empty "$(it 0)"
 # The profile per SYSTEM of three scenes (what a rise on a line is made of: `bilan_check.sh` prints the three systems that rose most).
 for sc in "idle 2000 600 0 400" "active 2000 300 300 200"; do job sys_${sc%% *} "env $C $D/prof_bench $sc | awk 'NR>2 && \$2!=\"apply_deferred\" {a[\$2]+=\$3} END{for(k in a) print k, a[k]}'"; done
 job sys_zombie "env HORIZON_SPECIES=minecraft:zombie $D/prof_bench idle 2000 600 0 400 | awk 'NR>2 && \$2!=\"apply_deferred\" {a[\$2]+=\$3} END{for(k in a) print k, a[k]}'"
-# The Mob (only when asked): its figures are kept in bilan.mob.
-if [ -n "${MOB:-}" ]; then
-  for sp in $SPECIES; do
-    E="HORIZON_SPECIES=minecraft:$sp"; S=""; [ $sp = zombie ] && S="SCOPE=1"
-    job mob_${sp}_idle "env $E $S $D/mob_goal_bench 2000 $T 0 0 0 0 | g"
-    job mob_${sp}_active "env $E $S $D/mob_goal_bench 2000 $T 1000 0 0 0 | g"
-    [ $sp != zombie ] && job mob_${sp}_solicited "env $E $S $D/mob_goal_bench 2000 $T 50 30 20 20 | g"
-  done
-  job mob_chase1 "env $Z SCOPE=1 $D/mob_bench 1024 $T 1024 6 | g"
-  job mob_chase2 "env $Z SCOPE=1 $D/mob_bench 2000 $T 1000 2 | g"
-  for s in 0.5 0.8; do job mob_crowd$s "env $C $D/mob_bench 2000 $T 0 $s | g"; done
-  job mob_zone "env -u WARM $C $D/mob_zone_bench rings 6 10 | sed -n 's/.*per mob: near *\\([0-9]*\\).*rest-of-zone *\\([0-9]*\\).*/\\1 \\2/p;'"
-fi
 wait
-if [ -n "${MOB:-}" ]; then
-  { echo "# the Mob's figures (instr per creature and tick), measured $(date +%F) with Horizon at $(git -C ../.. rev-parse --short HEAD) ($(git -C ../.. log -1 --format=%h -- crates/horizon-client crates/horizon-world crates/horizon-core 2>/dev/null)): MOB=1 ./bilan.sh to measure again"
-    for f in "$J"/mob_*; do echo "$(basename "$f") $(tr '\n' ' ' < "$f")"; done; } > bilan.mob
-fi
 v() { cat "$J/$1" 2>/dev/null | head -n1 | tr -d ' \n'; }
 mob() { grep -m1 "^mob_$1 " bilan.mob 2>/dev/null | cut -d' ' -f2; }
 sl() { echo $(( (2000 * $(v $1_2000) - 500 * $(v $1_500)) / 1500 )); }

@@ -1812,7 +1812,7 @@ mod stand_equip_event_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -1820,13 +1820,12 @@ mod stand_equip_event_tests {
         options.resources = root.clone();
         options.game_dir =
             Some(std::env::temp_dir().join(format!("horizon-h130-unit-{}", std::process::id())));
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -1902,7 +1901,7 @@ mod mob_equipment_command_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -1912,13 +1911,12 @@ mod mob_equipment_command_tests {
             std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
                 .join(format!("h025-{:?}", std::thread::current().id())),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -2146,7 +2144,6 @@ mod builtin_component_delivery_tests {
     #[ignore = "daily"]
     fn h283_actual_command_inventory_bridge_encodes_four_builtin_components() {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
                 std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
@@ -2179,7 +2176,6 @@ mod builtin_component_delivery_tests {
                     allow_flight: false,
                     seed: 0,
                     max_players: 2,
-                    integrated: false,
                     levels: Default::default(),
                     level_seeds: Default::default(),
                 },
@@ -2666,19 +2662,19 @@ mod registered_slot_source_preservation_tests {
     fn a_command_the_player_types_binds_this_to_them() {
         let mut resources = None;
         let (mut game, _) = scene(&mut resources, "slot-source-player-this-world");
-        game.player = Some(
-            horizon_client::motion::PlayerMotion::new(
-                game.motion,
-                horizon_core::geometry::Vec3::new(0.5, 101.0, 0.5),
-            )
-            .unwrap(),
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(
+            &mut game,
+            horizon_core::geometry::Vec3::new(0.5, 101.0, 0.5),
+            |game| {
+                assert!(game.command_source.is_none());
+                assert!(game.run_command(
+                    r#"item replace entity @s {type:"slot_range",source:"this",slots:"weapon.mainhand"} with minecraft:stone"#
+                ));
+                let hand = game.slot_get(&Slot::MainHand).unwrap();
+                assert_eq!((&*hand.item, hand.count), ("minecraft:stone", 1));
+            },
         );
-        assert!(game.command_source.is_none());
-        assert!(game.run_command(
-            r#"item replace entity @s {type:"slot_range",source:"this",slots:"weapon.mainhand"} with minecraft:stone"#
-        ));
-        let hand = game.slot_get(&Slot::MainHand).unwrap();
-        assert_eq!((&*hand.item, hand.count), ("minecraft:stone", 1));
     }
 }
 

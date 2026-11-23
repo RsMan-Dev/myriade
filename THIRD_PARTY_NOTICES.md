@@ -79,29 +79,6 @@ The native renderer uses Horizon's own block-sprite arrays, pose and light packi
 development-only oracle calls the unchanged helper from the player's local artifact. No
 original classes, game shaders, textures or prepared resources are distributed here.
 
-## wgpu-hal
-
-`third_party/wgpu-hal` is [wgpu-hal](https://github.com/gfx-rs/wgpu) 30.0.1 by the gfx-rs
-developers, with upstream fixes applied
-([gfx-rs/wgpu#10124](https://github.com/gfx-rs/wgpu/pull/10124),
-[gfx-rs/wgpu#10714](https://github.com/gfx-rs/wgpu/pull/10714)). On NVIDIA with a Wayland surface
-its Vulkan backend also waits for each swapchain image on the CPU (an acquire fence), so no frame
-waits on the GPU for an image the compositor still holds. Its GL backend also reports
-the context's sampled textures and samplers per shader stage (usually 32 on desktop GL,
-where WebGL2's minimum 16 was reported before), so a pipeline layout the driver accepts is
-not refused. Its GL backend copies depth and stencil textures with a framebuffer blit, where
-`glCopyTexSubImage` read only colour and left the copy empty. Its DirectX 12 backend leaves out
-an adapter that offers neither `IDXGIAdapter4` nor `IDXGIAdapter3`, where an `unwrap` ended the
-program. It is licensed under MIT or
-Apache-2.0; both licenses are in that folder
-(`LICENSE.MIT`, `LICENSE.APACHE`).
-
-## naga
-
-`third_party/naga` is [naga](https://github.com/gfx-rs/wgpu) 30.0.1 by the gfx-rs developers, with
-fixes to its GLSL frontend that shader packs need, each applied in the commit that needed it. It is licensed under MIT or Apache-2.0; both licenses
-are in that folder (`LICENSE.MIT`, `LICENSE.APACHE`).
-
 The GLSL frontend also resets the common type for each comma-separated declarator so one
 variable's array specifier does not change later variables.
 It also reads a struct member outside a constant expression through a pointer to the member,
@@ -112,32 +89,6 @@ The shared interpolation defaults also compile with `glsl-in` alone, without nee
 SPIR-V or WGSL frontend to enable them.
 The HLSL backend's texture-sampling offset cast preserves the offset's scalar or vector width,
 including `int` for 1D and `int3` for 3D textures instead of always using `int2`.
-
-## DirectX Shader Compiler
-
-The Windows x64 game folder holds `dxcompiler.dll`, Microsoft's DirectX Shader Compiler
-[v1.9.2609](https://github.com/microsoft/DirectXShaderCompiler/releases/tag/v1.9.2609), unmodified: the
-`bin/x64/dxcompiler.dll` of `dxc_2026_09_29.zip` (zip SHA-256
-`ad31b1fc8443175d204f77a611fdb3ef2ec42759bdc2f1167368de24a4a7e7f1`, DLL SHA-256
-`0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59`, 22,274,872 bytes). The release build downloads
-it and checks both checksums (`tools/ci/fetch_dxc.py`); it is not in this repository. DirectX 12 loads it only on
-integrated GPUs (`crates/horizon-client-render/src/gfx/dx12_compiler.rs`,
-[#8513](https://github.com/horizon-rust/horizon/issues/8513)); every other GPU compiles with FXC, part of Windows.
-
-Copyright (c) Microsoft Corporation. It is not covered by Horizon's MIT license. It is distributed under the
-"Microsoft Software License Terms, Microsoft DirectX Shader Compiler" (`LICENSE-MS.txt` of that release). Its
-Distributable Code terms are the Windows SDK's: end users get terms that protect the code and Microsoft at least as
-much, and the distributor indemnifies Microsoft. The project accepted them on 2026-11-08. Its open-source part is also under the University of Illinois/NCSA license (`LICENSE-LLVM.txt`). Both
-files ship beside the DLL as `DXC-LICENSE-MS.txt` and `DXC-LICENSE-LLVM.txt`, with `DXC-NOTICE.txt`
-(`packaging/windows/`), which tells players those terms apply and that deleting the DLL brings back FXC.
-
-- Only x64: the Windows SDK's list of distributable files
-  ([REDIST.TXT lists](https://learn.microsoft.com/en-us/legal/windows-sdk/redist), updated 2024-10-21) names
-  `Redist\D3D\x64\dxcompiler.dll` and `dxil.dll` and their x86 copies, for classic Windows applications (Horizon is
-  one), and no ARM64 copy. The release zip's own `LICENSE-MS.txt` refers to a list of distributable files that the zip
-  doesn't contain, so the SDK's list is the one followed. The Windows ARM64 build ships no DXC and compiles with FXC.
-- No `dxil.dll`: since DXC 1.8.2505 the compiler signs shaders with its own validator and no longer loads it, and
-  wgpu never does.
 
 ## libmimalloc-sys and mimalloc
 
@@ -333,12 +284,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
-
-## Just Enough Items
-
-The Recipes GUI sprites and settings icon under `crates/horizon-client-render/src/jei_recipes` are from
-[Just Enough Items 31.17.0.108](https://github.com/mezz/JustEnoughItems/tree/0371fa6fafa14635a356019e4604f5580b26a34f)
-by mezz and contributors, under the MIT license in that directory (`LICENSE.txt`).
 
 ## Flywheel native model directional shading
 

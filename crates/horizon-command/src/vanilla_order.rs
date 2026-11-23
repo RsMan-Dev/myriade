@@ -98,8 +98,6 @@ pub const ORDER: &[(&str, &[&str])] = &[
             "stop",
             "transfer",
             "whitelist",
-            "publish",
-            "unpublish",
         ],
     ),
     (

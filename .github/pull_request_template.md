@@ -23,8 +23,7 @@
      - the new code sits in a crate or module of that layer;
      - no new dependency its layer may not use (CI's layer check): no engine code calling platform or Horizon code,
        and Horizon code using the platform's public API only, never the engine directly;
-     - Horizon features in the game are behind `horizon-extras`, and platform features that change the vanilla
-       look are off by default;
+     - platform features that change the vanilla look are off by default;
      - no new built-in server address outside the Horizon layer. -->
 
 ## Build time
@@ -43,10 +42,6 @@
 ## Self-check
 
 <!-- Paste the block `python3 tools/pr_ready.py` prints (`--base upstream/main` from a fork). -->
-
-## Screenshots
-
-<!-- For anything players see: before and after. Delete this section otherwise. -->
 
 <!-- Please tick "Allow edits by maintainers": we push small fixups ourselves instead of a round trip.
      See CONTRIBUTING.md. -->

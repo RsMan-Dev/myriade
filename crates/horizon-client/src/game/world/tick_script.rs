@@ -1,7 +1,7 @@
 //! `HORIZON_TICK_SCRIPT=PATH` (tools/test_wire_stream_parity.py): a server's client plays a tick-indexed
 //! script, the one the vanilla client plays in `VanillaTickScript.java`, so the two clients' serverbound
 //! streams can be compared tick by tick. The harness writes the scenario to PATH (JSON `{"name", "ticks",
-//! "steps": {"TICK": [LINE...]}}`, LINE a horizon-ctl line: `key w down`, `mouse left click`, `look 90 0`,
+//! "steps": {"TICK": [LINE...]}}`, LINE a control socket line: `key w down`, `mouse left click`, `look 90 0`,
 //! `click-slot 3`, `close`), then creates PATH with the extension `go`. From the next client tick the script
 //! plays: its first tick sends `/wire-mark`, which marks it in the capture, then each tick's lines act
 //! before the tick runs, as a player's input in the frame before it; when its ticks have run, the client

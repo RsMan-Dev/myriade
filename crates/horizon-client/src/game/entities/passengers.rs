@@ -5,7 +5,6 @@
 use super::Game;
 #[path = "passengers/mob_seating.rs"]
 mod mob_seating;
-use horizon_client::mobs::{Species, riders};
 use horizon_core::geometry::Vec3;
 use std::collections::HashMap;
 
@@ -16,7 +15,7 @@ impl Game<'_> {
     }
     /// `Entity.startRiding` for two mobs: false when a mod canceled it.
     pub(super) fn try_mount_mob(&mut self, rider: u32, vehicle: u32) -> bool {
-        // `start_riding_target` asks the mod hooks, then mounts the ECS rider (its `Mob` arm).
+        // `start_riding_target` asks the mod hooks, then mounts the ECS rider (its mob arm).
         let vehicle = if self.ecs.boat_status(vehicle).is_some() || self.is_boat_id(vehicle) {
             super::commands::Target::Boat(vehicle)
         } else if self.ecs.cart_kind(vehicle).is_some() {
@@ -26,7 +25,7 @@ impl Game<'_> {
         };
         self.start_riding_target(super::commands::Target::Mob(rider), vehicle, true)
     }
-    /// `Mob.startRiding` from a brain event, which `riders::start_riding`
+    /// `startRiding` of a mob from a brain event, which `riders::start_riding`
     /// decides (`canAddPassenger` and the boarding cooldown): false when the
     /// mob did not board.
     pub(super) fn start_riding_mob(&mut self, rider: u32, vehicle: u32) -> bool {
@@ -37,35 +36,13 @@ impl Game<'_> {
         self.boarded_mob(rider, vehicle);
         true
     }
-    /// The tail of `Mob.startRiding` for a mob that boarded: `startRiding`'s
+    /// The tail of `startRiding` for a mob that boarded: `startRiding`'s
     /// `sendEventAndTriggers` (the server players already on the vehicle),
-    /// then `Mob.startRiding`'s `dropLeash()`.
+    /// then the mob's `dropLeash()`.
     fn boarded_mob(&mut self, rider: u32, vehicle: u32) {
         self.note_started_riding(vehicle);
         self.break_leash(rider, true, false);
     }
-    /// The vehicle's attachment for this passenger's actual place in getPassengers.
-    /// Shared by ordinary positioning and Entity.teleportPassengers after dismount.
-    pub(super) fn mob_passenger_attachment(
-        vehicle: &horizon_client::mobs::Mob,
-        rider: &horizon_client::mobs::Mob,
-        seat: usize,
-        count: usize,
-    ) -> [f64; 3] {
-        if horizon_client::mobs::camel::is_camel(vehicle.species()) {
-            horizon_client::mobs::camel::passenger_attachment_at(
-                vehicle,
-                seat,
-                count,
-                horizon_client::mobs::drops::is_animal(rider.species()),
-            )
-        } else if vehicle.species() == Species::HappyGhast {
-            riders::happy_ghast_attachment(seat)
-        } else {
-            riders::passenger_attachment_at(vehicle, seat)
-        }
-    }
-
     /// `Entity.positionRider` for every mob passenger: in its boat, then on
     /// its mob. A server's client places them itself too, as the server sends
     /// no passenger's position.
@@ -232,25 +209,9 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod content_seat_tests {
-    use super::*;
-
     #[test]
     #[ignore = "daily"]
     fn content_seats_keep_independent_offsets() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            use std::sync::Arc;
-            let mut kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-            Arc::make_mut(&mut kind).passenger_attachments =
-                vec![[1.0, 2.0, 3.0], [-1.0, 4.0, 5.0]];
-            let vehicle = horizon_client::mobs::Mob::new(1, kind, Vec3::ZERO, 0.0);
-            assert_eq!(
-                riders::passenger_attachment_at(&vehicle, 0),
-                [1.0, 2.0, 3.0]
-            );
-            assert_eq!(
-                riders::passenger_attachment_at(&vehicle, 1),
-                [-1.0, 4.0, 5.0]
-            );
-        });
+        todo!("phase 2 : réécrire sur l'ECS")
     }
 }

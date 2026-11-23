@@ -382,8 +382,7 @@ mod escape_tests {
     fn an_item_escapes_a_block_at_its_own_randoms_speed() {
         let mut game_resources = None;
         let mut game = active_server_game(&mut game_resources);
-        let feet = horizon_core::geometry::Vec3::new(8.5, 70.0, 8.5);
-        game.player = Some(horizon_client::motion::PlayerMotion::new(game.motion, feet).unwrap());
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
         super::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
             &mut game,
             horizon_core::position::ChunkPos::new(0, 0),

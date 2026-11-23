@@ -293,7 +293,7 @@ impl Game<'_> {
     /// A server with no player of its own and nobody it acts for: there is
     /// no player for advancements and statistics.
     pub(super) fn no_player_here(&self) -> bool {
-        self.options.dedicated.is_some() && self.lan_acting.is_none()
+        self.lan_acting.is_none()
     }
     /// The advancement tree, loaded once.
     pub(super) fn advancement_tree(&mut self) -> Arc<Tree> {
@@ -694,100 +694,6 @@ impl Game<'_> {
                 .map(|id| self.ecs_predicate_view(id))
                 .chain(self.rider_entity(b.id))
                 .collect(),
-            ..Default::default()
-        }
-    }
-    /// `Entity.get`: the mob's live custom-name component and type variants,
-    /// alongside the other state the entity predicate asks for.
-    pub(super) fn mob_entity(&self, m: &horizon_client::mobs::Mob) -> EntityView {
-        // mainhand, offhand, head, chest, legs, feet.
-        let slot = |i: Option<&str>| i.map(|id| item_view(&ItemStack::new(id, 1)));
-        let mut equipment: [Option<ItemView>; 7] = Default::default();
-        equipment[0] = slot(m.extra.main_hand_id());
-        equipment[1] = slot(m.extra.off_hand_id());
-        equipment[2] = slot(m.extra.head_id());
-        equipment[3] = slot(m.extra.slot_id(horizon_items::equipment::CHEST));
-        equipment[4] = slot(m.extra.slot_id(horizon_items::equipment::LEGS));
-        equipment[5] = slot(m.extra.slot_id(horizon_items::equipment::FEET));
-        equipment[6] = m.extra.body_stack().map(item_view);
-        // Only the new snapshot is adopted; the existing view fields stay as
-        // constructed above. Body and other view consumers stay unprojected.
-        use horizon_client::mobs::finalize;
-        for (view, slot) in equipment[..6].iter_mut().zip([
-            finalize::MAINHAND,
-            finalize::OFFHAND,
-            finalize::HEAD,
-            finalize::CHEST,
-            finalize::LEGS,
-            finalize::FEET,
-        ]) {
-            if let Some(view) = view {
-                let data = finalize::item_stack(m, slot)
-                    .and_then(|stack| stack.custom_data().cloned())
-                    .unwrap_or_default();
-                view.custom_data = Some(horizon_core::nbt::Tag::Compound(data));
-            }
-        }
-
-        let passengers: Vec<EntityView> = self
-            .ecs
-            .passengers_of(m.id)
-            .into_iter()
-            .map(|id| self.ecs_predicate_view(id))
-            .chain(self.rider_entity(m.id))
-            .collect();
-        let nbt = self.adv.tree.tests_nbt().then(|| {
-            let uuid = self.persist.uuids.get(&m.id).copied().unwrap_or_default();
-            let raw = self.persist.raw.get(&m.id);
-            let registry = Some(self.pack.assets.registry);
-            let mut tag = horizon_client::entity_nbt::mob_to_nbt(m, uuid, raw, registry, |other| {
-                self.persist.uuid_of(other)
-            });
-            self.put_last_hurt_by_mob(m, &mut tag);
-            let riders = passengers.iter().filter_map(|r| r.nbt.clone()).collect();
-            super::persist::add_passengers(&mut tag, riders);
-            tag
-        });
-        let movement = (m.extra.mount.is_none()
-            && m.rider.is_none()
-            && self.riding != Some(m.id)
-            && self.lan.as_ref().is_none_or(|host| {
-                host.hub
-                    .guests
-                    .iter()
-                    .all(|guest| guest.vehicle != Some(m.id))
-            }))
-        .then_some(adv::MovementView {
-            per_tick: [m.velocity.x, m.velocity.y, m.velocity.z],
-            fall_distance: m.fall_distance,
-        });
-        EntityView {
-            movement,
-            kind: m.kind.id.clone(),
-            position: [m.position.x, m.position.y, m.position.z],
-            on_fire: m.fire_ticks > 0,
-            baby: m.is_baby(),
-            on_ground: m.on_ground,
-            equipment,
-            // LivingEntity.getActiveEffectsMap supplies the active predicate instances.
-            effects: m
-                .extra
-                .effects
-                .iter()
-                .map(|effect| {
-                    let (id, duration, amplifier) = (effect.id, effect.duration, effect.amplifier);
-                    let id = horizon_client::brewing::namespaced(id);
-                    (id.to_owned(), amplifier, duration)
-                })
-                .collect(),
-            components: horizon_client::mobs::finalize::variant_component(m)
-                .map(|(id, value)| (id.to_owned(), value))
-                .into_iter()
-                .collect(),
-            custom_name: m.custom_name_text.as_ref().map(Text::component),
-            passengers,
-            nbt,
-            team: self.mob_team_of(m).map(|t| t.name.clone()),
             ..Default::default()
         }
     }
@@ -2519,19 +2425,18 @@ mod structure_tag_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         let set = |s: &str| json!(s);
@@ -2620,19 +2525,18 @@ mod random_chance_command_tests {
             &root,
             &settings,
             Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &crate::game::Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();

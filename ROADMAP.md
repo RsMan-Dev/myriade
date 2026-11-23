@@ -806,7 +806,7 @@ A stable, documented way for AI agents and scripts to drive the game and the lau
 
 <details><summary>Technical</summary>
 
-`hello` answers with the API version, the release and the features; `horizon-ctl --api`; MCP serverInfo; reply schemas generated into the reference; a `test.` namespace for hooks; transcript compatibility tests; `subscribe` as a stream of events on one connection; Horizon option files by key and saved-server commands. Agent control itself (`horizon-ctl`, both MCP servers, the No AI switch) is done: [docs/agent-control.md](docs/agent-control.md), [docs/api/agent-control.md](docs/api/agent-control.md).
+`hello` answers with the API version, the release and the features; MCP serverInfo; reply schemas generated into the reference; a `test.` namespace for hooks; transcript compatibility tests; `subscribe` as a stream of events on one connection; Horizon option files by key and saved-server commands. Agent control itself (`the control socket`, both MCP servers, the No AI switch) is done: [docs/agent-control.md](docs/agent-control.md), [docs/api/agent-control.md](docs/api/agent-control.md).
 
 More: [docs/api/stability.md](docs/api/stability.md)
 
@@ -818,7 +818,7 @@ You can port a mod to Horizon with your own AI agent on your own computer. Horiz
 
 <details><summary>Technical</summary>
 
-A player runs their own agent locally with `horizon-ctl` and the MCP servers ([docs/agent-control.md](docs/agent-control.md)), `cargo horizon-mod`, `horizon-port-pack` and the parity harnesses as the check. Horizon writes the guide (playhorizon.dev/docs/agents, [docs/modpacks.md](docs/modpacks.md)) and runs no agents, accounts or keys for players. The No AI switch turns all of it off.
+A player runs their own agent locally with `the control socket` and the MCP servers ([docs/agent-control.md](docs/agent-control.md)), `cargo horizon-mod`, `horizon-port-pack` and the parity harnesses as the check. Horizon writes the guide (playhorizon.dev/docs/agents, [docs/modpacks.md](docs/modpacks.md)) and runs no agents, accounts or keys for players. The No AI switch turns all of it off.
 
 More: [https://playhorizon.dev/docs/agents](https://playhorizon.dev/docs/agents)
 

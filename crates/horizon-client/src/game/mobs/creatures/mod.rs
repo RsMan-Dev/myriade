@@ -2,9 +2,7 @@
 //! chunk-generation spawning (`NaturalSpawner`), mob events (attacks,
 //! breeding, conversions, drops), projectiles, player interactions
 //! (feeding, shearing, milking, spawn eggs, throwing) and rendering.
-mod borrowed_tick;
 mod combat_adaptations;
-mod conversion_identity;
 mod pufferfish_player;
 mod death_weapon;
 mod destroy_rules;
@@ -25,17 +23,18 @@ use horizon_client::{
         Damage, DamageKind, Mob, MobEvent, MobWorld, PlayerView, Seen, SpawnSetup, Species, Who,
         ai::{eating_sound, eating_sound_is_bound, feed_animal, takes_food},
         entity_sounds::full_id,
-        finalize::Group,
         spawning,
     },
     collisions::SceneCollisions,
     particles::{ParticleOptions, ParticleType},
     projectiles::{Projectile, ProjectileKind, clip_including_border},
 };
+use horizon_client::ecs_bridge::EcsLevel;
+use horizon_ecs_proto::spawn_sheet::SpawnSheet;
 use horizon_core::{
     geometry::{Aabb, Direction, Vec3, traverse_blocks},
     position::BlockPos,
-    random::RandomSource,
+    random::{LegacyRandom, RandomSource, XoroshiroRandom},
 };
 use mod_api::SoundSource;
 use std::sync::Arc;
@@ -567,7 +566,7 @@ impl Game<'_> {
         Ok(id)
     }
     /// The `mobs` command: nearby mobs with position, health and running goals.
-    pub(super) fn control_mobs(&self, radius: f64) -> serde_json::Value {
+    pub(in crate::game) fn control_mobs(&self, radius: f64) -> serde_json::Value {
         let center = self.player.as_ref().map_or(Vec3::ZERO, |p| p.position);
         self.control_mobs_at(radius, center)
     }
@@ -615,50 +614,36 @@ impl Game<'_> {
             terrain.set_spawn_conditions(self.difficulty_id() as u8, self.world.day_time);
         }
     }
-    /// `Mob.finalizeSpawn` behind `FinalizeSpawnEvent`: the one fire point for
-    /// the mobs the game spawns where vanilla calls `finalizeSpawn`. The class's
-    /// follow-ups (raider flags and the like) are part of `finalizeSpawn`, so a
-    /// site skips them on [`Finalized::Skipped`].
-    pub(super) fn finalize_with(
-        &mut self,
-        mob: &mut Mob,
-        reason: SpawnReason,
-        spawner: Option<mod_api::SpawnSource>,
-    ) -> Finalized {
-        let mut group = None;
-        let (outcome, difficulty) = self.finalize_spawn_event(mob, reason, spawner, &mut group);
-        if outcome == Finalized::Done {
-            self.finalize_grouped(mob, &difficulty, reason, group);
-        }
-        outcome
-    }
     /// `Mob.finalizeSpawn`'s event, the half listeners own: they hear the
     /// spawn, cancel it, take it over, set its difficulty, edit the mob
     /// through its lend and change the pack's `group`, which finalization then
     /// reads. The decision and the difficulty the spawn finalizes with come
     /// back together.
+    /// The spawn's kind, position and sheet come from the caller; the group the
+    /// listeners change is the sheet's.
     pub(super) fn finalize_spawn_event(
         &self,
-        mob: &mut Mob,
+        kind: &str,
+        at: [f64; 3],
         reason: SpawnReason,
         spawner: Option<mod_api::SpawnSource>,
-        group: &mut Option<Group>,
+        sheet: &mut SpawnSheet,
     ) -> (Finalized, spawning::LocalDifficulty) {
-        let at = [mob.position.x, mob.position.y, mob.position.z];
         let difficulty = self.local_difficulty(at);
         if !mod_api::__private::listened(mod_api::HookId::FinalizeSpawn) {
             return (Finalized::Done, difficulty);
         }
-        let kind = mob.kind.id.clone();
-        self.finalize_spawn_lent(&kind, at, reason, spawner, difficulty, Some(mob), group)
+        self.finalize_spawn_lent(kind, at, reason, spawner, difficulty, Some(sheet))
     }
-    /// `Mob.getMaxSpawnClusterSize` as the entity parts of the finalized `mob`'s type answer it
-    /// (`EntityPart::spawn_cluster_size`), asked with `mob` lent as it stands before it joins the
-    /// level: the first part in dispatch order to answer wins, and none answering leaves vanilla's
-    /// `vanilla` to the spawner. A type with no part costs one table lookup. Server-side.
+    /// `Mob.getMaxSpawnClusterSize` as the entity parts of the spawn's type answer it
+    /// (`EntityPart::spawn_cluster_size`), asked with the sheet lent as it stands before the entity
+    /// joins the level: the first part in dispatch order to answer wins, and none answering leaves
+    /// vanilla's `vanilla` to the spawner. A type with no part costs one table lookup. Server-side.
     pub(super) fn spawn_cluster_size(
         &self,
-        mob: &mut Mob,
+        kind: &str,
+        at: [f64; 3],
+        sheet: Option<&mut SpawnSheet>,
         reason: SpawnReason,
         spawner: Option<mod_api::SpawnSource>,
         vanilla: u32,
@@ -667,13 +652,11 @@ impl Game<'_> {
             return None;
         }
         let parts = mod_api::__private::entity_parts();
-        let kind = mob.kind.id.clone();
-        let list = parts.entity_parts(&kind);
+        let list = parts.entity_parts(kind);
         if list.is_empty() {
             return None;
         }
-        let at = [mob.position.x, mob.position.y, mob.position.z];
-        self.lend_unspawned(&kind, at, Some(mob), |lent, _| {
+        self.lend_unspawned(kind, at, sheet, |lent, _| {
             list.iter().find_map(|attached| {
                 let _guard =
                     mod_api::content::crash::enter_native_mod(mod_api::content::crash::ModCall {
@@ -696,15 +679,16 @@ impl Game<'_> {
         at: [f64; 3],
         reason: SpawnReason,
         spawner: Option<mod_api::SpawnSource>,
+        sheet: Option<&mut SpawnSheet>,
     ) -> (Finalized, spawning::LocalDifficulty) {
         let difficulty = self.local_difficulty(at);
         if !mod_api::__private::listened(mod_api::HookId::FinalizeSpawn) {
             return (Finalized::Done, difficulty);
         }
-        self.finalize_spawn_lent(kind, at, reason, spawner, difficulty, None, &mut None)
+        self.finalize_spawn_lent(kind, at, reason, spawner, difficulty, sheet)
     }
-    /// Fires `finalize_spawn` with `mob` lent to it and the group data as the
-    /// API's; a group the listener changed comes back as the game's.
+    /// Fires `finalize_spawn` with the sheet lent to it and the group data as the
+    /// API's; a group the listener changed comes back as the sheet's.
     #[allow(clippy::too_many_arguments)]
     fn finalize_spawn_lent(
         &self,
@@ -713,16 +697,16 @@ impl Game<'_> {
         reason: SpawnReason,
         spawner: Option<mod_api::SpawnSource>,
         difficulty: spawning::LocalDifficulty,
-        mob: Option<&mut Mob>,
-        group: &mut Option<Group>,
+        mut sheet: Option<&mut SpawnSheet>,
     ) -> (Finalized, spawning::LocalDifficulty) {
         let mut heard = mod_api::Difficulty::from(difficulty);
         let (mut spawn_cancelled, mut skip) = (false, false);
-        let given = group
+        let given = sheet
             .as_ref()
-            .and_then(|g| super::native_unspawned_mob::native_spawn_group(g, self.lend_epoch()));
+            .and_then(|s| s.group.as_ref())
+            .and_then(|g| super::native_unspawned_mob::native_spawn_group(kind, g));
         let mut native_group = given.clone();
-        self.lend_unspawned(kind, at, mob, |mob, edits| {
+        self.lend_unspawned(kind, at, sheet.as_deref_mut(), |mob, edits| {
             self.native_finalize_spawn(mod_api::__private::FinalizeSpawnCall {
                 dimension: self.dim.id(),
                 kind,
@@ -737,10 +721,10 @@ impl Game<'_> {
                 cancel: &mut skip,
             });
         });
-        if native_group != given {
-            *group = native_group
+        if let (Some(s), true) = (sheet, native_group != given) {
+            s.group = native_group
                 .as_ref()
-                .and_then(super::native_unspawned_mob::spawn_group);
+                .and_then(|g| super::native_unspawned_mob::spawn_group(kind, g));
         }
         if spawn_cancelled {
             return (Finalized::Cancelled, difficulty);
@@ -772,8 +756,33 @@ impl Game<'_> {
                 Arc::make_mut(c).fresh = false;
             }
             self.world.chunks.remove_fresh(&key);
-            self.spawn_generation_creatures(key.0, key.1);
+            self.generate_chunk_packs(key.0, key.1);
         }
+    }
+    /// `NoiseBasedChunkGenerator.spawnOriginalMobs`: the creature packs of a freshly generated chunk, placed by the ECS with the region's
+    /// random. The settings' `disable_mob_generation` skips the pass, which is how the End's preset keeps its chunks empty (the dimension
+    /// is also checked, so a preset that fails to load cannot start filling the End); a superflat world places no packs.
+    fn generate_chunk_packs(&mut self, cx: i32, cz: i32) {
+        if !self.world.chunks.contains_key(&(cx, cz)) || self.dim == Dim::End {
+            return;
+        }
+        let Some(terrain) = self.end.locator() else {
+            return;
+        };
+        if !terrain.noise_ground() || terrain.disable_mob_generation() {
+            return;
+        }
+        let mut region = terrain.region_random(cx, cz);
+        let any = region.as_any();
+        let mut ecs = std::mem::replace(&mut self.ecs, EcsLevel::inert());
+        let mw = self.mob_world_base(&[]);
+        if let Some(r) = any.downcast_mut::<LegacyRandom>() {
+            ecs.spawn_chunk_packs(&mw, cx, cz, r);
+        } else if let Some(r) = any.downcast_mut::<XoroshiroRandom>() {
+            ecs.spawn_chunk_packs(&mw, cx, cz, r);
+        }
+        drop(mw);
+        self.ecs = ecs;
     }
     /// `DistanceManager.inEntityTickingRange` in an entity-ticking chunk
     /// (block coordinates), from every player's tickets (`update_chunk_tickets`).
@@ -812,27 +821,6 @@ impl Game<'_> {
         }
     }
 
-    fn finish_creature_entities(
-        &mut self,
-        laps: &mut horizon_client::spans::Laps,
-        primable: &[(u32, i32)],
-    ) -> Result<()> {
-        self.drain_entity_inside();
-        laps.lap("creature_events");
-        self.flush_lan_explosions();
-        self.flush_wind_bursts()?;
-        self.drain_entity_inside();
-        self.sulfur_cube_pickups();
-        self.sulfur_cube_power_priming(primable);
-        laps.lap("creature_systems");
-        // RESTE-SANS-ECS: the hurt and death sounds of damage dealt outside the mob ticks were queued in each mob's outbox.
-        // The enderman teleports those hurts asked for (`Enderman.hurtServer`).
-        self.settle_hurt_teleports()?;
-        laps.lap("creature_outbox");
-        // And for the sizes the ticks changed (a pose, a baby grown, a scale).
-        self.native_mob_sizes();
-        Ok(())
-    }
     /// The damage source a mob died to (`die`'s), its direct entity included when the mob
     /// recorded one ([`Mob::last_direct`]).
     fn last_blow(&self, m: &Mob) -> Option<horizon_client::advancements::DamageView> {
@@ -900,9 +888,6 @@ impl Game<'_> {
                 Some(self.lan.as_ref()?.hub.guest(conn)?.entity_id)
             }
             Some(_) => Some(self.own_entity_id()),
-            None if self.lan_acting.is_none() && self.player.is_some() => {
-                Some(self.own_entity_id())
-            }
             None => None,
         }
     }
@@ -913,9 +898,6 @@ impl Game<'_> {
                 Some(self.lan.as_ref()?.hub.guest(conn)?.uuid)
             }
             Some(_) => Some(self.native_acting_id()),
-            None if self.lan_acting.is_none() && self.player.is_some() => {
-                Some(self.native_acting_id())
-            }
             None => None,
         }
     }
@@ -2446,7 +2428,7 @@ impl Game<'_> {
     fn elder_curse(&mut self, at: [f64; 3], silent: bool) {
         let mut cursed = Vec::new();
         self.for_each_player(|g| {
-            if g.elder_curse_player(at, silent) {
+            if g.elder_curse_player(at) {
                 cursed.push(g.lan_acting);
             }
         });
@@ -2468,7 +2450,7 @@ impl Game<'_> {
         }
     }
     /// The curse on the player in place; whether it took.
-    fn elder_curse_player(&mut self, at: [f64; 3], silent: bool) -> bool {
+    fn elder_curse_player(&mut self, at: [f64; 3]) -> bool {
         if self.creative || self.spectator() {
             return false;
         }
@@ -2485,15 +2467,7 @@ impl Game<'_> {
         if active.is_some_and(|e| e.amplifier >= 2 && !e.ends_within(1199)) {
             return false;
         }
-        let at = [p.position.x, p.position.y, p.position.z];
         self.give_player_effect("minecraft:mining_fatigue", 6000, 2);
-        if self.lan_acting.is_none()
-            // ClientPacketListener.handleGameEvent: the curse sound unless the elder is silent.
-            && crate::mobs::guardian::elder_curse_param(silent) == 1.0
-        {
-            self.audio
-                .play("minecraft:entity.elder_guardian.curse", Some(at), 1.0, 1.0);
-        }
         true
     }
     /// `hurtServer` on the player. `from` is the source's position (none: no
@@ -3111,8 +3085,7 @@ impl Game<'_> {
     /// the sites that skip their whole work while griefing is off skip it only
     /// when no mod listens.
     pub(super) fn grief_hooked(&self) -> bool {
-        self.native_authoritative()
-            && mod_api::__private::listened(mod_api::HookId::EntityMobGriefing)
+        mod_api::__private::listened(mod_api::HookId::EntityMobGriefing)
     }
     /// [`Self::can_entity_grief`] for `entity`, with the rule already read.
     pub(super) fn entity_grief(&self, entity: u32, rule: bool) -> bool {
@@ -3447,18 +3420,6 @@ pub(in crate::game) fn local_difficulty_in(
 
 #[cfg(test)]
 mod death_loot_context_tests;
-
-#[cfg(feature = "upstream-parallel-mobs")]
-#[path = "../../creatures/mob_group.rs"]
-mod mob_group;
-
-#[cfg(feature = "upstream-parallel-mobs")]
-#[path = "../../creatures/mob_islands.rs"]
-mod mob_islands;
-
-#[cfg(feature = "upstream-parallel-mobs")]
-#[path = "../../creatures/prep.rs"]
-pub(in crate::game) mod prep;
 
 #[cfg(test)]
 #[path = "frame_projectile_tests.rs"]

@@ -7,6 +7,7 @@
 //! The candidates come from the spatial index, only when the ask comes up.
 use super::*;
 use crate::rules::nearest_target::{arm_wait, dist2, heal_chance, in_box, in_sphere, INVISIBLE, reach_range, reduced, watch_polled, watch_radius};
+use crate::brain::behaviours::start_attacking::{TargetAnswer, TargetWatched};
 use crate::targeting::{self, FollowRange, Target, Who};
 use horizon_core::geometry::Vec3;
 use crate::{cow::*, goals::*};
@@ -48,9 +49,17 @@ pub struct Params {
     pub max_dy: Option<f64>,
     /// The player is a candidate only within this distance along the axis of the face the attacker is attached to (the shulker's `|d| <= 4.5`).
     pub attach_reach: Option<f64>,
+    /// `ATTACK_TARGET_COOLDOWN` (`NautilusAi.findNearestValidAttackTarget`): a search with no cooldown sets one, drawn in these
+    /// ticks, and then picks nothing on one ask in two; no search runs while it lasts.
+    pub attack_cooldown: Option<(i32, i32)>,
+    /// The first tests of the search (`findNearestValidAttackTarget`): false, no search and no cooldown.
+    pub may_search: Option<fn(&World, Entity) -> bool>,
+    /// `ANGRY_AT` (`setAngerTarget`): the attacker that hurt the animal is its target while it stays attackable in the water
+    /// (`findNearestValidAttackTarget`'s first search), for 400 ticks after the hurt.
+    pub anger_memory: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None, heal: false, after_heal: false, candidate_when: None, max_dy: None, attach_reach: None };
+    pub const DEFAULT: Self = Self { players: false, types: &[], tag: None, predicate: None, must_see: true, unseen_memory: 60, follow_scale: 1.0, interval: 10, beyond_sqr: None, spare_owner: false, any: false, except: &[], hostile: false, range: None, heal: false, after_heal: false, candidate_when: None, max_dy: None, attach_reach: None, attack_cooldown: None, may_search: None, anger_memory: false };
     /// The nearest player (`NearestAttackableTargetGoal(Player)`).
     pub const PLAYER: Self = Self { players: true, ..Self::DEFAULT };
 }
@@ -79,6 +88,44 @@ impl Nearest {
 #[derive(Component, Clone, Debug)]
 pub struct NearestTargets(pub Vec<Nearest>);
 
+/// `ATTACK_TARGET_COOLDOWN`: the date (game time) before which the search picks nothing. Set by the search or at the birth; absent when over.
+/// The countdown of the zombie nautilus is the same date, with no tick of its own.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct AttackCooldown(pub u64);
+
+/// `ANGRY_AT` (`setAngerTarget`): the attacker and the game time its memory expires (the hurt's time plus 400 ticks).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct AngerMemory {
+    pub who: Who,
+    pub until: u64,
+}
+
+/// The ticks left of the attack cooldown, None when it is over.
+pub fn attack_cooldown_left(w: &World, e: Entity) -> Option<u64> {
+    let now = now_of(w, e);
+    w.get::<AttackCooldown>(e).map(|c| c.0).filter(|d| *d > now).map(|d| d - now)
+}
+
+/// Sets the ticks left of the attack cooldown (`None`: over, the component is taken away).
+pub fn set_attack_cooldown_left(w: &mut World, e: Entity, left: Option<u64>) {
+    match left {
+        Some(t) => {
+            let date = now_of(w, e) + t;
+            w.entity_mut(e).insert(AttackCooldown(date));
+        }
+        None => {
+            w.entity_mut(e).remove::<AttackCooldown>();
+        }
+    }
+}
+
+/// The birth draw of the cooldown (a `Store::Call` of the species draws, `NautilusAi.initMemories`), in ticks.
+pub(crate) fn spawn_attack_cooldown(w: &mut World, e: Entity, v: u32) {
+    set_attack_cooldown_left(w, e, Some(u64::from(v)));
+}
+
 pub static MODULE: Module = Module {
     name: "nearest_target",
     flags: TARGET,
@@ -88,6 +135,7 @@ pub static MODULE: Module = Module {
     fired,
     can_use,
     start,
+    systems,
     stop,
     tick: Some(tick),
     requires: &[Cap::Targets],
@@ -100,7 +148,8 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
     let mut ids = Vec::new();
     for (i, sp) in crate::species::registry().species.iter().enumerate() {
         let named = p.types.contains(&sp.name) || p.tag.is_some_and(|t| mw.data.entity_has(t, sp.name));
-        let hostile = p.hostile && crate::cow::is_monster(sp.name);
+        // A monster that is not an `Enemy` (the rule `not_enemy`, read from the fiche) is no prey of `hostile`.
+        let hostile = p.hostile && crate::cow::is_monster(sp.name) && !sp.rules.iter().any(|r| r.rule.name == "not_enemy");
         if (named || p.any || hostile) && !p.except.contains(&sp.name) {
             ids.push(i);
         }
@@ -139,7 +188,8 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
     if n.armed || n.inert() || n.parked {
         return;
     }
-    if !n.p.players && w.get_resource::<crate::goals::Carriers>().is_some_and(|c| !n.mask.any_alive(&c.1.0)) {
+    // An anger memory is read by every ask, whatever creature is alive: such an instance never parks.
+    if !n.p.players && !n.p.anger_memory && w.get_resource::<crate::goals::Carriers>().is_some_and(|c| !n.mask.any_alive(&c.1.0)) {
         edit(w, e, inst, |n| n.parked = true);
         return;
     }
@@ -224,6 +274,40 @@ pub fn unpark(w: &mut World, sp: u8) {
         }
     }
 }
+fn systems(s: &mut Schedule, slot: GoalSlot) {
+    s.add_systems(hear_hurt.in_set(slot));
+}
+/// The hurts of this step, for the animals that hold instances (the others cost nothing).
+fn hear_hurt(hurt: Res<crate::hostile::HurtBy>, mut reqs: ResMut<Requests>, q: Query<(), With<NearestTargets>>) {
+    for (victim, _) in hurt.0.iter() {
+        if q.contains(*victim) {
+            reqs.0.push(Req::Call(*victim, angered));
+        }
+    }
+}
+/// `setAngerTarget` (`AbstractNautilus.hurtServer`): the last attacker of the hurt is remembered for 400 ticks, and the instances
+/// that keep the memory ask again.
+fn angered(w: &mut World, e: Entity) {
+    let Some(who) = w.resource::<crate::hostile::HurtBy>().0.iter().rev().find(|(v, _)| *v == e).map(|(_, a)| *a) else { return };
+    let until = now_of(w, e) + 400;
+    w.entity_mut(e).insert(AngerMemory { who, until });
+    let hits: Vec<(u8, u8)> = w.get::<NearestTargets>(e).map_or(Vec::new(), |ts| ts.0.iter().enumerate().filter(|(_, n)| n.p.anger_memory).map(|(i, n)| (n.slot, i as u8)).collect());
+    for (slot, nth) in hits {
+        arm(w, e, Inst { slot, nth });
+    }
+}
+/// `findNearestValidAttackTarget`'s first search: the `ANGRY_AT` attacker, while it is in the water and can be attacked.
+fn angry_target(w: &World, e: Entity) -> Option<Who> {
+    let a = *w.get::<AngerMemory>(e)?;
+    if a.until <= now_of(w, e) {
+        return None;
+    }
+    let wet = match a.who {
+        Who::Player(id) => w.resource::<crate::hostile::PlayerState>().in_water(id),
+        Who::Entity(c) => w.get::<FluidState>(c).is_some_and(|f| f.in_water),
+    };
+    (wet && targeting::info(w, a.who).is_some_and(|i| !i.exempt)).then_some(a.who)
+}
 fn rearm(w: &mut World, e: Entity, inst: Inst) {
     edit(w, e, inst, |n| n.armed = false);
     arm(w, e, inst);
@@ -248,6 +332,27 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     if n.p.heal && (!crate::raids::has_active_raid(w, e) || !with_rng(w, e, |r| heal_chance(|k| r.next_int(k)))) {
         return false;
     }
+    if n.p.may_search.is_some_and(|f| !f(w, e)) {
+        rearm(w, e, inst);
+        return false;
+    }
+    if n.p.anger_memory && let Some(who) = angry_target(w, e) {
+        edit(w, e, inst, |n| n.pick = Some(who));
+        return true;
+    }
+    if let Some((lo, hi)) = n.p.attack_cooldown {
+        if attack_cooldown_left(w, e).is_some() {
+            rearm(w, e, inst);
+            return false;
+        }
+        let left = with_rng(w, e, |r| lo + r.next_int(hi - lo + 1));
+        set_attack_cooldown_left(w, e, Some(left as u64));
+        // `nextFloat() < 0.5` picks nothing (the jar's `ifge` goes on at 0.5 and above): the top 24 bits of the draw against 2^23.
+        if with_rng(w, e, |r| r.next_u32() >> 8 < 1 << 23) {
+            rearm(w, e, inst);
+            return false;
+        }
+    }
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let eye = w.get::<targeting::Eye>(e).map_or(1.0, |l| l.0);
     let range = reach_of(w, e, &n);
@@ -260,12 +365,17 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         let ps = w.resource::<crate::hostile::PlayerState>();
         // No player has an effect (the usual): the list is not asked per candidate.
         let any_effect = w.get_resource::<crate::effects::PlayerEffects>().is_some_and(|p| !p.0.is_empty());
+        let looker = w.get::<SpeciesId>(e).map(|s| s.0);
+        let hook = w.get_resource::<targeting::LivingVisibility>().and_then(|h| h.0).map(targeting::LentVisibility::get);
+        let looking = if hook.is_some() { crate::bridge::ids::id_of(w, e).unwrap_or(0) } else { 0 };
         let best = w.resource::<Online>().nearest_where(pos.x, pos.y, pos.z, range, |p, d| {
+            let vis = ps.visibility(p.id) * targeting::head_factor(ps.helmet(p.id), looker);
+            let vis = hook.map_or(vis, |f| f.visibility(p.id, looking, vis).max(0.0));
             let reach = if any_effect {
                 let seen = if crate::effects::player_has(w, p.id, crate::effects::Kind::Invisibility) { INVISIBLE } else { 1.0 };
-                targeting::sight_range(range, ps.visibility(p.id) * seen)
+                targeting::sight_range(range, vis * seen)
             } else {
-                targeting::sight_range(range, ps.visibility(p.id))
+                targeting::sight_range(range, vis)
             };
             d <= reach * reach
                 && n.p.beyond_sqr.is_none_or(|b| d > b)
@@ -331,7 +441,34 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     }
     let mut t = Target::new(who, reduced(n.p.unseen_memory) as u16, inst.slot);
     (t.must_see, t.follow_scale) = (n.p.must_see, n.p.follow_scale);
+    if w.get_resource::<TargetWatched>().is_some_and(|x| x.0) {
+        w.entity_mut(e).insert(PendingTarget(t));
+        w.resource_mut::<crate::goals::Events>().host.target_ask(e, Some(who));
+        return;
+    }
     targeting::set_target(w, e, t);
+}
+
+/// A target the host is asked about while a mod hears `living_change_target`: `resolve_pending` takes it on `Set`, drops it on `Keep`.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct PendingTarget(pub Target);
+
+/// The answer to the `TargetAsk` of a pending target: `Set(who)` takes the goal's target aimed at `who` (memory and slot kept); `Set(None)`
+/// clears the target, as the old path's `setTarget(null)`; `Keep` leaves the target it had.
+pub fn resolve_pending(w: &mut World, e: Entity, answer: TargetAnswer) {
+    let Some(p) = w.get_entity_mut(e).ok().and_then(|mut m| m.take::<PendingTarget>()) else { return };
+    match answer {
+        TargetAnswer::Keep => {}
+        TargetAnswer::Set(None) => targeting::clear_target(w, e),
+        TargetAnswer::Set(Some(who)) => {
+            if who == p.0.who || targeting::info(w, who).is_some() {
+                let mut t = Target::new(who, p.0.memory, p.0.slot);
+                (t.must_see, t.follow_scale) = (p.0.must_see, p.0.follow_scale);
+                targeting::set_target(w, e, t);
+            }
+        }
+    }
 }
 fn stop(w: &mut World, e: Entity, inst: Inst) {
     if w.get::<Target>(e).is_some_and(|t| t.slot == inst.slot) {

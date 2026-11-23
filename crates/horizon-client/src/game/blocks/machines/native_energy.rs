@@ -168,7 +168,6 @@ mod tests {
             let _mods = game_thread();
             // Installing the capability fixture replaces the registry snapshot.
             crate::game::mods::register_iterated_registries(&game.options.resources).unwrap();
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -303,7 +302,6 @@ mod tests {
         use horizon_core::geometry::Direction;
         use mod_api::{BlockUpdateFlags, ENERGY, move_energy};
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

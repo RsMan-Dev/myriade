@@ -1,7 +1,7 @@
 //! `PiglinBrute` (`mobs/piglin.rs:1463-1482`, `register_brute`; brain `PiglinBruteAi`, javap). Its brain: core (look and move sinks, the
 //! door, the anger ending on a dead target, the anger on a blow); fight (stop when invalid, walk to the target out of reach, melee at 20
 //! ticks); idle (start attacking the anger, the nearest player or the nemesis; look kids; walk kids: stroll, interact with a piglin or a
-//! brute, walk home and around the home block). Not ported: the alert of the other piglins, the activity sounds, `SetLookAndInteract`
+//! brute, walk home and around the home block). Not ported: the alert of the other piglins, `SetLookAndInteract`
 //! (its kind is not read yet), the piglin's `R:piglin` repellent.
 use super::Def;
 use crate::behaviours::{Cap, Entry, float};
@@ -43,7 +43,7 @@ static MOVE_KIDS: &[Kid] = &[
 
 pub static DEF: Def = Def {
     name: "minecraft:piglin_brute",
-    goals: &[Entry::new(&float::MODULE, 0, &float::Params::DEFAULT)],
+    goals: &[Entry::new(&float::MODULE, 0, &float::Params::DEFAULT), Entry::new(&crate::behaviours::growl_in_fight::MODULE, 1, &())],
     rules: &[crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::PIGLIN_BRUTE)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     brain: BrainDef {
@@ -86,5 +86,6 @@ pub static DEF: Def = Def {
         ],
     },
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

@@ -37,7 +37,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub trait Hooks: Sync {
     /// The game started for someone playing it: once, after the log and the crash handler, before
     /// the first frame. Not for a dedicated server, a benchmark, an offscreen run or a run that
-    /// quits by itself or that horizon-ctl drives (those start in a source checkout).
+    /// quits by itself or that the control socket drives (those start in a source checkout).
     fn started(&self, _game: &Started<'_>) {}
 
     /// The world this window plays was opened to LAN or to friends (`true`), or no longer is

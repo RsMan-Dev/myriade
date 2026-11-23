@@ -203,7 +203,7 @@ fn step_one(w: &mut World, level: &Level, e: Entity, void_y: f64) {
 
     // The move through the blocks. `AbstractBoat.checkFallDamage` keeps the fall distance and hurts nothing (it never calls
     // `causeFallDamage`), so the damage `do_move` reports is dropped and no event is made.
-    let body = Body { width: WIDTH as f32, height: HEIGHT as f32, step_height: 0.0, speed: 0.0, fall_factor: 1.0, lava_walker: false, object: false, orb: false, tnt: false };
+    let body = Body { width: WIDTH as f32, height: HEIGHT as f32, step_height: 0.0, speed: 0.0, fall_factor: 1.0, safe_fall: 3.0, fall_mult: 1.0, movement_efficiency: 0.0, lava_walker: false, object: false, orb: false, tnt: false };
     let (mut at, mut moving, mut boxed) = (Pos(pos), Vel(vel), Bounds(bounds.0));
     let old_y = pos.y;
     let mut fall_damage = 0.0_f32;

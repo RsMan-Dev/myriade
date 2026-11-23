@@ -3,8 +3,8 @@
 //! deadlines of the wheel (`Due::Effect`), one per creature at its nearest. What an effect changes: the speed (speed, slowness: `Body.speed`),
 //! the attack (weakness: `AttackDamage`), the immunities (fire resistance, water breathing: `Immune`), the marker `Invisible` (read by the
 //! targeting), the levitation (a field of `Drive` that the ground travel reads: no system). The count of a periodic effect is the `Mob`'s: with `D` ticks left,
-//! it acts on the ticks where the remaining time is a multiple of `base >> level`. Not done: the chains of hidden weaker effects, the
-//! instant effects, absorption and health boost, the undead that poison does not hurt, the particles and the icons.
+//! it acts on the ticks where the remaining time is a multiple of `base >> level`; the hidden weaker effects wait behind it (`Effects.hidden`).
+//! Not done: the instant effects, absorption and health boost, the undead that poison does not hurt, the particles and the icons.
 use crate::cow::*;
 use crate::goals::Events;
 use crate::rules::effects as rule;
@@ -74,10 +74,20 @@ pub enum Kind {
     Weaving,
     /// `MobEffects.STRENGTH`: what a cure gives the zombie villager it starts (`startConverting`).
     Strength,
+    /// `MobEffects.RESISTANCE`: the hurt takes `(amp + 1) * 5` of 25 off (`LivingEntity.getDamageAfterMagicAbsorb`), see `Resistance`.
+    Resistance,
     /// `MobEffects.INFESTED`: a hit on the bearer may let silverfish out (`hurt_spawn`).
     Infested,
     /// `MobEffects.ABSORPTION`: adding it raises the absorption to 4 x (level + 1) at least; ending it takes that back.
     Absorption,
+    /// `MobEffects.HEALTH_BOOST`: +4 max health per level on `max_health` (`attribute_modifiers`), taken back when it ends.
+    HealthBoost,
+    /// `MobEffects.CONDUIT_POWER`: the water breathing of the creature (`fluids::breathing`).
+    ConduitPower,
+    /// `MobEffects.BREATH_OF_THE_NAUTILUS`: the air under water is held, not refilled (`fluids::breathing`).
+    BreathOfTheNautilus,
+    /// `MobEffects.SLOW_FALLING`: the fall distance is discarded before each travel (`fall_reset`).
+    SlowFalling,
 }
 impl Kind {
     /// The period of a periodic effect at level 0 (`MobEffect.shouldApplyEffectTickThisTick`).
@@ -110,16 +120,26 @@ pub const NO_ICON: u8 = 4;
 #[derive(Component, Clone, Debug, Default)]
 pub struct Effects {
     pub list: Vec<Effect>,
-    base_speed: Option<f64>,
     base_attack: Option<f32>,
     /// The `Immune` bits the effects added.
     granted: u32,
     /// The tick of the wheel entry that is pending (0: none).
     armed: u64,
+    /// The hidden instances (`MobEffectInstance.hiddenEffect`), per kind in chain order; their `ends` is the time left, frozen.
+    pub hidden: Vec<Effect>,
 }
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Invisible;
+/// The level of the Resistance effect (`amp + 1`), sparse: absent when the creature has no Resistance.
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+#[component(storage = "SparseSet")]
+pub struct Resistance(pub i32);
+
+/// The breath of the nautilus: under water the air is held (no refill, no drowning) unless water breathing or conduit power is there.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct HoldsAir;
 
 /// Fire resistance: no fire damage (`Immune` bit read by the burn).
 pub const IMMUNE_FIRE: u32 = 8;
@@ -128,6 +148,8 @@ pub const IMMUNE_WITHER: u32 = 16;
 /// `canBeAffected` false for `POISON` (`Spider`, `CaveSpider`, `AbstractNautilus`) and for `WEAKNESS` (`Parched`): base bits, set at creation.
 pub const IMMUNE_POISON: u32 = 32;
 pub const IMMUNE_WEAKNESS: u32 = 64;
+/// `canFreeze` false (the powder snow adds no `frozenTicks`): a base bit of `Immune`, set at creation.
+pub const IMMUNE_FREEZE: u32 = 128;
 /// The base `Immune` bit that makes `canBeAffected` refuse the effect `kind` (0: none).
 fn refusing_bit(kind: Kind) -> u32 {
     match kind {
@@ -161,21 +183,40 @@ pub fn add_flagged(w: &mut World, e: Entity, kind: Kind, amp: i32, ticks: i32, f
     }
     let first = now_of(w, e) + 1;
     // `tickEffects` drops the effect at the end of its last tick, before the travel of that tick: it is gone from that tick on.
-    let ends = rule::ends_at(first, ticks);
+    // A negative duration is infinite (`MobEffectInstance.INFINITE_DURATION`): it never ends.
+    let ends = if ticks < 0 { u64::MAX } else { rule::ends_at(first, ticks) };
     let next = period(kind, amp).map_or(u64::MAX, |p| rule::first_act(first, ticks, p));
     if w.get::<Effects>(e).is_none() {
         w.entity_mut(e).insert(Effects::default());
+    }
+    let now = first - 1;
+    if ticks == 0 {
+        // `tickServer` drops a zero duration before applying it, with its hidden part: that part is never promoted.
+        let mut f = w.get_mut::<Effects>(e).unwrap();
+        if f.list.iter().find(|x| x.kind == kind).is_none_or(|x| x.amp < amp) {
+            f.list.retain(|x| x.kind != kind);
+            f.hidden.retain(|x| x.kind != kind);
+            drop(f);
+            modifiers(w, e);
+            arm(w, e);
+            w.resource_mut::<Events>().effect_changed.push(e);
+        }
+        return true;
     }
     let mut f = w.get_mut::<Effects>(e).unwrap();
     let new = Effect { kind, amp, ends, next, flags };
     match f.list.iter().position(|x| x.kind == kind) {
         Some(i) => {
-            let old = f.list[i];
-            if rule::replaces(amp, ends, old.amp, old.ends) {
-                f.list[i] = new;
-            } else if old.flags != flags {
-                f.list[i].flags = flags;
-            } else {
+            let mut chain = take_hidden_chain(&mut f.hidden, kind, now);
+            let mut cur = f.list[i];
+            let mut changed = update(&mut cur, &mut chain, new);
+            if !changed && cur.flags != flags {
+                cur.flags = flags;
+                changed = true;
+            }
+            f.list[i] = cur;
+            f.hidden.extend(chain.into_iter().map(|x| Effect { ends: x.ends.saturating_sub(now), ..x }));
+            if !changed {
                 return false;
             }
         }
@@ -186,11 +227,60 @@ pub fn add_flagged(w: &mut World, e: Entity, kind: Kind, amp: i32, ticks: i32, f
     w.resource_mut::<Events>().effect_changed.push(e);
     true
 }
+/// The hidden instances of `kind`, in chain order, their time left made absolute from `now`.
+fn take_hidden_chain(hidden: &mut Vec<Effect>, kind: Kind, now: u64) -> Vec<Effect> {
+    let mut chain = Vec::new();
+    hidden.retain(|x| {
+        if x.kind == kind {
+            chain.push(Effect { ends: x.ends.saturating_add(now), ..*x });
+            false
+        } else {
+            true
+        }
+    });
+    chain
+}
+/// `MobEffectInstance.update`: `other` (the new effect) meets the instance `cur`, whose hidden chain is `chain`. A stronger `other` takes the
+/// place of `cur`, which is hidden under it when `other` is shorter. An equal or weaker `other` changes the duration of `cur` when they are equal
+/// in level and `cur` is shorter, else it is hidden under `cur` (when `cur` is shorter). Returns whether `cur` changed.
+fn update(cur: &mut Effect, chain: &mut Vec<Effect>, other: Effect) -> bool {
+    if other.amp > cur.amp {
+        if other.ends < cur.ends {
+            chain.insert(0, *cur);
+        }
+        *cur = other;
+        return true;
+    }
+    if cur.ends >= other.ends {
+        return false;
+    }
+    if cur.amp == other.amp {
+        cur.ends = other.ends;
+        cur.next = other.next;
+        return true;
+    }
+    if chain.is_empty() {
+        chain.push(other);
+    } else {
+        let mut head = chain.remove(0);
+        update(&mut head, chain, other);
+        chain.insert(0, head);
+    }
+    false
+}
+/// `downgradeToHiddenEffect`: an ended effect gives way to the hidden one of its kind, which runs for the time it had left.
+fn promote(hidden: &mut Vec<Effect>, ended: Effect, now: u64) -> Option<Effect> {
+    let i = hidden.iter().position(|x| x.kind == ended.kind)?;
+    let h = hidden.remove(i);
+    let next = period(h.kind, h.amp).map_or(u64::MAX, |p| rule::first_act(now + 1, h.ends as i32, p));
+    Some(Effect { ends: now.saturating_add(h.ends), next, ..h })
+}
 /// `LivingEntity.removeEffect`.
 pub fn remove(w: &mut World, e: Entity, kind: Kind) -> bool {
     let Some(mut f) = w.get_mut::<Effects>(e) else { return false };
     let n = f.list.len();
     f.list.retain(|x| x.kind != kind);
+    f.hidden.retain(|x| x.kind != kind);
     let removed = f.list.len() != n;
     if removed {
         modifiers(w, e);
@@ -213,6 +303,7 @@ pub fn attribute_modifiers(w: &World, e: Entity, name: &str) -> Vec<crate::attr_
                 ("movement_speed", Kind::Slowness) => Some(make("minecraft:effect.slowness", -0.15 * n, Operation::AddMultipliedTotal)),
                 ("attack_damage", Kind::Weakness) => Some(make("minecraft:effect.weakness", -4.0 * n, Operation::AddValue)),
                 ("attack_damage", Kind::Strength) => Some(make("minecraft:effect.strength", 3.0 * n, Operation::AddValue)),
+                ("max_health", Kind::HealthBoost) => Some(make("minecraft:effect.health_boost", 4.0 * n, Operation::AddValue)),
                 _ => None,
             }
         })
@@ -224,6 +315,7 @@ pub fn attribute_names(w: &World, e: Entity) -> impl Iterator<Item = &'static st
     list.iter().filter_map(|x| match x.kind {
         Kind::Speed | Kind::Slowness => Some("movement_speed"),
         Kind::Weakness | Kind::Strength => Some("attack_damage"),
+        Kind::HealthBoost => Some("max_health"),
         _ => None,
     })
 }
@@ -231,27 +323,10 @@ pub fn attribute_names(w: &World, e: Entity) -> impl Iterator<Item = &'static st
 fn modifiers(w: &mut World, e: Entity) {
     let Some(f) = w.get::<Effects>(e).cloned() else { return };
     let mut f = f;
-    // The speed: the base is kept while some effect changes it, and put back after.
-    let mut speed = 1.0_f64;
-    for x in &f.list {
-        match x.kind {
-            Kind::Speed => speed *= 1.0 + 0.2 * f64::from(x.amp + 1),
-            Kind::Slowness => speed *= (1.0 - 0.15 * f64::from(x.amp + 1)).max(0.0),
-            _ => {}
-        }
-    }
-    let changes = f.list.iter().any(|x| matches!(x.kind, Kind::Speed | Kind::Slowness));
-    if let Some(mut b) = w.get_mut::<Body>(e) {
-        if changes && f.base_speed.is_none() {
-            f.base_speed = Some(b.speed);
-        }
-        if let Some(base) = f.base_speed {
-            b.speed = base * speed;
-            if !changes {
-                f.base_speed = None;
-            }
-        }
-    }
+    // The maximum health follows the Health Boost, added or taken back (`LivingEntity.onAttributeUpdated`).
+    crate::attr_mod::touched(w, e, "max_health");
+    // The speed is the `movement_speed` attribute, its effect modifiers included (`attribute_modifiers`): one path, in `touched`.
+    crate::attr_mod::touched(w, e, "movement_speed");
     let weak: f32 = f.list.iter().filter(|x| x.kind == Kind::Weakness).map(|x| 4.0 * (x.amp + 1) as f32).sum::<f32>()
         - f.list.iter().filter(|x| x.kind == Kind::Strength).map(|x| 3.0 * (x.amp + 1) as f32).sum::<f32>();
     if let Some(mut a) = w.get_mut::<AttackDamage>(e) {
@@ -266,18 +341,33 @@ fn modifiers(w: &mut World, e: Entity) {
         }
     }
     if let Some(mut im) = w.get_mut::<Immune>(e) {
-        let wants = (if f.list.iter().any(|x| x.kind == Kind::FireResistance) { IMMUNE_FIRE } else { 0 }) | (if f.list.iter().any(|x| x.kind == Kind::WaterBreathing) { BREATHES_WATER } else { 0 });
+        let wants = (if f.list.iter().any(|x| x.kind == Kind::FireResistance) { IMMUNE_FIRE } else { 0 }) | (if f.list.iter().any(|x| matches!(x.kind, Kind::WaterBreathing | Kind::ConduitPower)) { BREATHES_WATER } else { 0 });
         let fresh = wants & !im.0;
         im.0 = (im.0 & !f.granted) | wants;
         f.granted = (f.granted & wants) | fresh;
     }
     let invisible = f.list.iter().any(|x| x.kind == Kind::Invisibility);
     let lev = f.list.iter().find(|x| x.kind == Kind::Levitation).map(|x| x.amp);
+    let slow = f.list.iter().any(|x| x.kind == Kind::SlowFalling);
+    let resist = f.list.iter().find(|x| x.kind == Kind::Resistance).map(|x| x.amp + 1);
     let mut en = w.entity_mut(e);
     if invisible {
         en.insert(Invisible);
     } else {
         en.remove::<Invisible>();
+    }
+    match resist {
+        Some(n) => {
+            en.insert(Resistance(n));
+        }
+        None => {
+            en.remove::<Resistance>();
+        }
+    }
+    if f.list.iter().any(|x| x.kind == Kind::BreathOfTheNautilus) {
+        en.insert(HoldsAir);
+    } else {
+        en.remove::<HoldsAir>();
     }
     match lev {
         Some(a) => {
@@ -291,6 +381,9 @@ fn modifiers(w: &mut World, e: Entity) {
                 d.levitation = 0;
             }
         }
+    }
+    if let Some(mut d) = w.get_mut::<Drive>(e) {
+        d.slow_falling = slow;
     }
     *w.get_mut::<Effects>(e).unwrap() = f;
     w.get_resource_or_insert_with(crate::attr_mod::AttrDirty::default).0.insert(e);
@@ -331,14 +424,20 @@ pub fn due(w: &mut World, e: Entity) {
             }
         }
     }
-    let before = f.list.len();
     let absorbed: Vec<i32> = f.list.iter().filter(|x| x.ends <= now && x.kind == Kind::Absorption).map(|x| x.amp).collect();
-    f.list.retain(|x| x.ends > now);
-    let ended = f.list.len() != before;
+    let ended = f.list.iter().any(|x| x.ends <= now);
+    let hidden = &mut f.hidden;
+    let mut promoted: Vec<i32> = Vec::new();
+    f.list = std::mem::take(&mut f.list).into_iter().filter_map(|x| if x.ends > now { Some(x) } else { promote(hidden, x, now).inspect(|p| if p.kind == Kind::Absorption { promoted.push(p.amp) }) }).collect();
     *w.get_mut::<Effects>(e).unwrap() = f;
     for amp in absorbed {
         let cur = w.get::<crate::absorption::Absorption>(e).map_or(0.0, |a| a.0);
         crate::absorption::set(w, e, (cur - 4.0 * (amp + 1) as f32).max(0.0));
+    }
+    // A hidden absorption that takes over starts again at its own level (`onEffectStarted`).
+    for amp in promoted {
+        let cur = w.get::<crate::absorption::Absorption>(e).map_or(0.0, |a| a.0);
+        crate::absorption::set(w, e, cur.max(4.0 * (amp + 1) as f32));
     }
     for (kind, _) in acts {
         match kind {

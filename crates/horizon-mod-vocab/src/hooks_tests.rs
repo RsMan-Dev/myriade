@@ -326,8 +326,8 @@ fn level_tick_pre_and_post_hear_the_level_in_their_own_moment() {
     testing::with_dispatch(
         vec![ModEntry::new("ticks", Box::new(Ticks(heard.clone())))].into(),
         || {
-            dispatch_level_tick_pre(HostSide::Client(&mut FakeHost::new()), level);
-            dispatch_level_tick_post(HostSide::Client(&mut FakeHost::new()), level);
+            dispatch_level_tick_pre(HostSide::Server(&mut FakeHost::new()), level);
+            dispatch_level_tick_post(HostSide::Server(&mut FakeHost::new()), level);
         },
     );
     assert_eq!(*heard.lock().unwrap(), [("pre", level), ("post", level)]);
@@ -683,18 +683,6 @@ fn sea_level_takes_a_host(host: &dyn Host, level: LevelRef) -> Option<i32> {
 #[allow(dead_code)]
 fn client_heights_take_a_client_host(host: &dyn ClientHost) -> Result<Vec<Option<i32>>, String> {
     host.client_surface_heights(&[(0, 0), (16, -16)], Heightmap::MotionBlocking)
-}
-
-/// Compile-only: a corner HUD asks whether F3 takes its corner.
-#[allow(dead_code)]
-fn corner_hud_asks_for_its_corner(host: &dyn ClientHost) -> bool {
-    host.native_corner_shown(Corner::TopLeft)
-}
-
-/// Compile-only: an official extra's port reads its old `horizon-extras.txt` settings.
-#[allow(dead_code)]
-fn extra_port_reads_its_old_settings(host: &dyn ClientHost) -> Vec<(String, String)> {
-    host.official_extra_settings()
 }
 
 /// Compile-only: a client mod moves the view onto an entity and back through the `&mut dyn ClientHost`

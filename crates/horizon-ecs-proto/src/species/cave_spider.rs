@@ -2,12 +2,12 @@
 //! when the path is over). Goals: float (1), leap at the target (3), melee that follows unseen (4), stroll (5), look (6); targets: hurt by (1),
 //! the nearest player (2), the iron golem (3): the spider's lists (`spider::TARGETS`, `ATTACK`, `ARMADILLO`).
 use super::{spider, Def};
-use crate::behaviours::{float, leap_at_target, look_at_player, random_look, stroll, Entry};
+use crate::behaviours::{float, leap_at_target, look_at_player, random_look, stroll, Cap, Entry};
 use crate::locomotion::{walk, Medium};
 
 pub static DEF: Def = Def {
     name: "minecraft:cave_spider",
-    caps: Some(super::POISON_IMMUNE_CAPS),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::PoisonImmune, Cap::NoWebStick]),
     targets: spider::TARGETS,
     goals: &[
         Entry::new(&float::MODULE, 1, &float::Params::DEFAULT),
@@ -21,5 +21,6 @@ pub static DEF: Def = Def {
     locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params { climber: true, ..walk::Params::DEFAULT }))],
         rules: &[crate::rules::RuleEntry::new(&crate::effects::ON_HIT, &crate::effects::CAVE_SPIDER)],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

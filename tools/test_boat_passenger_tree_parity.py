@@ -87,15 +87,7 @@ def main():
             shutil.copyfile(reference / name, folder / name)
         scratch = folder / "rust"
         scratch.mkdir()
-        env = runner.lab.game_env(HORIZON_PLAYER_NAME="Player",
-                                 HORIZON_COMMAND_SCRIPT=folder / "script.jsonl",
-                                 HORIZON_COMMAND_OUTPUT=folder / "rust.jsonl",
-                                 HORIZON_API_DISCOVERY="http://127.0.0.1:9/")
-        with (folder / "rust.log").open("w") as log:
-            result = runner.run_game([str(binary), "--resources", str(runner.lab.RESOURCES),
-                                      "--world", "harness", "--seed", str(runner.SEED), "--radius", "4"],
-                                     cwd=scratch, env=env, stdout=log, stderr=runner.subprocess.STDOUT)
-        assert result.returncode == 0, f"native process failed; see {folder / 'rust.log'}"
+        runner.run_as_player(binary, folder / "script.jsonl", folder / "rust.jsonl", None, cwd=scratch)
     java = [json.loads(s) for s in (folder / "vanilla.jsonl").read_text().splitlines()]
     admit(recorded(program), java)
     if reference is None:

@@ -28,7 +28,7 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * Dev-only benchmark driver for the vanilla client (tools/perf_bench.py): the
- * same steps horizon-ctl drives in Horizon. From the title screen it creates a
+ * same steps the control socket drives in Horizon. From the title screen it creates a
  * fresh creative world with the script's seed, waits until the spawn area is
  * loaded, then for each scene teleports, waits for the chunks, settles and
  * flies the player along a straight line at constant speed, facing along it,

@@ -6,7 +6,6 @@ use horizon_client::{chunk::Chunk, items::ItemStack};
 fn prepare(game: &mut Game<'_>) {
     game.build_registries();
     game.set_allow_commands(true);
-    game.options.dedicated = Some(Vec::new());
     game.native_lifecycle.world_open_ready().unwrap();
     game.world
         .chunks

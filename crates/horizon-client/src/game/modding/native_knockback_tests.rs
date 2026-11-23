@@ -204,6 +204,7 @@ fn player_with_sword(game: &mut super::Game<'_>) {
 #[test]
 #[ignore = "daily"]
 fn the_attack_scope_nests_restores_and_a_guest_swap_hides_it() {
+    // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : le test emboîte un tour de l'invité 12 dans l'attaque du joueur hôte, ce qui fait un tour imbriqué sur le même invité)
     let log = Arc::new(Mutex::new(Heard::default()));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "probe",

@@ -30,11 +30,11 @@ impl GameLevel<'_> {
     /// level's write host: the event joins the ones the block behaviour
     /// emits, in order, and plays when the write that runs the hook is
     /// done (`process_level_events`), with the guests told as for any event
-    /// the behaviour raises. False off an authoritative server, or for an
-    /// event that carries a block state (see `level_level_event`)
+    /// the behaviour raises. False for an event that carries a block state
+    /// (see `level_level_event`)
     /// when `data` isn't one.
     pub(super) fn native_level_event(&mut self, id: i32, pos: [i32; 3], data: i32) -> bool {
-        if !self.native_authoritative || !level_event_data_ok(id, data, self.facts.states.len()) {
+        if !level_event_data_ok(id, data, self.facts.states.len()) {
             return false;
         }
         self.events.push(LevelEvent::LevelEvent {
@@ -305,7 +305,6 @@ mod tests {
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_guest_turn_tests::with_guests(|game| {
-                game.options.dedicated = Some(Vec::new());
                 game.world.chunks.insert(
                     (0, 0),
                     std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
@@ -456,7 +455,6 @@ mod tests {
                 allow_flight: true,
                 seed: 0,
                 max_players: 2,
-                integrated: true,
                 levels: game.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };

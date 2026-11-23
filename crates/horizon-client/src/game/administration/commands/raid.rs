@@ -129,8 +129,8 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::Game;
-    use crate::game::native_entity_refs::tests::with_game;
-    use horizon_client::{command::vanilla, effects::EffectInstance, motion::PlayerMotion};
+    use crate::game::native_guest_turn_tests::with_acting_guest;
+    use horizon_client::{command::vanilla, effects::EffectInstance};
     use horizon_core::geometry::Vec3;
 
     /// Runs a line of the dev tree (`/raid` is registered only there).
@@ -145,8 +145,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn raid_check_finds_a_raid_counting_down_and_the_horn_is_local_only() {
-        with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+        with_acting_guest(Vec3::new(0.5, 64.0, 0.5), |game| {
             // RaidCommand needs the owner's permission level (3).
             game.session.registries.permission = 4;
             game.chat_capture = Some(Vec::new());
@@ -199,8 +198,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn raid_start_absorbs_the_players_raid_omen() {
-        with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+        with_acting_guest(Vec3::new(0.5, 64.0, 0.5), |game| {
             game.session.registries.permission = 4;
             game.chat_capture = Some(Vec::new());
             let stat = |g: &Game<'_>| g.stats.get("custom", "minecraft:raid_trigger");

@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-/// A scratch folder of its own, with a space in its name as launchers' instance folders have.
+/// A scratch folder of its own, with a space in its name as folders a user names may have.
 fn scratch(name: &str) -> PathBuf {
     let dir =
         std::env::temp_dir().join(format!("horizon-launch-api {name}-{}", std::process::id()));
@@ -20,8 +20,6 @@ fn run(cwd: &Path, args: &[&str]) -> Output {
         .args(args)
         .current_dir(cwd)
         .env("HORIZON_HOME", cwd.join("env home"))
-        .env("HORIZON_LAUNCHER_HOME", cwd.join("launcher"))
-        .env("HORIZON_LAUNCHER_NO_SELF_UPDATE", "1")
         .env("XDG_DATA_HOME", cwd.join("xdg data"))
         .env("XDG_CONFIG_HOME", cwd.join("xdg config"))
         .env("HORIZON_NO_AUDIO", "1")
@@ -91,7 +89,7 @@ fn launch_api_prints_json_and_runs_nothing_else() {
         .iter()
         .map(|o| o["name"].as_str().unwrap())
         .collect();
-    for name in ["--resources", "--game-dir", "--home", "--session-stdin"] {
+    for name in ["--resources", "--game-dir", "--home"] {
         assert!(names.contains(&name), "{name} not in {names:?}");
     }
     assert!(!dir.join("env home").exists(), "--launch-api opened a log");
@@ -104,7 +102,6 @@ fn a_refused_command_line_exits_2_without_a_crash_report() {
     let dir = scratch("usage");
     for args in [
         &["--home", "home", "--bogus"][..],
-        &["--home", "home", "--width", "wide"],
         &["--home", "home", "--game-dir"],
     ] {
         let output = run(&dir, args);

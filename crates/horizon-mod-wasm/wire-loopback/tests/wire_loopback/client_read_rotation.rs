@@ -1,5 +1,5 @@
 use super::*;
-use mod_api::prelude::{ClientSession, ClientViewClientHost, ItemsClientHost, ServicesClientHost};
+use mod_api::prelude::{ClientViewClientHost, ItemsClientHost};
 use mod_api::{Hand, ItemStack, ItemUse, LocalRotationError};
 use std::cell::Cell;
 
@@ -21,16 +21,6 @@ impl ItemsClientHost for Client {
 }
 impl mod_api::ClientHost for Client {}
 mod_api::impl_client_host_areas!(Client, except(client_view, services, items));
-impl ServicesClientHost for Client {
-    fn client_session(&self) -> &dyn ClientSession {
-        self
-    }
-}
-impl ClientSession for Client {
-    fn client_latency(&self) -> Option<u32> {
-        self.world.get().then_some(87)
-    }
-}
 impl ClientViewClientHost for Client {
     fn local_item_use(&self) -> Option<ItemUse> {
         self.world.get().then(|| ItemUse::new(Hand::Main, 7, 71993))

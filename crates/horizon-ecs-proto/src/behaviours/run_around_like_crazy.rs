@@ -1,5 +1,5 @@
 //! `RunAroundLikeCrazyGoal`: a mount that is not tame and carries a rider bolts to a spot 5 blocks about (`DefaultRandomPos(5, 4)`) at 1.2
-//! of its speed, while the path lasts and the rider stays. Each tick it draws one in 50: the temper then decides whether it is
+//! of its speed, while the path lasts and the rider stays. Each full update it draws one in 25: the temper then decides whether it is
 //! tamed by its rider (`nextInt(maxTemper) < temper`) or throws it off (+5 temper) and rears. What wakes it: a rider taking the seat
 //! (`Events.mounted`); while it runs a system visits it each tick.
 use super::*;
@@ -90,7 +90,9 @@ fn crazy_step(w: &mut World, e: Entity) {
         w.resource_mut::<Requests>().0.push(Req::End(e, g.slot));
         return;
     }
-    if tame(w, e) || with_rng(w, e, |r| r.next_int(50)) != 0 {
+    // `reducedTickDelay(50)` = 25 on the goal's full updates (the tick + phase even ones), no draw on the others.
+    let full = (crate::cow::now_of(w, e) + phase_of(w, e)) % 2 == 0;
+    if !full || tame(w, e) || with_rng(w, e, |r| r.next_int(25)) != 0 {
         return;
     }
     let Some(m) = w.get::<Mount>(e).copied() else { return };

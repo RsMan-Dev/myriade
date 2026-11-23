@@ -10,8 +10,7 @@
 From the files the branch changes since its merge base with --base (committed or not) it decides what to run:
 rustfmt, and clippy with warnings denied exactly as CI's verify job runs it (the whole workspace with the game's code
 mods, plus the server build when horizon-client is affected); the tests of the touched crates, with the features
-CI's workspace-wide run gives them; the launcher (its own workspace) the same way when CI's launcher job would run
-(tools/ci/rust_changes.py --launcher); crates/horizon-theme/tokens.css against horizon-theme; Cargo.lock changing
+CI's workspace-wide run gives them; crates/horizon-theme/tokens.css against horizon-theme; Cargo.lock changing
 only with a Cargo.toml; the Python tests (always, as in CI) and the public-tree check; and the vanilla harnesses the
 changes can affect, picked as CI's parity job picks them (tools/parity.py --changed). As in CI (parity-scope in
 .github/workflows/ci.yml), the harnesses run only when the branch changes a harness, an oracle, a probe or the
@@ -37,7 +36,6 @@ import socket
 import stat
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 
@@ -52,7 +50,6 @@ if "PARITY_SHARED" not in os.environ and not (ROOT / ".local" / "minecraft").exi
     # A fleet worktree without vanilla data still knows each harness's dependencies.
     os.environ["PARITY_SHARED"] = str(FLEET_SHARED)
 from tools import parity, process_tree, release_train  # noqa: E402
-from tools.ci import rust_changes  # noqa: E402
 
 RBUILD = Path.home() / "fleet" / "rbuild"
 LINE_LIMIT = 3000
@@ -76,33 +73,6 @@ mkdir -p "$state/parity-runner" "$state/parity-target"
 ln -sfn "$state/parity-runner" .local/parity-runner && ln -sfn "$state/parity-target" .local/parity-target""",
 }
 ROOT_RUST = {"Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rustfmt.toml", "clippy.toml"}
-LAUNCHER_FEATURES = """export features=""
-if [ "$(uname)" = Darwin ] && ! xcrun metal --version > /dev/null 2>&1; then features="--features gpui_platform/runtime_shaders"; fi
-in_shell() { if [ "$(uname)" = Linux ] && ! pkg-config --exists xkbcommon 2>/dev/null && command -v nix-shell > /dev/null; then
-  nix-shell shell.nix --run "$1"; else bash -c "$1"; fi; }"""
-# The launcher's tests write where the launcher keeps its data: the native build log, the build lease and the native
-# build cache it trims, versions. As every run (AGENTS.md), they get a scratch home, removed afterwards, never the
-# player's own (#16877). A step that can't make one stops: the tests would use the player's data.
-LAUNCHER_TEST_HOME = (("HORIZON_LAUNCHER_HOME", "launcher"), ("HORIZON_HOME", "game"),
-                      ("HORIZON_LAUNCHER_LOCATION_FILE", "location.json"), ("XDG_DATA_HOME", "data"),
-                      ("XDG_CONFIG_HOME", "config"), ("HORIZON_LAUNCHER_TRASH", "trash"),
-                      ("HORIZON_LAUNCHER_CLIPBOARD", "clipboard"), ("HORIZON_LAUNCHER_DESKTOP", "desktop"))
-LAUNCHER_TEST_SCRATCH = ("scratch=$(mktemp -d) && trap 'rm -rf \"$scratch\"' EXIT && export "
-                         + " ".join(f'{name}="$scratch/{path}"' for name, path in LAUNCHER_TEST_HOME)
-                         + " || { echo 'pr_ready: no scratch home for the launcher tests' >&2; exit 1; }")
-
-
-def launcher_test_base():
-    """Where run_windows makes the launcher tests' scratch home: the temp folder, unless its real path has a space or a
-    letter outside ASCII. The launcher then builds in %ProgramData% instead (backend::build_dir), outside the home
-    and never removed, so the home goes in %ProgramData% itself, as the launcher's own fallback does."""
-    temp = os.path.realpath(tempfile.gettempdir())
-    if temp.isascii() and " " not in temp:
-        return temp
-    public = os.environ.get("ProgramData", "")
-    return public if os.path.isabs(public) and public.isascii() and " " not in public else r"C:\ProgramData"
-
-
 # Build-script inputs outside the crates: catalog-only edits still need to build and test their consumers.
 MOD_API_INPUTS = ("crates/horizon-mod-vocab/src/hooks/",)
 # The generated dispatch surface: edits here change what the dispatch tests compile and run. The registry is its
@@ -121,11 +91,6 @@ def workspace_rust(path):
     """Whether a change to path is built by the main Cargo workspace."""
     return not is_doc(path) and (path.startswith(("crates/", "xtask/", ".cargo/", *MOD_API_INPUTS))
                                  or path in ROOT_RUST)
-
-
-def launcher_rust(path):
-    """Whether a change to path is built into the launcher (its own workspace): CI's launcher job's own rule."""
-    return rust_changes.needs_launcher([path])
 
 
 def touched_crates(paths, packages):
@@ -157,12 +122,10 @@ def area(path):
     if is_doc(path) or path.startswith(("tests/", "mods/", "docs/", "roadmap/")) or path == "research-lock.json" or \
             (path.startswith("tools/") and not path.startswith("tools/ci/")):
         return None
-    if path.startswith(("launcher/", "crates/horizon-prepare/")):
-        return "launcher"
     if path.startswith((".github/", "tools/ci/")):
         return "CI"
     if path.startswith("crates/horizon-theme/"):
-        return None  # the design system feeds the game, the launcher and the website (its tokens.css) alike
+        return None  # the design system feeds the game and the website (its tokens.css) alike
     return "game"
 
 
@@ -190,7 +153,7 @@ def lock_problem(paths):
 
 
 def suggested_label(paths, exporter_paths=frozenset()):
-    if any(release_train.player_facing(path, kind, exporter_paths) for path in paths for kind in ("game", "launcher")):
+    if any(release_train.player_facing(path, kind, exporter_paths) for path in paths for kind in ("game",)):
         return "player-facing: `feature` if players get something new, no label for a fix (`release-now` if urgent)"
     return "`skip-release`"
 
@@ -523,7 +486,7 @@ def parity_summary(output):
 
 # CI's lint (.github/workflows/ci.yml verify): collect warnings across the whole graph before rejecting them.
 CI_CLIPPY = "python3 tools/ci/check_warnings.py cargo clippy --keep-going --workspace --all-targets --locked"
-CI_CLIPPY_SERVER = "python3 tools/ci/check_warnings.py cargo clippy --keep-going -p horizon-client -p horizon-game -p horizon-mod-host --all-targets --locked --no-default-features"
+CI_CLIPPY_SERVER = "python3 tools/ci/check_warnings.py cargo clippy --keep-going -p horizon-client -p horizon-game --all-targets --locked --no-default-features"
 
 
 # CI installs the current stable each run (rustup toolchain install stable), and Rust ships one every six weeks
@@ -588,7 +551,6 @@ HOLDER_ACTOR = "cargo build --locked -p horizon-mod-package --features runtime-p
 def plan(args, base, changed, crates_of, libraries, dependencies):
     """The checks for these changed files, in the order they run."""
     rust = any(workspace_rust(path) for path in changed)
-    launcher = any(launcher_rust(path) for path in changed)
     # The Python tests also hold ROADMAP.md to roadmap/roadmap.toml (tests/test_roadmap.py).
     crates = touched_crates(changed, crates_of) if rust else []
     # An unrecognised Rust path must not silently skip validation.
@@ -623,7 +585,7 @@ def plan(args, base, changed, crates_of, libraries, dependencies):
         Step("rustfmt", "python3 tools/ci/format_scan.py", skip=None if rust else no_rust),
         Step("clippy", clippy, skip=None if rust else no_rust),
         Step("holder actor", HOLDER_ACTOR,
-             skip=None if crates is None or "horizon-mod-package" in crates or launcher
+             skip=None if crates is None or "horizon-mod-package" in crates
              else "holder tests untouched"),
         Step("tests" + (": workspace" if crates is None else f": {', '.join(crates)}" if crates else ""),
              f"cargo test --locked {selection}{mod_features(crates)} --tests",
@@ -651,13 +613,6 @@ def plan(args, base, changed, crates_of, libraries, dependencies):
                  f"CARGO_BUILD_JOBS=${{CARGO_BUILD_JOBS:-4}} cargo test --manifest-path {manifest}"
                  " --locked -- --test-threads=4", skip=skip, summary=tests_passed),
         ])
-    launcher_skip = None if launcher else "launcher untouched"
-    for name, command in [("launcher rustfmt", "cargo fmt --check"),
-                          ("launcher clippy", "python3 ../tools/ci/check_warnings.py cargo clippy --keep-going --all-targets --locked $features"),
-                          ("launcher tests", "cargo test --locked --lib --bins $features")]:
-        home = f"\n{LAUNCHER_TEST_SCRATCH}" if name == "launcher tests" else ""
-        steps.append(Step(name, f"cd launcher && {LAUNCHER_FEATURES}{home}\nin_shell {shlex.quote(command)}",
-                          skip=launcher_skip, summary=tests_passed if name == "launcher tests" else None))
     harness = Step("Parity", summary=parity_summary)
     affected = affected_here(changed)
     local_data = (ROOT / ".local" / "minecraft").exists() and (ROOT / ".local" / "horizon-client").exists()
@@ -797,18 +752,6 @@ def run_windows(steps, verbose, environment=None):
             command = shlex.split(step.command)
         elif step.name == "tokens.css up to date":
             command = shlex.split(step.command)
-        elif step.name == "launcher rustfmt":
-            command = ["cargo", "fmt", "--check"]
-            cwd = ROOT / "launcher"
-        elif step.name == "launcher clippy":
-            command = [sys.executable, "../tools/ci/check_warnings.py", "cargo", "clippy", "--keep-going",
-                       "--all-targets", "--locked"]
-            cwd = ROOT / "launcher"
-        elif step.name == "launcher tests":
-            command = ["cargo", "test", "--locked", "--lib", "--bins"]
-            cwd = ROOT / "launcher"
-            scratch = tempfile.mkdtemp(prefix="horizon-launcher-tests-", dir=launcher_test_base())
-            env.update({name: os.path.join(scratch, path) for name, path in LAUNCHER_TEST_HOME})
         elif step.name == "Parity":
             command = shlex.split(step.command)
             if command and command[0] == "PARITY_HOSTS=":
@@ -829,8 +772,15 @@ def run_windows(steps, verbose, environment=None):
             with process_tree.popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, text=True, errors="replace") as process:
                 def release(process):
-                    # The check's exit ends what it left running, which would otherwise hold the output open.
-                    process.wait()
+                    # The check's exit ends what it left running, which would otherwise hold the output open. On POSIX
+                    # the group is killed only while its leader is unreaped: wait for the exit without reaping it.
+                    if hasattr(os, "waitid"):
+                        try:
+                            os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOWAIT)
+                        except ChildProcessError:  # reaped elsewhere already
+                            pass
+                    else:
+                        process.wait()
                     process_tree.ended(process)
                 # A daemon: interrupted, this process exits at once, and its jobs end the checks with it.
                 reaper = threading.Thread(target=release, args=(process,), daemon=True)

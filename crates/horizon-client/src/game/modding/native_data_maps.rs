@@ -464,9 +464,6 @@ impl Game<'_> {
     /// The server's merged data maps, none unless this is a server whose
     /// tables were built from packs and mods' files.
     pub(super) fn loaded_data_maps(&self) -> Result<&DataMaps, mod_api::DataMapError> {
-        if self.serving.is_none() && self.options.dedicated.is_none() {
-            return Err(mod_api::DataMapError::Unavailable);
-        }
         self.world_tables
             .as_ref()
             .map(|tables| &tables.data_maps)

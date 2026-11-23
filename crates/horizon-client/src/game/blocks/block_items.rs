@@ -345,7 +345,6 @@ impl Game<'_> {
         }
         self.load_block_name(key, &entity, &placed);
         self.world.block_entities.insert(key, entity);
-        self.update_spawner_display(key);
     }
 }
 
@@ -504,7 +503,6 @@ mod tests {
             .prepared()
             .to_path_buf();
         with_game_at(root, |game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -626,7 +624,6 @@ mod tests {
             .prepared()
             .to_path_buf();
         with_game_at(root, |game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

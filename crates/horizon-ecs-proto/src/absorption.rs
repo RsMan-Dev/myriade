@@ -7,8 +7,11 @@ use bevy_ecs::prelude::*;
 #[component(storage = "SparseSet")]
 pub struct Absorption(pub f32);
 
-/// Writes the absorption, not below 0; 0 removes the component. The cap of `getMaxAbsorption` is not modelled here.
+/// Writes the absorption, in 0 to `getMaxAbsorption` (`setAbsorptionAmount`: `Mth.clamp`, the attribute read at the write); 0 removes
+/// the component.
 pub fn set(world: &mut World, e: Entity, amount: f32) {
+    let cap = crate::attr_mod::read(world, e, "max_absorption", 0.0).clamp(0.0, 2048.0) as f32;
+    let amount = amount.clamp(0.0, cap);
     let Ok(mut em) = world.get_entity_mut(e) else { return };
     if amount > 0.0 {
         em.insert(Absorption(amount));

@@ -1,16 +1,14 @@
 //! One bounded writer owner. Receiving callbacks never block their own receive loop
 //! while a large reply waits for the peer to drain its socket or memory pipe.
 use horizon_mod_runtime::byte_channel::{self, Permit, ReserveError, Sender, TrySendError};
-use horizon_protocol::payload_negotiation::Phase;
 use horizon_protocol::{
     Error, Result,
-    adapter::ServerVersion,
     connection::{Closer, ConnWriter, Framing},
     frame::FrameSize,
 };
-use mod_api::{PayloadFrameStage, PayloadId, PayloadSendError, SendPacketError};
+use mod_api::{PayloadFrameStage, PayloadId, PayloadSendError};
 use std::sync::{
-    Arc, Mutex, Weak,
+    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
 
@@ -39,9 +37,6 @@ pub(crate) struct Inner {
     alive: Arc<AtomicBool>,
     retired: AtomicBool,
     terminal: AtomicBool,
-    version: ServerVersion,
-    secure_chat: Box<dyn Fn() -> Option<bool> + Send + Sync>,
-    phase: Mutex<(u64, Phase)>,
 }
 impl std::ops::Deref for QueuedWriter {
     type Target = Inner;
@@ -71,23 +66,6 @@ enum PrepareFailure {
     Full,
     Encode(Error),
 }
-/// An exact physical writer and protocol incarnation, never a Play/CFG boolean.
-pub struct PreparedPacket {
-    writer: Weak<Inner>,
-    generation: u64,
-    payload: PreparedPayload,
-}
-impl PreparedPacket {
-    pub fn publish(self) {
-        let Some(writer) = self.writer.upgrade() else {
-            return;
-        };
-        let phase = writer.phase.lock().unwrap();
-        if phase.0 == self.generation && phase.1 == Phase::Play {
-            let _ = self.payload.publish();
-        }
-    }
-}
 impl QueuedWriter {
     #[cfg(any(test, feature = "test-payload-probe"))]
     pub(crate) fn diagnostics(&self) -> String {
@@ -107,58 +85,10 @@ impl QueuedWriter {
             self.probe[3].load(Ordering::Relaxed)
         )
     }
-    /// Queue the ACK and change incarnation under the generic-publication gate.
-    /// Raw publication uses its separate epoch gate; this never acquires it.
-    pub(crate) fn transition_protocol(&self, protocol: Phase, ack: &[u8]) -> Result<()> {
-        let mut phase = self.phase.lock().unwrap();
-        let generation = phase
-            .0
-            .checked_add(1)
-            .ok_or_else(|| Error::new("network phase incarnation exhausted"))?;
-        self.send(ack)?;
-        *phase = (generation, protocol);
-        Ok(())
-    }
-    pub(crate) fn prepare_packet(
-        &self,
-        body: Vec<u8>,
-    ) -> std::result::Result<PreparedPacket, SendPacketError> {
-        let (generation, protocol) = *self.phase.lock().unwrap();
-        if protocol != Phase::Play {
-            return Err(SendPacketError::NotInPlay);
-        }
-        // Legacy adapters are stateful. Their FIFO worker must translate only
-        // after root publication, with all preceding ACKs applied in order.
-        let prepared = if self.version == ServerVersion::Current {
-            self.prepare_contents(body)
-        } else {
-            self.prepare_job(WriteJob::Packet(body))
-        };
-        let payload = prepared.map_err(|error| match error {
-            PrepareFailure::Closed => SendPacketError::NotConnected,
-            PrepareFailure::Full => SendPacketError::Backpressure,
-            PrepareFailure::Encode(error) => match error.frame_limit() {
-                Some(detail) => SendPacketError::FrameTooLarge {
-                    size: detail.size as u64,
-                    limit: detail.limit as u64,
-                },
-                None => SendPacketError::EncodeFailed {
-                    message: error.to_string(),
-                },
-            },
-        })?;
-        Ok(PreparedPacket {
-            writer: Arc::downgrade(&self.0),
-            generation,
-            payload,
-        })
-    }
     pub(crate) fn new(mut writer: ConnWriter) -> Result<Self> {
         let framing = writer.framing();
         let closer = Arc::new(writer.closer()?);
         let alive = Arc::new(AtomicBool::new(true));
-        let version = writer.server_version();
-        let secure_chat = Box::new(writer.legacy_secure_chat_observer());
         let (sender, receiver) = byte_channel::channel(CAPACITY).expect("nonzero writer capacity");
         #[cfg(any(test, feature = "test-payload-probe"))]
         let probe = Arc::new(std::array::from_fn::<_, 4, _>(|_| {
@@ -214,9 +144,6 @@ impl QueuedWriter {
             framing,
             closer,
             alive,
-            version,
-            secure_chat,
-            phase: Mutex::new((0, Phase::Configuration)),
         })))
     }
     /// Stop acceptance, cancel unpublished reservations and drain published writes.
@@ -245,12 +172,6 @@ impl QueuedWriter {
     }
     pub(crate) fn payload_capacity(&self) -> usize {
         CAPACITY
-    }
-    pub(crate) fn server_version(&self) -> ServerVersion {
-        self.version
-    }
-    pub(crate) fn legacy_secure_chat_enforcement(&self) -> Option<bool> {
-        (self.secure_chat)()
     }
     pub(crate) fn shutdown(&self) {
         if self.retired.load(Ordering::Acquire) {

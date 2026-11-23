@@ -248,7 +248,7 @@ fn stab(w: &mut World, e: Entity, s: &mut Spear, k: &Kinetic, who: Who, ticks_us
     if k.knockback.test(ticks_used, attacker_speed, relative, 0.2) {
         // `stabAttack`: a push of 0.4, then the attacker's own `attack_knockback` push.
         crate::hostile::push_along_facing(w, e, who, 0.4);
-        let knockback = w.get::<crate::cow::SpeciesId>(e).map_or(0.0, |s| w.resource::<crate::cow::SpeciesTable>().0[s.0 as usize].attack_knockback);
+        let knockback = w.get::<crate::cow::SpeciesId>(e).map_or(0.0, |s| crate::attr_mod::read(w, e, "attack_knockback", w.resource::<crate::cow::SpeciesTable>().0[s.0 as usize].attack_knockback));
         crate::hostile::extra_knockback(w, e, who, knockback);
     }
     if k.dismount.test(ticks_used, attacker_speed, relative, 0.2) {

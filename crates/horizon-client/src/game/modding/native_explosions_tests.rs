@@ -158,7 +158,6 @@ fn floor(game: &mut Game<'_>) {
     game.build_registries();
     game.load_server_loot();
     game.set_allow_commands(true);
-    game.options.dedicated = Some(Vec::new());
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -307,7 +306,7 @@ impl Hooks for Listener {
 /// Runs `test` on a fresh game with a stone floor through both targets, the
 /// [`Listener`] hearing it, and hands it what was heard.
 fn heard(test: impl Fn(&mut Game<'_>, Via, &Arc<Mutex<Heard>>) + Send + Sync + 'static) {
-    crate::entry::install_client_hooks();
+    crate::entry::install_level_hooks();
     run_on_guest_stack(move || {
         for via in BOTH {
             let heard = Arc::new(Mutex::new(Heard::default()));

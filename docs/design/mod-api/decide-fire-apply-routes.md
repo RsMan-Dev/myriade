@@ -16,7 +16,7 @@ Two mechanisms reach the mod API from client-lib code, and both were enumerated:
    `target = "horizon_client_lib::…"` attributes in 19 declaration files. The generator classifies
    them in `crates/horizon-mod-api-gen/src/lib.rs:344` (`free_function_source`, prefix
    `horizon_client_lib::`) and resolves each target's `native_<hook>` in `dispatch.rs:46` (`emit`).
-2. The callback table. 19 of the 22 are installed through `NativeClientHooks`
+2. The callback table. 19 of the 22 are installed through `NativeLevelHooks`
    (`crates/horizon-client/src/native_client_hooks.rs:9`, installed at `entry.rs:225`); the other 3
    call `mod_api::dispatch_` themselves (`crates/horizon-client/src/crafting/native_hooks.rs:14,40,56`).
 

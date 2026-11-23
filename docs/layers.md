@@ -98,7 +98,7 @@ public API that mods, desktop-class ports and the Horizon layer build on.
 
 - **Belongs:** the mod API and mod formats, the native mod host, the shader API and pack formats beyond vanilla
   (OptiFine, Polytone, `shaders/`), HDR, controllers, splitscreen, replay recording and playback, the HUD widget
-  framework, UI pages and the settings system, agent control (`horizon-ctl`, MCP), the dedicated server's anticheat and chat
+  framework, UI pages and the settings system, agent control (`the control socket`, MCP), the dedicated server's anticheat and chat
   filter, modpack porting, the design tokens of non-vanilla screens.
 - **Exposes what vanilla already uses.** FOV changes, potion effects, the player's state, screens, rendering
   hooks and so on become public API with stable types (arismoko/horizon#1608's patterns). Then a mod, a port or a
@@ -173,7 +173,7 @@ Horizon's own extras and its product, and every built-in address of an outside s
 
 ## Tools
 
-Developer tools that no player runs: `xtask`, `horizon-bots`, `horizon-mod-api-gen-tests`, `horizon-mod-wasm-wire-loopback`, and the Python in
+Developer tools that no player runs: `xtask`, `myriade-bot`, `horizon-mod-api-gen-tests`, `horizon-mod-wasm-wire-loopback`, and the Python in
 `tools/`. They may depend on anything, and no shipped crate depends on them. `cargo-horizon-mod`, the mod author's
 tool, is one: it fetches and checks Horizon's signed mod SDK, so it reads `horizon-addresses` and
 `horizon-release-sign` beside the engine's mod crates.
@@ -387,7 +387,7 @@ A page lives in the options screen's shell, and its entry sits on one of the gam
 ```rust
 pub enum Place { HorizonSettings, Pause, Extras, Title }
 pub trait Page: Sync {
-    fn id(&self) -> &'static str;            // stable, for horizon-ctl and the page stack
+    fn id(&self) -> &'static str;            // stable, for the control socket and the page stack
     fn title(&self) -> &'static str;         // translation key
     fn place(&self) -> Place;                // where its entry is
     fn rows(&self, rows: &mut Vec<Row>);     // asked when the page is drawn, not every frame elsewhere
@@ -415,7 +415,7 @@ pub fn connect(address: impl Into<String>);                   // from a Title pa
 - `HorizonSettings`: a row of the Horizon Settings page, after the engine's own pages. `Title` and `Pause`: a
   button on the title screen or the pause menu that opens the page. These buttons exist only when something
   registered, so the vanilla menus keep vanilla's look. The page is drawn with the same widgets, tooltips,
-  narration, controller focus and `horizon-ctl` ids as the engine's pages.
+  narration, controller focus and `the control socket` ids as the engine's pages.
 - `Button` and `Text` are built with `Row::button` and `Row::text` and their options: `.active(false)` greys a
   button, `.half()` puts two side by side, `.footer()` sets one beside Done on a page drawn as its own screen,
   `.quiet()` greys text, `.groups()` breaks it only between `-`-separated groups (an invite code). In the options
@@ -554,16 +554,12 @@ horizon_platform::lang::register(LANG)?;
   resource pack still overrides them, and a language a crate lacks falls back to its English.
 - A key belongs to one folder. On a key the engine's file also has, the engine's text wins (and the
   `lang.rs` test fails).
-- Regional variants read their language's file as the engine's do (`fr_ca` reads `fr_fr`, `de_ch` reads `de_de`
-  without `ß`).
-- `tools/lang_coverage.py` reports each crate's folder beside the engine's. A person's review of a crate's entry
-  is kept in `tools/lang_review/<name>/<code>.json` ([translations.md](translations.md)).
 - With nothing registered, a language loads exactly as before.
 
 ## Extras that may leave the game
 
 Horizon's extras are Horizon-layer code. Each one is a candidate to become an optional native mod that players add
-themselves, or stays a cfg-gated module linked into the official build. None moves yet; the list is here so new work doesn't add to them. See [extras.md](extras.md) for each one:
+themselves, or stays a cfg-gated module linked into the official build. None moves yet; the list is here so new work doesn't add to them:
 
 - zoom (OptiFine-style), keystrokes and FPS overlays, own name tag;
 - Mouse Tweaks controls, sorting, scroll-wheel settings, smooth chat;
@@ -573,14 +569,10 @@ themselves, or stays a cfg-gated module linked into the official build. None mov
 - the renderer's extras: fullbright, dynamic lights, hidden block-break particles;
 - chunk pregeneration.
 
-The minimap already moved to a native mod ([extras.md](extras.md#moved-to-native-mods)). Splitscreen,
-controllers and replay recording are not extras: they are platform ([above](#controllers-splitscreen-replays-and-ui-pages)).
-
 ## The checks
 
 `python3 tools/check_layers.py` runs in CI's verify job and in `tools/pr_ready.py`. It reads the `cargo metadata` of the
-four workspaces `tools/layers.json` lists (the game, `launcher/`, `crates/horizon-mod-registry/` and
-`crates/horizon-telemetry-server/`; no build, about a second) and [`tools/layers.json`](../tools/layers.json), which
+workspaces `tools/layers.json` lists (the game and `crates/horizon-mod-registry/`; no build, about a second) and [`tools/layers.json`](../tools/layers.json), which
 gives every crate its layer. It fails when:
 
 - a crate has no layer;

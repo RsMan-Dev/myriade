@@ -458,7 +458,7 @@ pub struct BlockSection<'r> {
 }
 impl<'r> BlockSection<'r> {
     /// The section's heap bytes: its packed storage, and its palette, counts
-    /// and free list (`horizon-ctl memory`; extra NBT not counted).
+    /// and free list (`the control socket's memory command`; extra NBT not counted).
     pub fn heap_bytes(&self) -> [usize; 2] {
         [
             self.storage.as_ref().map_or(0, PackedStorage::heap_bytes),

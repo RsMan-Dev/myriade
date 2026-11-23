@@ -50,13 +50,13 @@ import urllib.parse
 try:
     from . import lab, oracle_harness as oh, test_rust_parity as base
     from .test_dedicated_server_parity import Server, free_port
-    from .integration_env import run_game
+    from .bot_lab import Bot, BotError
 except ImportError:
     import lab
     import oracle_harness as oh
     import test_rust_parity as base
     from test_dedicated_server_parity import Server, free_port
-    from integration_env import run_game
+    from bot_lab import Bot, BotError
 
 NAME = 'online-mode-parity'
 PLAYER = 'Tester'
@@ -180,20 +180,25 @@ def session_file(directory, token):
     return path
 
 
-def run_client(binary, build, port, label, token, discovery):
+def run_client(build, port, label, token, discovery):
+    """The joueur-automate bot joins in online mode with its session file; what it sees is its report."""
     directory = build / f'client-{label}'
     shutil.rmtree(directory, ignore_errors=True)
     directory.mkdir()
-    report = directory / 'report.json'
-    env = lab.game_env(HORIZON_NET_REPORT=report, HORIZON_API_DISCOVERY=discovery)
-    command = [binary, '--resources', lab.RESOURCES, '--render-distance', 2,
-               '--server', f'127.0.0.1:{port}', '--name', PLAYER]
-    if token:
-        command += ['--session-file', session_file(directory, token)]
-    with (build / f'client-{label}.log').open('w') as log:
-        run_game([str(c) for c in command], cwd=directory, env=env, stdout=log, stderr=subprocess.STDOUT,
-                       timeout=300, check=True)
-    got = json.loads(report.read_text())
+    session = session_file(directory, token) if token else None
+    got = {}
+    with Bot() as bot:
+        try:
+            bot.join('127.0.0.1', port, PLAYER, session_file=str(session) if session else None, render_distance=2)
+        except BotError as error:
+            got['error'] = str(error)
+        else:
+            bot.wait_for('loaded', timeout=300)
+            bot.chat('hello from the horizon client')
+            bot.command('list')
+            bot.wait_for('message There are 1 of a max of 5 players online: Tester', timeout=60)
+            got.update(bot.report())
+            bot.leave()
     got['session file left'] = (directory / 'session.json').exists()
     return got
 
@@ -243,7 +248,7 @@ def wait_after(server, mark, pattern, timeout=30):
     raise AssertionError(f'no {pattern!r} after line {mark} of {server.log_path.name}')
 
 
-def run_side(label, command, binary, build, services, discovery):
+def run_side(label, command, build, services, discovery):
     """The six logins against one server; its checks and its log about the player."""
     port = free_port()
     directory = build / label
@@ -265,7 +270,7 @@ def run_side(label, command, binary, build, services, discovery):
         closed connection at its next tick, and the next run's lines must not come before that one."""
         start = len(server.lines)
         starts.append(start)
-        got = run_client(binary, build, port, f'{label}-{name}', token, discovery)
+        got = run_client(build, port, f'{label}-{name}', token, discovery)
         wait_after(server, start, r'lost connection: ')
         return got
 
@@ -370,7 +375,7 @@ def main():
     checks, transcripts = [], {}
     try:
         for label, command in [('vanilla', vanilla), ('horizon', horizon)]:
-            side_checks, transcripts[label] = run_side(label, command, binary, build, services, discovery)
+            side_checks, transcripts[label] = run_side(label, command, build, services, discovery)
             checks += [f'{label}: {c}' for c in side_checks]
     finally:
         services.stop()

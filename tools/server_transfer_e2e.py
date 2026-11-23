@@ -5,7 +5,7 @@ Two engines (`horizon-client --dedicated`) run with `[transfer]` on (`--transfer
 (`forwarding.secret`), as docs/server.md requires. This harness is the proxy: a small relay per engine answers
 the engine's `velocity:player_info` request with a signed payload (docs/velocity-forwarding.md), then copies
 bytes both ways, and the control requests are sent on each engine's control socket. The player is a
-horizon-bots client; the hand-over's two connections are two bot processes with the same name, as a proxy
+myriade-bot client; the hand-over's two connections are two bot processes with the same name, as a proxy
 holds two connections for one client.
 
     python3 tools/server_transfer_e2e.py --bin-dir target/fast
@@ -38,7 +38,7 @@ The engines run in a fresh folder with fresh HORIZON_HOME and XDG folders (lab.g
 window. Every request, reply (records shortened) and check goes to --out/steps.json, with both servers' logs.
 Build first:
     cargo build --profile fast -p horizon-game --bin horizon-client
-    cargo build --profile fast -p horizon-bots
+    cargo build --profile fast -p myriade-bot
 """
 import argparse
 import base64
@@ -60,13 +60,15 @@ import uuid as uuidlib
 _saved_path = sys.path[:]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import lab  # noqa: E402
+from control_client import ControlClient, ControlError  # noqa: E402
 from server_bench import DONE, Server  # noqa: E402
+from server_lab import launch_command, write_folder  # noqa: E402
 sys.path[:] = _saved_path  # do not let tools/ shadow unittest discovery
 
 EXE = '.exe' if os.name == 'nt' else ''
 SECRET = b'server-transfer-e2e-secret'
 NAME = 'Mover'
-PLAYER = NAME + '0'  # horizon-bots names its bots PREFIX0, PREFIX1...
+PLAYER = NAME + '0'  # myriade-bot names its bots PREFIX0, PREFIX1...
 PROPERTIES = {
     'online-mode': 'false',
     'white-list': 'false',
@@ -159,7 +161,7 @@ def send_frame(sock, body):
 
 
 def offline_uuid(name):
-    """UUID.nameUUIDFromBytes("OfflinePlayer:" + name), as an offline server and horizon-bots derive it."""
+    """UUID.nameUUIDFromBytes("OfflinePlayer:" + name), as an offline server and myriade-bot derive it."""
     md5 = bytearray(hashlib.md5(('OfflinePlayer:' + name).encode()).digest())
     md5[6] = (md5[6] & 0x0F) | 0x30
     md5[8] = (md5[8] & 0x3F) | 0x80
@@ -272,14 +274,10 @@ class Engine:
         folder.mkdir(parents=True)
         self.port = lab.free_port()
         props = dict(PROPERTIES, **extra, **{'server-port': str(self.port), 'motd': f'transfer e2e {label}'})
-        (folder / 'server.properties').write_text(''.join(f'{k}={v}\n' for k, v in props.items()))
-        (folder / 'eula.txt').write_text('eula=true\n')
+        # The game's control endpoint folder is made by server_lab.write_folder (horizon-server makes it too).
+        self.endpoint = write_folder(folder, props)
         (folder / 'forwarding.secret').write_bytes(SECRET + b'\n')
-        # horizon-server makes the folder of the game's control endpoint; the game does not.
-        self.endpoint = folder / '.horizon' / 'engine.json'
-        self.endpoint.parent.mkdir()
-        command = [bins / f'horizon-client{EXE}', '--resources', resources, '--control-socket', self.endpoint,
-                   '--transfers', TRANSFERS, '--dedicated', '--nogui']
+        command = launch_command(bins, resources, self.endpoint, ['--transfers', TRANSFERS])
         self.server = Server(command, folder, out / f'server-{label}.log')
         self.control = None
 
@@ -287,19 +285,13 @@ class Engine:
         self.server.wait_for(DONE, 300)
         self.server.wait_for(r'Transfers on \(server\.toml \[transfer\]\)', 5)
         self.server.wait_for(r'Velocity player information forwarding is on', 5)
-        info = json.loads(self.endpoint.read_text())
-        sock = socket.create_connection(('127.0.0.1', info['port']), timeout=30)
-        reader = sock.makefile('r', encoding='utf-8')
-        sock.sendall(f'auth {info["token"]}\n'.encode())
-        reply = reader.readline()
-        if '"ok"' not in reply:
-            raise Failed(f'{self.label}: the control socket refused the token: {reply.strip()}')
-        self.control = (sock, reader)
+        try:
+            self.control = ControlClient(self.endpoint, timeout=30)
+        except ControlError as refused:
+            raise Failed(f'{self.label}: the control socket refused the token: {refused}')
 
     def ask(self, line):
-        sock, reader = self.control
-        sock.sendall((line + '\n').encode())
-        return json.loads(reader.readline())
+        return self.control.ask(line)
 
     def world_file(self, kind, player_uuid):
         """players/<kind>/<uuid>.<dat|json> of the world, as Horizon writes it."""
@@ -308,10 +300,7 @@ class Engine:
 
     def stop(self):
         if self.control:
-            try:
-                self.control[0].close()
-            except OSError:
-                pass
+            self.control.close()
         self.server.stop()
 
 
@@ -407,13 +396,13 @@ def short(reply):
 
 
 class Bot:
-    """One horizon-bots client standing still, through a relay."""
+    """One myriade-bot client standing still, through a relay."""
 
     def __init__(self, bins, port, out, label, seconds, *extra):
         self.report = out / f'bot-{label}.json'
         self.log = (out / f'bot-{label}.log').open('w')
         self.process = subprocess.Popen(
-            [str(bins / f'horizon-bots{EXE}'), '--server', f'127.0.0.1:{port}', '--bots', '1',
+            [str(bins / f'myriade-bot{EXE}'), '--server', f'127.0.0.1:{port}', '--bots', '1',
              '--behaviour', 'stand', '--seconds', str(seconds), '--name', NAME, '--report', str(self.report),
              *extra],
             stdout=self.log, stderr=subprocess.STDOUT, env=lab.game_env())

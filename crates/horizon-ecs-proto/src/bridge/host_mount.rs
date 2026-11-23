@@ -6,10 +6,11 @@ use crate::cow::{now_of, Body, Cause, DamageQueue, FluidState, GrowAt, Health, M
 use crate::equipment::set_slot;
 use crate::goals::{self, Equipment, Online, Slot};
 use crate::items::{item_id, worn_in};
-use crate::mount::{self, Mount, Ridden, Steer};
+use crate::attr_mod::AttrMods;
+use crate::mount::{self, Mount, PassengerSeats, Ridden, RiderSeat, Steer};
 use crate::mount_jump::{JumpCharge, JumpSound};
 use crate::pilot::{self, PilotInput};
-use crate::rules::mount::seat_point;
+use crate::rules::attachments::{attachment, rider_offset, scaled, seat};
 use crate::tame::Owner;
 use crate::targeting::Who;
 use crate::type_tags;
@@ -204,8 +205,32 @@ impl EcsWorld {
     pub fn rider_seat(&self, e: Entity) -> Option<[f64; 3]> {
         let w = self.world();
         let m = w.get::<Mount>(e)?;
+        let rider = m.rider;
+        let count = [m.rider, m.passenger].iter().flatten().count();
         let (pos, yaw, body) = (w.get::<Pos>(e)?.0, w.get::<Yaw>(e)?.0, w.get::<Body>(e)?);
-        let at = seat_point(pos, yaw, body.height, *m.seats.first()?, m.seat_height);
+        let scale = mount::scale_of(w.get::<AttrMods>(e));
+        let baby = w.get::<GrowAt>(e).is_some();
+        // As `mount::seats`: the posture's seats, else the species' list; a rearing mount slides its rider back.
+        let base = match (w.get::<crate::behaviours::posture::Posture>(e), w.get::<PassengerSeats>(e)) {
+            (Some(p), _) => {
+                let elapsed = crate::cow::game_now(w) - p.since;
+                let moving = (elapsed < crate::rules::posture::transition_ticks(p.sitting, p.sit_down, p.stand_up)).then_some(elapsed as f32);
+                crate::rules::attachments::camel_attachment(body.height, baby, 0, count, matches!(rider, Some(Who::Entity(_))), p.sitting, moving)
+            }
+            (None, Some(s)) => attachment(&s.adult, s.baby, baby, 0),
+            (None, None) => [0.0, f64::from(body.height), 0.0],
+        };
+        let slide = w.get::<crate::behaviours::random_stand::StandAnim>(e).map_or([0.0; 3], |a| crate::rules::attachments::rear_slide(a.last, baby));
+        let attachment_of = [base[0] + slide[0], base[1] + slide[1], base[2] + slide[2]];
+        let offset = match rider {
+            Some(Who::Entity(r)) => w.get::<RiderSeat>(r).map_or(0.0, |rs| {
+                let rider_width = w.get::<Body>(r).map_or(0.0, |b| f64::from(b.width));
+                rider_offset(*rs, f64::from(body.width), rider_width, w.get::<GrowAt>(r).is_some(), mount::scale_of(w.get::<AttrMods>(r)))
+            }),
+            Some(Who::Player(_)) => crate::species::attachments::rider_seat("minecraft:player").map_or(0.0, |rs| rs.adult),
+            None => 0.0,
+        };
+        let at = seat(scaled(attachment_of, scale), offset, pos, yaw);
         Some([at.x, at.y, at.z])
     }
 

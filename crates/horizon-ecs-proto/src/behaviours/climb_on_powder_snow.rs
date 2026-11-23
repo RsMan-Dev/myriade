@@ -20,7 +20,7 @@ pub struct SnowWalker;
 /// The goal runs: its jump is asked every tick.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
-pub struct Climbing;
+pub struct SnowClimbing;
 
 pub static MODULE: Module = Module {
     name: "climb_on_powder_snow",
@@ -47,12 +47,12 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     w.get::<SnowWalker>(e).is_some() && in_snow(w.get::<Hazard>(e)) && above_passable(mw, feet)
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
-    w.entity_mut(e).insert(Climbing);
+    w.entity_mut(e).insert(SnowClimbing);
     // A started goal is ticked in the tick it starts (GUIDE 9.1).
     w.get_mut::<Jump>(e).unwrap().0 = true;
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
-    w.entity_mut(e).remove::<Climbing>();
+    w.entity_mut(e).remove::<SnowClimbing>();
     if let Some(mut j) = w.get_mut::<Jump>(e) {
         j.0 = false;
     }
@@ -61,7 +61,7 @@ fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems((climb_wake, climb_run).chain().in_set(slot));
 }
 /// A holder whose box touches powder snow and that passes the test asks to start (the selector hears it on its tick).
-fn climb_wake(q: Query<(Entity, &Hazard, &GoalSet, &Pos), (With<SnowWalker>, Without<Climbing>)>, level: Res<Level>, mut reqs: ResMut<Requests>) {
+fn climb_wake(q: Query<(Entity, &Hazard, &GoalSet, &Pos), (With<SnowWalker>, Without<SnowClimbing>)>, level: Res<Level>, mut reqs: ResMut<Requests>) {
     let mw = level.mw.0;
     for (e, h, g, p) in &q {
         if h.0 & HAZ_SNOW == 0 || !above_passable(mw, feet_block(p.0)) {
@@ -73,7 +73,7 @@ fn climb_wake(q: Query<(Entity, &Hazard, &GoalSet, &Pos), (With<SnowWalker>, Wit
     }
 }
 /// `ClimbOnTopOfPowderSnowGoal.tick` (every tick of the run): the jump is asked; the run ends when the test fails.
-fn climb_run(mut q: Query<(Entity, &Pos, Option<&Hazard>, &GoalSet, &mut Jump), With<Climbing>>, level: Res<Level>, mut reqs: ResMut<Requests>) {
+fn climb_run(mut q: Query<(Entity, &Pos, Option<&Hazard>, &GoalSet, &mut Jump), With<SnowClimbing>>, level: Res<Level>, mut reqs: ResMut<Requests>) {
     let mw = level.mw.0;
     for (e, p, h, g, mut jump) in &mut q {
         if in_snow(h) && above_passable(mw, feet_block(p.0)) {

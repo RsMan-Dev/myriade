@@ -290,16 +290,6 @@ impl Game<'_> {
         self.test_holder(pos).map_or(0, |t| t.padding)
     }
 
-    /// `ClientPacketListener.handleGameTestHighlightPos`:
-    /// `GameTestBlockHighlightRenderer.highlightPos` shows the block for ten
-    /// seconds with its position relative to the test.
-    pub(super) fn highlight_test_pos(&mut self, absolute: [i32; 3], relative: [i32; 3]) {
-        let text = format!("{}, {}, {}", relative[0], relative[1], relative[2]);
-        let until = std::time::Instant::now() + std::time::Duration::from_millis(10_000);
-        self.test_highlights
-            .insert((absolute[0], absolute[1], absolute[2]), (text, until));
-    }
-
     /// `getRotation`: the test's rotation turned by the block's.
     pub(super) fn test_rotation(&self, pos: Pos) -> Rotation {
         let own = self

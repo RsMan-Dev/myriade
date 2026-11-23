@@ -17,7 +17,7 @@ pub static DEF: Def = Def {
         Entry::new(&go_to_wanted::MODULE, 1, &go_to_wanted::Params { hand: true, range: 32.0, speed: 1.75, ..go_to_wanted::Params::DEFAULT }),
         Entry::new(&give_to_owner::MODULE, 2, &give_to_owner::Params::DEFAULT),
         Entry::new(&stay_close_to_owner::MODULE, 3, &stay_close_to_owner::Params::DEFAULT),
-        Entry::new(&fly_stroll::MODULE, 4, &fly_stroll::Params::DEFAULT),
+        Entry::new(&fly_stroll::MODULE, 4, &fly_stroll::Params { reach: Some((10, 7)), ..fly_stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 5, &look_at_player::Params { range: 6.0, species: look_at_player::Params::ALL, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 6, &random_look::Params { interval: Some((150, 250)), ..random_look::Params::DEFAULT }),
         Entry::new(&event_listen::MODULE, 7, &event_listen::Params {
@@ -34,6 +34,6 @@ pub static DEF: Def = Def {
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Tamable, Cap::Locomotion]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { max_turn: 20.0, hovers: true, free: true, drive_air: true, ..fly::Params::DEFAULT }))],
-    rules: &[crate::rules::RuleEntry::new(&crate::duplicate_item::DUPLICATE_ITEM, &crate::duplicate_item::DuplicateParams::ALLAY), crate::rules::RuleEntry::new(&crate::hand_over::HAND_OVER, &crate::hand_over::HandOverParams::ALLAY)],
+    rules: &[crate::rules::RuleEntry::new(&crate::duplicate_item::DUPLICATE_ITEM, &crate::duplicate_item::DuplicateParams::ALLAY), crate::rules::RuleEntry::new(&crate::hand_over::HAND_OVER, &crate::hand_over::HandOverParams::ALLAY), crate::rules::RuleEntry::new(&crate::allay_heal::HEAL, &())],
     ..Def::EMPTY
 };

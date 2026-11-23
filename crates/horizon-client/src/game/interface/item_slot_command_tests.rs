@@ -18,7 +18,7 @@ fn item_replace_asks_the_slot_predicate_of_a_stand_and_the_dragon() {
         game.session.registries.permission = 4;
         crate::game::ecs::test_support::place_test_stand(game, 16, &ArmorStand::new(16, Vec3::ZERO, 0.0));
         let dragon = game.ecs_with(|ecs, mw| {
-            ecs.summon_dragon(mw, [0.0; 3], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 17)
+            ecs.summon_dragon(mw, [0.0; 3], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(), &mut || 17)
         });
         assert_eq!(dragon, 17);
         let stand = "@e[type=minecraft:armor_stand,limit=1]";

@@ -5,7 +5,7 @@ is measured against. It is GPL-3.0: we build it and run it as a black box, and n
 source. Only its binary, its log and the configuration file it writes run here.
 
 Both servers speak the same protocol: Pumpkin 0.2.1+26.3-26.60 says "Java Minecraft (Protocol 777)", the
-protocol of 26.3 that Horizon and `horizon-bots` speak. Each server gets the same bots, the same world seed and
+protocol of 26.3 that Horizon and `myriade-bot` speak. Each server gets the same bots, the same world seed and
 the same settings.
 
 ## Result (2026-10-31)
@@ -14,7 +14,7 @@ playhorizon (AMD EPYC 7662, 8 vCPUs). The server and the bots ran on CPUs 0-3, w
 the CI runner works on CPUs 4-7. Both servers are release builds: Horizon main d91cab68d, Pumpkin 55cb804cc.
 `mixed` bots (60 % walk, 20 % explore, 20 % idle), seed 12345, view and simulation distance 10, creative,
 offline. One bot joined every 0.5 s, then 60 s of warm-up and a 120 s window. Three rounds, the servers
-alternated; the median of the rounds. Every run: [benchmarks/server-vs-pumpkin-2026-10-31.json](../../benchmarks/server-vs-pumpkin-2026-10-31.json).
+alternated; the median of the rounds.
 
 | Bots | Server | MSPT P50 | MSPT avg | MSPT P99 | worst P99 | CPU % | RSS MB | chunks/s sent | new chunks/s | bots waited (ticks/s) | join P50 ms | join max ms | start s |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -77,7 +77,7 @@ On a Linux machine with the vanilla data prepared (`python3 tools/lab.py prepare
 git clone https://github.com/Pumpkin-MC/Pumpkin && cd Pumpkin && git checkout 55cb804cc && cargo build --release && cd -
 # Horizon
 cargo build --release -p horizon-game --bin horizon-client
-cargo build --release -p horizon-server -p horizon-bots
+cargo build --release -p horizon-server -p myriade-bot
 # The comparison: 0, 20, 60 and 100 bots, three rounds, the servers alternated
 taskset -c 0-3 python3 tools/server_bench.py --servers horizon,pumpkin --pumpkin Pumpkin/target/release/pumpkin \
   --bots 0,20,60,100 --behaviour mixed --join-every 0.5 --warmup 60 --seconds 120 --repeat 3 \

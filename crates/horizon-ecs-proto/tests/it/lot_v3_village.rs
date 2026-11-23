@@ -1,11 +1,9 @@
-//! Le villageois du lot V3 (village, cachette, ciel, raid, cloche) : l'ECS contre le `Mob` sur le résultat observable, troupeau éveillé.
+//! Le villageois du lot V3 (village, cachette, ciel, raid, cloche) : l'ECS seul, troupeau éveillé.
 //! Les comportements que le villageois ne lance pas par son `BEntry` (les `Kid` tirés au hasard) sont appelés directement côté ECS.
 //! Écrit sans lancer : à vérifier au premier passage.
 use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
-use horizon_client_lib::mobs::{villager, villager_brain, Mob, MobWorld};
-use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{
     behaviours::{bell_heard::HEARD_BELL, hide, raid, sky_spot},
     brain::{
@@ -36,34 +34,11 @@ fn spawn(h: &mut Herd, name: &str, x: f64, z: f64, seed: u64) -> Entity {
 }
 /// Mid-morning: the villager works, it neither rests nor meets.
 const DAY: i64 = 4000;
-/// A `Mob` world at the same hour (its clock is frozen).
-fn mob_ref() -> MobRef {
-    let mut r = MobRef::new(40, false);
-    r.w = Box::leak(Box::new(MobWorld { day_time: DAY, ..r.w.clone() }));
-    r
-}
 /// The activity of the ECS brain: `describe` gives `activity <name> running [...] memories [...]`.
 pub(super) fn ecs_act(w: &World, e: Entity) -> String {
     horizon_ecs_proto::brain::describe(w, e).and_then(|d| d.split_whitespace().nth(1).map(str::to_string)).unwrap_or_default()
 }
-/// Whole-token match on the `Mob`'s describe: `raid` does not match `pre_raid`, `walk_target` matches `minecraft:walk_target=...`.
-fn mob_token(m: &Mob, tok: &str) -> bool {
-    villager_brain::describe(m).is_some_and(|(a, b)| {
-        a.split(|c: char| !c.is_alphanumeric() && c != '_').chain(b.split(|c: char| !c.is_alphanumeric() && c != '_')).any(|t| t == tok)
-    })
-}
-fn ecs_xz(h: &Herd, a: Entity, b: Entity) -> f64 {
-    xz(h.world.get::<Pos>(a).unwrap().0, h.world.get::<Pos>(b).unwrap().0)
-}
-/// A stone roof over the 5x5 around the origin, the `Mob` side.
-fn roof_mob(r: &mut MobRef) {
-    for x in -2..=2 {
-        for z in -2..=2 {
-            r.set_block(x, 3, z, "minecraft:stone");
-        }
-    }
-}
-/// The same roof on the ECS side, then two ticks for the light to settle.
+/// A stone roof over the 5x5 around the origin, then two ticks for the light to settle.
 fn roof_ecs(h: &mut Herd) {
     for x in -2..=2 {
         for z in -2..=2 {
@@ -79,18 +54,6 @@ fn bed_ecs(h: &mut Herd) {
     h.set_block_state(8, 1, 0, "minecraft:white_bed", &[("part", "head"), ("facing", "east")]);
     h.set_block_state(7, 1, 0, "minecraft:white_bed", &[("part", "foot"), ("facing", "east")]);
 }
-fn bed_mob(r: &MobRef) {
-    r.set_block_props(8, 1, 0, "minecraft:white_bed", &[("part", "head"), ("facing", "east")]);
-    r.set_block_props(7, 1, 0, "minecraft:white_bed", &[("part", "foot"), ("facing", "east")]);
-}
-
-/// One `Mob` tick with its AI awake (without a player in range it sleeps).
-fn mstep(r: &mut MobRef) {
-    for m in r.mobs.iter_mut() {
-        m.ai.no_action_time = 0;
-    }
-    r.step(None);
-}
 
 static HOME_WALK: village_home_walk::Params = village_home_walk::Params { range: 48, retry: 20, home: &HOME };
 static BROWN: village_brownian_walk::Params = village_brownian_walk::Params { speed: 0.5 };
@@ -99,7 +62,7 @@ static STROLL: village_stroll::Params = village_stroll::Params { speed: 0.75, xz
 static HIDE: hide::Params = hide::Params { homes: village_home_walk::homes, radius: 32, speed: 0.625, close: 2, home: &HOME };
 static SKY: sky_spot::Params = sky_spot::Params { tries: 10, speed: 0.5 };
 
-/// `ClosestHomeAsWalkTarget` (`villager_brain.rs:2225`): a bed 8 blocks away becomes the walk target, on the Mob too.
+/// `ClosestHomeAsWalkTarget` (`villager_brain.rs:2225`): a bed 8 blocks away becomes the walk target.
 #[test]
 fn home_walk_awake() {
     if skip() {
@@ -113,20 +76,10 @@ fn home_walk_awake() {
     // The homeless walk: the bed is found by `AcquirePoi` at the first tick, so the home is forgotten to put the villager in that case.
     erase(&mut h.world, e, &HOME);
     let ecs = (village_home_walk::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&HOME_WALK));
-    let mut r = mob_ref();
-    bed_mob(&r);
-    r.apply_block_events();
-    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
-    let mut mob = false;
-    for _ in 0..20 {
-        mstep(&mut r);
-        mob |= mob_token(&r.mobs[i], "walk_target");
-    }
     assert!(ecs && present(&h.world, e, &WALK_TARGET), "ECS : pas de cible vers le lit");
-    assert!(mob, "Mob : pas de cible vers le lit");
 }
 
-/// `InsideBrownianWalk` (`villager_brain.rs:2278`): under a roof, a random walk target is set, on the Mob too.
+/// `InsideBrownianWalk` (`villager_brain.rs:2278`): under a roof, a random walk target is set.
 #[test]
 fn brownian_walk_under_a_roof_awake() {
     if skip() {
@@ -138,16 +91,7 @@ fn brownian_walk_under_a_roof_awake() {
     h.tick();
     erase(&mut h.world, e, &WALK_TARGET);
     let ecs = (village_brownian_walk::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&BROWN));
-    let mut r = mob_ref();
-    roof_mob(&mut r);
-    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
-    let mut mob = false;
-    for _ in 0..40 {
-        mstep(&mut r);
-        mob |= mob_token(&r.mobs[i], "walk_target");
-    }
     assert!(ecs && present(&h.world, e, &WALK_TARGET), "ECS : pas de cible sous le toit");
-    assert!(mob, "Mob : pas de cible sous le toit");
 }
 
 /// `GoToClosestVillage` (`villager_brain.rs:2309`): a villager 30 blocks from its job site walks toward the village.
@@ -165,21 +109,10 @@ fn go_to_village_awake() {
     h.tick();
     erase(&mut h.world, e, &WALK_TARGET);
     let ecs = (village_go_to_village::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&VILLAGE));
-    let mut r = mob_ref();
-    r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
-    r.apply_block_events();
-    let i = r.add_kind(Vec3::new(-30.5, 1.0, 0.5), mob_kind("minecraft:villager"));
-    let goal = Vec3::new(SITE[0] as f64, 1.0, SITE[2] as f64);
-    let start = xz(r.mobs[i].position, goal);
-    for _ in 0..60 {
-        mstep(&mut r);
-    }
-    let end = xz(r.mobs[i].position, goal);
     assert!(ecs && present(&h.world, e, &WALK_TARGET), "ECS : pas de cible vers le village");
-    assert!(end < start - 5.0, "Mob : le village n'attire pas ({start} -> {end})");
 }
 
-/// `VillageBoundRandomStroll` (`villager_brain.rs:2006`): a bounded stroll sets a walk target, on the Mob too after a hit.
+/// `VillageBoundRandomStroll` (`villager_brain.rs:2006`): a bounded stroll sets a walk target.
 #[test]
 fn village_stroll_awake() {
     if skip() {
@@ -189,19 +122,10 @@ fn village_stroll_awake() {
     let e = spawn(&mut h, "minecraft:villager", 0.5, 0.5, 6);
     h.tick();
     let ecs = (village_stroll::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&STROLL));
-    let mut r = mob_ref();
-    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
-    r.hit(i, 1.0, [-4.5, 1.0, 0.5]);
-    let mut mob = false;
-    for _ in 0..30 {
-        mstep(&mut r);
-        mob |= mob_token(&r.mobs[i], "walk_target");
-    }
     assert!(ecs && present(&h.world, e, &WALK_TARGET), "ECS : pas de promenade");
-    assert!(mob, "Mob : pas de promenade après un coup");
 }
 
-/// `WalkAwayFrom` (`villager_brain.rs:2407`): a zombie 3 blocks away, the villager walks away from it, the Mob too.
+/// `WalkAwayFrom` (`villager_brain.rs:2407`): a zombie 3 blocks away, the villager walks at least a block away from it.
 #[test]
 fn flee_hostile_awake() {
     if skip() {
@@ -216,17 +140,7 @@ fn flee_hostile_awake() {
         h.tick();
     }
     let ecs = xz(h.world.get::<Pos>(v).unwrap().0, from) - before;
-    let mut r = mob_ref();
-    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
-    let k = r.add_kind(Vec3::new(3.5, 1.0, 0.5), mob_kind("minecraft:zombie"));
-    let zfrom = r.mobs[k].position;
-    let mob_before = xz(r.mobs[i].position, zfrom);
-    for _ in 0..100 {
-        mstep(&mut r);
-    }
-    let mob = xz(r.mobs[i].position, zfrom) - mob_before;
     assert!(ecs >= 1.0, "ECS : le villageois ne s'éloigne pas ({ecs})");
-    assert!(mob >= 1.0, "Mob : le villageois ne s'éloigne pas ({mob})");
 }
 
 /// `LocateHidingPlace` (`villager_brain.rs:2530`): after a bell, the villager picks the bed within its radius as its hiding place.
@@ -245,23 +159,10 @@ fn hiding_place_after_a_bell_awake() {
     for _ in 0..100 {
         h.tick();
     }
-    let ecs = true;
-    let mut r = mob_ref();
-    bed_mob(&r);
-    r.apply_block_events();
-    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
-    mstep(&mut r);
-    villager_brain::heard_bell(&mut r.mobs[i], r.t);
-    let mut mob = false;
-    for _ in 0..20 {
-        mstep(&mut r);
-        mob |= mob_token(&r.mobs[i], "hiding_place");
-    }
-    assert!(ecs && present(&h.world, e, &hide::HIDING_PLACE), "ECS : pas de cachette");
-    assert!(mob, "Mob : pas de cachette");
+    assert!(present(&h.world, e, &hide::HIDING_PLACE), "ECS : pas de cachette");
 }
 
-/// `SetHiddenState` (`villager_brain.rs:2570`): the hiding ends 300 ticks after the bell, the place is forgotten on both sides.
+/// `SetHiddenState` (`villager_brain.rs:2570`): the hiding ends 300 ticks after the bell, the place is forgotten.
 #[test]
 fn hidden_state_ends_300_ticks_after_the_bell_awake() {
     if skip() {
@@ -274,26 +175,17 @@ fn hidden_state_ends_300_ticks_after_the_bell_awake() {
     h.tick();
     let now = now_of(&h.world, e) as i64;
     set(&mut h.world, e, &HEARD_BELL, MemValue::Int(now), None);
-    let mut r = mob_ref();
-    bed_mob(&r);
-    r.apply_block_events();
-    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
-    mstep(&mut r);
-    villager_brain::heard_bell(&mut r.mobs[i], r.t);
     for _ in 0..20 {
         h.tick();
-        mstep(&mut r);
     }
     assert!(present(&h.world, e, &hide::HIDING_PLACE), "ECS : la cachette n'est pas choisie après la cloche");
     for _ in 0..310 {
         h.tick();
-        mstep(&mut r);
     }
     assert!(!present(&h.world, e, &hide::HIDING_PLACE), "ECS : la cachette dure encore");
-    assert!(!mob_token(&r.mobs[i], "hiding_place"), "Mob : la cachette dure encore");
 }
 
-/// `MoveToSkySeeingSpot` (`villager_brain.rs:2497`): from under a roof, a spot that sees the sky becomes the walk target, on the Mob too.
+/// `MoveToSkySeeingSpot` (`villager_brain.rs:2497`): from under a roof, a spot that sees the sky becomes the walk target.
 #[test]
 fn sky_spot_under_a_roof_awake() {
     if skip() {
@@ -306,16 +198,7 @@ fn sky_spot_under_a_roof_awake() {
     erase(&mut h.world, e, &WALK_TARGET);
     let ecs = (sky_spot::BEHAVIOUR.can_start)(&mut h.world, e, &ctx(&SKY));
     (sky_spot::BEHAVIOUR.start)(&mut h.world, e, &ctx(&SKY));
-    let mut r = mob_ref();
-    roof_mob(&mut r);
-    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
-    let mut mob = false;
-    for _ in 0..60 {
-        mstep(&mut r);
-        mob |= mob_token(&r.mobs[i], "walk_target");
-    }
     assert!(ecs && present(&h.world, e, &WALK_TARGET), "ECS : pas de case vers le ciel");
-    assert!(mob, "Mob : pas de case vers le ciel");
 }
 
 /// `SetRaidStatus` and `ResetRaidStatus` (`villager_brain.rs:1800`, `:2464`): an active raid poses the `raid` activity, its end removes it.
@@ -340,25 +223,10 @@ fn raid_status_is_set_and_reset_awake() {
         h.tick();
     }
     let ecs_reset = ecs_act(&h.world, e) != "raid";
-    let mut r = mob_ref();
-    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
-    villager::ext_mut(&mut r.mobs[i]).raid = villager::RAID;
-    villager::ext_mut(&mut r.mobs[i]).raid_wave = true;
-    let mut mob_set = false;
-    for _ in 0..200 {
-        mstep(&mut r);
-        mob_set |= mob_token(&r.mobs[i], "raid");
-    }
-    villager::ext_mut(&mut r.mobs[i]).raid = villager::RAID_NONE;
-    for _ in 0..200 {
-        mstep(&mut r);
-    }
-    let mob_reset = !mob_token(&r.mobs[i], "raid");
     assert!(ecs_set && ecs_reset, "ECS : pose {ecs_set}, retrait {ecs_reset}");
-    assert!(mob_set && mob_reset, "Mob : pose {mob_set}, retrait {mob_reset}");
 }
 
-/// `SetRaidStatus` before a raid (`villager_brain.rs:1800`): the `pre_raid` activity is posed, as on the Mob.
+/// `SetRaidStatus` before a raid (`villager_brain.rs:1800`): the `pre_raid` activity is posed.
 #[test]
 fn pre_raid_meeting_awake() {
     if skip() {
@@ -374,18 +242,10 @@ fn pre_raid_meeting_awake() {
         h.tick();
         ecs |= ecs_act(&h.world, e) == "pre_raid";
     }
-    let mut r = mob_ref();
-    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
-    villager::ext_mut(&mut r.mobs[i]).raid = villager::PRE_RAID;
-    let mut mob = false;
-    for _ in 0..200 {
-        mstep(&mut r);
-        mob |= mob_token(&r.mobs[i], "pre_raid");
-    }
-    assert!(ecs && mob, "pre_raid : ECS {ecs}, Mob {mob}");
+    assert!(ecs, "pre_raid : ECS {ecs}");
 }
 
-/// A won raid (`villager_brain.rs:1800`): the victory poses the `raid` activity while its wave is on, on both brains.
+/// A won raid (`villager_brain.rs:1800`): the victory poses the `raid` activity while its wave is on.
 #[test]
 fn raid_victory_awake() {
     if skip() {
@@ -401,16 +261,7 @@ fn raid_victory_awake() {
         h.tick();
         ecs |= ecs_act(&h.world, e) == "raid";
     }
-    let mut r = mob_ref();
-    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
-    villager::ext_mut(&mut r.mobs[i]).raid = villager::RAID_VICTORY;
-    villager::ext_mut(&mut r.mobs[i]).raid_wave = true;
-    let mut mob = false;
-    for _ in 0..200 {
-        mstep(&mut r);
-        mob |= mob_token(&r.mobs[i], "raid");
-    }
-    assert!(ecs && mob, "victoire : ECS {ecs}, Mob {mob}");
+    assert!(ecs, "victoire : ECS {ecs}");
 }
 
 /// `ReactToBell` (`villager_brain.rs:1788`): a bell with no raid poses `hide`; with a raid on (any status but none) it does not.
@@ -424,7 +275,7 @@ fn react_to_bell_awake() {
     let busy = spawn(&mut h, "minecraft:villager", 1.5, 0.5, 16);
     h.tick();
     h.tick();
-    // Only the busy one is in a raid (as the `raid` field of the second `Mob` below).
+    // Only the busy one is in a raid.
     set(&mut h.world, busy, &raid::RAID_STATUS, MemValue::Int(raid::RAID_BEFORE), None);
     let now = now_of(&h.world, quiet) as i64;
     set(&mut h.world, quiet, &HEARD_BELL, MemValue::Int(now), None);
@@ -435,50 +286,17 @@ fn react_to_bell_awake() {
         ecs_quiet |= ecs_act(&h.world, quiet) == "hide";
         ecs_raid |= ecs_act(&h.world, busy) == "hide";
     }
-    let mut r = mob_ref();
-    let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
-    let j = r.add_kind(Vec3::new(1.5, 1.0, 0.5), mob_kind("minecraft:villager"));
-    villager::ext_mut(&mut r.mobs[j]).raid = villager::PRE_RAID;
-    mstep(&mut r);
-    villager_brain::heard_bell(&mut r.mobs[i], r.t);
-    villager_brain::heard_bell(&mut r.mobs[j], r.t);
-    let (mut mob_quiet, mut mob_raid) = (false, false);
-    for _ in 0..5 {
-        mstep(&mut r);
-        mob_quiet |= mob_token(&r.mobs[i], "hide");
-        mob_raid |= mob_token(&r.mobs[j], "hide");
-    }
-    let (mob_raid, ecs_raid) = (!mob_raid, ecs_raid);
     assert!(ecs_quiet && !ecs_raid, "ECS : sans raid {ecs_quiet}, avec raid hide {ecs_raid}");
-    assert!(mob_quiet && mob_raid, "Mob : sans raid {mob_quiet}, avec raid {mob_raid}");
 }
 
-/// The tick, counted from the order, at which the activity shows: `pre_raid` after `SetRaidStatus(before)`, `raid` after the victory and
-/// `hide` after the bell. `hide` is compared tick for tick (2 at most). `SetRaidStatus` and `ResetRaidStatus` draw `nextInt(20) == 0` per
-/// try in the jar, so the activity of a raid comes after a geometric wait of mean 20 ticks (`RaidDue`); the `Mob` sets its `raid` field at
-/// once (2 ticks): the ECS latency is measured over 30 villagers and must have the jar's mean (10 to 40).
+/// The tick at which the activity shows: `pre_raid` after `SetRaidStatus(before)`, `raid` after the victory and `hide` after the bell.
+/// `SetRaidStatus` and `ResetRaidStatus` draw `nextInt(20) == 0` per try in the jar, so the activity of a raid comes after a geometric
+/// wait of mean 20 ticks (`RaidDue`): the ECS latency is measured over 30 villagers and must have the jar's mean (10 to 40).
 #[test]
 fn raid_hide_and_pre_raid_latency_against_the_mob_and_the_jar_awake() {
     if skip() {
         return;
     }
-    let mob_latency = |act: &str| {
-        let mut r = mob_ref();
-        let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
-        mstep(&mut r);
-        match act {
-            "pre_raid" => villager::ext_mut(&mut r.mobs[i]).raid = villager::PRE_RAID,
-            "raid" => {
-                villager::ext_mut(&mut r.mobs[i]).raid = villager::RAID_VICTORY;
-                villager::ext_mut(&mut r.mobs[i]).raid_wave = true;
-            }
-            _ => villager_brain::heard_bell(&mut r.mobs[i], r.t),
-        }
-        (1..=200u32).find(|_| {
-            mstep(&mut r);
-            mob_token(&r.mobs[i], act)
-        })
-    };
     let ecs_latency = |act: &str, status: i64, seed: u64| {
         let mut h = Herd::with_slab_awake(40, true, false);
         let e = spawn(&mut h, "minecraft:villager", 0.5, 0.5, seed);
@@ -495,15 +313,13 @@ fn raid_hide_and_pre_raid_latency_against_the_mob_and_the_jar_awake() {
             ecs_act(&h.world, e) == act
         })
     };
-    let hide = (ecs_latency("hide", 0, 13), mob_latency("hide"));
-    eprintln!("latency hide: ecs {:?} mob {:?}", hide.0, hide.1);
-    let (Some(a), Some(b)) = hide else { panic!("hide: {hide:?}") };
-    assert!(a.abs_diff(b) <= 2, "hide: ecs {a} mob {b}");
+    let hide = ecs_latency("hide", 0, 13);
+    eprintln!("latency hide: ecs {hide:?}");
+    assert!(hide.is_some(), "hide: the ECS villager hides within 600 ticks");
     for (act, status) in [("pre_raid", raid::RAID_BEFORE), ("raid", raid::RAID_VICTORY)] {
         let waits: Vec<u32> = (0..30).map(|k| ecs_latency(act, status, 100 + k).unwrap_or(600)).collect();
         let mean = f64::from(waits.iter().sum::<u32>()) / waits.len() as f64;
-        eprintln!("latency {act}: ecs mean {mean:.1} (min {:?} max {:?}) mob {:?}", waits.iter().min(), waits.iter().max(), mob_latency(act));
+        eprintln!("latency {act}: ecs mean {mean:.1} (min {:?} max {:?})", waits.iter().min(), waits.iter().max());
         assert!((10.0..=40.0).contains(&mean), "{act}: mean wait {mean} is not the jar's 1 in 20 per tick");
-        assert!(mob_latency(act).is_some_and(|m| m <= 5), "{act}: the Mob sets its field at once");
     }
 }

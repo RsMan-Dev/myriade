@@ -282,9 +282,6 @@ impl Game<'_> {
         }
         // Outside a server only the respawns at the world spawn wait for chunks.
         self.arrive_server_trips();
-        if self.options.dedicated.is_none() {
-            return;
-        }
         self.carry_riders_through_portals();
         let Some(host) = self.lan.as_ref() else {
             return;
@@ -475,9 +472,7 @@ impl Game<'_> {
         cause: TravelCause,
         visited: &mut Vec<u32>,
     ) -> bool {
-        if !self.native_authoritative()
-            || !mod_api::__private::listened(mod_api::HookId::EntityTravelToDimension)
-        {
+        if !mod_api::__private::listened(mod_api::HookId::EntityTravelToDimension) {
             return true;
         }
         let Some(epoch) = self.native_lifecycle.epoch() else {
@@ -798,7 +793,7 @@ impl Game<'_> {
     /// The player moves to `target`'s level (opened if nobody was there)
     /// and is told it is there, at the approximate exit, while it loads. The
     /// level whose tick is running is put back in place afterwards.
-    pub(super) fn start_server_trip(
+    pub(in crate::game) fn start_server_trip(
         &mut self,
         conn: u32,
         target: Dim,
@@ -1363,7 +1358,7 @@ impl Game<'_> {
     /// (`ServerPlayer.teleport` from TeleportCommand): a Respawn packet
     /// keeping all data and the teleport, with no portal sound. The server
     /// leaves the body alone until the level has loaded around it.
-    pub(super) fn run_level_teleports(&mut self) {
+    pub(in crate::game) fn run_level_teleports(&mut self) {
         if self.lan.is_none() {
             return;
         }
@@ -1585,7 +1580,7 @@ mod tests {
 
 #[cfg(test)]
 mod credits_respawn_tests {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Game, Options, Progress, Settings, load_resources};
     use horizon_client::lan::{
         Joined, NetConfig, PlayerSender,
         guest::{Guest, SPECTATOR},
@@ -1610,19 +1605,18 @@ mod credits_respawn_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         let scratch = std::env::temp_dir().join(format!(
@@ -1657,7 +1651,6 @@ mod credits_respawn_tests {
                 allow_flight: false,
                 seed: 0,
                 max_players: 2,
-                integrated: false,
                 levels: Default::default(),
                 level_seeds: Default::default(),
             },
@@ -1766,7 +1759,6 @@ mod credits_respawn_tests {
                 allow_flight: false,
                 seed: 0,
                 max_players: 2,
-                integrated: false,
                 levels: Default::default(),
                 level_seeds: Default::default(),
             },

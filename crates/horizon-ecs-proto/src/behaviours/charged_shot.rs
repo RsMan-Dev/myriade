@@ -33,6 +33,9 @@ pub struct Charge {
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Charging;
+/// `Ghast.explosionPower`: the power of the large fireballs it shoots, saved as `ExplosionPower`; 1 at its creation.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct ExplosionPower(pub i32);
 
 pub static MODULE: Module = Module { name: "charged_shot", flags: 0, resources, equip, can_use, start, stop, tick: Some(tick), requires: &[Cap::Body, Cap::Goals, Cap::Targets], ..Module::DEFAULT };
 fn resources(w: &mut World) {
@@ -45,7 +48,8 @@ fn on_target(w: &mut World, e: Entity) {
     }
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Charge { p: params::<Params>(p), slot: inst.slot, charge: 0 });
+    let power = params::<Params>(p).power;
+    w.entity_mut(e).insert((Charge { p: params::<Params>(p), slot: inst.slot, charge: 0 }, ExplosionPower(power)));
 }
 /// The tick of the module: its system, run by `arbitrate` while an animal carries it (no system in the schedule).
 fn tick(w: &mut World) {
@@ -86,5 +90,6 @@ fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
     let ty = (i.bounds.min_position().y + i.bounds.max_position().y) * 0.5;
     let muzzle = Vec3::new(pos.x + view[0] * p.forward, 0.5 + pos.y + half, pos.z + view[1] * p.forward);
     let v = shot_velocity(muzzle, Vec3::new(i.pos.x, ty, i.pos.z));
-    launch(w, Flight::large_fireball(p.power), Vec3::new(pos.x + view[0] * p.forward, pos.y + half + 0.5, pos.z + view[1] * p.forward), v, Some(Who::Entity(e)));
+    let power = w.get::<ExplosionPower>(e).map_or(p.power, |x| x.0);
+    launch(w, Flight::large_fireball(power), Vec3::new(pos.x + view[0] * p.forward, pos.y + half + 0.5, pos.z + view[1] * p.forward), v, Some(Who::Entity(e)));
 }

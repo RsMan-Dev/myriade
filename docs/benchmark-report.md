@@ -138,7 +138,7 @@ The statistic, in `horizon_bench::compare`, exact and deterministic:
 
 Nothing in a report identifies the player, the machine's name or the world: no host name, user name, path or
 address. `label` (a name the person running it chose) and `local` (paths of the logs the run wrote next to the
-report) are kept in the file. A report is never sent anywhere (docs/telemetry.md).
+report) are kept in the file. A report is never sent anywhere.
 
 ## Where reports go
 

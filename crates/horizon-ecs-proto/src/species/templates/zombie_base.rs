@@ -3,8 +3,13 @@
 //! wait for their species to be in the registry.
 use crate::behaviours::{pick_up_gear, spear_use, attack_turtle_egg, break_door, hurt_by, look_at_player, melee, nearest_target, random_look, stroll, Entry};
 use crate::species::Def;
+use crate::attr_mod::{LoadAttr, LoadWhen};
+
+/// The zombie family's attributes at load: the speed, and the baby bonus (`Zombie.setBaby`, 0.5 in `SPEED_MODIFIER_BABY`).
+pub const LOAD_ATTRS: &[LoadAttr] = &[LoadAttr { name: "movement_speed", base: None, when: LoadWhen::Always }, LoadAttr { name: "movement_speed", base: Some(0.5), when: LoadWhen::BabyBonus }];
 
 pub static DEF: Def = Def {
+    load_attrs: LOAD_ATTRS,
     name: "template:zombie_base",
     targets: &[
         Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, alert_except: &["minecraft:zombified_piglin"], ..hurt_by::Params::DEFAULT }),

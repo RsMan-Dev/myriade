@@ -27,5 +27,6 @@ pub static DEF: Def = Def {
     locomotion: &[(Medium::Air, Entry::new(&flight::MODULE, 0, &flight::Params::DEFAULT))],
     // Health is not here: `flight::equip` gives it (200, `createAttributes`: the dragon is no `Mob` type); the camera distance (16) is client-side.
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Locomotion, Cap::FireImmune]),
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

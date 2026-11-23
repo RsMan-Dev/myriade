@@ -1,4 +1,4 @@
-//! Two `[[native.loop]]` slots in `block_entities.tick` (`src/loops/`), compiled into the launcher's
+//! Two `[[native.loop]]` slots in `block_entities.tick` (`src/loops/`), compiled into the game's
 //! copy of the loop, and a HEAD mixin on the loop's entry (`src/mixins/`). Its block
 //! `fnr_loop:counter` has a ticking block entity of its own type, which the `count` slot picks out.
 #[derive(Default)]

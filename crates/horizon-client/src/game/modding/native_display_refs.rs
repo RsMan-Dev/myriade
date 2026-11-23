@@ -560,7 +560,6 @@ mod tests {
     use mod_api::WorldEpoch;
 
     fn push(game: &mut Game<'_>, id: u32, kind: &str) -> DisplayRef {
-        game.options.dedicated = Some(Vec::new());
         game.load_other_as(id, kind, [1.0, 70.0, 1.0]);
         let entity = game.entity(id).unwrap();
         game.display(entity).unwrap()

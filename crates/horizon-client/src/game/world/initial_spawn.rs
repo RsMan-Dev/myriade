@@ -104,9 +104,6 @@ impl Game<'_> {
         {
             return Ok(((0, 0), flat.spawn_height()));
         }
-        if self.options.test_terrain {
-            return Ok(((0, 0), 64));
-        }
         let origin = match self.end.locator() {
             Some(terrain) => terrain.origin()?,
             None => horizon_core::position::ChunkPos::new(0, 0),
@@ -137,18 +134,13 @@ impl Game<'_> {
         while let Some((dx, dz)) = self.spawn_spiral.current() {
             if self.spawn_spiral.tested() {
                 let (cx, cz) = (ox + dx, oz + dz);
-                if self.is_dedicated_server() {
-                    // getChunk(FULL) of the tested chunk alone: its 3x3 is decorated.
-                    if !self.world.chunks.contains_key(&(cx, cz)) {
-                        let area = [((cx, cz), -1)];
-                        if self.streaming.extra != area {
-                            self.streaming.extra = area.to_vec();
-                            self.streaming.rank_full_task(cx, cz);
-                        }
-                        return Ok(None);
+                // getChunk(FULL) of the tested chunk alone: its 3x3 is decorated.
+                if !self.world.chunks.contains_key(&(cx, cz)) {
+                    let area = [((cx, cz), -1)];
+                    if self.streaming.extra != area {
+                        self.streaming.extra = area.to_vec();
+                        self.streaming.rank_full_task(cx, cz);
                     }
-                } else if !self.streaming.is_lit(cx, cz) {
-                    self.streaming.center = (cx, cz);
                     return Ok(None);
                 }
                 if let Some(pos) = spawn_pos_in_chunk(&self.spawn_columns(), cx, cz) {
@@ -163,6 +155,8 @@ impl Game<'_> {
     /// in the spawn chunk, a chest with the spawn bonus loot and a torch on
     /// each side that can hold one, on the first free column of a shuffled
     /// walk over the chunk. Skipped while the chunk is not loaded.
+    // TODO(phase 2): brancher sur l'option --bonusChest du serveur dédié
+    #[allow(dead_code)]
     pub(super) fn place_bonus_chest(&mut self, origin: [i32; 3]) -> Result<()> {
         use horizon_client::containers::BlockEntity;
         let (cx, cz) = (origin[0] >> 4, origin[2] >> 4);
@@ -221,6 +215,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `Level.setBlock(pos, state, UPDATE_CLIENTS)`: no neighbour updates.
+    #[allow(dead_code)]
     fn set_block_clients(&mut self, pos: [i32; 3], state: BlockStateId) -> Result<()> {
         self.with_level(|b, level, ticks| {
             b.set_block(
@@ -286,19 +281,6 @@ impl Game<'_> {
                     }
                 }
                 SpawnCandidate::Suggestion => return Ok(self.fixup_spawn_height(suggestion)),
-            }
-        }
-    }
-    /// PlayerSpawnFinder.findSpawn around the world spawn: the feet of a
-    /// player who has no position yet. None while a candidate's chunk loads.
-    pub(super) fn find_player_spawn(&mut self, suggestion: [i32; 3]) -> Result<Option<Vec3>> {
-        let mut state = self.player_spawn.take();
-        match self.search_spawn(suggestion, &mut state) {
-            Ok(feet) => Ok(Some(feet)),
-            Err(chunk) => {
-                self.streaming.center = chunk;
-                self.player_spawn = state;
-                Ok(None)
             }
         }
     }

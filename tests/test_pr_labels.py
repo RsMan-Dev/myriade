@@ -67,7 +67,6 @@ class KindTests(unittest.TestCase):
 class AreaTests(unittest.TestCase):
     def test_paths(self):
         cases = {
-            "launcher/src/main.rs": "launcher",
             "crates/horizon-world/src/worldgen/structure/mod.rs": "worldgen",
             "crates/horizon-client/src/mobs/ai.rs": "mobs",
             "crates/horizon-client/src/game/mobs/wither.rs": "mobs",
@@ -101,17 +100,17 @@ class AreaTests(unittest.TestCase):
             self.assertIsNone(pl.area_of(path), path)
 
     def test_biggest_three_with_a_tenth_each(self):
-        files = [("launcher/src/a.rs", 50), ("crates/horizon-client/src/mobs/a.rs", 30),
+        files = [("crates/horizon-world/src/worldgen/a.rs", 50), ("crates/horizon-client/src/mobs/a.rs", 30),
                  ("crates/horizon-command/src/a.rs", 10), ("crates/horizon-client-render/src/audio.rs", 9),
                  ("tools/x.py", 1)]
-        self.assertEqual(pl.areas(files), ["launcher", "mobs", "commands"])
-        self.assertEqual(pl.areas([("tools/x.py", 95), ("launcher/src/a.rs", 5)]), [])
+        self.assertEqual(pl.areas(files), ["worldgen", "mobs", "commands"])
+        self.assertEqual(pl.areas([("tools/x.py", 95), ("crates/horizon-world/src/worldgen/a.rs", 5)]), [])
         self.assertEqual(pl.areas([]), [])
 
     def test_files_count_on_push_not_on_edit(self):
-        files = [("launcher/src/a.rs", 5)]
-        self.assertEqual(pl.plan_event(event(body(), action="synchronize"), files), (["launcher"], None))
-        self.assertEqual(pl.plan_event(event(body(), labels=("launcher",), action="synchronize"), files), ([], None))
+        files = [("crates/horizon-world/src/worldgen/a.rs", 5)]
+        self.assertEqual(pl.plan_event(event(body(), action="synchronize"), files), (["worldgen"], None))
+        self.assertEqual(pl.plan_event(event(body(), labels=("worldgen",), action="synchronize"), files), ([], None))
 
 
 class BackfillTests(unittest.TestCase):
@@ -119,8 +118,8 @@ class BackfillTests(unittest.TestCase):
         self.assertEqual(pl.guess_kind("x", body("extra"), []), "extra")
         self.assertEqual(pl.guess_kind("x", None, [("docs/a.md", 3), ("README.md", 1)]), "documentation")
         self.assertEqual(pl.guess_kind("x", None, [("tools/a.py", 3), ("tests/test_a.py", 1)]), "tooling")
-        self.assertEqual(pl.guess_kind("perf(client): less", None, [("launcher/a.rs", 1)]), "perf")
-        self.assertEqual(pl.guess_kind("Fix a crash when", None, [("launcher/a.rs", 1)]), "bug")
+        self.assertEqual(pl.guess_kind("perf(client): less", None, [("crates/horizon-client/a.rs", 1)]), "perf")
+        self.assertEqual(pl.guess_kind("Fix a crash when", None, [("crates/horizon-client/a.rs", 1)]), "bug")
         self.assertIsNone(pl.guess_kind("Mooshrooms keep their colour", None, [("crates/a.rs", 1)]))
         self.assertIsNone(pl.guess_kind("x", None, []))
 
@@ -158,7 +157,7 @@ class SizeTests(unittest.TestCase):
                             (3000, "L"), (3001, "XL")):
             self.assertEqual(pl.size_of([("crates/a/src/lib.rs", lines)]), f"size: {size}", lines)
         self.assertEqual(pl.size_of([]), "size: XS")
-        self.assertEqual(pl.size_of([("crates/a/src/lib.rs", 2000), ("launcher/src/b.rs", 1001)]), "size: XL")
+        self.assertEqual(pl.size_of([("crates/a/src/lib.rs", 2000), ("crates/horizon-client/src/b.rs", 1001)]), "size: XL")
 
     def test_docs_and_tests_dont_count(self):
         files = [("crates/a/src/lib.rs", 40), ("docs/a.md", 5000), ("README.md", 900), ("tests/test_a.py", 900),

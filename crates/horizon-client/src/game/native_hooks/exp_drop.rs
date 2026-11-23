@@ -13,9 +13,7 @@ impl GameLevel<'_> {
         breaker: Option<u128>,
         tool: Option<&ItemStack>,
     ) -> Option<u32> {
-        if !self.native_authoritative
-            || !crate::game::api_values::block_state::block_listens(mod_api::HookId::ExpDrop, state)
-        {
+        if !crate::game::api_values::block_state::block_listens(mod_api::HookId::ExpDrop, state) {
             return None;
         }
         let (block_entity, breaker) = self.drop_event_refs(pos, breaker);
@@ -83,9 +81,7 @@ impl Game<'_> {
         state: BlockStateId,
         experience: &mut Option<u32>,
     ) {
-        if !self.native_authoritative()
-            || !crate::game::api_values::block_state::block_listens(mod_api::HookId::ExpDrop, state)
-        {
+        if !crate::game::api_values::block_state::block_listens(mod_api::HookId::ExpDrop, state) {
             return;
         }
         let tool = self.held().cloned();
@@ -159,9 +155,7 @@ impl Game<'_> {
         block: &str,
     ) -> Option<LiveBlockEntity> {
         let entity = self.world.block_entities.get(&key)?.clone();
-        let view = (self.native_authoritative()
-            && mod_api::__private::listened(mod_api::HookId::BlockDrops))
-        .then(|| {
+        let view = mod_api::__private::listened(mod_api::HookId::BlockDrops).then(|| {
             let data = self.saved_block_entity_data(key, &entity, block)?;
             Some((data, self.world.block_entities.generation(&key)?))
         })

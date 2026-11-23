@@ -104,7 +104,7 @@ fn objects_come_back_as_they_were_loaded() {
     let ids: Vec<String> = nbt::recipes(&h.world).into_iter().map(|(k, _)| k).collect();
     let (mut report, mut bad, mut ok, mut lost) = (String::new(), Vec::new(), 0, Vec::new());
     for id in ids {
-        if super::nbt_conformance::is_creature(&id) || SKIPPED.iter().any(|(i, _)| *i == id) {
+        if super::common::is_creature(&id) || SKIPPED.iter().any(|(i, _)| *i == id) {
             continue;
         }
         let want: Compound = {

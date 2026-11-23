@@ -259,6 +259,11 @@ impl BlockLandingRegistry {
             .copied()
             .ok_or_else(|| LandingError::Data(invalid("landing state outside registry")))
     }
+    /// `Block.fallOn`'s `fallDistanceReduction` of a state with the default fall (`Rule::Default`); `None` for the others, whose
+    /// `fallOn` overrides do not reduce the distance.
+    pub fn default_fall_reduction(&self, state: BlockStateId) -> Option<f32> {
+        self.states.get(state.0 as usize).filter(|s| matches!(s.rule, Rule::Default)).map(|s| s.reduction)
+    }
     pub fn bounce_on<W: BlockLandingWorld>(
         &self,
         world: &mut W,

@@ -26,7 +26,7 @@ pub fn staged_mods(root: &Path) -> Vec<String> {
     ids.into_iter().map(str::to_owned).collect()
 }
 
-/// The hooks a mob's turn calls and waits on (the parallel mob tick, `game/creatures/mob_islands.rs`).
+/// The hooks a mob's turn calls and waits on.
 /// Names are those of the declarations in `horizon-mod-vocab/src/hooks/`, without the `native_`
 /// prefix: an injection names the game function it runs in, and `native_<name>` is that function for
 /// a hook point, whatever `version` its declaration carries.

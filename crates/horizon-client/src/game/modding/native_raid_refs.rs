@@ -243,7 +243,6 @@ mod tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
                 let level = game.level(game.dim.id()).unwrap();
                 assert!(game.create_or_extend_raid([10, 70, 10], Some(2)).is_some());
                 let raid = level.raid_at(game, [10, 70, 10]).unwrap();
@@ -324,7 +323,6 @@ mod tests {
     #[ignore = "daily"]
     fn stale_closed_and_client_raid_handles_read_nothing() {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             let level = game.level(game.dim.id()).unwrap();
             assert!(game.raid_command_create([10, 70, 10], 1));
             let raid = game.level_raid_at(level, [10, 70, 10]).unwrap();

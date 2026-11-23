@@ -84,7 +84,8 @@ fn rescale(w: &mut World, e: Entity) {
         w.entity_mut(e).insert(Recheck);
     }
 }
-fn set_puff(w: &mut World, e: Entity, size: u8) {
+pub fn set_puff(w: &mut World, e: Entity, size: u8) {
+    let from = w.get::<Puff>(e).unwrap().size;
     w.get_mut::<Puff>(e).unwrap().size = size;
     if size > 0 {
         w.entity_mut(e).insert(Inflated);
@@ -92,6 +93,11 @@ fn set_puff(w: &mut World, e: Entity, size: u8) {
         w.entity_mut(e).remove::<Inflated>();
     }
     rescale(w, e);
+    // `Pufferfish.tick`'s `makeSound`: blow up as it grows, blow out as it shrinks (the voice, silent or not, draws its pitch).
+    if size != from {
+        let name = if size > from { "entity.puffer_fish.blow_up" } else { "entity.puffer_fish.blow_out" };
+        crate::tear_down::voice(w, e, name);
+    }
 }
 fn arm_at_local(w: &mut World, e: Entity, at: u64) {
     let slot = w.get::<Puff>(e).unwrap().slot;

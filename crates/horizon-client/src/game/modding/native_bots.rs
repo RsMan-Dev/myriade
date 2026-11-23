@@ -78,7 +78,7 @@ impl Game<'_> {
         player: mod_api::PlayerRef,
         input: PlayerInput,
     ) -> Option<SimulatedMove> {
-        if !self.native_authoritative() || !(input.yaw.is_finite() && input.pitch.is_finite()) {
+        if !(input.yaw.is_finite() && input.pitch.is_finite()) {
             return None;
         }
         if input
@@ -209,11 +209,7 @@ impl Game<'_> {
         mut visit: impl FnMut(&[Aabb]) -> ControlFlow<()>,
     ) -> Option<()> {
         let bounds = aabb_of(aabb)?;
-        let (world, refuse_missing) = if self.is_logical_server() {
-            (self.level_in_place(level).then_some(&self.world)?, false)
-        } else {
-            return None;
-        };
+        let (world, refuse_missing) = (self.level_in_place(level).then_some(&self.world)?, false);
         let mut scene = ScanColumns {
             scene: SceneCollisions {
                 world,

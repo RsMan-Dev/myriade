@@ -140,6 +140,7 @@ mod tests {
                 0.0,
                 0,
                 horizon_ecs_proto::species::ender_dragon::START_PHASE,
+                &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(),
                 &mut || 15,
             )
         });

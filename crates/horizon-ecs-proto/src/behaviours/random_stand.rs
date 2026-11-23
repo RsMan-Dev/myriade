@@ -33,6 +33,14 @@ pub struct Stand {
 pub struct Standing {
     pub until: u64,
 }
+/// `AbstractHorse.animate`'s stand value: `now` of this tick, `last` of the one before (`standAnimO`). Sparse: only an animal
+/// that rears, or whose value is falling back, carries it.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct StandAnim {
+    pub now: f32,
+    pub last: f32,
+}
 
 pub static MODULE: Module = Module {
     name: "random_stand",
@@ -43,9 +51,17 @@ pub static MODULE: Module = Module {
     can_use,
     start,
     stop,
+    damaged: hurt,
+    tick: Some(animate),
     requires: &[Cap::Goals],
     ..Module::DEFAULT
 };
+/// `AbstractHorse.hurtServer`: one blow in three (`nextInt(3) == 0`) makes the mount rear (`standIfPossible`).
+fn hurt(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
+    if with_rng(w, e, |r| r.next_int(3)) == 0 {
+        crate::make_mad::stand_if_possible(w, e);
+    }
+}
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let interval = params::<Params>(p).interval;
     w.entity_mut(e).insert(Stand { next: -interval, interval, armed: false });
@@ -97,6 +113,28 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
 }
 fn stop(w: &mut World, e: Entity, inst: Inst) {
     arm(w, e, inst);
+}
+/// `AbstractHorse.animate` (stand part): rises while it rears (`+ (1 - v) * 0.4 + 0.05`, at most 1), else falls (`0.8 v³ - v`).
+/// The value is kept while the animal rears or is still above 0; the component goes when it reaches 0 at rest.
+fn animate(w: &mut World) {
+    let rows: Vec<Entity> = w.query_filtered::<Entity, Or<(With<Standing>, With<StandAnim>)>>().iter(w).collect();
+    for e in rows {
+        let now = crate::cow::now_of(w, e);
+        let standing = w.get::<Standing>(e).is_some_and(|s| now < s.until);
+        let mut a = w.get::<StandAnim>(e).copied().unwrap_or(StandAnim { now: 0.0, last: 0.0 });
+        a.last = a.now;
+        a.now = if standing {
+            (a.now + (1.0 - a.now) * 0.4 + 0.05).min(1.0)
+        } else {
+            let s = a.now;
+            (s + (0.8 * s * s * s - s) * 0.6 - 0.05).max(0.0)
+        };
+        if standing || a.now > 0.0 {
+            w.entity_mut(e).insert(a);
+        } else {
+            w.entity_mut(e).remove::<StandAnim>();
+        }
+    }
 }
 
 #[cfg(test)]

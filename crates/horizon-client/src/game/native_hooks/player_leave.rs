@@ -11,7 +11,7 @@ impl Game<'_> {
             return;
         }
         // A held player was recorded as joined at its login: it leaves too.
-        if self.is_dedicated_server() && (guest.placed || guest.held) {
+        if guest.placed || guest.held {
             crate::game::dedicated::events::record(
                 "leave",
                 &guest.name,

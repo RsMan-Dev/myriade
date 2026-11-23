@@ -81,6 +81,8 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<(Beaming, Beam)>();
     targeting::clear_target(w, e);
+    // `RandomStrollGoal.trigger` when the beam ends: the walk comes on the tick, not at its interval's draw.
+    super::stroll::trigger(w, e);
 }
 #[allow(clippy::type_complexity)]
 fn beam_run(tg: targeting::Targets, mut q: Query<(Aim, &mut GuardianBeam, Option<&Target>, Has<super::elder_curse::Silent>), With<Beaming>>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
@@ -128,7 +130,7 @@ fn strike(w: &mut World, e: Entity, who: Who, p: Params) {
             let tick = w.resource::<Clock>().0;
             w.resource_mut::<PlayerState>().hurt(tick, id, magic, from, Some(Who::Entity(e)));
         }
-        Who::Entity(t) => w.resource_mut::<DamageQueue>().0.push(Hit { target: t, amount: magic, cause: Cause::Magic, damage: "indirect_magic", from: Some(from), by: Some(Who::Entity(e)), direct: false, power: None, projectile: None }),
+        Who::Entity(t) => w.resource_mut::<DamageQueue>().0.push(Hit { target: t, amount: magic, cause: Cause::Magic, damage: "indirect_magic", from: Some(from), by: Some(Who::Entity(e)), direct: false, power: None, extra: None, projectile: None }),
     }
     crate::hostile::strike(w, e, who, p.damage);
 }

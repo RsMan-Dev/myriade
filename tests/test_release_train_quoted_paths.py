@@ -27,14 +27,14 @@ class ChangedPathsQuotedNameTests(unittest.TestCase):
         # same filesystem-safe decoding Python uses for on-disk names, so a non-UTF-8 byte
         # round-trips as a surrogate-escaped str rather than being dropped or mangled.
         text_paths = [
-            "launcher/src/main.rs",             # ordinary positive control
-            "launcher/src/中文.rs",              # non-ASCII -> quoted with core.quotePath=true
-            "launcher/src/my file.rs",          # space -> split into two tokens by the old code
+            "crates/horizon-world/src/main.rs",             # ordinary positive control
+            "crates/horizon-world/src/中文.rs",              # non-ASCII -> quoted with core.quotePath=true
+            "crates/horizon-world/src/my file.rs",          # space -> split into two tokens by the old code
         ]
         byte_paths = []
         if os.name != "nt":
-            text_paths += ["launcher/src/tab\there.rs", "launcher/src/newline\nname.rs"]
-            byte_paths = [b"launcher/src/bad_\xff.rs"]  # POSIX-only names; keep portable controls on Windows.
+            text_paths += ["crates/horizon-world/src/tab\there.rs", "crates/horizon-world/src/newline\nname.rs"]
+            byte_paths = [b"crates/horizon-world/src/bad_\xff.rs"]  # POSIX-only names; keep portable controls on Windows.
         expected = [os.fsdecode(p) for p in text_paths] + [os.fsdecode(p) for p in byte_paths]
         non_player = "tools/test_tool.py"
 
@@ -73,8 +73,8 @@ class ChangedPathsQuotedNameTests(unittest.TestCase):
                 self.assertEqual(set(changed), set(expected + [non_player]), changed)
                 # Player-facing classification is unchanged and still sees these paths.
                 for path in expected:
-                    self.assertTrue(train.player_facing(path, "launcher"), path)
-                self.assertFalse(train.player_facing(non_player, "launcher"))
+                    self.assertTrue(train.player_facing(path, "game"), path)
+                self.assertFalse(train.player_facing(non_player, "game"))
 
 
 if __name__ == "__main__":

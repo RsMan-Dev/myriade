@@ -25,7 +25,7 @@ fn combine_repairable(ctx: &Context, stack: &ItemStack) -> bool {
     let vanilla = stack.carries_component(info, "minecraft:max_damage")
         && stack.carries_component(info, "minecraft:damage");
     let mut repairable = vanilla;
-    crate::native_client_hooks::is_combine_repairable(ctx.context, stack, &mut repairable);
+    crate::native_level_hooks::is_combine_repairable(ctx.context, stack, &mut repairable);
     if repairable && !vanilla && stack.max_damage(info) <= 0 {
         refuse_no_durability(&stack.item);
         return vanilla;

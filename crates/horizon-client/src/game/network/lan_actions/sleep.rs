@@ -241,8 +241,7 @@ impl Game<'_> {
         self.sleep_seen = (active, sleeping);
         let changed = (old_sleeping > 0 || sleeping > 0)
             && (old_active != active || old_sleeping != sleeping);
-        let published = self.lan.is_some() || self.options.dedicated.is_some();
-        if !changed || !published {
+        if !changed {
             return;
         }
         // ServerLevel.canSleepThroughNights.
@@ -293,9 +292,6 @@ impl Game<'_> {
             if let Some(host) = self.lan.as_mut() {
                 host.hub
                     .system_message(horizon_client::lan::data::component_nbt(&text.component()));
-            }
-            if self.options.dedicated.is_none() {
-                self.system_message(text);
             }
         }
     }

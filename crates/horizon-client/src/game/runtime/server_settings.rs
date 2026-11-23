@@ -6,7 +6,7 @@ use std::path::Path;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
     /// `view-distance`, in chunks.
-    pub render_distance: i32,
+    pub view_distance: i32,
     /// `simulation-distance`, in chunks.
     pub simulation_distance: i32,
     /// `entity-broadcast-range-percentage` as a factor.
@@ -28,7 +28,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            render_distance: 12,
+            view_distance: 12,
             simulation_distance: 12,
             entity_distance: 1.0,
             resource_packs: Vec::new(),

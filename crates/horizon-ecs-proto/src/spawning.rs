@@ -14,11 +14,14 @@
 use crate::cow::{box_at, Clock, Index, Level, SpeciesId, SpeciesTable};
 use crate::despawn::DespawnDef;
 use crate::level::block_name;
+use crate::spawn_biome::biome_at;
+use crate::spawn_cost::{self, Charges};
 use crate::spawn_structures::StructureHost;
 use bevy_ecs::prelude::*;
 use bevy_ecs::{lifecycle::HookContext, world::DeferredWorld};
-use horizon_client_lib::biome::SpawnEntry;
+use horizon_client_lib::biome::{SpawnCost, SpawnEntry};
 use horizon_client_lib::mobs::spawn_rules::{is_dark_enough, SpawnLevel};
+use horizon_core::biome::BiomeZoom;
 use horizon_core::geometry::Vec3;
 use horizon_core::random::{LegacyRandom, RandomSource};
 use std::borrow::Cow;
@@ -61,6 +64,19 @@ impl Category {
     /// Spawned only every 400 ticks.
     pub fn persistent(self) -> bool {
         matches!(self, Self::Creature | Self::Misc)
+    }
+}
+/// The mods' natural spawning policy of the level (`SpawnLimits`, `SpawnFlags`): the caps by `Category as usize` and which may spawn.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct Policy {
+    pub caps: [i32; 8],
+    pub monsters: bool,
+    pub friendlies: bool,
+}
+impl Default for Policy {
+    fn default() -> Self {
+        let all = [Category::Monster, Category::Creature, Category::Ambient, Category::Axolotls, Category::UndergroundWaterCreature, Category::WaterCreature, Category::WaterAmbient, Category::Misc];
+        Self { caps: all.map(Category::max), monsters: true, friendlies: true }
     }
 }
 /// Where the creature stands (`SpawnPlacementTypes`).
@@ -128,6 +144,8 @@ pub struct Entry {
 #[derive(Default, Clone, Debug)]
 pub struct Table {
     pub lists: [Vec<Entry>; 8],
+    /// The `spawn_costs` of the biome by species id (`MobSpawnSettings.getMobSpawnCost`).
+    pub costs: HashMap<u8, SpawnCost>,
     pub unported: Vec<String>,
 }
 impl Table {
@@ -136,6 +154,14 @@ impl Table {
         for (cat, list) in &info.spawns {
             let Some(c) = Category::from_name(cat) else { continue };
             resolve(&mut t.lists[c as usize], &mut t.unported, list, species);
+        }
+        for (name, cost) in &info.spawn_costs {
+            match species.0.iter().find(|s| s.name == name.as_str()) {
+                Some(s) => {
+                    t.costs.insert(s.id, *cost);
+                }
+                None => t.unported.push(name.clone()),
+            }
         }
         t
     }
@@ -156,6 +182,9 @@ pub fn ensure(w: &mut World) {
     if !w.contains_resource::<SpawnCounts>() {
         w.insert_resource(SpawnCounts::default());
         w.insert_resource(DirtyColumns::default());
+    }
+    if !w.contains_resource::<Charges>() {
+        w.insert_resource(Charges::default());
     }
 }
 /// The counts, by event.
@@ -244,14 +273,23 @@ pub fn recount(w: &mut World, e: Entity) {
 }
 
 /// The spawn rules of a species (its configuration; the species table does not carry them: it is copied by the hot paths).
+/// `Def::light_lit` of the species (its count is 3 a tick in any light).
+pub fn light_lit(sp: &crate::cow::Species) -> bool {
+    crate::species::registry().by_name(sp.name).ok().is_some_and(|r| r.light_lit)
+}
 pub fn spawn_def(sp: &crate::cow::Species) -> Option<&'static SpawnDef> {
     crate::species::registry().by_name(sp.name).ok()?.spawn
 }
 /// What the pass keeps between ticks.
 #[derive(Resource)]
 pub struct Spawner {
-    pub table: Table,
+    /// The spawn lists of each biome, by biome index (`mw.biomes`), built once here.
+    pub tables: Vec<Table>,
+    /// The zoom of the world's biomes (its seed obfuscated, hashed once in `new`): the biome of a position reads through it.
+    pub zoom: BiomeZoom,
     pub rng: LegacyRandom,
+    /// Trace of the groups: when `Some`, the births of each group that had one, pushed as the group ends (none when `None`).
+    pub groups: Option<Vec<u32>>,
     pub on: bool,
     /// The union of the 17 x 17 squares of the players (each chunk once) and its size, rebuilt when a player changes chunk.
     chunks: Vec<(i32, i32)>,
@@ -275,9 +313,7 @@ pub struct Spawner {
     pub hold: bool,
     /// With `profile`: the sum of the chances of the chunks within 128 blocks, per cycle.
     pub expected: f64,
-    shared: std::sync::Arc<(SpeciesTable, [Vec<Entry>; 8], Vec<Option<&'static SpawnDef>>)>,
-    /// The biome of the world (one here; the bridge answers by position).
-    pub biome: String,
+    shared: std::sync::Arc<(SpeciesTable, Vec<Table>, Vec<Option<&'static SpawnDef>>)>,
     pub stats: SpawnStats,
 }
 #[derive(Clone, Copy, Debug, Default)]
@@ -303,11 +339,12 @@ impl Spawner {
         self.rng = LegacyRandom::new(seed);
         self.stats = SpawnStats::default();
     }
-    pub fn new(table: Table, seed: i64) -> Self {
+    /// The spawner of a world whose biomes have the lists `tables` (by biome index), read through `zoom`, and whose random starts at `seed`.
+    pub fn new(tables: Vec<Table>, zoom: BiomeZoom, seed: i64) -> Self {
         let st = crate::cow::species_table();
         let defs = st.0.iter().map(spawn_def).collect();
-        let shared = std::sync::Arc::new((st, table.lists.clone(), defs));
-        Self { table, rng: LegacyRandom::new(seed), on: true, chunks: Vec::new(), union: 0, keys: Vec::new(), cand: Vec::new(), pmax: 0.0, reach: Default::default(), pending: Default::default(), budget: 64, first_budget: 512, biome: String::new(), hold: false, expected: 0.0, profile: None, laps: [0; 3], shared, stats: SpawnStats::default() }
+        let shared = std::sync::Arc::new((st, tables.clone(), defs));
+        Self { tables, zoom, rng: LegacyRandom::new(seed), groups: None, on: true, chunks: Vec::new(), union: 0, keys: Vec::new(), cand: Vec::new(), pmax: 0.0, reach: Default::default(), pending: Default::default(), budget: 64, first_budget: 512, hold: false, expected: 0.0, profile: None, laps: [0; 3], shared, stats: SpawnStats::default() }
     }
 }
 
@@ -447,7 +484,7 @@ fn valid_empty(mw: &horizon_client_lib::mobs::MobWorld, x: i32, y: i32, z: i32) 
     flags(mw, x, y, z) & horizon_client_lib::mobs::data::VALID_EMPTY_SPAWN != 0
 }
 /// `SpawnPlacements.isSpawnPositionOk`.
-fn place_ok(mw: &horizon_client_lib::mobs::MobWorld, d: &SpawnDef, x: i32, y: i32, z: i32) -> bool {
+pub(crate) fn place_ok(mw: &horizon_client_lib::mobs::MobWorld, d: &SpawnDef, x: i32, y: i32, z: i32) -> bool {
     if d.place != Place::Anywhere && !mw.within_world_border(x, z) {
         return false;
     }
@@ -469,7 +506,7 @@ fn is_water(mw: &horizon_client_lib::mobs::MobWorld, x: i32, y: i32, z: i32) -> 
 fn fluid_is(mw: &horizon_client_lib::mobs::MobWorld, x: i32, y: i32, z: i32, f: horizon_client_lib::blocks::Fluid) -> bool {
     SpawnLevel::facts(mw).get(SpawnLevel::state(mw, x, y, z)).fluid == f
 }
-fn rule_ok(mw: &horizon_client_lib::mobs::MobWorld, biome: &str, d: &SpawnDef, r: &mut LegacyRandom, x: i32, y: i32, z: i32) -> bool {
+pub(crate) fn rule_ok(mw: &horizon_client_lib::mobs::MobWorld, biome: &str, d: &SpawnDef, r: &mut impl RandomSource, x: i32, y: i32, z: i32) -> bool {
     if !d.peaceful && mw.peaceful() {
         return false;
     }
@@ -517,10 +554,9 @@ fn rule_ok(mw: &horizon_client_lib::mobs::MobWorld, biome: &str, d: &SpawnDef, r
 /// The players as the pass sees them: positions.
 struct Ctx<'a> {
     mw: &'static horizon_client_lib::mobs::MobWorld<'static>,
-    table: &'a [Vec<Entry>; 8],
+    tables: &'a [Table],
     species: &'a SpeciesTable,
     defs: &'a [Option<&'static SpawnDef>],
-    biome: &'a str,
     players: &'a [[f64; 3]],
     time: u64,
     host: Option<&'a StructureHost>,
@@ -529,7 +565,7 @@ fn nearest_sqr(players: &[[f64; 3]], x: f64, y: f64, z: f64) -> Option<f64> {
     players.iter().map(|p| (p[0] - x).powi(2) + (p[1] - y).powi(2) + (p[2] - z).powi(2)).reduce(f64::min)
 }
 /// Whether a creature's box meets another's (`isUnobstructed`): the index lists the creatures by column.
-fn obstructed(w: &World, bounds: horizon_core::geometry::Aabb) -> bool {
+pub(crate) fn obstructed(w: &World, bounds: horizon_core::geometry::Aabb) -> bool {
     let idx = w.resource::<Index>();
     let c = bounds.min_position();
     let mut hit = false;
@@ -544,6 +580,8 @@ fn obstructed(w: &World, bounds: horizon_core::geometry::Aabb) -> bool {
 fn category_for_position(w: &mut World, sp: &mut Spawner, cx: &Ctx, cat: Category, chunk: (i32, i32), start: [i32; 3]) {
     let [x0, y, z0] = start;
     let mw = cx.mw;
+    // The mods' spawn hooks, lent for this step (None when no mod listens: the checks are vanilla's alone).
+    let hooks = crate::spawn_mod_host::lent(w);
     if flags(mw, x0, y, z0) & horizon_client_lib::mobs::data::REDSTONE_CONDUCTOR != 0 {
         return;
     }
@@ -551,6 +589,11 @@ fn category_for_position(w: &mut World, sp: &mut Spawner, cx: &Ctx, cat: Categor
     'groups: for _ in 0..3 {
         let (mut x, mut z) = (x0, z0);
         let mut current: Option<(Entry, [i32; 3])> = None;
+        // `SpawnGroupData` and the group's size start again at each of the three groups.
+        let mut group: Option<crate::spawn_finalize::Group> = None;
+        // The school's leader: its first member, once it is born in a group that has values.
+        let mut lead: Option<Entity> = None;
+        let mut born_here = 0u32;
         let mut max = (sp.rng.next_float() * 4.0).ceil() as i32;
         let mut ll = 0;
         while ll < max {
@@ -560,15 +603,21 @@ fn category_for_position(w: &mut World, sp: &mut Spawner, cx: &Ctx, cat: Categor
             let (xx, zz) = (f64::from(x) + 0.5, f64::from(z) + 0.5);
             sp.stats.attempts += 1;
             let Some(dist) = nearest_sqr(cx.players, xx, f64::from(y), zz) else { continue };
-            // `isRightDistanceToPlayerAndSpawnPoint`.
+            // `isRightDistanceToPlayerAndSpawnPoint`: 24 blocks from the world spawn, and a chunk that may spawn (or the start's own).
             let c2 = (x >> 4, z >> 4);
-            if dist <= 576.0 || !(c2 == chunk || mw.world.chunks.contains_key(&c2)) {
+            let env = w.resource::<crate::spawn_env::SpawnEnv>();
+            let [sx, sy, sz] = env.world_spawn;
+            let near_spawn = f64::from(sx - x).powi(2) + (f64::from(sy) + 0.5 - f64::from(y)).powi(2) + f64::from(sz - z).powi(2) < 576.0;
+            if dist <= 576.0 || near_spawn || !(c2 == chunk || env.may_spawn_in(c2)) {
                 continue;
             }
+            // The biome of this position (`BiomeManager.getBiome`): its list, and the tags its rule reads.
+            let bi = biome_at(mw, sp.zoom, x, y, z);
+            let table = &cx.tables[bi as usize].lists;
             if current.is_none() {
                 let list = match cx.host {
-                    Some(h) => h.list_at(cx.table, cat, [x, y, z], || block_name(&*w, [x, y - 1, z]) == "minecraft:nether_bricks"),
-                    None => Cow::Borrowed(cx.table[cat as usize].as_slice()),
+                    Some(h) => h.list_at(table, cat, [x, y, z], || block_name(&*w, [x, y - 1, z]) == "minecraft:nether_bricks"),
+                    None => Cow::Borrowed(table[cat as usize].as_slice()),
                 };
                 let Some(e) = pick(&list, &mut sp.rng).copied() else { break };
                 max = if e.constant { e.min as i32 } else { (e.min + sp.rng.next_int_bound((e.max.saturating_sub(e.min) + 1) as i32).unwrap_or(0) as u32) as i32 };
@@ -576,13 +625,23 @@ fn category_for_position(w: &mut World, sp: &mut Spawner, cx: &Ctx, cat: Categor
             }
             let (entry, _) = current.unwrap();
             let species = cx.species.0[entry.species as usize];
+            // `SpawnPlacements.checkSpawnRules`: a `notInPeaceful` type is refused in peaceful, at this attempt.
+            if species.not_in_peaceful && crate::effects::difficulty(&*w) == 0 {
+                continue;
+            }
             let def = cx.defs[entry.species as usize].unwrap();
             // `isValidSpawnPostitionForType`.
             let despawn2 = f64::from(def.despawn.distance).powi(2);
             if !def.far && dist > despawn2 {
                 continue;
             }
-            if !place_ok(mw, &def, x, y, z) || !rule_ok(mw, cx.biome, &def, &mut sp.rng, x, y, z) {
+            // `MobSpawnEvent.SpawnPlacementCheck`: asked after vanilla's predicate, which draws as it always did (none when no mod listens).
+            let placed = place_ok(mw, &def, x, y, z) && rule_ok(mw, &mw.biomes.get(bi).name, &def, &mut sp.rng, x, y, z);
+            let placed = match hooks {
+                Some(h) => h.placement_check(species.name, [x, y, z], crate::spawn_reason::SpawnReason::Natural, placed),
+                None => placed,
+            };
+            if !placed {
                 continue;
             }
             let half = f64::from(species.width) / 2.0;
@@ -593,20 +652,73 @@ fn category_for_position(w: &mut World, sp: &mut Spawner, cx: &Ctx, cat: Categor
             let _yaw = sp.rng.next_float() * 360.0;
             // `Mob.checkSpawnRules` (the walk value is not negative) and `checkSpawnObstruction`; a creature that would go at once is refused.
             let far_gone = dist > despawn2 && def.despawn.removable == crate::despawn::Removable::Always;
-            if far_gone || crate::spots::walk_target_value(mw, species.walk, [x, y, z]) < 0.0 || (!def.liquid && mw.contains_any_liquid(probe)) || obstructed(w, probe) {
+            if far_gone {
                 continue;
             }
+            // `MobSpawnEvent.PositionCheck`: a listener's answer replaces the two checks of vanilla (none asked when no mod listens).
+            let free = crate::spots::walk_target_value(mw, species.walk, [x, y, z]) >= 0.0 && (def.liquid || !mw.contains_any_liquid(probe)) && !obstructed(w, probe);
+            let free = match hooks {
+                Some(h) => h.position_check(species.name, [xx, f64::from(y), zz], crate::spawn_reason::SpawnReason::Natural).unwrap_or(free),
+                None => free,
+            };
+            if !free {
+                continue;
+            }
+            // `SpawnState.canSpawn` (no draw): a cost of the biome checks the potential's budget, read fresh only here.
+            let cost: Option<SpawnCost> = cx.tables[bi as usize].costs.get(&entry.species).copied();
+            let before = match cost {
+                Some(c) => {
+                    spawn_cost::refresh(w);
+                    let charges = w.resource::<Charges>();
+                    if !charges.can_spawn([x, y, z], c) {
+                        continue;
+                    }
+                    charges.version()
+                }
+                None => 0,
+            };
             let seed = (u64::from(sp.rng.next_int() as u32) << 32) | u64::from(sp.rng.next_int() as u32);
             let t = sp.profile.as_ref().map_or(0, crate::instr::Counter::read);
-            let e = born(w, &species, [xx, f64::from(y), zz], seed, dist);
-            let _ = e;
+            // A birth a listener cancelled is no creature: it counts for nothing (no charge, no cluster member).
+            let Some(e) = crate::spawn_natural::born_finalized(w, mw, &species, [xx, f64::from(y), zz], seed, dist, crate::spawn_reason::SpawnReason::Natural, &mut group) else {
+                continue;
+            };
+            // `SpawnState.afterSpawn`: the newborn's charge joins the field.
+            if let Some(c) = cost {
+                w.resource_mut::<Charges>().after_birth([x, y, z], c.charge, before);
+            }
+            // `TropicalFish.finalizeSpawn` of a school: its first member leads, each later one follows it (`startFollowing`, `addFollower`).
+            if matches!(group, Some(crate::spawn_finalize::Group::Pack { .. })) && w.get::<crate::behaviours::spawn_draw::Loner>(e).is_none() && w.get::<crate::behaviours::follow_flock_leader::School>(e).is_some() {
+                match lead {
+                    None => lead = Some(e),
+                    Some(l) => {
+                        if let Some(mut s) = w.get_mut::<crate::behaviours::follow_flock_leader::School>(e) {
+                            s.leader = Some(l);
+                        }
+                        if let Some(mut s) = w.get_mut::<crate::behaviours::follow_flock_leader::School>(l) {
+                            s.followers += 1;
+                        }
+                    }
+                }
+            }
             sp.laps[2] += sp.profile.as_ref().map_or(0, crate::instr::Counter::read) - t;
             sp.stats.born += 1;
             sp.stats.by_category[cat as usize][2] += 1;
             cluster += 1;
+            born_here += 1;
             if cluster >= u32::from(def.cluster) {
+                if let Some(g) = sp.groups.as_mut() {
+                    g.push(born_here);
+                }
                 break 'groups;
             }
+            // `Mob.isMaxGroupSizeReached` (`TropicalFish`: not of a school): the group ends at a loner, the next one starts.
+            if w.get::<crate::behaviours::spawn_draw::Loner>(e).is_some() {
+                ll = max;
+            }
+        }
+        if let (Some(g), true) = (sp.groups.as_mut(), born_here > 0) {
+            g.push(born_here);
         }
     }
     let _ = cx.time;
@@ -615,6 +727,7 @@ fn category_for_position(w: &mut World, sp: &mut Spawner, cx: &Ctx, cat: Categor
 pub fn born(w: &mut World, sp: &crate::cow::Species, at: [f64; 3], seed: u64, nearest_sqr: f64) -> Entity {
     ensure(w);
     let e = crate::cow::spawn_species(w, sp, at[0], at[2], seed);
+    crate::attr_mod::apply_load(w, e);
     w.get_mut::<crate::cow::Pos>(e).unwrap().0 = Vec3::new(at[0], at[1], at[2]);
     if let Some(mut b) = w.get_mut::<crate::cow::Bounds>(e) {
         b.0 = box_at(Vec3::new(at[0], at[1], at[2]), sp.width, sp.height);
@@ -624,6 +737,9 @@ pub fn born(w: &mut World, sp: &crate::cow::Species, at: [f64; 3], seed: u64, ne
     if let Some(def) = spawn_def(sp) {
         w.entity_mut(e).insert(Counted { category: def.category, chunk: chunk_of(at[0], at[2]) });
         crate::despawn::admit(w, e, def.despawn, nearest_sqr);
+        if matches!(def.category, Category::Monster) {
+            crate::despawn::rate_light(w, e, light_lit(sp));
+        }
     }
     e
 }
@@ -632,8 +748,9 @@ pub fn born(w: &mut World, sp: &crate::cow::Species, at: [f64; 3], seed: u64, ne
 pub(crate) fn fits_at_corner(w: &World, sp: &crate::cow::Species, r: &mut LegacyRandom, at: [i32; 3]) -> bool {
     let Some(def) = spawn_def(sp) else { return false };
     let mw = w.resource::<Level>().mw.0;
-    let biome = w.get_resource::<Spawner>().map_or("", |s| s.biome.as_str());
     let [x, y, z] = at;
+    let zoom = w.get_resource::<Spawner>().map_or_else(|| crate::spawn_biome::zoom_of(mw), |s| s.zoom);
+    let biome = &mw.biomes.get(biome_at(mw, zoom, x, y, z)).name;
     if !place_ok(mw, def, x, y, z) || !rule_ok(mw, biome, def, r, x, y, z) {
         return false;
     }
@@ -687,14 +804,28 @@ pub fn step(world: &mut World) {
     for (id, x, z) in unknown {
         world.resource_mut::<SpawnCounts>().recount_player(id as usize, (x, z));
     }
-    let time = world.resource::<Clock>().0;
+    // `Level.getGameTime()` (`ServerChunkCache.tickChunks`: `% 400` for the persistent categories), not the ticks of this world.
+    let time = world.resource::<Clock>().game_now() as u64;
     world.resource_scope(|w, mut sp: Mut<Spawner>| cycle(w, &mut sp, time));
 }
 fn cycle(w: &mut World, sp: &mut Spawner, time: u64) {
     if !sp.on {
         return;
     }
-    let online: Vec<(u32, f64, f64, f64)> = w.resource::<crate::goals::Online>().players().map(|p| (p.id, p.x, p.y, p.z)).collect();
+    // The host's rules: nothing at all unless creatures spawn; the monsters only when they may.
+    let policy = *w.get_resource_or_insert_with(Policy::default);
+    let (spawn_mobs, monsters) = {
+        let env = w.get_resource_or_insert_with(crate::spawn_env::SpawnEnv::default);
+        (env.spawn_mobs, env.monsters && policy.monsters)
+    };
+    if !spawn_mobs {
+        return;
+    }
+    // Spectators bring no chunk and count for no local cap: they are not players here.
+    let online: Vec<(u32, f64, f64, f64)> = {
+        let facts = w.get_resource::<crate::bridge::players::PlayerFacts>();
+        w.resource::<crate::goals::Online>().players().filter(|p| !facts.is_some_and(|f| f.0.get(&p.id).is_some_and(|s| s.spectator))).map(|p| (p.id, p.x, p.y, p.z)).collect()
+    };
     if online.is_empty() {
         sp.stats.idle += 1;
         return;
@@ -724,7 +855,10 @@ fn cycle(w: &mut World, sp: &mut Spawner, time: u64) {
     let t0 = lap(sp);
     // The candidates: made again when a player changed chunk.
     let keys: Vec<(u32, i32, i32)> = online.iter().map(|p| (p.0, (p.1.floor() as i32) >> 4, (p.3.floor() as i32) >> 4)).collect();
-    if keys != sp.keys {
+    // A chunk or the border changed by event since the last pass: the candidates are made again too.
+    let env_changed = std::mem::take(&mut w.get_resource_or_insert_with(crate::spawn_env::SpawnEnv::default).changed);
+    let env = w.resource::<crate::spawn_env::SpawnEnv>();
+    if keys != sp.keys || env_changed {
         let mut seen = horizon_core::fast_hash::FxHashSet::default();
         sp.chunks.clear();
         sp.cand.clear();
@@ -745,7 +879,7 @@ fn cycle(w: &mut World, sp: &mut Spawner, time: u64) {
         for &c in &sp.chunks.clone() {
             let (x, z) = (f64::from(c.0 * 16 + 8), f64::from(c.1 * 16 + 8));
             // A margin of 24 blocks: a player moves inside its chunk without a new list; the exact 128 blocks are asked of each pick.
-            if !online.iter().any(|p| (x - p.1).powi(2) + (z - p.3).powi(2) < 152.0 * 152.0) {
+            if !online.iter().any(|p| (x - p.1).powi(2) + (z - p.3).powi(2) < 152.0 * 152.0) || !env.may_spawn_in(c) {
                 continue;
             }
             if !sp.reach.contains_key(&c) {
@@ -793,8 +927,10 @@ fn cycle(w: &mut World, sp: &mut Spawner, time: u64) {
         budget -= step;
         if r.advance(mw, c.0, c.1, step) {
             sp.pending.pop_front();
-            sp.pmax = sp.pmax.max(sp.reach[&c].p);
-            sp.cand.push(c);
+            if env.may_spawn_in(c) {
+                sp.pmax = sp.pmax.max(sp.reach[&c].p);
+                sp.cand.push(c);
+            }
         } else if !mw.world.chunks.contains_key(&c) {
             sp.pending.pop_front();
         }
@@ -805,9 +941,10 @@ fn cycle(w: &mut World, sp: &mut Spawner, time: u64) {
         return;
     }
     // The categories under their cap (the counts are kept, not recounted).
+    // Monsters only when they may spawn (`isSpawningMonsters`); peaceful refuses per type (`not_in_peaceful`, at the attempt).
     let open: Vec<Category> = {
         let c = w.resource::<SpawnCounts>();
-        Category::SPAWNING.into_iter().filter(|k| (!sp.table.lists[*k as usize].is_empty() || host.as_ref().is_some_and(|h| h.covers(*k))) && (!k.persistent() || time % 400 == 0) && i64::from(c.global[*k as usize]) < i64::from(k.max()) * i64::from(sp.union) / 289).collect()
+        Category::SPAWNING.into_iter().filter(|k| (monsters || *k != Category::Monster) && (policy.friendlies || *k == Category::Monster) && (sp.tables.iter().any(|t| !t.lists[*k as usize].is_empty()) || host.as_ref().is_some_and(|h| h.covers(*k))) && (!k.persistent() || time % 400 == 0) && i64::from(c.global[*k as usize]) < i64::from(policy.caps[*k as usize]) * i64::from(sp.union) / 289).collect()
     };
     if open.is_empty() || sp.cand.is_empty() || sp.pmax <= 0.0 {
         sp.stats.idle += 1;
@@ -845,8 +982,7 @@ fn cycle(w: &mut World, sp: &mut Spawner, time: u64) {
     let shared = sp.shared.clone();
     let (species, table, defs) = (&shared.0, &shared.1, &shared.2[..]);
     let players: Vec<[f64; 3]> = online.iter().map(|p| [p.1, p.2, p.3]).collect();
-    let biome = sp.biome.clone();
-    let cx = Ctx { mw, table, species, defs, biome: &biome, players: &players, time, host: host.as_ref() };
+    let cx = Ctx { mw, tables: table, species, defs, players: &players, time, host: host.as_ref() };
     for (i, cat) in picked {
         let chunk = sp.cand[i];
         {
@@ -860,7 +996,7 @@ fn cycle(w: &mut World, sp: &mut Spawner, time: u64) {
         let ok = {
             let c = w.resource::<SpawnCounts>();
             let (x, z) = (f64::from(chunk.0 * 16 + 8), f64::from(chunk.1 * 16 + 8));
-            online.iter().any(|&(id, px, _, pz)| (x - px).powi(2) + (z - pz).powi(2) < 16384.0 && c.players.get(id as usize).copied().flatten().is_some_and(|s| s.counts[cat as usize] < cat.max()))
+            online.iter().any(|&(id, px, _, pz)| (x - px).powi(2) + (z - pz).powi(2) < 16384.0 && c.players.get(id as usize).copied().flatten().is_some_and(|s| s.counts[cat as usize] < policy.caps[cat as usize]))
         };
         if !ok {
             sp.stats.by_category[cat as usize][0] += 1;
@@ -881,6 +1017,29 @@ pub enum Kind {
     Caves,
     /// The same under the sea (water from y = 1 to the sea level, 63).
     Ocean,
+    /// The same, the chunks at x < 0 plains and the others desert (`split_biomes`): the two biomes side by side.
+    TwoBiomes,
+}
+/// `Kind::TwoBiomes`: the chunks at x < 0 are plains, the others desert, the biome of each quart cell (the builder has no biome table, so it is
+/// set once the level is built).
+pub fn split_biomes(w: &mut World) {
+    let level = *w.resource::<Level>();
+    let biomes = &level.mw.0.biomes;
+    let (plains, desert) = (biomes.index["minecraft:plains"], biomes.index["minecraft:desert"]);
+    // SAFETY: the level was just built and no system runs: the pointer is the one `block_changes` reads the chunks by, and no other
+    // reference reads them here.
+    let blocks = unsafe { &mut *level.blocks.0 };
+    for (&(cx, cz), chunk) in blocks.chunks.iter_mut() {
+        let c = std::sync::Arc::make_mut(chunk);
+        let biome = if cx < 0 { plains } else { desert };
+        for qx in 0..4 {
+            for qz in 0..4 {
+                for qy in 0..96 {
+                    c.set_biome_cell(cx * 4 + qx, qy, cz * 4 + qz, biome);
+                }
+            }
+        }
+    }
 }
 static KIND: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 pub fn set_kind(k: Kind) {

@@ -20,5 +20,6 @@ pub static DEF: Def = Def {
     locomotion: &[(Medium::Ground, Entry::new(&hop::MODULE, 0, &hop::Params::SLIME))],
     not_in_peaceful: true,
     draws: Some(&crate::behaviours::spawn_draw::SPAWN_SIZE),
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

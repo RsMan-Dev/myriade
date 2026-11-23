@@ -1,8 +1,7 @@
 use super::*;
 use crate::game::commands::Target;
-use horizon_client::motion::PlayerMotion;
 fn with_game(test: impl FnOnce(&mut Game<'_>)) {
-    crate::game::native_entity_refs::tests::with_game(|game| {
+    crate::game::native_guest_turn_tests::with_acting_guest(Vec3::new(2.5, 200.0, 2.5), |game| {
         game.options.game_dir = Some(
             std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
                 .join(format!("h161-{:?}", std::thread::current().id())),
@@ -16,7 +15,6 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
             .add_empty_chunk(ChunkPos::new(0, 0))
             .unwrap();
         assert!(game.run_command("forceload add 0 0"));
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5)).unwrap());
         game.load_ticking_neighbourhood(0, 0);
         game.creative = true;
         let time = game.world.game_time;

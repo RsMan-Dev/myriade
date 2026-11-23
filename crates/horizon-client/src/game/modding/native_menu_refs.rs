@@ -327,7 +327,6 @@ mod tests {
                 allow_flight: true,
                 seed: 0,
                 max_players: 10,
-                integrated: true,
                 levels: game.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };
@@ -399,12 +398,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_stack_is_thrown_from_the_eyes_as_player_drop_does() {
-        use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
 
-        with_game(|game| {
-            // A body to throw from: `with_game` makes none.
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+        // A body to throw from: the acting guest, at its feet.
+        crate::game::native_guest_turn_tests::with_acting_guest(Vec3::new(0.5, 64.0, 0.5), |game| {
             let stone = ItemStack::new("minecraft:stone", 3);
             let before = game.ecs.item_ids().len();
             let id = game.drop_stack_from_eyes(stone.clone(), true).unwrap();
@@ -437,7 +434,6 @@ mod tests {
                 allow_flight: true,
                 seed: 0,
                 max_players: 10,
-                integrated: true,
                 levels: game.level_shapes,
                 level_seeds: game.levels.runtime.seeds(),
             };

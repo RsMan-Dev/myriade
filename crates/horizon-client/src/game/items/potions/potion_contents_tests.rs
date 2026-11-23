@@ -3,14 +3,11 @@
 //! (or `custom_color`) and its `potion_duration_scale`.
 use super::*;
 use crate::game::game_tests::tests::server_game;
-use horizon_client::motion::PlayerMotion;
 
-/// A server's game with a player standing at the origin's block.
+/// A server's game with its lan guests placed, the acting one standing at the origin's block.
 fn player_game(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'_> {
     let mut game = server_game(resources);
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-    // A fixed name: no generated horizon-player.txt in the working directory.
-    game.options.player_name = Some("PotionContents".into());
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     game.build_registries();
     game.set_allow_commands(true);
     game

@@ -15,9 +15,6 @@ impl Game<'_> {
         state: BlockStateId,
         update_neighbour_shapes: bool,
     ) -> Result<(), Refusal> {
-        if !self.is_logical_server() {
-            return Err(Refusal::Client);
-        }
         let dead = match self.player_handle_read(player).ok_or(Refusal::Stale)? {
             PlayerRead::Acting { .. } => self
                 .player

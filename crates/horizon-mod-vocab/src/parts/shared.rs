@@ -56,7 +56,6 @@ impl<P: ?Sized> Clone for Attached<P> {
 #[derive(Clone, Default)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct Parts {
-    pub(crate) key_mappings: Vec<(&'static str, crate::KeyRegistration)>,
     /// Settings by owner, in registration order (`Registrar::register_setting`).
     pub(crate) settings: Vec<(&'static str, crate::SettingSpec)>,
     /// Block parts, and block entity parts as the block parts they also are.

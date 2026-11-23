@@ -15,7 +15,7 @@ fn ecs_at(h: &mut Herd, name: &str, x: f64, seed: u64) -> Entity {
 }
 /// The host's way to give a player (the touch is asked when a player comes or moves).
 fn place_player(h: &mut Herd, x: f64) {
-    let fact = horizon_ecs_proto::bridge::players::PlayerFact { alive: true, targetable: true, hero: None };
+    let fact = horizon_ecs_proto::bridge::players::PlayerFact { alive: true, targetable: true, hero: None, ..Default::default() };
     horizon_ecs_proto::bridge::players::set_player(&mut h.world, Player { id: 1, x, y: 1.0, z: 0.5, ..Default::default() }, fact);
 }
 /// The damage of the first hit a player standing beside a cube of `size` takes in 40 ticks, if any.

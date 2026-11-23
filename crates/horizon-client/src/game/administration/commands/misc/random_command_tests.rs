@@ -84,7 +84,6 @@ fn server_with_guests() -> (Game<'static>, Vec<mpsc::Receiver<Out>>) {
             allow_flight: false,
             seed: 0,
             max_players: 4,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         },
@@ -130,7 +129,6 @@ fn a_guests_roll_reaches_every_player_once() {
             conn: 2,
             command: "random roll 1..2".into(),
             permission: 2,
-            integrated: false,
             quiet: false,
         })
         .expect("the guest is on");

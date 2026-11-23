@@ -178,9 +178,7 @@ impl Game<'_> {
             self.ecs.extend_item_life(e, extra.min(32766) as u32);
             return;
         }
-        if self.serving.is_some() || self.options.dedicated.is_some() {
-            self.native_item_despawn(id, &stack.item, stack.count as i32, at);
-        }
+        self.native_item_despawn(id, &stack.item, stack.count as i32, at);
         self.ecs.despawn(e);
         self.native_entity_left(id);
     }

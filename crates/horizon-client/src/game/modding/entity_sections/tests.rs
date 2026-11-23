@@ -6,16 +6,15 @@ use crate::game::{
 use mod_api::{EntityEnteringSectionEvent, Hooks, HostSide};
 use std::sync::{Arc, Mutex};
 
-/// What each told crossing carried: client side, entity id, old, new, chunk changed.
-type Calls = Arc<Mutex<Vec<(bool, u32, [i32; 3], [i32; 3], bool)>>>;
+/// What each told crossing carried: entity id, old, new, chunk changed.
+type Calls = Arc<Mutex<Vec<(u32, [i32; 3], [i32; 3], bool)>>>;
 
 struct Listener(Calls);
 
 #[mod_api::__subscriptions]
 impl Hooks for Listener {
-    fn entity_entering_section(&self, host: HostSide<'_>, event: &mut EntityEnteringSectionEvent) {
+    fn entity_entering_section(&self, _: HostSide<'_>, event: &mut EntityEnteringSectionEvent) {
         self.0.lock().unwrap().push((
-            matches!(host, HostSide::Client(_)),
             event.entity.id(),
             event.old_section,
             event.new_section,
@@ -222,10 +221,10 @@ fn a_server_mob_moved_twice_in_one_tick_is_told_each_move() {
             assert_eq!(
                 calls.lock().unwrap().as_slice(),
                 &[
-                    (false, id, [0, 4, 0], [-1, 4, 0], true),
-                    (false, id, [-1, 4, 0], [-1, 8, 0], false),
-                    (false, id, [-1, 8, 0], [-1, 8, 1], true),
-                    (false, id, [-1, 8, 1], [-1, 8, 0], true),
+                    (id, [0, 4, 0], [-1, 4, 0], true),
+                    (id, [-1, 4, 0], [-1, 8, 0], false),
+                    (id, [-1, 8, 0], [-1, 8, 1], true),
+                    (id, [-1, 8, 1], [-1, 8, 0], true),
                 ]
             );
         })
@@ -246,7 +245,7 @@ fn a_mods_random_teleport_of_a_mob_is_told_at_once() {
             assert!(game.living_random_teleport(zombie, [-3.5, 66.0, -3.5], None));
             assert_eq!(
                 calls.lock().unwrap().as_slice(),
-                &[(false, 12, [0, 4, 0], [-1, 4, -1], true)]
+                &[(12, [0, 4, 0], [-1, 4, -1], true)]
             );
         })
     });
@@ -284,7 +283,7 @@ fn an_entity_moved_into_another_level_is_told_once_at_its_next_crossing() {
             game.teleport_to(Target::Item(moved), [24.5, 80.0, 8.5], None, true);
             assert_eq!(
                 calls.lock().unwrap().as_slice(),
-                &[(false, moved, [0, 5, 0], [1, 5, 0], true)]
+                &[(moved, [0, 5, 0], [1, 5, 0], true)]
             );
         })
     });

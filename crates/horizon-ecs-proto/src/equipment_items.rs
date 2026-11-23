@@ -11,15 +11,19 @@ use std::sync::OnceLock;
 
 /// The durability of every item, by the id of `items.rs` (index 0 unused).
 static DURABILITY: OnceLock<Vec<i32>> = OnceLock::new();
+/// Whether each item is a glider (`minecraft:glider`, the elytra), by the same ids.
+static GLIDER: OnceLock<Vec<bool>> = OnceLock::new();
 
-/// Reads the durability of the registry; the same order as `items::install`, so the ids agree. A second call changes nothing.
+/// Reads the durability and the glider flag of the registry; the same order as `items::install`, so the ids agree. A second call changes nothing.
 pub fn install(items: &Items) {
-    DURABILITY.get_or_init(|| {
-        let names = if items.registry_order.is_empty() { &items.order } else { &items.registry_order };
-        std::iter::once(0)
-            .chain(names.iter().map(|n| items.get(n).map_or(0, |info| info.max_damage as i32)))
-            .collect()
-    });
+    let names = if items.registry_order.is_empty() { &items.order } else { &items.registry_order };
+    DURABILITY.get_or_init(|| std::iter::once(0).chain(names.iter().map(|n| items.get(n).map_or(0, |info| info.max_damage as i32))).collect());
+    GLIDER.get_or_init(|| std::iter::once(false).chain(names.iter().map(|n| items.get(n).is_some_and(|info| info.glider))).collect());
+}
+
+/// Whether the item of `id` is a glider (`minecraft:glider`); false for an unknown id.
+pub fn is_glider(id: u32) -> bool {
+    GLIDER.get().and_then(|v| v.get(id as usize)).copied().unwrap_or(false)
 }
 
 /// `ItemStack.getMaxDamage` of the item with no stack override; 0 for an item that is not damageable or an unknown id.

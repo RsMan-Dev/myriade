@@ -1,4 +1,4 @@
-use super::{Audio, Game, Options, Progress, Settings, load_resources};
+use super::{Game, Options, Progress, Settings, load_resources};
 use horizon_client::{chunk::Chunk, motion::PlayerMotion};
 use horizon_core::{geometry::Vec3, position::ChunkPos};
 use std::sync::Arc;
@@ -15,19 +15,18 @@ fn mining_uses_admitted_stack_tools_and_actual_eye_immersion() {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = super::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = super::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(
@@ -40,6 +39,7 @@ fn mining_uses_admitted_stack_tools_and_actual_eye_immersion() {
     ));
     std::fs::create_dir_all(&scratch).unwrap();
     game.world_root = scratch.clone();
+    // TODO(phase 2): le test simule l'invité par game.lan_acting = Some(777) sur le joueur hôte (mining_component_tests.rs:42, 130-140) : mécanisme distinct de with_acting_guest_on
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 62.0, 4.5)).unwrap());
     game.player.as_mut().unwrap().ground.on_ground = true;
     game.creative = false;
@@ -148,34 +148,39 @@ fn with_survival_game(f: impl FnOnce(&mut Game<'_>)) {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = super::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = super::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 62.0, 4.5)).unwrap());
-    game.player.as_mut().unwrap().ground.on_ground = true;
-    game.creative = false;
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     game.build_registries();
     game.set_allow_commands(true);
-    assert!(game.run_command("gamemode survival"));
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
     game.block_ticks
         .add_empty_chunk(ChunkPos::new(0, 0))
         .unwrap();
-    f(&mut game);
+    crate::game::native_guest_turn_tests::with_acting_guest_on(
+        &mut game,
+        Vec3::new(4.5, 62.0, 4.5),
+        |game| {
+            game.player.as_mut().unwrap().ground.on_ground = true;
+            game.creative = false;
+            assert!(game.run_command("gamemode survival"));
+            f(game);
+        },
+    );
 }
 
 #[test]

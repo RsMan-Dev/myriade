@@ -57,6 +57,8 @@ fn is_breeding(w: &World, e: Entity) -> bool {
 }
 
 pub static DEF: Def = Def {
+    sound_source: super::SoundCategory::Hostile,
+    load_attrs: &[crate::attr_mod::LoadAttr { name: "attack_damage", base: Some(0.5), when: crate::attr_mod::LoadWhen::Baby }],
     name: "minecraft:hoglin",
     gravity: true,
     random_max_health: false,
@@ -72,12 +74,12 @@ pub static DEF: Def = Def {
         Entry::new(&retreat_on_hurt::MODULE, 0, &()),
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
         // `Hoglin.aiStep`: more than 300 ticks where piglins cannot live (the host's `UnsafePlace`) and it becomes a zoglin.
-        Entry::new(&convert_timer::MODULE, 0, &convert_timer::Params { into: "minecraft:zoglin", after: 300 }),
+        Entry::new(&convert_timer::MODULE, 0, &convert_timer::Params { into: "minecraft:zoglin", after: 300, drop_carried: false }),
         Entry::new(&melee::MODULE, 2, &melee::Params { interval: 41, interval_baby: Some(16), follow_unseen: true, forget_unreachable: Some(200), ..melee::Params::DEFAULT }).when(&NOT_RETREATING),
         Entry::new(&headbutt::MODULE, 2, &headbutt::Params { knockback: 0.6 }),
         Entry::new(&breed::MODULE, 3, &breed::Params { foods: &["minecraft:crimson_fungus"], ..breed::Params::DEFAULT }).when(&BREEDING),
         Entry::new(&follow_parent::MODULE, 4, &follow_parent::Params::DEFAULT).when(&NOT_RETREATING),
-        Entry::new(&ambient_sound::MODULE, 7, &ambient_sound::Params { sounds: &["entity.hoglin.ambient"], min: 80, max: 400 }),
+        Entry::new(&ambient_sound::MODULE, 7, &ambient_sound::Params { sounds: &["entity.hoglin.ambient"], min: 80, max: 400, ..ambient_sound::Params::DEFAULT }),
     ],
     changes: &[],
     // `Hoglin`: `shouldDropExperience` true and `xpReward` 5 as is, also for a baby (which leaves no loot: `LivingEntity.shouldDropLoot`).

@@ -121,7 +121,6 @@ fn a_second_summarises_its_ticks_by_nearest_rank() {
     assert_eq!(s.mspt_p50, Some(10.0));
     assert_eq!(s.mspt_p95, Some(19.0));
     assert_eq!(s.mspt_max, Some(20.0));
-    assert_eq!(s.fps, None);
 }
 
 #[test]
@@ -141,28 +140,16 @@ fn a_stalled_server_records_zero_tps_for_the_silent_seconds() {
 }
 
 #[test]
-fn a_client_fills_the_frame_fields_and_carries_the_gauges() {
-    let mut rec = HealthRecorder::new(Side::Client, 0.0);
+fn the_gauges_ride_on_every_closed_second() {
+    let mut rec = HealthRecorder::new(Side::Server, 0.0);
     rec.set_gauges(Gauges {
         rss_mb: 2048.0,
         players: 3,
-        frame_gpu_ms_p50: Some(4.5),
         ..Gauges::default()
     });
-    for i in 0..100 {
-        rec.record(i as f64 / 100.0, if i < 99 { 5.0 } else { 90.0 });
-    }
+    rec.record(0.5, 5.0);
     rec.advance(1.0);
     let (samples, _) = rec.samples_since(0, 0.0);
     let s = &samples[0];
-    assert_eq!(s.fps, Some(100.0));
-    assert_eq!(s.frame_ms_p50, Some(5.0));
-    assert_eq!(s.frame_ms_p99, Some(5.0));
-    assert_eq!(s.frame_ms_max, Some(90.0));
-    assert_eq!(s.tps, None);
-    assert_eq!(
-        (s.rss_mb, s.players, s.frame_gpu_ms_p50),
-        (2048.0, 3, Some(4.5))
-    );
-    assert_eq!(s.allocs_per_s, None);
+    assert_eq!((s.rss_mb, s.players), (2048.0, 3));
 }

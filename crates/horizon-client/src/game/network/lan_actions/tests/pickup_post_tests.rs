@@ -224,6 +224,7 @@ fn host_pickup_tells_whole_and_partial_pickups_apart_and_keeps_listener_changes(
             .join(format!("pickup-post-{}", std::process::id()));
             game.world_root = scratch.clone();
             game.enter_level(crate::game::Dim::Overworld).unwrap();
+            // TODO(phase 2): assertion sur l'hôte : le test nomme et compare des grandeurs host_* (host_case, host_stat, host_animations), non converti (pickup_post_tests.rs:227)
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(1.5, 64.0, 1.5)).unwrap());
             game.level.player_uuid = Some(horizon_client::lan::playerdata::uuid_ints(7));
             game.lan_acting_uuid = Some(7);

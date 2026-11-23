@@ -469,6 +469,7 @@ fn a_level_with_a_player_in_it_is_not_unloaded() {
         let dim = super::Dim::extra("crowd:a").unwrap();
         game.enter_level(dim).unwrap();
         // The player stands in the level in place.
+        // TODO(phase 2): with_acting_guest_on ne porte que la position, pas la dimension ; game.enter_level (hôte) et PlayersInside (runtime_levels_tests.rs:472) exigent le joueur dans le niveau
         game.player = Some(
             horizon_client::motion::PlayerMotion::new(
                 game.motion,
@@ -745,6 +746,7 @@ fn a_level_with_a_player_in_it_is_not_deleted() {
         game.apply_runtime_levels();
         let dim = super::Dim::extra("guest:a").unwrap();
         game.enter_level(dim).unwrap();
+        // TODO(phase 2): with_acting_guest_on ne porte que la position, pas la dimension ; game.enter_level (hôte) et PlayersInside (runtime_levels_tests.rs:749) exigent le joueur dans le niveau
         game.player = Some(
             horizon_client::motion::PlayerMotion::new(
                 game.motion,

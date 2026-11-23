@@ -105,7 +105,7 @@ fn exercise(reopen: bool) {
                 let take = ItemPlace::MenuSlot { menu, slot: 9 };
                 let give = ItemPlace::MenuSlot { menu, slot: 10 };
                 let partial = ItemPlace::MenuSlot { menu, slot: 11 };
-                // The hook runs without a guest swapped in; use that same Host state.
+                // The hook runs outside any guest's turn: no acting guest here.
                 assert!(game.lan_acting.is_none());
                 let hand = ItemPlace::PlayerHand {
                     player: 12,

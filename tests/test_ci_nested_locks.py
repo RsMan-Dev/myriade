@@ -50,8 +50,8 @@ class NestedLockTests(unittest.TestCase):
                 self.assertIn(lock, tracked)
 
     def test_resolution_inputs(self):
-        for path in ["Cargo.toml", "crates/horizon-telemetry/Cargo.toml", "launcher/Cargo.lock", ".cargo/config.toml",
-                     "crates/horizon-mod-registry/.cargo/config", "rust-toolchain.toml", "launcher/rust-toolchain",
+        for path in ["Cargo.toml", "crates/horizon-telemetry/Cargo.toml", ".cargo/config.toml",
+                     "crates/horizon-mod-registry/.cargo/config", "rust-toolchain.toml",
                      "tools/ci/rust-version"]:
             with self.subTest(path=path):
                 self.assertTrue(nested_locks.resolution_input(path))
@@ -105,7 +105,7 @@ class NestedLockTests(unittest.TestCase):
 
     def test_the_older_cargo_wording_is_a_stale_lock_too(self):
         # cargo 1.86 to 1.90's message, as they print it for a workspace that gained a path dependency.
-        older = ("error: the lock file /work/launcher/Cargo.lock needs to be updated but --locked was passed to "
+        older = ("error: the lock file /work/wasm/Cargo.lock needs to be updated but --locked was passed to "
                  "prevent this\nIf you want to try to generate the lock file without accessing the network, remove "
                  "the --locked flag and use --offline instead.\n")
         verdict, calls, sleeps, out = self.run_check([SimpleNamespace(returncode=101, stderr=older)])

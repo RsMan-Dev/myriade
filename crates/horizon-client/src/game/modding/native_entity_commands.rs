@@ -171,7 +171,6 @@ mod tests {
     fn silent_entity_say_reaches_every_guest_without_feedback_or_outer_capture() {
         with_guests(|game| {
             game.build_registries();
-            game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
                 std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),

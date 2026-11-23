@@ -5,8 +5,6 @@ use super::Dim;
 use crate::game::game_tests::tests::server_game;
 use horizon_client::chunk::Chunk;
 use horizon_client::items::ItemStack;
-use horizon_client::motion::PlayerMotion;
-use horizon_core::geometry::Vec3;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -15,7 +13,7 @@ use std::sync::Arc;
 fn items_fall_to_each_dimensions_own_void_floor() {
     let mut resources = None;
     let mut game = server_game(&mut resources);
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 70.0, 8.5)).unwrap());
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     for x in -2..=2 {
         for z in -2..=2 {
             game.world

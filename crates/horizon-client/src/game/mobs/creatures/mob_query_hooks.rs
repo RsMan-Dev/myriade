@@ -5,12 +5,10 @@ impl horizon_client::mobs::MobHooks for Game<'_> {
         state: horizon_world::registry::BlockStateId,
         pos: [i32; 3],
     ) -> Option<mod_api::PathType> {
-        if !self.is_logical_server()
-            || !crate::game::api_values::block_state::block_listens(
-                mod_api::HookId::BlockPathType,
-                state,
-            )
-        {
+        if !crate::game::api_values::block_state::block_listens(
+            mod_api::HookId::BlockPathType,
+            state,
+        ) {
             return None;
         }
         let mut answer = None;
@@ -33,12 +31,10 @@ impl horizon_client::mobs::MobHooks for Game<'_> {
         path_type: mod_api::PathType,
         default: Option<mod_api::PathType>,
     ) -> Option<mod_api::PathType> {
-        if !self.is_logical_server()
-            || !crate::game::api_values::block_state::block_listens(
-                mod_api::HookId::AdjacentBlockPathType,
-                state,
-            )
-        {
+        if !crate::game::api_values::block_state::block_listens(
+            mod_api::HookId::AdjacentBlockPathType,
+            state,
+        ) {
             return default;
         }
         let mut answer = None;
@@ -55,16 +51,6 @@ impl horizon_client::mobs::MobHooks for Game<'_> {
         }
         answer
     }
-    fn living_change_target(
-        &self,
-        mob: &mut Mob,
-        world: &MobWorld<'_>,
-        is_brain: bool,
-        target: Option<Who>,
-    ) -> horizon_client::mobs::TargetChange {
-        self.native_mob_change_target_in_tick(mob, world, is_brain, target)
-    }
-
     fn enderman_anger_suppressed(&self, enderman: u32, player: &PlayerView) -> bool {
         if !mod_api::__private::listened(mod_api::HookId::EndermanAnger) {
             return false;

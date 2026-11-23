@@ -26,24 +26,23 @@ fn game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>) -
         &root,
         &settings,
         std::time::Instant::now(),
-        execution_role::ExecutionRole::IntegratedServer,
+        execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::DedicatedServer;
     let res = resources.insert(loaded.resources);
     let mut game = Game::new(
         res,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.set_allow_commands(true);
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 100.0, 8.5)).unwrap());
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -116,22 +115,30 @@ fn score(game: &Game<'_>, name: &str) -> i32 {
 /// under `execute store` from 31, the stored result and success; then the
 /// diamonds the player holds (cleared).
 fn give(game: &mut Game<'_>, table: &str) -> (bool, Option<String>, i32, i32, i32) {
-    game.chat_capture = Some(Vec::new());
-    let ok = game.run_command(&format!("loot give @s loot {table}"));
-    let said = game.chat_capture.take().unwrap_or_default();
-    assert!(game.run_command("scoreboard players set r il 31"));
-    assert!(game.run_command("scoreboard players set s il 31"));
-    let _ = game.run_command(&format!(
-        "execute store result score r il store success score s il run loot give @s loot {table}"
-    ));
-    let _ = game.run_command("execute store result score d il run clear @s minecraft:diamond");
-    (
-        ok,
-        said.first().map(horizon_client::text::Text::plain),
-        score(game, "r"),
-        score(game, "s"),
-        score(game, "d"),
-    )
+    let mut result = None;
+    crate::game::native_guest_turn_tests::with_acting_guest_on(
+        game,
+        Vec3::new(8.5, 100.0, 8.5),
+        |game| {
+            game.chat_capture = Some(Vec::new());
+            let ok = game.run_command(&format!("loot give @s loot {table}"));
+            let said = game.chat_capture.take().unwrap_or_default();
+            assert!(game.run_command("scoreboard players set r il 31"));
+            assert!(game.run_command("scoreboard players set s il 31"));
+            let _ = game.run_command(&format!(
+                "execute store result score r il store success score s il run loot give @s loot {table}"
+            ));
+            let _ = game.run_command("execute store result score d il run clear @s minecraft:diamond");
+            result = Some((
+                ok,
+                said.first().map(horizon_client::text::Text::plain),
+                score(game, "r"),
+                score(game, "s"),
+                score(game, "d"),
+            ));
+        },
+    );
+    result.unwrap()
 }
 
 #[test]
@@ -224,17 +231,25 @@ fn inline_references_follow_the_codec_and_the_reloaded_registry() {
         (true, Some("Dropped 1 [Diamond]"), 1, 1, 2),
         "after /reload"
     );
-    assert!(game.run_command("function parity:il_good"));
-    assert!(game.run_command("execute store result score d il run clear @s minecraft:diamond"));
-    assert_eq!(score(&game, "d"), 1);
-    // [fail-before] The function with the missing reference is not loaded.
-    game.chat_capture = Some(Vec::new());
-    assert!(!game.run_command("function parity:il_bad"));
-    let said = game.chat_capture.take().unwrap_or_default();
-    assert_eq!(
-        said.first()
-            .map(horizon_client::text::Text::plain)
-            .as_deref(),
-        Some("Unknown function parity:il_bad")
+    crate::game::native_guest_turn_tests::with_acting_guest_on(
+        &mut game,
+        Vec3::new(8.5, 100.0, 8.5),
+        |game| {
+            assert!(game.run_command("function parity:il_good"));
+            assert!(
+                game.run_command("execute store result score d il run clear @s minecraft:diamond")
+            );
+            assert_eq!(score(game, "d"), 1);
+            // [fail-before] The function with the missing reference is not loaded.
+            game.chat_capture = Some(Vec::new());
+            assert!(!game.run_command("function parity:il_bad"));
+            let said = game.chat_capture.take().unwrap_or_default();
+            assert_eq!(
+                said.first()
+                    .map(horizon_client::text::Text::plain)
+                    .as_deref(),
+                Some("Unknown function parity:il_bad")
+            );
+        },
     );
 }

@@ -12,27 +12,23 @@ items in the same slots.
   test_spawn_loot_parity.py [--bin-dir DIR] [--keep]
 """
 import argparse
-import json
 import os
 import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import lab  # noqa: E402
 from test_save_roundtrip_parity import Vanilla  # noqa: E402
-from test_world_reopen_parity import game_env  # noqa: E402
+from server_lab import Server  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 RESOURCES = ROOT / '.local' / 'horizon-client' / '26.3'
 RUN = ROOT / '.local' / 'spawn-loot'
 CHEST = (2, -60, 1)
 LOOT = '{LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:42L}'
-MODES = {'server thread': []}
 
 
 def vanilla_world():
@@ -56,6 +52,11 @@ def vanilla_world():
         text = ' '.join(server.run('data get block {} {} {} Items'.format(*CHEST)))
     finally:
         server.stop()
+    return chest_items(text)
+
+
+def chest_items(text):
+    """The stacks of a `data get block <chest> Items` text, as [(slot, id, count)]."""
     rolled = []
     for item in re.finditer(r'\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}', text.split('data:', 1)[-1]):
         found = item.group(0)
@@ -67,7 +68,7 @@ def vanilla_world():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--bin-dir', help='prebuilt horizon-client and horizon-ctl (default: build them with the fast profile)')
+    parser.add_argument('--bin-dir', help='prebuilt horizon-client (default: build it with the fast profile)')
     parser.add_argument('--keep', action='store_true', help='keep the run folder')
     args = parser.parse_args()
     bin_dir = Path(args.bin_dir).resolve() if args.bin_dir else None
@@ -80,31 +81,16 @@ def main():
     print('vanilla rolls:', expected)
     if not expected:
         sys.exit('vanilla rolled nothing from the chest')
-    env, extra = game_env()
     failures = 0
-    for index, (mode, flags) in enumerate(MODES.items()):
-        folder = RUN / f'h{index}'
-        shutil.copytree(RUN / 'v0' / 'world', folder / 'saves' / 'world')
-        socket = Path(tempfile.mkdtemp(prefix='hzsl')) / 'control.sock'  # sockets need short paths
-
-        def ctl(*words, check=True):
-            result = subprocess.run([str(lab.binary(bin_dir, 'horizon-ctl')), '--socket', str(socket), '--timeout', '600',
-                                     *map(str, words)], cwd=folder, env=env, capture_output=True, text=True)
-            if check and result.returncode:
-                sys.exit(f'horizon-ctl {" ".join(map(str, words))} failed: {result.stdout}{result.stderr}')
-            return json.loads(result.stdout) if result.stdout.strip().startswith('{') else result.stdout
-
-        ctl('launch', '--resources', RESOURCES, '--world', 'world', '--render-distance', '4', *flags, *extra)
-        try:
-            ctl('wait-ready', '300')
-            ctl('command', 'execute if items block {} {} {} container.* *'.format(*CHEST))
-            slots = ctl('container', *CHEST)['slots']
-        finally:
-            ctl('quit', check=False)
-        got = sorted((slot, stack['item'], stack['count']) for slot, stack in enumerate(slots) if stack)
+    folder = RUN / 'h0'
+    shutil.copytree(RUN / 'v0' / 'world', folder / 'world')
+    with Server(bin_dir, folder, RESOURCES, {'view-distance': '4'}) as server:
+        # Unpacks the chest's loot as vanilla does, then reads its stacks as the server holds them.
+        server.command('execute if items block {} {} {} container.* *'.format(*CHEST))
+        got = chest_items(' '.join(server.command('data get block {} {} {} Items'.format(*CHEST))))
         ok = got == expected
         failures += not ok
-        print(f'{mode}: {len(got)} stacks', 'ok' if ok else f'FAIL: {got}')
+        print(f'server thread: {len(got)} stacks', 'ok' if ok else f'FAIL: {got}')
     if not args.keep and not failures:
         shutil.rmtree(RUN, ignore_errors=True)
     print('spawn loot:', 'PASS' if not failures else f'{failures} FAILED')

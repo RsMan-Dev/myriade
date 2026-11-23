@@ -87,7 +87,6 @@ fn with_player(
     mode: GameMode,
     held: Option<ItemStack>,
 ) -> mod_api::PlayerRef {
-    game.options.dedicated = Some(Vec::new());
     let _ = game
         .block_ticks
         .add_empty_chunk(horizon_core::position::ChunkPos::new(0, 0));
@@ -106,9 +105,36 @@ fn with_player(
     mod_api::__private::game::player_ref(mod_api::EntityRef::new(epoch, 20), 123)
 }
 
+/// Guest 20 (uuid 123) breaks in `mode` at the origin chunk, holding `held`: `f` runs in its
+/// turn with its handle, as `with_player`'s player would be named.
+fn as_player(
+    game: &mut super::Game<'_>,
+    mode: GameMode,
+    held: Option<ItemStack>,
+    f: impl FnOnce(&mut super::Game<'_>, mod_api::PlayerRef),
+) {
+    let _ = game
+        .block_ticks
+        .add_empty_chunk(horizon_core::position::ChunkPos::new(0, 0));
+    game.world
+        .chunks
+        .insert((0, 0), Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));
+    super::native_guest_turn_tests::open_hub(game);
+    super::native_guest_turn_tests::push_guest(game, 20, 123);
+    game.as_guest(20, |game| {
+        game.player.as_mut().unwrap().position = Vec3::new(4.5, 64.0, 4.5);
+        game.set_mode(mode);
+        game.inventory[game.selected] = held;
+        let player = game.native_acting_player().unwrap();
+        f(game, player);
+    })
+    .unwrap();
+}
+
 #[test]
 #[ignore = "daily"]
 fn a_players_completed_break_is_heard_once_with_the_removed_state() {
+    // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : trois poses successives du joueur 20 uuid 123 dans un même jeu, mode et main changés entre elles, alors que push_guest ajoute un invité à chaque pose)
     let heard = Arc::new(Mutex::new(Vec::new()));
     let order = Arc::new(Mutex::new(Vec::new()));
     let cancel_break = Arc::new(AtomicBool::new(false));
@@ -535,11 +561,11 @@ fn block_drops_reads_the_chest_a_players_break_removed_and_the_handle_goes_stale
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            let player = with_player(
+            as_player(
                 game,
                 GameMode::Survival,
                 Some(ItemStack::new("minecraft:diamond_axe", 1)),
-            );
+                |game, player| {
             let chest = [7, 64, 4];
             put_chest(game, chest);
             game.world.block_names.insert(
@@ -597,6 +623,8 @@ fn block_drops_reads_the_chest_a_players_break_removed_and_the_handle_goes_stale
             let heard = std::mem::take(&mut *seen.lock().unwrap());
             assert_eq!(heard.len(), 1);
             assert!(!heard[0].3);
+                },
+            );
         });
     });
 }
@@ -619,11 +647,11 @@ fn block_drops_holds_nothing_after_a_listener_panics() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            let player = with_player(
+            as_player(
                 game,
                 GameMode::Survival,
                 Some(ItemStack::new("minecraft:diamond_axe", 1)),
-            );
+                |game, player| {
             let chest = [7, 64, 4];
             put_chest(game, chest);
             // The platform may contain the panic or let it unwind through the break: either way.
@@ -645,6 +673,8 @@ fn block_drops_holds_nothing_after_a_listener_panics() {
                     .block_entities
                     .broken_generation(&(chest[0], chest[1], chest[2]))
                     .is_none()
+            );
+                },
             );
         });
     });

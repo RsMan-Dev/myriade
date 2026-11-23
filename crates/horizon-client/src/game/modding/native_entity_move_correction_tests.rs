@@ -124,7 +124,6 @@ fn hosted_guest_starting<R>(
                 allow_flight: false,
                 seed: 0,
                 max_players: 2,
-                integrated: false,
                 levels: Default::default(),
                 level_seeds: Default::default(),
             },

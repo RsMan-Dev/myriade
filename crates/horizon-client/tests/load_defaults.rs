@@ -73,7 +73,7 @@ fn default_components_reader_baseline() -> client::Result<()> {
             loot_ability: |_, _, _| {},
             loot_table_load: |_, _, _| {},
             modify_default_components: |context, item, _| {
-                assert_eq!(context.origin(), DataLoadOrigin::ClientPreload);
+                assert_eq!(context.origin(), DataLoadOrigin::ServerDataLoad);
                 assert_eq!(
                     *context.registry("minecraft:item").unwrap(),
                     ["probe:token"]
@@ -90,7 +90,7 @@ fn default_components_reader_baseline() -> client::Result<()> {
     horizon_protocol::item::custom::install(0, vec!["probe:marker".into()]).unwrap();
 
     let context = LoadContext::new(
-        DataLoadOrigin::ClientPreload,
+        DataLoadOrigin::ServerDataLoad,
         Arc::new(LoadInputs::new(
             BTreeMap::from([("minecraft:item".into(), vec!["probe:token".into()])]),
             root.join("settings"),

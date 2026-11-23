@@ -311,14 +311,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn an_effects_icon_flag_is_written_and_read_for_players_and_mobs() {
-        use horizon_client::motion::PlayerMotion;
-        with_game(|game| {
+        crate::game::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
             crate::game::ecs::test_support::place_test_mob(game, 23, "minecraft:cow", [0.0; 3]);
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            game.player.as_mut().unwrap().entity_id = 20;
-            crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             let key = mod_platform::__private::part_tests::effect_key("minecraft:speed");
-            for id in [23, 20] {
+            for id in [23, 12] {
                 let living = game.living(game.entity(id).unwrap()).unwrap();
                 for show_icon in [false, true] {
                     let given = ActiveEffect::new(key, 200, 0, false, true, show_icon);

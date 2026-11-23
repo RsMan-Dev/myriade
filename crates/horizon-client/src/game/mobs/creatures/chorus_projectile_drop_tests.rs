@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
+use crate::game::{Options, Progress, Settings, load_resources};
 use horizon_client::{arrows::Pickup, chunk::Chunk, motion::PlayerMotion};
 use horizon_core::position::ChunkPos;
 use horizon_ecs_proto::{arrow_more::{ArrowShot, Def}, bridge::select::Select, targeting::Who as ShotBy};
@@ -14,7 +14,7 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
@@ -24,17 +24,16 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
             .join(format!("h116-{:?}", std::thread::current().id())),
     );
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     game.native_lifecycle
-        .begin_open(mod_api::Authority::IntegratedServer);
+        .begin_open(mod_api::Authority::DedicatedServer);
     game.build_registries();
     game.set_allow_commands(true);
 

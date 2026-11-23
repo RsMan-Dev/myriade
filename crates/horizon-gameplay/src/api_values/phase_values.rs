@@ -11,7 +11,6 @@ impl TryIntoApi for DataLoadOrigin {
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
         Ok(match self {
             DataLoadOrigin::ServerDataLoad => mod_api::DataLoadOrigin::ServerDataLoad,
-            DataLoadOrigin::ClientPreload => mod_api::DataLoadOrigin::ClientPreload,
             _ => unreachable!("all engine load origins are mapped"),
         })
     }
@@ -22,7 +21,6 @@ impl TryIntoApi for LoopSide {
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
         Ok(match self {
             LoopSide::Server => mod_api::LoopSide::Server,
-            LoopSide::Client => mod_api::LoopSide::Client,
             _ => unreachable!("all engine loop sides are mapped"),
         })
     }

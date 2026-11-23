@@ -78,22 +78,20 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         &root,
         &settings,
         Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = execution_role::ExecutionRole::DedicatedServer;
     let mut g = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
-    g.options.dedicated = Some(Vec::new());
     g.world = World::new(g.res.facts().air, 1);
     test(&mut g);
 }

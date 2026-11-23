@@ -168,6 +168,8 @@ pub enum Pick {
     LandTowards { h: i32, v: i32, to: [f64; 3] },
     /// `Mob.flying_stroll_pos`: `HoverRandomPos(8, 7, 3, 1)` in the half circle of the view `(xd, zd)`, else `AirAndWaterRandomPos(8, 4, -2)`.
     Flying { xd: f64, zd: f64 },
+    /// `AirAndWaterRandomPos.getPos(mob, h, v, -2, xd, zd, PI / 2)` alone, no hover spot first (`RandomStroll.fly`: the allay's 10 by 7).
+    AirAndWater { h: i32, v: i32, xd: f64, zd: f64 },
     /// `AirRandomPos.getPosTowards(h, v, fly_height, to, max_rad)`: an `AirAndWaterRandomPos` towards a point, out of the water (the bee's).
     AirTowards { h: i32, v: i32, fly: i32, to: [f64; 3], max_rad: f64 },
 }
@@ -259,7 +261,7 @@ impl Spotter<'_> {
                 }
                 self.land_up_out_of_solid(p)
             }
-            Pick::LandAway { .. } | Pick::LandTowards { .. } | Pick::Flying { .. } | Pick::AirTowards { .. } => unreachable!("drawn by `pick`"),
+            Pick::LandAway { .. } | Pick::LandTowards { .. } | Pick::Flying { .. } | Pick::AirAndWater { .. } | Pick::AirTowards { .. } => unreachable!("drawn by `pick`"),
         }
     }
     /// `HoverRandomPos.generateRandomPos(8, 7, 3, 1)`: the spot, raised 1..=3 blocks above a solid it is in, out of water.
@@ -359,6 +361,7 @@ impl Spotter<'_> {
                 let max_rad = f64::from(std::f32::consts::FRAC_PI_2);
                 self.best_of_ten(|s| s.hover(xd, zd, max_rad)).or_else(|| self.best_of_ten(|s| s.air_and_water(xd, zd, max_rad)))
             }
+            Pick::AirAndWater { h, v, xd, zd } => self.best_of_ten(|s| s.air_and_water_p(h, v, -2, xd, zd, f64::from(std::f32::consts::FRAC_PI_2))),
             Pick::AirTowards { h, v, fly, to, max_rad } => {
                 let (xd, zd) = (to[0] - self.pos[0], to[2] - self.pos[2]);
                 self.best_of_ten(|s| {

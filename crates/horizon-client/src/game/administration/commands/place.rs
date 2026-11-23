@@ -384,12 +384,11 @@ mod source_tests {
 #[cfg(test)]
 mod live_dungeon_spawner_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use horizon_client::{
         chunk::Chunk,
         containers::BlockEntity,
         mobs::spawner::{SpawnDataExt, SpawnerExt},
-        motion::PlayerMotion,
     };
     use horizon_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
     use std::sync::Arc;
@@ -403,7 +402,7 @@ mod live_dungeon_spawner_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
@@ -413,7 +412,7 @@ mod live_dungeon_spawner_tests {
             std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
                 .join(format!("h173-{:?}", std::thread::current().id())),
         );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         crate::game::growth::install_live_features(
             &loaded.resources,
             &loaded.pack,
@@ -425,7 +424,6 @@ mod live_dungeon_spawner_tests {
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -441,12 +439,18 @@ mod live_dungeon_spawner_tests {
                     .unwrap();
             }
         }
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(2.5, 200.0, 2.5)).unwrap());
-        game.creative = true;
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
         assert!(game.run_command("forceload add -16 -16 31 31"));
         assert!(game.run_command("tick freeze"));
         assert!(game.run_command("fill 0 198 0 31 199 31 stone"));
-        test(&mut game);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(
+            &mut game,
+            Vec3::new(2.5, 200.0, 2.5),
+            |game| {
+                game.creative = true;
+                test(game);
+            },
+        );
     }
 
     #[test]

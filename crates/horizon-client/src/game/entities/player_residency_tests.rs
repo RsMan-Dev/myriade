@@ -176,7 +176,6 @@ fn parked_mob_attachment_values_survive_other_level_cleanup() {
         sync: false,
     };
     crate::game::native_entity_refs::tests::with_game(|game| {
-        game.options.dedicated = Some(Vec::new());
         game.native_level_opened(game.dim);
         let home = game.dim;
         let id = game

@@ -6,7 +6,7 @@ pub trait Hooks {
     /// `components`, the default component map for `item`, including vanilla items.
     /// Asked once per item after registries freeze, before the owning load
     /// publishes immutable defaults. Receives a read-only DataLoadContext with
-    /// the actual ServerDataLoad or ClientPreload origin, frozen registry names,
+    /// the actual ServerDataLoad origin, frozen registry names,
     /// settings captured once for loaded packages at this load boundary, and
     /// the shared LoadedMods view. Readers and datapack reloads do not replay
     /// this event. No runtime Host, world handles or transaction access.

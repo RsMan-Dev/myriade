@@ -140,19 +140,7 @@ containers, weather-driven blocks. The library code lives in
   bundle. Without one, the tests skip.
 - Client tests cover the Java `Vec3i` hash and compare order and the
   explosion stack merging.
-- In the game on the virtual screen, driven by `horizon-ctl`:
-  - Bone meal on oak, birch, cherry, 2×2 dark oak, spruce and jungle
-    saplings grew all of them.
-  - Flint and steel on a TNT cluster: the TNT flashed white and chain
-    exploded, leaving a crater with drops.
-  - A redstone block primed TNT.
-  - A chest drained through a hopper chain into a chest at 2.5 items/s. The
-    comparator lit a lamp.
-  - A dispenser bone-mealed a sapling into a tree. A dropper ejected an item.
-  - Landing on farmland turned it to dirt and popped the wheat.
-  - The hopper screen shows the vanilla layout.
-
-  New `horizon-ctl` commands drive these checks: `setblock`, `fill`,
+- New `the control socket` commands drive these checks: `setblock`, `fill`,
   `getblock` and `container`.
 
 ## Known gaps

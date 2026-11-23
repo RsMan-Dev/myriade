@@ -107,6 +107,10 @@ pub fn can_stay(w: &World, e: Entity) -> bool {
     let (Some(p), Some(face)) = (w.get::<Pos>(e).map(|p| cell_of(p.0)), w.get::<Attached>(e).map(|a| a.face)) else { return false };
     stays(w, e, p, face)
 }
+/// `canStayAt` for the spot `p` with face `face`, for the body `e` wherever it stands.
+pub fn can_stay_at(w: &World, e: Entity, p: [i32; 3], face: u8) -> bool {
+    stays(w, e, p, face)
+}
 fn attachable(w: &World, e: Entity, p: [i32; 3]) -> Option<u8> {
     (0..6).find(|&f| stays(w, e, p, f))
 }

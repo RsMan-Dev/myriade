@@ -10,8 +10,20 @@ fn game() -> Option<Game<'static>> {
     std::env::var_os("HORIZON_TEST_RESOURCES")?;
     let mut game = crate::game::native_machines::tests::server_game();
     game.build_registries();
-    game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
     Some(game)
+}
+
+/// `game()`, with the body run as a guest standing at (0.5, 64, 0.5); skipped without the resources.
+fn with_acting_guest_game(f: impl FnOnce(&mut Game<'_>)) {
+    let Some(mut game) = game() else {
+        return;
+    };
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+    crate::game::native_guest_turn_tests::with_acting_guest_on(
+        &mut game,
+        Vec3::new(0.5, 64.0, 0.5),
+        f,
+    );
 }
 
 /// `stack` carrying a `blocks_attacks` of its own whose `bypassed_by` is `bypassed`.
@@ -28,9 +40,7 @@ fn bypassing_stack(stack: ItemStack, bypassed: Tag) -> ItemStack {
 /// `bypassed_by` in any of those forms lets that damage type through.
 #[test]
 fn a_bypassed_by_list_lets_the_hit_through() {
-    let Some(mut game) = game() else {
-        return;
-    };
+    with_acting_guest_game(|game| {
     let forms = [
         Tag::List(vec![Tag::String("minecraft:mob_attack".into())]),
         Tag::String("minecraft:mob_attack".into()),
@@ -60,4 +70,5 @@ fn a_bypassed_by_list_lets_the_hit_through() {
         .expect("the shield is up");
     assert!(!blocking.bypassed);
     assert!(blocking.blocked(5.0) > 0.0);
+    });
 }

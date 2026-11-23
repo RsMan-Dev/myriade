@@ -15,7 +15,7 @@ impl loot::LootTags for EmptyTags {
 fn load_hooks_are_noops_before_install_and_use_first_callbacks_after() {
     let root = std::env::temp_dir().join(format!("horizon-load-hooks-{}", std::process::id()));
     let context = LoadContext::new(
-        DataLoadOrigin::ClientPreload,
+        DataLoadOrigin::ServerDataLoad,
         std::sync::Arc::new(LoadInputs::new(Default::default(), root.join("settings"))),
         [],
     );
@@ -42,7 +42,7 @@ fn load_hooks_are_noops_before_install_and_use_first_callbacks_after() {
             }
         },
         modify_default_components: |context, item, components| {
-            assert_eq!(context.origin(), DataLoadOrigin::ClientPreload);
+            assert_eq!(context.origin(), DataLoadOrigin::ServerDataLoad);
             components.insert("item".into(), Value::String(item.into()));
         },
         loot_function: |_, _, _, stack, _| stack.count += 1,

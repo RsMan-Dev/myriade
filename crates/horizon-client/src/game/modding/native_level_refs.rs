@@ -236,18 +236,12 @@ impl Game<'_> {
 
     /// The authoritative server's `LevelReader.getBiome`, including parked levels.
     pub(super) fn level_biome_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<String> {
-        if !self.is_logical_server() {
-            return None;
-        }
         self.native_read_biome(level, pos)
     }
 
-    /// The client's current copy of `LevelReader.getBiome`, never an authoritative server read.
-    pub(super) fn level_client_biome(&self, level: LevelRef, pos: [i32; 3]) -> Option<String> {
-        if self.is_logical_server() {
-            return None;
-        }
-        self.native_read_biome(level, pos)
+    /// The client's current copy of `LevelReader.getBiome`: a server has none.
+    pub(super) fn level_client_biome(&self, _level: LevelRef, _pos: [i32; 3]) -> Option<String> {
+        None
     }
 
     /// A biome's natural spawners by category from the world's biome table.
@@ -334,9 +328,6 @@ impl Game<'_> {
         &self,
         level: LevelRef,
     ) -> Result<&World, mod_api::LevelReadError> {
-        if !self.is_logical_server() {
-            return Err(mod_api::LevelReadError::Unavailable);
-        }
         if !self.level_handle_current(level) {
             return Err(mod_api::LevelReadError::Stale);
         }
@@ -662,9 +653,7 @@ impl Game<'_> {
     /// another (its blocks can still be read), for a handle of an earlier open, and on a
     /// client.
     pub(super) fn level_in_place(&self, level: LevelRef) -> bool {
-        self.is_logical_server()
-            && self.level_handle_current(level)
-            && self.dim.key() == level.dimension()
+        self.level_handle_current(level) && self.dim.key() == level.dimension()
     }
     /// `f` over the game's own `SignalGetter` for the level in place, as the level's blocks
     /// and mods' parts answer it; `None` for another level, a stale handle or a client.
@@ -826,7 +815,7 @@ impl Game<'_> {
     /// Whether `level` is a current handle on the server: what the world's own data (its
     /// respawn data and maps, shared by its levels) needs.
     fn native_world_data_allowed(&self, level: LevelRef) -> bool {
-        self.is_logical_server() && self.level_handle_current(level)
+        self.level_handle_current(level)
     }
     /// `LevelData.getRespawnData`: the world spawn and its facing. None on a client, for a
     /// stale handle, and before the world has chosen its spawn.
@@ -997,9 +986,6 @@ impl Game<'_> {
     /// a default clock, a stale handle and a client.
     pub(in crate::game) fn level_clock_time(&self, level: LevelRef) -> Option<i64> {
         self.native_level_read_world(level)?;
-        if !self.is_logical_server() {
-            return None;
-        }
         let dim = super::Dim::from_id(level.dimension_id());
         self.dimension_type_of(dim).default_clock.as_ref()?;
         Some(self.command_clock_time(&self.level_clock_name(dim)))
@@ -1105,7 +1091,6 @@ mod tests {
     /// title-screen streamer's paused placeholder.
     fn with_chunk_streaming(test: impl FnOnce(&mut super::Game<'_>)) {
         with_game(|game| {
-            game.options.headless = true;
             game.streaming.paused = false;
             game.streaming.radius = 0;
             test(game);
@@ -2202,7 +2187,7 @@ mod tests {
             game.world.chunks.insert((0, 0), Arc::new(chunk));
             game.save = Arc::new(save);
             game.native_lifecycle
-                .begin_open(mod_api::Authority::IntegratedServer);
+                .begin_open(mod_api::Authority::DedicatedServer);
             let reopened = game.level(game.dim.id()).unwrap();
             assert_ne!(level.epoch(), reopened.epoch());
             assert!(!reopened.has_water_ticket(game, [4, 64, 4]));

@@ -1,4 +1,4 @@
-//! `horizon-ctl memory`: what holds the game's memory, by category. The
+//! `the control socket's memory command`: what holds the game's memory, by category. The
 //! process's resident set and the allocator's committed bytes say how much;
 //! the census of the columns, the server's entities, players and chunk send
 //! caches, the renderer's bookkeeping and the GPU allocator's resources by
@@ -81,28 +81,6 @@ impl Columns {
             bytes: c.total_bytes(),
         }
     }
-}
-
-/// The sections of `worlds` that are also in `others` (by address), and
-/// their heap bytes: what one copy of them costs.
-fn shared<'a>(
-    worlds: impl IntoIterator<Item = &'a World>,
-    others: &FxHashSet<usize>,
-) -> (usize, usize) {
-    let mut seen = FxHashSet::default();
-    let (mut count, mut bytes) = (0, 0);
-    for world in worlds {
-        for chunk in world.chunks.values() {
-            for section in &chunk.sections {
-                let at = Arc::as_ptr(section) as usize;
-                if others.contains(&at) && seen.insert(at) {
-                    count += 1;
-                    bytes += section.heap_bytes();
-                }
-            }
-        }
-    }
-    (count, bytes)
 }
 
 #[derive(Serialize)]
@@ -265,12 +243,12 @@ impl ServerSide {
 /// How often a running capture records what holds the memory.
 pub(super) const MEMORY_EVERY_S: f64 = 10.0;
 
-/// `horizon-ctl memory`'s report. Every `*_mb` is rounded to a tenth; the parts' bytes are summed unrounded.
+/// `the control socket's memory command`'s report. Every `*_mb` is rounded to a tenth; the parts' bytes are summed unrounded.
 #[derive(Serialize)]
 pub(super) struct MemoryReport {
     process: Process,
     allocator: Allocator,
-    render_distance: i32,
+    view_distance: i32,
     /// The window's columns; a dedicated server has no window and names them `columns`.
     #[serde(skip_serializing_if = "Option::is_none")]
     client_columns: Option<Columns>,
@@ -299,7 +277,7 @@ fn unattributed(resident: Option<u64>, named: usize) -> Option<f64> {
     resident.map(|r| mb_signed(r as i64 - named as i64))
 }
 
-/// `horizon-ctl memory`'s report as a capture's rows: `a.b` paths, `key[name]` for named
+/// `the control socket's memory command`'s report as a capture's rows: `a.b` paths, `key[name]` for named
 /// lists and `blocks[index]` for GPU blocks in the report's order.
 pub(super) fn flatten_report(report: &Value) -> Vec<(String, f64)> {
     let mut rows = Vec::new();
@@ -532,29 +510,8 @@ impl Game<'_> {
         let (commit, peak_commit) = horizon_threads::allocator_commit();
         let live = horizon_threads::allocator_stats::live_bytes();
         let resident = horizon_threads::process_memory::resident_bytes();
-        let dedicated = self.options.dedicated.is_some();
-        // The single-player server thread's own levels: a second copy of the
-        // columns both hold, unless they share sections.
-        let server = if dedicated {
-            Some(self.server_side())
-        } else {
-            self.integrated
-                .as_ref()
-                .and_then(|i| i.call(|g| g.server_side()))
-        };
-        let window = (!dedicated).then(|| self.level_census());
-        // The window's sections the server thread holds too (lan/handoff.rs).
-        let shared = server.as_ref().filter(|_| !dedicated).map(|s| {
-            let (sections, bytes) = shared(self.all_worlds(), &s.addresses);
-            SharedSections {
-                sections,
-                mb: mb(bytes),
-                bytes,
-            }
-        });
-        let named = window.as_ref().map_or(0, ColumnCensus::total_bytes)
-            + server.as_ref().map_or(0, ServerSide::bytes);
-        let named = named.saturating_sub(shared.as_ref().map_or(0, |s| s.bytes));
+        let server = self.server_side();
+        let named = server.bytes();
         let mut report = MemoryReport {
             process: Process {
                 resident_mb: resident.map(mb),
@@ -567,11 +524,11 @@ impl Game<'_> {
                 peak_commit_mb: mb(peak_commit),
                 overhead_mb: live.map(|live| mb(commit.saturating_sub(live))),
             },
-            render_distance: self.streaming.radius,
-            client_columns: window.as_ref().map(Columns::new),
+            view_distance: self.streaming.radius,
+            client_columns: None,
             columns: None,
             server_columns: None,
-            shared_with_server: shared,
+            shared_with_server: None,
             server_generation: None,
             entities: None,
             players: None,
@@ -589,19 +546,14 @@ impl Game<'_> {
             named_mb: mb(named),
             unattributed_mb: unattributed(resident, named),
         };
-        if let Some(s) = server {
-            if dedicated {
-                report.columns = Some(s.columns);
-            } else {
-                report.server_columns = Some(s.columns);
-            }
-            report.server_generation = Some(s.generation);
-            report.entities = Some(s.entities);
-            report.players = Some(s.players);
-            report.chunk_send = Some(s.chunk_send);
-            report.light_queue = Some(s.light_queue);
-            report.generation_queue = Some(s.generation_queue);
-        }
+        let s = server;
+        report.columns = Some(s.columns);
+        report.server_generation = Some(s.generation);
+        report.entities = Some(s.entities);
+        report.players = Some(s.players);
+        report.chunk_send = Some(s.chunk_send);
+        report.light_queue = Some(s.light_queue);
+        report.generation_queue = Some(s.generation_queue);
         report
     }
 

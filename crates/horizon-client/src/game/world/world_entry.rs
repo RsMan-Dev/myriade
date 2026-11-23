@@ -94,7 +94,7 @@ impl Game<'_> {
             lan::sync::load_sources(
                 root,
                 &self.res.core.item_data,
-                self.options.execution_role.data_load_origin(),
+                horizon_world::native_load_context::DataLoadOrigin::ServerDataLoad,
                 &overlay,
             )?
         };
@@ -129,12 +129,7 @@ impl Game<'_> {
                 },
             )
             .transpose()?;
-        let received = horizon_client::datapack_net::received();
-        let datapack_set = if self.is_logical_server() {
-            datapack_registries.as_ref()
-        } else {
-            received.as_deref()
-        };
+        let datapack_set = datapack_registries.as_ref();
         let registries = native_data_maps::WorldRegistries::new(
             self.session
                 .registries
@@ -565,7 +560,7 @@ impl Game<'_> {
         overlay.conditions.check_errors()?;
         Ok(PreparedWorldReload {
             advancements,
-            structure_spawns: horizon_client::mobs::spawn_selection::StructureSpawns::load(root),
+            structure_spawns: horizon_client::mobs::spawn_place::StructureSpawns::load(root),
             tables,
             health,
             parts,
@@ -587,13 +582,11 @@ impl Game<'_> {
     /// publishes its parts for its world generation.
     pub(super) fn install_parts(&self, prepared: PreparedParts) {
         cauldron_interactions::install(prepared.cauldrons);
-        if self.is_logical_server() {
-            native_worldgen_parts::publish(
-                prepared.parts.as_ref(),
-                &prepared.block_states,
-                self.pack.assets.registry,
-            );
-        }
+        native_worldgen_parts::publish(
+            prepared.parts.as_ref(),
+            &prepared.block_states,
+            self.pack.assets.registry,
+        );
         api_values::install_block_states(prepared.block_states);
         native_world_read::install_block_tags(prepared.tags);
         mod_api::__private::install_resolved_parts(prepared.parts);

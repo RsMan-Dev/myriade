@@ -4,12 +4,9 @@ use std::sync::Mutex;
 
 pub(super) static STATE: Mutex<([i32; 3], [i32; 3])> = Mutex::new(([0; 3], [0; 3]));
 
-fn answer(path: i32, host: HostSide<'_>, hand: Hand) -> Option<Answer> {
+fn answer(path: i32, _host: HostSide<'_>, hand: Hand) -> Option<Answer> {
     let state = STATE.lock().unwrap();
-    if state.0[0] != path
-        || hand != Hand::Main
-        || (state.0[2] == 1 && matches!(host, HostSide::Client(_)))
-    {
+    if state.0[0] != path || hand != Hand::Main {
         return None;
     }
     Some(match state.0[1] {

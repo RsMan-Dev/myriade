@@ -3,9 +3,10 @@
 //! on the stack a wasm guest runs on.
 #![cfg(test)]
 use crate::game::Game;
-use crate::game::native_entity_refs::tests::{bind_local_player, run_on_guest_stack, with_game};
+use crate::game::native_entity_refs::tests::{run_on_guest_stack, with_game};
 use crate::game::native_explosion_resistance_tests::{BOTH, Via, wasm_answer};
-use horizon_client::{chunk::Chunk, mobs::Who, motion::PlayerMotion};
+use crate::game::native_guest_turn_tests::{open_hub, push_guest};
+use horizon_client::{chunk::Chunk, mobs::Who};
 use horizon_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
 use mod_api::{
     BlockPart, EntityRef, ExplosionDestroyError, ExplosionDetonateEvent, ExplosionInteraction,
@@ -137,7 +138,6 @@ fn each_target(test: impl Fn(&mut Game<'_>, Via, &Watch) + Send + Sync + 'static
                     game.build_registries();
                     game.load_server_loot();
                     game.set_allow_commands(true);
-                    game.options.dedicated = Some(Vec::new());
                     game.world
                         .chunks
                         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -279,18 +279,23 @@ fn a_detonate_listener_spares_a_position_and_adds_none() {
 #[ignore = "daily"]
 fn tnt_primes_owned_by_the_causing_entity() {
     each_target(|game, via, _| {
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(14.5, 80.0, 14.5)).unwrap());
-        bind_local_player(game, 11, 123);
-        set(game, [5, 80, 5], "tnt");
-        let mut blast = blast(ExplosionInteraction::Tnt);
-        // A living source is its own causing entity.
-        blast.source = game.entity(11);
-        assert!(blast.source.is_some());
-        destroy(game, via, &[[5, 80, 5]], blast, Ok(1));
-        assert_eq!(name(game, [5, 80, 5]), "minecraft:air", "{via:?}");
-        let ids = game.ecs.species_ids("minecraft:tnt");
-        let owners: Vec<Option<Who>> = ids.into_iter().map(|id| game.ecs_tnt_owner(id)).collect();
-        assert_eq!(owners, [Some(Who::Player)], "{via:?}");
+        open_hub(game);
+        push_guest(game, 11, 123);
+        game.as_guest(11, |game| {
+            game.player.as_mut().unwrap().position = Vec3::new(14.5, 80.0, 14.5);
+            set(game, [5, 80, 5], "tnt");
+            let mut blast = blast(ExplosionInteraction::Tnt);
+            // A living source is its own causing entity.
+            blast.source = game.entity(11);
+            assert!(blast.source.is_some());
+            destroy(game, via, &[[5, 80, 5]], blast, Ok(1));
+            assert_eq!(name(game, [5, 80, 5]), "minecraft:air", "{via:?}");
+            let ids = game.ecs.species_ids("minecraft:tnt");
+            let owners: Vec<Option<Who>> =
+                ids.into_iter().map(|id| game.ecs_tnt_owner(id)).collect();
+            assert_eq!(owners, [Some(Who::Player)], "{via:?}");
+        })
+        .unwrap();
     });
 }
 

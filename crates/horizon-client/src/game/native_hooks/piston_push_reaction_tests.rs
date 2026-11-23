@@ -1,6 +1,5 @@
 #![cfg(test)]
 use crate::game::{
-    execution_role::ExecutionRole,
     native_entity_refs::tests::{run_fresh_cases, with_game_role},
 };
 use horizon_core::{
@@ -129,7 +128,6 @@ fn exercise(
     b: &Behaviours,
     registry: &BlockRegistry,
     block: BlockStateId,
-    client: bool,
     moved: bool,
     popped: bool,
     pull: bool,
@@ -157,20 +155,11 @@ fn exercise(
         level.blocks.insert(BlockPos::new(x, 0, 0), stone);
     }
     level.blocks.extend([(base, piston), (start, block)]);
-    if client {
-        level.blocks.insert(power_pos, power);
-        b.client_block_event(&mut level, &mut ticks, base, 0, Direction::East as i32);
-    } else {
-        b.set_block(&mut level, &mut ticks, power_pos, power, 3);
-    }
+    b.set_block(&mut level, &mut ticks, power_pos, power, 3);
     for _ in 0..4 {
         level.time += 1;
-        if client {
-            b.client_tick_block_entities(&mut level, &mut ticks);
-        } else {
-            b.tick_level_blocks(&mut level, &mut ticks);
-            b.tick_block_entities(&mut level, &mut ticks);
-        }
+        b.tick_level_blocks(&mut level, &mut ticks);
+        b.tick_block_entities(&mut level, &mut ticks);
     }
     assert_eq!(
         level.block_state(end),
@@ -188,26 +177,17 @@ fn exercise(
         assert_ne!(level.block_state(start), block, "bed pops");
     }
     if moved {
-        if client {
-            level.blocks.remove(&power_pos);
-            b.client_block_event(&mut level, &mut ticks, base, 1, Direction::East as i32);
-        } else {
-            b.set_block(
-                &mut level,
-                &mut ticks,
-                power_pos,
-                registry.default_state("minecraft:air").unwrap(),
-                3,
-            );
-        }
+        b.set_block(
+            &mut level,
+            &mut ticks,
+            power_pos,
+            registry.default_state("minecraft:air").unwrap(),
+            3,
+        );
         for _ in 0..4 {
             level.time += 1;
-            if client {
-                b.client_tick_block_entities(&mut level, &mut ticks);
-            } else {
-                b.tick_level_blocks(&mut level, &mut ticks);
-                b.tick_block_entities(&mut level, &mut ticks);
-            }
+            b.tick_level_blocks(&mut level, &mut ticks);
+            b.tick_block_entities(&mut level, &mut ticks);
         }
         assert_eq!(
             level.block_state(end),
@@ -228,11 +208,10 @@ fn exercise(
 fn piston_push_reaction_parts_cache_reload_and_replay() {
     const NAME: &str = "game::native_hooks::piston_push_reaction_tests::piston_push_reaction_parts_cache_reload_and_replay";
     const FLAG: &str = "HORIZON_PISTON_REACTION_CASE";
-    if run_fresh_cases(NAME, FLAG, &["server", "client", "no-part"]) {
+    if run_fresh_cases(NAME, FLAG, &["server", "no-part"]) {
         return;
     }
     let case = std::env::var(FLAG).unwrap();
-    let client = case == "client";
     let parts = case != "no-part";
     let enabled = Arc::new(AtomicBool::new(true));
     let unbreakable = Arc::new(AtomicU8::new(0));
@@ -249,14 +228,7 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
         crate::game::api_values::install_parts(&mods).unwrap();
         let base = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
         let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
-        with_game_role(
-            root.prepared().to_path_buf(),
-            if client {
-                ExecutionRole::Client
-            } else {
-                ExecutionRole::IntegratedServer
-            },
-            |game| {
+        with_game_role(root.prepared().to_path_buf(), |game| {
                 let registry = game.pack.assets.registry;
                 let a = state(registry, "test:lock", &[("locked", "false")]);
                 let z = state(registry, "test:lock", &[("locked", "true")]);
@@ -272,7 +244,6 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
                     game.res.behaviours(),
                     registry,
                     a,
-                    client,
                     !parts,
                     false,
                     true,
@@ -281,7 +252,6 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
                     game.res.behaviours(),
                     registry,
                     z,
-                    client,
                     true,
                     false,
                     true,
@@ -291,7 +261,6 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
                     game.res.behaviours(),
                     registry,
                     fixed,
-                    client,
                     parts,
                     false,
                     true,
@@ -302,7 +271,6 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
                         game.res.behaviours(),
                         registry,
                         chest,
-                        client,
                         false,
                         false,
                         false,
@@ -316,7 +284,6 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
                             game.res.behaviours(),
                             registry,
                             bedrock,
-                            client,
                             false,
                             false,
                             false,
@@ -351,7 +318,6 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
                             game.res.behaviours(),
                             registry,
                             a,
-                            client,
                             true,
                             false,
                             true,
@@ -377,15 +343,13 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
                             game.res.behaviours(),
                             registry,
                             block,
-                            client,
                             moved,
                             popped,
                             true,
                         );
                     }
                 });
-            },
-        );
+        });
     });
 }
 
@@ -493,7 +457,6 @@ fn piston_push_reaction_real_block_entity_payload_lifecycle() {
         crate::game::native_entity_refs::tests::with_game(|game| {
             use horizon_client::{chunk::Chunk, containers::BlockEntity};
             use horizon_items::items::ItemStack;
-            game.options.dedicated = Some(vec![]);
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -666,7 +629,6 @@ fn piston_push_reaction_unowned_vanilla_data_stays_refused() {
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_game(|game| {
             use horizon_client::chunk::Chunk;
-            game.options.dedicated = Some(vec![]);
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

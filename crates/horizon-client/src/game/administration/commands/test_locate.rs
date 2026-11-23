@@ -252,8 +252,6 @@ impl Game<'_> {
                     absolute: [target.0, target.1, target.2],
                     relative,
                 }));
-        } else {
-            self.highlight_test_pos([target.0, target.1, target.2], relative);
         }
         Ok(1)
     }

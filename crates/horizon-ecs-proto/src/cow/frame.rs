@@ -55,6 +55,11 @@ pub struct Body {
     pub speed: f64,
     /// The downward speed is multiplied by it in the air (1: none; the hen's `slow_fall`).
     pub fall_factor: f64,
+    /// `Attributes.SAFE_FALL_DISTANCE` (3 by default) and `FALL_DAMAGE_MULTIPLIER` (1): the landing (`calculateFallDamage`).
+    pub safe_fall: f64,
+    pub fall_mult: f64,
+    /// `Attributes.MOVEMENT_EFFICIENCY` (0): `LivingEntity.getBlockSpeedFactor` lerps the block's factor toward 1 by it.
+    pub movement_efficiency: f32,
     /// `Strider`: lava holds it up (the collision stands it on the lava surface).
     pub lava_walker: bool,
     /// The motion of an object (`ItemEntity.tick`: the gravity before the move, the drags of the air and the ground, the bounce, the water
@@ -105,6 +110,8 @@ pub struct Drive {
     pub xxa: f32,
     /// The level plus one of a levitation effect (0: none), read by the ground travel.
     pub levitation: i32,
+    /// The slow falling effect (`LivingEntity.getEffectiveGravity`: the gravity of a falling mob is capped at 0.01), read by the travel.
+    pub slow_falling: bool,
     pub speed: f32,
     /// `Guardian.isMoving` (DATA_ID_MOVING): its move control had a spot to swim to this tick.
     pub moving: bool,
@@ -120,6 +127,10 @@ pub struct Drive {
     /// the last tick (`locomotion/climb.rs`).
     pub climber: bool,
     pub climbing: bool,
+    /// The species never climbs (`rules::climbable::NO_CLIMB`, set with its `NoClimb` marker).
+    pub no_climb: bool,
+    /// `LivingEntity.isFallFlying`: mirrored from `gliding::FallFlying` by `gliding::set`, so that a glide reads it without a query.
+    pub fall_flying: bool,
     /// `SmoothSwimmingMoveControl` on the ground (`walk::Params.smooth_land`: the frog): the largest turn per tick and the speed out of the water.
     pub smooth_land: Option<(f32, f32)>,
     /// `LivingEntity.shouldDiscardFriction`: the velocity keeps its horizontal part and takes the vertical one without drag while it is set (a
@@ -261,8 +272,21 @@ pub const OBJECT_RESTITUTION: f64 = 1.0_f32 as f64 * 0.8_f32 as f64;
 
 /// A baby grows up at this tick (it is in the timer wheel then; nothing counts its age every tick).
 #[derive(Component, Clone, Copy, Debug)]
-#[component(on_insert = watch_in::<WATCH_FOLLOW_PARENT>, on_discard = watch_out::<WATCH_FOLLOW_PARENT>)]
+#[component(on_insert = grow_in, on_discard = grow_out)]
 pub struct GrowAt(pub u64);
+
+/// The baby's box and eyes follow `GrowAt` (`refresh_box`): queued, so that the change is over when it runs.
+fn grow_in(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let e = ctx.entity;
+    watch_in::<WATCH_FOLLOW_PARENT>(world.reborrow(), ctx);
+    world.commands().queue(move |w: &mut World| crate::cow::refresh_box(w, e));
+}
+
+fn grow_out(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let e = ctx.entity;
+    watch_out::<WATCH_FOLLOW_PARENT>(world.reborrow(), ctx);
+    world.commands().queue(move |w: &mut World| crate::cow::refresh_box(w, e));
+}
 
 impl Rng {
     pub fn next_u32(&mut self) -> u32 {

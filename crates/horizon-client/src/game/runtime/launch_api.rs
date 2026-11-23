@@ -1,9 +1,10 @@
-//! The game's side of the Launch API (docs/api/launch.md): the options another launcher may pass,
+//! The game's side of the Launch API (docs/api/launch.md): the options a caller may pass,
 //! `--launch-api`'s reply, the exit codes, and docs/api/launch-reference.md, generated from them.
 //! Update it with: `HORIZON_WRITE_DOCS=1 cargo test -p horizon-client --lib launch_api`.
 
-/// The Launch API's version (docs/api/stability.md): an addition makes the next patch.
-pub const VERSION: &str = "0.1.1";
+/// The Launch API's version (docs/api/stability.md): an addition makes the next patch, a removal
+/// starts the next line.
+pub const VERSION: &str = "0.2.0";
 
 /// One option of the contract: its name, its value's placeholder (none for a flag), what it does.
 pub struct LaunchOption {
@@ -22,14 +23,9 @@ const fn option(
     LaunchOption { name, value, what }
 }
 
-/// What a launcher may pass. The game takes more (`--help` lists them), but only these are
+/// What a caller may pass. The game takes more (`--help` lists them), but only these are
 /// promised: they keep their meaning within a line of this API.
 pub const OPTIONS: &[LaunchOption] = &[
-    option(
-        "--developer-single-player",
-        None,
-        "Restricts this run to account-free single-player: no session loading, external connections or LAN hosting. Not a sandbox for native mods.",
-    ),
     option(
         "--resources",
         Some("DIR"),
@@ -38,52 +34,12 @@ pub const OPTIONS: &[LaunchOption] = &[
     option(
         "--game-dir",
         Some("DIR"),
-        "The game folder: `saves/`, `options.txt`, `resourcepacks/`, `horizon-mods/`, `screenshots/`. Created when missing. Default: the working directory. `--gameDir` is the same.",
+        "The game folder: `saves/`, `server.properties`, `resourcepacks/`, `horizon-mods/`, `screenshots/`. Created when missing. Default: the working directory. `--gameDir` is the same.",
     ),
     option(
         "--home",
         Some("DIR"),
         "Logs (`logs/latest.log`) and crash reports (`crash-reports/`). Default: `HORIZON_HOME`, else `horizon` in the platform data folder.",
-    ),
-    option(
-        "--player-dir",
-        Some("DIR"),
-        "One player's own files, for several games playing in one game folder at the same time: `options.txt` and the settings beside it, `logs/`, `crash-reports/`, `horizon-player.txt`, `servers.dat`, `hotbar.nbt`, `screenshots/`. Saves, packs, mods and their config, the chat's command history and Play with Friends' relay settings stay in the game folder. A relative path is taken from the folder the game starts in. Created when missing. Default: the game folder, and `--home` for logs. `horizon-ctl logs` and the launcher read `--home`'s logs.",
-    ),
-    option(
-        "--width",
-        Some("N"),
-        "The window's starting width (default 1280).",
-    ),
-    option(
-        "--height",
-        Some("N"),
-        "The window's starting height (default 720).",
-    ),
-    option(
-        "--fullscreen",
-        None,
-        "Opens the window fullscreen, whatever `options.txt` says; `options.txt` is not changed.",
-    ),
-    option(
-        "--session-file",
-        Some("PATH"),
-        "The signed-in account, as the session JSON below. Read once, then deleted.",
-    ),
-    option(
-        "--session-stdin",
-        None,
-        "The same JSON on standard input, so it never touches the disk.",
-    ),
-    option(
-        "--quickPlaySingleplayer",
-        Some("WORLD"),
-        "Opens this world of `saves/` at start, only if it exists (else the title screen). WORLD is one folder name: a path is refused.",
-    ),
-    option(
-        "--quickPlayMultiplayer",
-        Some("HOST[:PORT]"),
-        "Joins this server at start.",
     ),
     option(
         "--launch-api",
@@ -92,7 +48,7 @@ pub const OPTIONS: &[LaunchOption] = &[
     ),
 ];
 
-/// How the game ends, for the launcher that started it.
+/// How the game ends, for the program that started it.
 pub mod exit_code {
     /// The player quit, or `--help` and `--launch-api` printed.
     pub const OK: i32 = 0;
@@ -136,7 +92,7 @@ impl std::fmt::Display for UsageError {
 impl std::error::Error for UsageError {}
 
 /// What content this build loads (docs/api/content.md), from the constants it checks content
-/// against, so a launcher offers only what will work.
+/// against, so a caller offers only what works.
 fn content() -> serde_json::Value {
     use horizon_mod_package::manifest;
     serde_json::json!({
@@ -260,46 +216,10 @@ mod tests {
 
     #[test]
     fn launch_api_flags_are_read() {
-        let o = parse(&["--fullscreen", "--game-dir", "g", "--session-stdin"])
-            .unwrap()
-            .unwrap();
-        assert!(o.fullscreen && o.session_stdin);
+        let o = parse(&["--game-dir", "g"]).unwrap().unwrap();
         assert_eq!(o.game_dir, Some(std::env::current_dir().unwrap().join("g")));
         assert!(parse(&["--launch-api"]).unwrap().is_none());
         assert!(parse(&["--no-such-option"]).is_err());
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn developer_offline_never_consumes_inherited_sessions() {
-        if let Some(file) = std::env::var_os("OFFLINE_SESSION_TEST_FILE") {
-            assert!(parse(&["--developer-single-player"]).is_err());
-            assert_eq!(std::fs::read(file).unwrap(), b"unconsumed session sentinel");
-            return;
-        }
-        let root = tempfile::tempdir().unwrap();
-        let file = root.path().join("session.json");
-        std::fs::write(&file, b"unconsumed session sentinel").unwrap();
-        let result = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--include-ignored",
-                "--exact",
-                "game::launch_api::tests::developer_offline_never_consumes_inherited_sessions",
-                "--nocapture",
-            ])
-            .env("OFFLINE_SESSION_TEST_FILE", &file)
-            .env("HORIZON_SESSION_FILE", &file)
-            .output()
-            .unwrap();
-        assert!(
-            result.status.success(),
-            "{}",
-            String::from_utf8_lossy(&result.stdout)
-        );
-        assert_eq!(
-            std::fs::read(&file).unwrap(),
-            b"unconsumed session sentinel"
-        );
     }
 
     #[test]
@@ -392,11 +312,8 @@ mod tests {
             assert_eq!(selected, case.ids);
         }
         fs::remove_dir_all(root).unwrap();
-        let game = parse(&["--resources", "--home", "--creative"])
-            .unwrap()
-            .unwrap();
+        let game = parse(&["--resources", "--home"]).unwrap().unwrap();
         assert_eq!(game.resources, std::path::Path::new("--home"));
-        assert!(game.creative);
         assert!(parse(&["--help", "--missing"]).unwrap().is_none());
     }
 
@@ -406,21 +323,9 @@ mod tests {
         let error = |args: &[&str]| parse(args).err().unwrap().to_string();
         assert_eq!(
             error(&["--width", "wide"]),
-            "--width: invalid digit found in string"
+            "--width: unknown option"
         );
         assert_eq!(error(&["--bogus", "x"]), "--bogus: unknown option");
-    }
-
-    /// Quick play opens one folder of saves/, as on vanilla: nothing outside it.
-    #[test]
-    fn launch_api_quick_play_is_one_folder_of_saves() {
-        for name in ["../x", "a/b", "/abs", ".", ".."] {
-            assert!(
-                parse(&["--quickPlaySingleplayer", name]).is_err(),
-                "{name} is accepted"
-            );
-        }
-        assert!(parse(&["--quickPlaySingleplayer", "E2E World"]).is_ok());
     }
 
     /// The content a build says it loads is what its checks take: content mods of api 0.2,

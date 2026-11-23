@@ -5,7 +5,18 @@ import subprocess
 import tempfile
 import unittest
 
-from test_world_input_capture import method
+def method(source, name):
+    # A method moved out of game.rs is `pub(super)` in its own file; the fixtures paste it as a
+    # private one.
+    plain, moved = f"    fn {name}(", f"    pub(super) fn {name}("
+    start = source.index(plain if plain in source else moved)
+    opening = source.index("{", start)
+    depth = 1
+    end = opening + 1
+    while depth:
+        depth += (source[end] == "{") - (source[end] == "}")
+        end += 1
+    return source[start:end].replace("pub(super) fn", "fn", 1)
 
 ROOT = Path(__file__).resolve().parents[1]
 LEVEL = ROOT / "crates/horizon-world/src/level"

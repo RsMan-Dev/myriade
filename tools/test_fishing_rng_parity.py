@@ -1,146 +1,158 @@
 #!/usr/bin/env python3
-"""Compare fishing movement and retrieval against a real 26.3 server and player.
+"""Compare fishing on the whole server: a bot casts, waits for the bite and reels in, on a vanilla dedicated server and
+on Horizon's, through the same commands and the same bot verbs.
 
-The Java side calls FishingHook.retrieve with seeded hook and table sequences.
-The Rust side compares seeded cast velocity, bobbing and dry-ground ticks, catch-timer
-transitions and the rod's fallback loot path, plus named-sequence loot and XP.
-It does not yet cover the UUID-to-seed relationship.
+Per configuration (clear or rain, Lure 0 or 3) the bot casts CASTS times over a water pool. The bite is the first tick
+where a boolean synced value of the bobber turns true (FishingHook.DATA_BITING, whose index the bot does not name: it is
+the index that flips to true at the bite, and it must be the same on both servers). The bite delay is the game ticks
+from the cast to that flip. Each reel counts the item and experience entities it spawns. Both sides must agree on the
+mean bite delay within three standard errors of the difference, and on the share of casts that catch something within
+CATCH_TOLERANCE. The minimum and maximum delays are printed for each side.
 """
-import argparse
 import json
+import math
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
-import tempfile
 
 try:
-    from . import lab
+    from . import lab, test_rust_parity as base
+    from .bot_lab import Bot
+    from .server_lab import Server
+    from . import test_dedicated_server_parity as dedicated
 except ImportError:
     import lab
+    import test_rust_parity as base
+    from bot_lab import Bot
+    from server_lab import Server
+    import test_dedicated_server_parity as dedicated
+
+PLAYER = dedicated.PLAYER
+CASTS = 20
+CONFIGS = [('clear', 0), ('clear', 3), ('rain', 0), ('rain', 3)]
+MAX_BITE_TICKS = 1500
+REEL_TICKS = 40
+CATCH_TOLERANCE = 0.3
+SETUP = [
+    'gamemode survival',
+    'fill -2 98 -2 6 98 6 minecraft:stone',
+    'fill -2 99 -2 6 99 6 minecraft:water',
+    'tp {player} 2 100 -3 0 0',
+]
 
 
-def prepare_reference(work):
-    """Generate this fixture's real Java inputs without building or running the Rust parity suite."""
-    work = work.resolve()
-    work.mkdir(parents=True, exist_ok=True)
-    reference = work / "fishing-reference.json"
-    casts = work / "fishing-casts-reference.json"
-    for path in (reference, casts):
-        path.unlink(missing_ok=True)
-    env = lab.game_env(
-        JAVA_TOOL_OPTIONS=os.environ.get("JAVA_TOOL_OPTIONS", "") + " -Dhorizon.fishingReference=true",
-        HORIZON_HOME=work / "home",
-        HORIZON_LAUNCHER_HOME=work / "launcher",
-        XDG_DATA_HOME=work / "data",
-        XDG_CONFIG_HOME=work / "config",
-    )
-    # The producer can report vanilla values on failure. Keep all of its output
-    # beside the private reference files, never in the public Actions log.
-    log = work / "prepare-reference.log"
-    with log.open("w", encoding="utf-8") as output:
-        result = subprocess.run(
-            [sys.executable, str(lab.ROOT / "tools/test_command_exec_parity.py"),
-             "--only", "scoreboard", "--reference-only", "--work-dir", str(work)],
-            cwd=lab.ROOT, env=env, stdout=output, stderr=subprocess.STDOUT, timeout=900,
-        )
-    if result.returncode:
-        raise SystemExit(f"Fishing reference producer failed ({result.returncode}); private log: {log}")
-    if not all(path.is_file() for path in (reference, casts)):
-        raise SystemExit("Fishing reference producer did not write both required inputs")
-    return {
-        "HORIZON_FISHING_RESOURCES": str(lab.RESOURCES),
-        "HORIZON_FISHING_REFERENCE": str(reference),
-        "HORIZON_FISHING_CAST_REFERENCE": str(casts),
-    }
+def flipped(before, after):
+    """Indices of boolean synced values that were false and are now true."""
+    return {i for i, v in after.items() if v is True and before.get(i) is False}
+
+
+def bobber_data(bot):
+    bobbers = bot.entities(entity_type='minecraft:fishing_bobber')['entities']
+    if not bobbers:
+        return None, {}
+    data = {d['index']: d['value'] for d in bobbers[0].get('data', []) if isinstance(d['value'], bool)}
+    return bobbers[0]['id'], data
+
+
+def run_side(bot, label):
+    """One server's records: per configuration, the bite delays, the catch flags and the flipped index."""
+    records = {}
+    for weather, lure in CONFIGS:
+        bot.command(f'weather {weather}')
+        for line in SETUP:
+            bot.command(line.format(player=PLAYER))
+        rod = 'minecraft:fishing_rod' + (f'[enchantments={{levels:{{"minecraft:lure":{lure}}}}}]' if lure else '')
+        bot.command(f'item replace entity {PLAYER} weapon.mainhand with {rod}')
+        bot.set_carried_item(0)
+        bot.wait_ticks(4)
+        delays, catches, flips = [], [], set()
+        for _ in range(CASTS):
+            before_items = len(bot.entities(entity_type='minecraft:item')['entities'])
+            start = bot.state()['tick']
+            bot.use_item()
+            snapshot, bite = {}, None
+            for _ in range(MAX_BITE_TICKS):
+                bot.wait_ticks(1)
+                _, data = bobber_data(bot)
+                if not data and snapshot:
+                    break
+                found = flipped(snapshot, data)
+                if found and bite is None:
+                    bite = bot.state()['tick'] - start
+                    flips |= found
+                    break
+                snapshot = data
+            if bite is None:
+                raise SystemExit(f'{label}: no bite within {MAX_BITE_TICKS} ticks ({weather}, lure {lure})')
+            delays.append(bite)
+            bot.use_item()
+            bot.wait_ticks(REEL_TICKS)
+            after_items = len(bot.entities(entity_type='minecraft:item')['entities'])
+            catches.append(after_items > before_items)
+        records[f'{weather}-lure{lure}'] = {'delays': delays, 'catches': catches}
+    return records, flips
+
+
+def stats(values):
+    mean = sum(values) / len(values)
+    var = sum((v - mean) ** 2 for v in values) / (len(values) - 1)
+    return mean, math.sqrt(var / len(values))
 
 
 def main():
-    work = Path(tempfile.mkdtemp(prefix="fishing-rng-", dir=lab.LOCAL))
-    java_options = os.environ.get("JAVA_TOOL_OPTIONS", "")
-    env = lab.game_env(
-        JAVA_TOOL_OPTIONS=java_options + " -Dhorizon.fishingReference=true",
-        CARGO_TARGET_DIR=str(lab.cargo_target()),
-        HORIZON_FISHING_TICK_REFERENCE=str(work / "rust-fishing-ticks.json"),
-        HORIZON_FISHING_BOBBING_REFERENCE=str(work / "rust-fishing-bobbing.json"),
-        HORIZON_HOME=str(work / "home"),
-        HORIZON_LAUNCHER_HOME=str(work / "launcher"),
-        XDG_DATA_HOME=str(work / "data"),
-        XDG_CONFIG_HOME=str(work / "config"),
-    )
-    subprocess.run(["cargo", "build", "--profile", "fast", "-p", "horizon-game", "--bin", "horizon-client"],
-                   cwd=lab.ROOT, env=env, check=True)
-    binary = lab.cargo_target() / "fast" / ("horizon-client.exe" if os.name == "nt" else "horizon-client")
-    subprocess.run([sys.executable, str(lab.ROOT / "tools/test_command_exec_parity.py"),
-                    "--only", "scoreboard", "--allow-gaps", "--binary", str(binary), "--work-dir", str(work)],
-                   cwd=lab.ROOT, env=env, check=True)
-    reference = json.loads((work / "fishing-ticks-reference.json").read_text())
-    actual = json.loads((work / "rust-fishing-ticks.json").read_text())
-    if len(reference) != 25 or len(actual) != 25:
-        raise SystemExit(f"expected 25 fishing tick cases: {len(reference)} vs {len(actual)}")
-    if reference != actual:
-        for expected, got in zip(reference, actual):
-            if expected != got:
-                raise SystemExit(f"fishing tick differs: vanilla {expected}; Horizon {got}")
-        raise SystemExit(f"fishing tick record count differs: {len(reference)} vs {len(actual)}")
-    expected_bobbing = json.loads((work / "fishing-bobbing-reference.json").read_text())
-    actual_bobbing = json.loads((work / "rust-fishing-bobbing.json").read_text())
-    if len(expected_bobbing) != 20 or len(actual_bobbing) != 20:
-        raise SystemExit(f"expected 20 bobbing and ground cases: {len(expected_bobbing)} vs {len(actual_bobbing)}")
-    for expected, actual in zip(expected_bobbing, actual_bobbing):
-        if "case" in expected:
-            # Collision clipping can differ below a picometre; retain exact
-            # case/tick matching and compare all three positions and velocities.
-            if expected["case"] != actual.get("case") or expected["tick"] != actual.get("tick"):
-                raise SystemExit(f"fishing ground case differs: {expected}; {actual}")
-            for field in ("position", "motion"):
-                if len(actual[field]) != 3 or any(not abs(a - b) <= 1e-12 for a, b in zip(expected[field], actual[field])):
-                    raise SystemExit(f"fishing ground differs: vanilla {expected}; Horizon {actual}")
-        elif expected != actual:
-            raise SystemExit(f"fishing bobbing differs: vanilla {expected}; Horizon {actual}")
-    fallback = work / "fallback"
-    fallback_env = env.copy()
-    fallback_env.pop("HORIZON_FISHING_TICK_REFERENCE", None)
-    fallback_env.pop("HORIZON_FISHING_BOBBING_REFERENCE", None)
-    fallback_env["HORIZON_FISHING_FALLBACK_REFERENCE"] = str(fallback / "rust-fishing-fallback.json")
-    fallback_env["HORIZON_FISHING_FALLBACK_FIXTURE"] = "1"
-    fallback_env["JAVA_TOOL_OPTIONS"] = java_options + " -Dhorizon.fishingFallback=true"
-    subprocess.run([sys.executable, str(lab.ROOT / "tools/test_command_exec_parity.py"),
-                    "--only", "scoreboard", "--allow-gaps", "--binary", str(binary), "--work-dir", str(fallback)],
-                   cwd=lab.ROOT, env=fallback_env, check=True)
-    expected = json.loads((fallback / "fishing-fallback-reference.json").read_text())
-    actual = json.loads((fallback / "rust-fishing-fallback.json").read_text())
-    if len(expected) != 5 or len(actual) != 5:
-        raise SystemExit(f"expected 5 fallback cases: {len(expected)} vs {len(actual)}")
-    if expected != actual:
-        for reference_row, actual_row in zip(expected, actual):
-            if reference_row != actual_row:
-                raise SystemExit(f"fishing fallback differs: vanilla {reference_row}; Horizon {actual_row}")
-        raise SystemExit(f"fishing fallback record count differs: {len(expected)} vs {len(actual)}")
-    env["HORIZON_FISHING_RESOURCES"] = str(lab.RESOURCES)
-    env["HORIZON_FISHING_REFERENCE"] = str(work / "fishing-reference.json")
-    env["HORIZON_FISHING_CAST_REFERENCE"] = str(work / "fishing-casts-reference.json")
-    subprocess.run(["cargo", "test", "--profile", "fast", "-p", "horizon-client", "--lib",
-                    "game::fishing::tests::fishing_retrieve_reference", "--", "--exact", "--ignored"],
-                   cwd=lab.ROOT, env=env, check=True)
-    print("fishing: ground prediction, bobbing, seeded catch timers, loot and XP match vanilla")
+    lock, jars, libraries = base.verify_artifacts()
+    build = lab.LOCAL / 'fishing-rng-parity'
+    shutil.rmtree(build, ignore_errors=True)
+    build.mkdir(parents=True)
+    dependencies = os.pathsep.join(map(str, [jars['server'], *libraries]))
+    vanilla_command = ['java', '-Xmx2g', '-Duser.timezone=UTC', '-cp', dependencies, 'net.minecraft.server.Main', 'nogui']
+    subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client', '--bin', 'horizon-client'],
+                   cwd=lab.ROOT, check=True)
+    metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'],
+                                                  cwd=lab.ROOT, text=True))
+    bins = Path(metadata['target_directory']) / 'fast'
+
+    vanilla_dir = build / 'vanilla'
+    port = dedicated.free_port()
+    dedicated.write_server_dir(vanilla_dir, port)
+    server = dedicated.Server(vanilla_command, vanilla_dir, 'vanilla-fishing')
+    try:
+        server.wait_for(r'Done \(')
+        server.console(f'op {PLAYER}')
+        with Bot(timeout=600) as bot:
+            bot.join('127.0.0.1', port, PLAYER)
+            bot.wait_for('loaded', 300)
+            vanilla, vanilla_flips = run_side(bot, 'vanilla')
+    finally:
+        server.stop()
+
+    with Server(bins, build / 'horizon', lab.RESOURCES.resolve(), {'level-seed': '42', 'view-distance': '4'}) as server, \
+            Bot(timeout=600) as bot:
+        server.command(f'op {PLAYER}')
+        bot.join('127.0.0.1', server.port, PLAYER)
+        bot.wait_for('loaded', 300)
+        horizon, horizon_flips = run_side(bot, 'Horizon')
+
+    if vanilla_flips != horizon_flips or len(vanilla_flips) != 1:
+        sys.exit(f'bite index differs or is ambiguous: vanilla {sorted(vanilla_flips)}, Horizon {sorted(horizon_flips)}')
+    for name in vanilla:
+        a, b = vanilla[name], horizon[name]
+        mean_a, se_a = stats(a['delays'])
+        mean_b, se_b = stats(b['delays'])
+        print(f'{name}: vanilla bite {min(a["delays"])}..{max(a["delays"])} mean {mean_a:.1f}; '
+              f'Horizon {min(b["delays"])}..{max(b["delays"])} mean {mean_b:.1f}')
+        if abs(mean_a - mean_b) > 3 * math.sqrt(se_a ** 2 + se_b ** 2):
+            sys.exit(f'{name}: mean bite delay differs beyond three standard errors')
+        catch_a = sum(a['catches']) / CASTS
+        catch_b = sum(b['catches']) / CASTS
+        if abs(catch_a - catch_b) > CATCH_TOLERANCE:
+            sys.exit(f'{name}: catch share differs: vanilla {catch_a:.2f}, Horizon {catch_b:.2f}')
+    print('fishing: bite delay, catches and bite index match the vanilla server')
+    shutil.rmtree(vanilla_dir, ignore_errors=True)
+    shutil.rmtree(build / 'horizon', ignore_errors=True)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--prepare-reference", type=Path,
-                        help="generate only the named Rust test's vanilla inputs in this private directory")
-    parser.add_argument("--env-file", type=Path,
-                        help="append the three generated input paths to an environment file")
-    args = parser.parse_args()
-    if args.prepare_reference:
-        if not args.env_file:
-            parser.error("--prepare-reference requires --env-file")
-        environment = prepare_reference(args.prepare_reference)
-        with args.env_file.open("a", encoding="utf-8") as output:
-            for key, value in environment.items():
-                output.write(f"{key}={value}\n")
-    else:
-        if args.env_file:
-            parser.error("--env-file requires --prepare-reference")
-        main()
+if __name__ == '__main__':
+    main()

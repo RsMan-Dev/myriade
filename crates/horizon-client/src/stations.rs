@@ -511,7 +511,7 @@ pub fn grindstone_accepts(context: &LoopContext, items: &Items, stack: &ItemStac
 /// vanilla's answer at the cost of one table lookup.
 pub fn can_grindstone_repair(context: &LoopContext, items: &Items, stack: &ItemStack) -> bool {
     let mut can_repair = is_damageable(items, stack);
-    crate::native_client_hooks::can_grindstone_repair(context, stack, &mut can_repair);
+    crate::native_level_hooks::can_grindstone_repair(context, stack, &mut can_repair);
     can_repair
 }
 /// Whether the grindstone repairs `stack` as a damageable item

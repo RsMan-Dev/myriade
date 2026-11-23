@@ -36,7 +36,7 @@ pub fn native_farmland_trample(
     distance: f64,
     cancel: &mut bool,
 ) {
-    crate::native_client_hooks::farmland_trample(context, entity, pos, state, distance, cancel);
+    crate::native_level_hooks::farmland_trample(context, entity, pos, state, distance, cancel);
 }
 
 /// A living entity is about to handle a fall (`LivingFallEvent`). Mods may
@@ -50,7 +50,7 @@ pub fn native_living_fall(
     multiplier: &mut f32,
     cancel: &mut bool,
 ) {
-    crate::native_client_hooks::living_fall(context, entity, kind, distance, multiplier, cancel);
+    crate::native_level_hooks::living_fall(context, entity, kind, distance, multiplier, cancel);
 }
 
 pub fn load(root: &Path, properties: &MovementProperties<'_>) -> Result<BlockLandingRegistry> {
@@ -348,7 +348,7 @@ impl MotionWorld<'_, '_, '_> {
             }
             // Only for mods' `player_flyable_fall`: without them the landing
             // stays as vanilla traces it.
-            if !self.player.replaying && crate::native_client_hooks::has_mods() {
+            if !self.player.replaying && crate::native_level_hooks::has_mods() {
                 self.fall_event(FallEvent::FlyableFall {
                     distance,
                     multiplier,

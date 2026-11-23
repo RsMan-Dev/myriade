@@ -6,7 +6,7 @@
 //! host, and every world change they cause reaches all players through the
 //! block log, the level events and the entity tracker.
 use super::{
-    Dim, Game, GuestUse, Hit, InteractTarget, Mining, Screen,
+    Dim, Game, GuestUse, Hit, InteractTarget, Mining,
     building_players::{BuildingPlayer, BuildingPlayers, HubBodies, shared},
     lan::LanHost,
     lan_crafting::MenuRemoval,

@@ -1,4 +1,4 @@
-//! Replay a horizon-bots --capture as 50 identical connections. This measures framing and
+//! Replay a myriade-bot --capture as 50 identical connections. This measures framing and
 //! compression on one thread, not actual server throughput or network latency.
 use flate2::{Compress, Compression, FlushCompress, Status};
 use horizon_protocol::buf::write_varint;

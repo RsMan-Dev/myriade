@@ -19,5 +19,6 @@ pub static DEF: Def = Def {
         crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::WITHER_SKELETON),
     ],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

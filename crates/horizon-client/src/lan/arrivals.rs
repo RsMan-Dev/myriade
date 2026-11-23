@@ -912,7 +912,6 @@ mod hub_tests {
             allow_flight: false,
             seed: 0,
             max_players: 4,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         };

@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class PreparedExtrasTest(unittest.TestCase):
-    def test_only_launcher_assets_are_seeded_and_existing_files_win(self):
+    def test_only_listed_assets_are_seeded_and_existing_files_win(self):
         (ROOT / "target").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "target") as directory:
             source, target = [Path(directory) / name for name in ("source", "target")]

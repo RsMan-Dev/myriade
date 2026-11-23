@@ -1,6 +1,5 @@
 //! Shared exception: dispatch infrastructure and cross-area fixture types/tests; no new hooks.
 use horizon_core::game_mode::GameMode;
-use mod_api::mod_api::client::hud_layout::GuiDraw;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -52,7 +51,6 @@ struct BlockEntityDraw(Vec<u32>);
 use serde_json::{Map, Value};
 use stubs::*;
 struct Text;
-struct ScreenshotImage;
 #[derive(Debug, PartialEq)]
 struct Zoom(u32);
 enum Flow {
@@ -82,13 +80,11 @@ impl BlockEntityDrawContext for BlockEntityDraw {
 }
 enum HostSide<'a> {
     Server(&'a mut dyn ServerHost),
-    Client(&'a mut dyn ClientHost),
 }
 impl HostSide<'_> {
     fn reborrow(&mut self) -> HostSide<'_> {
         match self {
             Self::Server(host) => HostSide::Server(&mut **host),
-            Self::Client(host) => HostSide::Client(&mut **host),
         }
     }
 }

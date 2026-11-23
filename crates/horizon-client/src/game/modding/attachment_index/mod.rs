@@ -53,9 +53,6 @@ impl Game<'_> {
 
     /// Publish saved contents only when an authoritative entity owns their lifetime.
     pub(super) fn bind_saved_entity_attachments(&mut self, id: u32, slot: &mut AttachmentLifetime) {
-        if !self.native_authoritative() {
-            return;
-        }
         let Some(level) = self.level(self.dim.id()) else {
             return;
         };
@@ -146,7 +143,6 @@ mod tests {
             sync: false,
         };
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             let chunk = || {
                 let mut chunk = Chunk::empty(2, 3);
                 chunk.saved = Some(Arc::new(ChunkExtras {

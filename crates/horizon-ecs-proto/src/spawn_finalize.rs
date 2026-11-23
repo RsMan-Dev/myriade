@@ -6,7 +6,7 @@
 use crate::cow::{box_at, now_of, Body, Bounds, GrowAt, Index, Pos, SpeciesId, Sizes, Species};
 use crate::mount::ride;
 pub use crate::rules::spawn_finalize::{
-    ageable_roll, mob_roll, select_variant, zombie_roll, Cond, Group, Here, Jockey, MobRoll, Selector, BABY_CHANCE, BABY_TICKS, FOLLOW_DEVIATION, NEVER,
+    ageable_roll, mob_roll, select_variant, zombie_roll, Cond, Group, Here, Jockey, MobRoll, Selector, Shape, BABY_CHANCE, BABY_TICKS, FOLLOW_DEVIATION, NEVER,
 };
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
@@ -73,6 +73,9 @@ pub fn finalize(
 ) -> Outcome {
     use crate::spawn_reason::SpawnReason as Why;
     let out = finalize_class(w, e, kind, group, reason, special, r);
+    if reason == Why::Triggered {
+        crate::behaviours::emerge::triggered(w, e);
+    }
     // `Mob.finalizeSpawn`: the hand drawn (5% left-handed), synced in the mob flags.
     crate::left_handed::set(w, e, out.mob.left_handed);
     if reason == Why::TrialSpawner {
@@ -199,6 +202,7 @@ pub fn set_baby(w: &mut World, e: Entity, ticks: u64) {
     }
     let at = if ticks == NEVER { NEVER } else { now_of(w, e).saturating_add(ticks) };
     w.entity_mut(e).insert(GrowAt(at));
+    crate::attr_mod::apply_load(w, e);
 }
 
 /// `Zombie`'s search: a free creature of the vehicle's species within 5 blocks sideways and 3 high (the inflated box of the rider).

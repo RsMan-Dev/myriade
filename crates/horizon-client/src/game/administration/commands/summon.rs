@@ -36,8 +36,9 @@ impl Game<'_> {
         summonable(kind)?;
         self.summon_checks(kind, pos)?;
         if self.res.mob_types().contains_key(kind) && self.ecs.is_active() {
+            let site = super::super::creatures::SpawnSite::Finalizing(horizon_client::mobs::spawn_rules::Reason::Command);
             let id = self
-                .ecs_spawn(kind, pos, None)
+                .ecs_spawn_mob(kind, pos, false, None, site)
                 .ok_or_else(|| err("commands.summon.failed.uuid", &[]))?;
             return Ok(Target::Mob(id));
         }

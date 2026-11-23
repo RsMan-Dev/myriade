@@ -84,7 +84,7 @@ pub fn native_ender_entity_teleport(
     target: &mut [f64; 3],
     cancel: &mut bool,
 ) {
-    crate::native_client_hooks::ender_entity_teleport(context, entity, kind, from, target, cancel);
+    crate::native_level_hooks::ender_entity_teleport(context, entity, kind, from, target, cancel);
 }
 /// `Enderman.teleport(x, y, z)`: never while riding something, then
 /// `LivingEntity.randomTeleport(x, y, z, true, #enderman_does_not_teleport_to)`:
@@ -106,7 +106,7 @@ pub fn teleport_to(
     // EntityTeleportEvent.EnderEntity: `Enderman.teleport` hands `randomTeleport`
     // the raw target, so the event sees every try, grounded or not.
     let (mut x, mut y, mut z) = (x, y, z);
-    if crate::native_client_hooks::has_mods() {
+    if crate::native_level_hooks::has_mods() {
         let mut target = [x, y, z];
         let mut cancel = false;
         native_ender_entity_teleport(
@@ -733,7 +733,6 @@ mod tests {
             assert_eq!(free.position, Vec3::new(20.5, 0.0, 0.5), "no border");
 
             let w = MobWorld {
-                goal_host: None,
                 border: Some(&border),
                 ..w.clone()
             };

@@ -561,9 +561,6 @@ impl Game<'_> {
     /// their action opened, which the hub records when the action ends. None for a
     /// stale handle or a client.
     pub(super) fn block_entity_viewers(&self, entity: BlockEntityRef) -> Option<Vec<PlayerRef>> {
-        if !self.is_logical_server() {
-            return None;
-        }
         self.native_block_entity_target(entity)?;
         let epoch = self.native_lifecycle.epoch()?;
         let level = entity.fields().level;
@@ -754,7 +751,6 @@ mod tests {
     fn retained_handles_reject_replacements_and_rollback_restores_identity() {
         use super::super::native_entity_refs::tests::with_game;
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -821,7 +817,6 @@ mod tests {
     fn block_entities_in_a_box_are_listed_by_position() {
         use super::super::native_entity_refs::tests::with_game;
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             for chunk in [(0, 0), (1, 0)] {
                 game.world
                     .chunks
@@ -981,7 +976,6 @@ mod tests {
             crate::game::api_values::install_parts(&mods).unwrap();
         }
         super::super::native_guest_turn_tests::with_guests(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1177,7 +1171,6 @@ mod tests {
         use horizon_world::chunk::BlockState;
         use mod_api::{BlockUpdateFlags, EntityRef, Host};
         super::super::native_guest_turn_tests::with_guests(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1302,7 +1295,6 @@ mod tests {
             .prepared()
             .to_path_buf();
         with_game_at(root, |game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1450,7 +1442,6 @@ mod tests {
         use super::super::native_entity_refs::tests::with_game;
         use mod_api::BlockUpdateFlags;
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1514,7 +1505,6 @@ mod tests {
             })
         }
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1579,11 +1569,6 @@ mod tests {
                 game.world.block_entities.get(&(1, 64, 0)),
                 Some(BlockEntity::Chest(_))
             ));
-
-            // A client's copy of the level is not the server's.
-            game.options.dedicated = None;
-            assert!(!write(game, [0, 64, 0], api_stone, flags));
-            assert_eq!(game.world.block(0, 64, 0), grown);
         });
     }
 }

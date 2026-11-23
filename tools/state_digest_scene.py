@@ -205,7 +205,7 @@ def hold_gate():
 
 def scratch_env(home, digest, detail):
     folders = {}
-    for key in ('HORIZON_HOME', 'HORIZON_LAUNCHER_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME'):
+    for key in ('HORIZON_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME'):
         path = home / key.lower()
         path.mkdir(parents=True, exist_ok=True)
         folders[key] = path

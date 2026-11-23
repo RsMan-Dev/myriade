@@ -110,6 +110,12 @@ pub fn set_profession(w: &mut World, e: Entity, profession: u8) {
     }
 }
 
+/// The villager's profession is in the table: a mod's may be unloaded, and such a villager neither claims nor resets a job (`Mob`).
+pub fn profession_known(w: &World, e: Entity) -> bool {
+    let Some(m) = w.get::<Merchant>(e) else { return true };
+    w.get_resource::<TradeData>().is_none_or(|d| d.trades.professions.entry(usize::from(m.profession)).is_some())
+}
+
 /// Identifiant `minecraft:` du métier pour le registre de commerce ; vide si l'index n'est pas un métier actif.
 pub fn profession_name(w: &World, profession: u8) -> String {
     let Some(d) = w.get_resource::<TradeData>() else { return String::new() };

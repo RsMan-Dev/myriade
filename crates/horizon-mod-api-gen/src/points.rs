@@ -1152,21 +1152,15 @@ pub(crate) fn records_selected(
         let passed = match point.host {
             "host" => quote!(&host,),
             "server" | "client" => quote!(&mut host,),
-            "both" => quote!(if server {
-                ::mod_api::HostSide::Server(&mut host)
-            } else {
-                ::mod_api::HostSide::Client(&mut host)
-            },),
+            "both" => quote!(::mod_api::HostSide::Server(&mut host),),
             _ => quote!(),
         };
         let function = quote::format_ident!("point_{}", point.name);
         let listener = quote::format_ident!("{}Listener", point_shape::camel(&point.name));
-        let side = (point.host == "both").then(|| quote!(let server: bool = input.take()?;));
         if enabled(point) {
             guest_functions.extend(quote! {
             fn #function(place: PointId, input: &mut ::mod_api::wire::Reader<'_>, out: &mut ::mod_api::wire::Writer) -> Result<(), ::mod_api::wire::WireError> {
                 let listener: u32 = input.take()?;
-                #side
                 let mut args: #record = input.take()?;
                 let mut host = ::mod_api::wire::guest::Guest;
                 crate::guest::fire(place, listener, |function| {

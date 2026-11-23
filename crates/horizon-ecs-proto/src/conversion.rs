@@ -134,6 +134,7 @@ fn build(w: &mut World, e: Entity, into: &'static str, keep: ConvertKeep) -> Opt
     if let Some(h) = held {
         w.entity_mut(n).insert(h);
     }
+    copy_common(w, e, n);
     if let Post::Tracker { sound } = keep.post {
         let special = w.get_resource::<crate::spawn_finalize::Special>().map_or(0.0, |s| s.0);
         crate::reinforcements::handle_attributes(w, n, special, crate::spawn_reason::SpawnReason::Conversion, &mut horizon_core::random::LegacyRandom::new(seed as i64));
@@ -143,4 +144,51 @@ fn build(w: &mut World, e: Entity, into: &'static str, keep: ConvertKeep) -> Opt
     }
     crate::goals::arm_timers(w, n);
     Some(n)
+}
+
+/// `ConversionType.convertCommon`: the name, the flags, the effects, the age, the drop chances and the persistence carry over
+/// whatever the type (only a component the old creature has moves; an absent one stays absent on the new one).
+fn copy_common(w: &mut World, e: Entity, n: Entity) {
+    use crate::absorption::Absorption;
+    use crate::custom_name::{CustomName, NameVisible};
+    use crate::despawn::Persistent;
+    use crate::effects::Effects;
+    use crate::equipment_drop::DropChances;
+    use crate::invulnerable::Invulnerable;
+    use crate::left_handed::LeftHanded;
+    use crate::no_gravity::NoGravity;
+    use crate::cow::GrowAt;
+    if let Some(c) = w.get::<CustomName>(e).cloned() {
+        w.entity_mut(n).insert(c);
+    }
+    if w.get::<NameVisible>(e).is_some() {
+        w.entity_mut(n).insert(NameVisible);
+    }
+    if w.get::<Persistent>(e).is_some() {
+        w.entity_mut(n).insert(Persistent);
+    }
+    if let Some(c) = w.get::<Effects>(e).cloned() {
+        w.entity_mut(n).insert(c);
+    }
+    if let Some(a) = w.get::<GrowAt>(e).copied() {
+        w.entity_mut(n).insert(a);
+    }
+    if w.get::<LeftHanded>(e).is_some() {
+        w.entity_mut(n).insert(LeftHanded);
+    }
+    if let Some(d) = w.get::<DropChances>(e).copied() {
+        w.entity_mut(n).insert(d);
+    }
+    if let Some(a) = w.get::<Absorption>(e).copied() {
+        w.entity_mut(n).insert(a);
+    }
+    if w.get::<NoGravity>(e).is_some() {
+        w.entity_mut(n).insert(NoGravity);
+    }
+    if w.get::<Invulnerable>(e).is_some() {
+        w.entity_mut(n).insert(Invulnerable);
+    }
+    if let Some(p) = w.get::<crate::behaviours::item_pickup::Pickup>(e).copied() {
+        w.entity_mut(n).insert(p);
+    }
 }

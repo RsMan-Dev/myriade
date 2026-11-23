@@ -254,7 +254,7 @@ impl Menu {
         self.touch();
         let mut canceled = false;
         let mut handled = false;
-        if crate::native_client_hooks::has_mods() {
+        if crate::native_level_hooks::has_mods() {
             let slot = self.state.slots[s];
             let mut carried = self.state.carried.take();
             let mut view = MenuSlotView {

@@ -23,7 +23,6 @@ fn a_cancelled_update_leaves_the_lamp_unlit() {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("hush", Box::new(Hush))].into();
     mod_platform::testing::with_mods(mods, || {
         super::native_guest_turn_tests::with_guests(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
                 std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),

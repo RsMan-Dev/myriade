@@ -38,8 +38,6 @@ const DEDICATED_ONLY: &[&str] = &[
     "transfer",
     "whitelist",
 ];
-/// Registered only on integrated servers.
-const INTEGRATED_ONLY: &[&str] = &["publish", "unpublish"];
 /// Commands that check permissions only on dedicated servers
 /// (`checkPermissions` in SeedCommand and VersionCommand).
 const OPEN_WHEN_INTEGRATED: &[&str] = &["seed", "version"];
@@ -295,8 +293,8 @@ fn fill(
             continue;
         }
         if path.is_empty()
-            && (dedicated && INTEGRATED_ONLY.contains(&name.as_str())
-                || !dedicated && DEDICATED_ONLY.contains(&name.as_str()))
+            && !dedicated
+            && DEDICATED_ONLY.contains(&name.as_str())
         {
             continue;
         }

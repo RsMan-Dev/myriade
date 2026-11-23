@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
+use crate::game::native_entity_refs::tests::run_fresh_cases;
 use mod_api::{CauldronDecision, CauldronFire, CauldronPlan, CauldronUse, Hooks, Host, ServerHost};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -154,9 +154,15 @@ fn fixture(refused: bool, panic: bool, dye: bool, test: impl FnOnce(&mut Game<'_
         .unwrap()
         .prepared()
         .to_path_buf();
-    with_game_at(root, |game| {
-        setup(game, "minecraft:cauldron", None, "test:syrup_bottle", 2);
-        test(game, &seen);
+    crate::game::native_guest_turn_tests::with_guests_at(root, |game| {
+        crate::game::native_guest_turn_tests::with_acting_guest_on(
+            game,
+            horizon_core::geometry::Vec3::ZERO,
+            |game| {
+                setup(game, "minecraft:cauldron", None, "test:syrup_bottle", 2);
+                test(game, &seen);
+            },
+        );
     });
 }
 fn setup(game: &mut Game<'_>, block: &str, level: Option<&str>, item: &str, count: u32) {
@@ -172,10 +178,6 @@ fn setup(game: &mut Game<'_>, block: &str, level: Option<&str>, item: &str, coun
     };
     let id = game.pack.assets.registry.resolve(&state).unwrap();
     game.world.set(0, 64, 0, id).unwrap();
-    game.player = Some(
-        horizon_client::motion::PlayerMotion::new(game.motion, horizon_core::geometry::Vec3::ZERO)
-            .unwrap(),
-    );
     game.creative = false;
     game.selected = 0;
     game.hand = Hand::Main;
@@ -585,7 +587,7 @@ fn cauldron_world_close_discards_callbacks_before_failed_preparation() {
         );
         game.native_lifecycle_world_closed();
         game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
+            .begin_open(mod_api::Authority::DedicatedServer);
         assert!(
             game.resolve_parts()
                 .unwrap_err()

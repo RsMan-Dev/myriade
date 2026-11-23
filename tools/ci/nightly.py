@@ -84,7 +84,7 @@ def output(**values: str) -> None:
             f.write(f"{k}={v}\n")
 
 
-PLAYERS = ("The launcher installs it by itself; your worlds stay as they are. A Nightly can include pull requests "
+PLAYERS = ("Your worlds stay as they are. A Nightly can include pull requests "
            "the Team picked before they are merged (below). Report bugs with the version the game shows "
            "(\"Nightly <date> · <commit>\").")
 
@@ -107,7 +107,7 @@ def notes(today: str, chosen: Ref, main: Ref, picked: list[dict], left_out: list
     new = [pr for pr in shown if "feature" in pr["labels"]]
     fixed = [pr for pr in shown if "feature" not in pr["labels"]]
     built = f"main ({main.sha[:7]})" + (f" with {len(picked)} pull requests merged in" if picked else "")
-    # The banner first: people who land on the Nightly ran its game zip for the launcher (a player, 2026-10-30).
+    # The banner first: people who land on the Nightly ran its game zip by hand (a player, 2026-10-30).
     parts = [train.PLAYERS, f"Nightly {today} · {chosen.sha[:7]}: {built}, built from `{chosen.name}` ({chosen.sha}).",
              source_line(today, chosen.sha), PLAYERS]
     if not shown and not picked:
@@ -273,7 +273,7 @@ def listed(name: str, data: bytes, sums: str) -> bool:
 
 
 def signature_check(sha: str, folder: Path, names: list[str]) -> list[str]:
-    """The command that checks sdk-<sha>'s SHA256SUMS signature in `folder` as the launcher does (horizon-release-sign,
+    """The command that checks sdk-<sha>'s SHA256SUMS signature in `folder` (horizon-release-sign,
     with this repository's keys and the tag the signature must name), and the bytes of `names` against it."""
     return ["cargo", "run", "--locked", "--quiet", "-p", "horizon-release-sign", "--", "verify",
             "--repository", train.REPO, "--tag", f"sdk-{sha}",

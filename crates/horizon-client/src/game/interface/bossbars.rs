@@ -535,23 +535,6 @@ impl Game<'_> {
     }
     fn boss_viewers(&self) -> Vec<Viewer> {
         let mut out = Vec::new();
-        // While `as_guest` has swapped a guest in, the host's own position
-        // is not in place. Their overlay updates once the tick puts it back.
-        let local =
-            self.serving.is_none() && self.options.dedicated.is_none() && self.lan_acting.is_none();
-        if local && let Some(p) = &self.player {
-            let ints = self.level.player_uuid.unwrap_or_else(|| self.acting_uuid());
-            out.push(Viewer {
-                uuid: horizon_client::lan::playerdata::ints_uuid(ints),
-                ints,
-                at: [p.position.x, p.position.y, p.position.z],
-                alive: !p.health.dead_or_dying(),
-                here: true,
-                local: true,
-                conn: None,
-                view_chunks: self.settings.render_distance,
-            });
-        }
         if let Some(host) = &self.lan {
             for g in host
                 .hub
@@ -793,7 +776,6 @@ pub(super) mod audience_tests {
             allow_flight: false,
             seed: 0,
             max_players: 20,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         };

@@ -1,10 +1,10 @@
-//! The structures that change the spawn lists, as `spawn_selection::mobs_at` reads them. The host answers which structures cover a position
+//! The structures that change the spawn lists, as the natural spawn lists read them. The host answers which structures cover a position
 //! (`StructureSource`: the ECS does not generate the world); the lists are the game's data (`StructureSpawns`, read by the server's own
 //! loader), resolved to species once when the host is made, never per tick. The mods' `potential_spawns` hook is the host's too.
 use crate::cow::{species_table, SpeciesTable};
 use crate::spawning::{resolve, Category, Entry};
 use bevy_ecs::prelude::Resource;
-use horizon_client_lib::mobs::spawn_selection::{fortress_enemies, StructureAt, StructureSpawns};
+use horizon_client_lib::mobs::spawn_place::{fortress_enemies, StructureAt, StructureSpawns};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;

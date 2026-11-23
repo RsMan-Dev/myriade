@@ -2,6 +2,7 @@
 //! 2.5 blocks away. An animal can have several (the pig: the carrot on a stick, then its foods), one entry each.
 use super::*;
 use crate::rules::tempt::{calm_end, calm_left, calm_over, calm_resumed, in_reach, runs_this_tick, tempt_reach, within_stop};
+use crate::hostile::PlayerState;
 use crate::{cow::*, goals::*};
 use horizon_core::geometry::Vec3;
 
@@ -65,7 +66,8 @@ pub static MODULE: Module = Module {
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     let items = crate::items::ItemSet::of(p.items);
-    let t = Tempt { items, speed: p.speed, stop: p.stop, range: p.range, look_y: p.look_y, calm: p.calm, drift: p.drift, calm_until: 0, paused_at: 0, player: 0, aim: (i32::MIN, 0), slot: inst.slot };
+    let range = crate::attr_mod::read(w, e, "tempt_range", p.range);
+    let t = Tempt { items, speed: p.speed, stop: p.stop, range, look_y: p.look_y, calm: p.calm, drift: p.drift, calm_until: 0, paused_at: 0, player: 0, aim: (i32::MIN, 0), slot: inst.slot };
     match w.get_mut::<Tempts>(e) {
         Some(mut ts) => {
             debug_assert_eq!(ts.0.len(), inst.nth as usize);
@@ -131,9 +133,12 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     }
     let mut best: Option<(u32, f64)> = None;
     let reach = tempt_reach(t.range);
+    // `TemptGoal`: `forNonCombat().ignoreLineOfSight()`, so a spectator never tempts and an invisible player's range is scaled by its visibility.
+    let ps = w.get_resource::<PlayerState>();
     w.resource::<Online>().for_near(pos.x, pos.z, reach, |p| {
         let d = d2(pos, Vec3::new(p.x, p.y, p.z));
-        if p.holds_any(t.items) && in_reach(d, reach) &&best.is_none_or(|b| d < b.1) {
+        let visible = tempt_reach(t.range * ps.map_or(1.0, |s| s.visibility(p.id)));
+        if ps.is_none_or(|s| !s.spectator(p.id)) && p.holds_any(t.items) && in_reach(d, visible) && best.is_none_or(|b| d < b.1) {
             best = Some((p.id, d));
         }
     });

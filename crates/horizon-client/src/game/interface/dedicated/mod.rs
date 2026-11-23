@@ -40,6 +40,12 @@ use std::{
 };
 
 mod biome_regions;
+mod command_ops;
+mod command_ops_air_fall;
+mod command_ops_fixtures;
+mod command_ops_leash_space;
+mod command_ops_spawn;
+mod command_ops_witness;
 mod missing_mods;
 pub(crate) use missing_mods::is_missing_mods_refusal;
 pub(super) mod events;
@@ -421,7 +427,7 @@ fn capture_log(f: impl FnOnce()) -> Vec<String> {
 /// Main.main up to the server start: arguments, server.properties (stored
 /// back at once), eula.txt. False when the process should stop here.
 pub(super) fn preflight(options: &mut Options) -> Result<bool> {
-    let args = options.dedicated.clone().unwrap_or_default();
+    let args = options.dedicated.clone();
     let mut universe = PathBuf::from(".");
     let mut world = None;
     let mut port = None;
@@ -473,8 +479,7 @@ pub(super) fn preflight(options: &mut Options) -> Result<bool> {
     for w in &props.warnings {
         log("WARN", w);
     }
-    // A dedicated server's tree: /op, /ban, /whitelist... (single player's
-    // server thread is an integrated one and never gets here).
+    // A dedicated server's tree: /op, /ban, /whitelist...
     horizon_client::command::vanilla::set_dedicated_commands(true);
     // Horizon's own commands are the owner's choice, off as on vanilla.
     if props
@@ -1030,7 +1035,7 @@ impl Game<'_> {
     /// DedicatedServer.initServer and MinecraftServer.runServer.
     // The epoch starts at world open; failures before that send no lifecycle event.
     pub(super) fn run_dedicated(&mut self) -> Result<()> {
-        self.run_server_lifecycle(true, Self::run_dedicated_inner)
+        self.run_server_lifecycle(Self::run_dedicated_inner)
     }
 
     fn run_dedicated_inner(&mut self, startup_began: &mut bool) -> Result<()> {
@@ -1206,7 +1211,7 @@ impl Game<'_> {
                 self.game_rule_changed("minecraft:show_advancement_messages", value, None);
             }
         }
-        self.settings.render_distance = props.view_distance.clamp(2, 32);
+        self.settings.view_distance = props.view_distance.clamp(2, 32);
         self.settings.simulation_distance = props.simulation_distance.clamp(2, 32);
         // Nothing is kept around the spawn while nobody is on.
         self.streaming.radius = -1;
@@ -1329,7 +1334,6 @@ impl Game<'_> {
             level_seeds: self.levels.runtime.seeds(),
             seed: self.level.seed,
             max_players: props.max_players.max(0) as usize,
-            integrated: false,
         };
         let settings = LanSettings {
             port,
@@ -1638,37 +1642,25 @@ impl Game<'_> {
     /// one joins.
     pub(super) fn settle_spawn(&mut self) -> Result<()> {
         let deadline = Instant::now() + Duration::from_secs(600);
-        if self.is_dedicated_server() {
-            if self.level.spawn.is_none() {
-                let [x, y, z] = loop {
-                    self.update_world();
-                    if let Some(pos) = self.find_world_spawn()? {
-                        break pos;
-                    }
-                    if Instant::now() > deadline {
-                        return Err("the spawn area did not load".into());
-                    }
-                    std::thread::sleep(Duration::from_millis(2));
-                };
-                self.level.spawn = Some([f64::from(x), f64::from(y), f64::from(z)]);
-                self.level.world_spawn.get_or_insert([x, y, z]);
-                self.streaming.extra.clear();
-            }
-            self.spawn = self
-                .level
-                .spawn
-                .map(|s| horizon_core::geometry::Vec3::new(s[0] + 0.5, s[1], s[2] + 0.5));
-            return Ok(());
+        if self.level.spawn.is_none() {
+            let [x, y, z] = loop {
+                self.update_world();
+                if let Some(pos) = self.find_world_spawn()? {
+                    break pos;
+                }
+                if Instant::now() > deadline {
+                    return Err("the spawn area did not load".into());
+                }
+                std::thread::sleep(Duration::from_millis(2));
+            };
+            self.level.spawn = Some([f64::from(x), f64::from(y), f64::from(z)]);
+            self.level.world_spawn.get_or_insert([x, y, z]);
+            self.streaming.extra.clear();
         }
-        while self.player.is_none() {
-            self.update_world();
-            self.spawn_player()?;
-            if Instant::now() > deadline {
-                return Err("the spawn area did not load".into());
-            }
-            std::thread::sleep(Duration::from_millis(2));
-        }
-        self.player = None;
+        self.spawn = self
+            .level
+            .spawn
+            .map(|s| horizon_core::geometry::Vec3::new(s[0] + 0.5, s[1], s[2] + 0.5));
         Ok(())
     }
 
@@ -1695,7 +1687,7 @@ impl Game<'_> {
 
     /// The chunks to keep loaded: the players' (lan_update_streaming). While
     /// nobody is online a dedicated server keeps none (vanilla has no spawn
-    /// ticket), an integrated one the spawn chunk's.
+    /// ticket).
     pub(super) fn update_dedicated_streaming(&mut self) {
         let rule = self
             .session
@@ -1708,13 +1700,11 @@ impl Game<'_> {
                 .loading_chunks(|g| super::game_mode::loads_chunks(rule, g.spectator()))
                 .next()
         });
-        if self.is_dedicated_server() {
-            self.streaming.radius = if guest.is_some() {
-                self.settings.render_distance
-            } else {
-                -1
-            };
-        }
+        self.streaming.radius = if guest.is_some() {
+            self.settings.view_distance
+        } else {
+            -1
+        };
         let spawn = self
             .spawn
             .map(|s| ((s.x.floor() as i32) >> 4, (s.z.floor() as i32) >> 4));
@@ -2680,27 +2670,9 @@ fn console_level(active: super::Dim) -> Option<super::Dim> {
 
 impl Game<'_> {
     pub(super) fn stop_after_crash(&mut self, message: &str) -> Result<()> {
-        // Single player's server thread (`integrated.rs`) has no console: it logs to the game's log.
-        let integrated = self.serving.is_some();
-        let warn = |message: &str| {
-            if integrated {
-                log::warn!("Horizon: {message}");
-            } else {
-                log("WARN", message);
-            }
-        };
-        if integrated {
-            // `message` already says whether the tick panicked or failed.
-            log::error!("Horizon: {message}");
-        } else {
-            log("ERROR", &format!("The server thread panicked: {message}"));
-        }
+        log("ERROR", &format!("The server thread panicked: {message}"));
         if let Some(warning) = self.keep_interrupted_players() {
-            warn(warning);
-        }
-        if integrated {
-            // `IntegratedServer.stopServer`'s steps; `save_guest` skips the guest unplaced above.
-            return self.stop_integrated(true);
+            log("WARN", warning);
         }
         self.native_lifecycle.begin_close();
         log("INFO", "Saving worlds");
@@ -2720,15 +2692,10 @@ mod tests {
         use crate::game::execution_role::ExecutionRole;
         let mut resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
-        game.options.dedicated = Some(Vec::new());
-        for (role, expected) in [
-            (
-                ExecutionRole::DedicatedServer,
-                vec!["destination probe".to_owned()],
-            ),
-            (ExecutionRole::IntegratedServer, Vec::new()),
-            (ExecutionRole::Client, Vec::new()),
-        ] {
+        for (role, expected) in [(
+            ExecutionRole::DedicatedServer,
+            vec!["destination probe".to_owned()],
+        )] {
             game.options.execution_role = role;
             let lines = capture_log(|| {
                 game.native_broadcast(horizon_client::text::Text::literal("destination probe"))
@@ -3189,7 +3156,7 @@ mod tests {
 
 #[cfg(test)]
 mod console_source_tests {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::{Game, Options, Progress, Settings, load_resources};
     use horizon_client::chunk::Chunk;
     use horizon_core::position::ChunkPos;
     use std::sync::Arc;
@@ -3224,19 +3191,18 @@ mod console_source_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.build_registries();

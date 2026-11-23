@@ -170,23 +170,21 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_guest_turn_tests::with_acting_guest;
     use super::*;
-    use horizon_client::{items::ItemStack, motion::PlayerMotion};
+    use horizon_client::items::ItemStack;
     use horizon_core::geometry::Vec3;
     use mod_api::{EntityRef, WorldEpoch};
 
-    /// The acting player with a body, as a hook's turn finds them.
+    /// The acting player of `with_acting_guest`, as a hook's turn finds them.
     fn acting_player(game: &mut super::Game<'_>) -> PlayerRef {
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-        crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-        game.player(123).unwrap()
+        game.player(12).unwrap()
     }
 
     #[test]
     #[ignore = "daily"]
     fn points_repair_a_damaged_mending_item_before_experience() {
-        with_game(|game| {
+        with_acting_guest(Vec3::ZERO, |game| {
             let player = acting_player(game);
             let mut sword = ItemStack::new("minecraft:diamond_sword", 1);
             sword.damage = 1000;
@@ -211,7 +209,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn levels_are_added_taken_and_clamped_at_zero() {
-        with_game(|game| {
+        with_acting_guest(Vec3::ZERO, |game| {
             let player = acting_player(game);
             game.experience.progress = 0.25;
             assert!(game.player_give_levels(player, 3));
@@ -234,7 +232,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn more_points_than_an_int_are_refused_untouched() {
-        with_game(|game| {
+        with_acting_guest(Vec3::ZERO, |game| {
             let player = acting_player(game);
             // `Player.giveExperiencePoints` takes an int: `i32::MAX` is
             // given, one more is refused.
@@ -258,7 +256,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_stale_handle_gives_nothing() {
-        with_game(|game| {
+        with_acting_guest(Vec3::ZERO, |game| {
             let player = acting_player(game);
             let stale = mod_api::__private::game::player_ref(
                 EntityRef::new(WorldEpoch::new(u64::MAX), 7),

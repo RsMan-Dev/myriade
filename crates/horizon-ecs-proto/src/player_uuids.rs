@@ -26,6 +26,8 @@ pub enum Slot {
     Cloud,
     /// `PlayerCredit.player`.
     Credit,
+    /// `Anger.at`: the player or entity the anger is for.
+    Anger,
 }
 
 /// The players by id and by uuid, and the waiting entities by uuid. A uuid is held as one `u128`.
@@ -111,6 +113,11 @@ fn pose(w: &mut World, e: Entity, who: Who, slot: Slot) -> bool {
         Slot::Credit => {
             if let (Who::Player(id), Some(mut k)) = (who, w.get_mut::<crate::credit::PlayerCredit>(e)) {
                 k.player = Some(id);
+            }
+        }
+        Slot::Anger => {
+            if let Some(mut a) = w.get_mut::<crate::behaviours::neutral_anger::Anger>(e) {
+                a.at = some;
             }
         }
         Slot::Item => {}

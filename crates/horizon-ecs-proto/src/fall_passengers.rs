@@ -25,7 +25,9 @@ pub fn propagate(w: &mut World, mount: Entity, distance: f64, modifier: f32) {
         if type_tags::named(w, "fall_damage_immune", r) {
             continue;
         }
-        let dmg = crate::inside_effects::fall_damage(distance, f64::from(modifier));
+        // The rider's own safe distance and multiplier (`Body`; a player has none, so the jar's 3 and 1), times the mount's modifier.
+        let (safe, mult) = w.get::<crate::cow::Body>(r).map_or((3.0, 1.0), |b| (b.safe_fall, b.fall_mult));
+        let dmg = crate::inside_effects::fall_damage_safe(distance, safe, f64::from(modifier) * mult);
         if dmg > 0.0 {
             w.resource_mut::<DamageQueue>().add(r, dmg, Cause::Fall);
         }

@@ -52,9 +52,6 @@ fn a_packs_own_item_and_block_tags_admit_and_match_its_functions() {
          execute if block ~ ~ ~ #p:stopper run scoreboard players add #block p 1\n",
     );
     game.world_root = dir.clone();
-    game.player = Some(
-        horizon_client::motion::PlayerMotion::new(game.motion, Vec3::new(4.5, 200.0, 4.5)).unwrap(),
-    );
     game.build_registries();
     game.set_allow_commands(true);
     game.world
@@ -74,6 +71,11 @@ fn a_packs_own_item_and_block_tags_admit_and_match_its_functions() {
         game.fns.store.functions.contains_key("p:t"),
         "the pack's function loaded against its own tags"
     );
+    crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+    crate::game::native_guest_turn_tests::with_acting_guest_on(
+        &mut game,
+        Vec3::new(4.5, 200.0, 4.5),
+        |game| {
     let stone = game
         .pack
         .assets
@@ -111,5 +113,7 @@ fn a_packs_own_item_and_block_tags_admit_and_match_its_functions() {
     assert!(game.run_command("function p:t"));
     assert_eq!(score(&game, "#item"), 2);
     assert_eq!(score(&game, "#block"), 2);
+        },
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

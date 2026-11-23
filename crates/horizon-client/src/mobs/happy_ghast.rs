@@ -784,13 +784,6 @@ mod tests {
         assert_eq!(m.ai.nav.kind, crate::mobs::nav::NavKind::Flying);
         assert!(m.ai.nav.can_float);
         crate::mobs::animal_brain::init(&mut m, 0);
-        crate::mobs::mod_behaviors::set_walk_target(&mut m, [5, 65, 5], 1.0, 0);
-        assert!(
-            crate::mobs::animal_brain::mem_ref(&m)
-                .unwrap()
-                .walk_target
-                .present()
-        );
         crate::mobs::ai::age_up(&mut m, 1200, true);
         assert!(!m.is_baby());
         assert!(

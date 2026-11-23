@@ -67,9 +67,6 @@ pub(crate) enum TransferError {
     CarrierUnreadable(String),
     /// Plain I/O.
     Io(String),
-    /// Only the logical server transfers; a client's mirror of the
-    /// world receives the result through synchronization.
-    NotLogicalServer,
 }
 impl std::fmt::Display for TransferError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -111,10 +108,6 @@ impl std::fmt::Display for TransferError {
             ),
             Self::CarrierUnreadable(why) => write!(f, "carrier file: {why}"),
             Self::Io(text) => write!(f, "carrier transfer I/O: {text}"),
-            Self::NotLogicalServer => write!(
-                f,
-                "only the logical server transfers; this game is a client's mirror"
-            ),
         }
     }
 }
@@ -184,13 +177,6 @@ impl Game<'_> {
         use crate::carrier_store::{Operation, OperationCell};
         use horizon_client::join_seq::visibility::PassLease;
 
-        // A remote guest's mirror never transfers: the server's own
-        // transfer reaches it through synchronization, so a guest's
-        // call refuses with a reason rather than silently succeeding
-        // (the disassembly's gate refuses the same way).
-        if !self.is_logical_server() {
-            return Err(TransferError::NotLogicalServer);
-        }
         if self.world.carrier_fences.is_broken() {
             return Err(TransferError::Store(
                 "a previous carrier transfer did not finish; reopen the world".into(),
@@ -499,14 +485,6 @@ impl Game<'_> {
         use horizon_client::join_seq::visibility::PassLease;
         use horizon_core::nbt::{self, Tag};
 
-        // A remote guest's mirror never transfers: the server's own
-        // transfer reaches it through synchronization, so a guest's
-        // call refuses with a reason rather than silently succeeding
-        // (the assembly's gate refuses the same way). This is the
-        // logical-server guard the review's item 5 asked for.
-        if !self.is_logical_server() {
-            return Err(TransferError::NotLogicalServer);
-        }
         if self.world.carrier_fences.is_broken() {
             return Err(TransferError::Store(
                 "a previous carrier transfer did not finish; reopen the world".into(),
@@ -1918,36 +1896,6 @@ mod tests {
                     .unwrap();
             assert_eq!(report.applied + report.verified, 1);
             assert!(store.journal().in_progress.is_none());
-        });
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// Review item 5's logical-server guard: a client mirror's transfer
-    /// refuses with a reason — the assembly's and the disassembly's
-    /// gates alike — and the refusal leaves the world untouched: no
-    /// store is created, nothing is written.
-    #[test]
-    #[ignore = "daily"]
-    fn a_client_mirror_transfer_refuses_without_touching_the_world() {
-        let root = std::env::temp_dir().join(format!(
-            "horizon-carrier-client-refusal-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
-        crate::game::native_entity_refs::tests::with_client_game(|game| {
-            game.world_root = root.clone();
-
-            let refused = game.carrier_disassemble(3, 1, [0, 64, 0], [1.0, 0.0, 0.0, 0.0]);
-            assert!(matches!(refused, Err(TransferError::NotLogicalServer)));
-
-            // The assembly's gate refuses the same way, not silently.
-            let refused = game.carrier_assemble(3, &[BlockPos::new(0, 64, 0)]);
-            assert!(matches!(refused, Err(TransferError::NotLogicalServer)));
-
-            // The world is untouched: no store, no journal, no data.
-            assert!(!root.join("data").exists());
-            assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
         });
         let _ = std::fs::remove_dir_all(&root);
     }

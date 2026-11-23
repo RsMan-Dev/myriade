@@ -49,16 +49,6 @@ class PadGlyphsTests(MissingArgumentTests):
         self.assert_asked_for_arguments("pad_glyphs/gen.py", "--help")
 
 
-class FetchDxcTests(MissingArgumentTests):
-    def test_a_flag_is_not_a_folder(self):
-        # It used to download Microsoft's 22 MB archive into ./--help.
-        result, left = run("ci/fetch_dxc.py", "--help")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertNotIn("Traceback", result.stderr)
-        self.assertEqual(result.stderr.strip(), "--help is not a folder")
-        self.assertEqual(left, [], "fetch_dxc wrote files into a flag directory")
-
-
 class CommandFixtureTests(MissingArgumentTests):
     """The command fixtures write into the directory they are told to, and ask for it when nobody said."""
 

@@ -54,6 +54,7 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
         game.block_ticks
             .add_empty_chunk(ChunkPos::new(0, 0))
             .unwrap();
+        // TODO(phase 2): assertion sur l'hôte : le test monte son propre hôte (lan_host ligne 139) et lit le corps du joueur hôte (player_save_projection_tests.rs:57)
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 200.0, 8.5)).unwrap());
         game.build_registries();
         game.set_allow_commands(true);
@@ -113,6 +114,7 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
             "no body raw retention",
             &mut failures,
         );
+        // TODO(phase 2): assertion sur l'hôte : le test monte son propre hôte (lan_host ligne 139) et lit le corps du joueur hôte (player_save_projection_tests.rs:117)
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 200.0, 8.5)).unwrap());
         assert_eq!(game.player.as_ref().unwrap().impulse.reset_grace_time, 0);
         assert!(!game.player.as_ref().unwrap().spawn_extra_particles_on_fall);
@@ -154,7 +156,6 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
                 allow_flight: false,
                 seed: 0,
                 max_players: 2,
-                integrated: false,
                 levels: Default::default(),
                 level_seeds: Default::default(),
             },

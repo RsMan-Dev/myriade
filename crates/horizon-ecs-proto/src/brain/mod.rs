@@ -18,6 +18,8 @@ use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
 use std::sync::Arc;
 
 pub mod behaviours;
+mod extra;
+pub use extra::{add_extra, clear_extra, declares, Extra, ExtraFns};
 pub mod sensors;
 
 /// Bench probe (`probes` feature, env `BRAINPROF`): instructions per sensor scan and per behaviour entry point inside `brain_step`.
@@ -507,6 +509,8 @@ pub struct Brain {
     armed: Vec<bool>,
     /// `Visible`'s line-of-sight cache, emptied when `visible_mobs` is written.
     sight: Vec<(Who, bool)>,
+    /// The entity carries [`Extra`] (read with the brain, so an entity without any pays no lookup).
+    extra: bool,
 }
 impl Brain {
     fn holds(&self, needs: &[(u16, bool)]) -> bool {
@@ -587,7 +591,7 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 /// The components of the capability (the plan is the species' resolved brain).
 pub fn bundle(plan: &'static Plan) -> Brain {
     let slots = plan.mems.iter().map(|_| Slot { v: None, token: 0, until: u64::MAX }).collect();
-    Brain { plan, slots, run: vec![Run::default(); plan.insts.len()], activity: plan.pick.last().copied().unwrap_or(0), awake: false, armed: vec![false; plan.sensors.len()], sight: Vec::new() }
+    Brain { plan, slots, run: vec![Run::default(); plan.insts.len()], activity: plan.pick.last().copied().unwrap_or(0), awake: false, armed: vec![false; plan.sensors.len()], sight: Vec::new(), extra: false }
 }
 /// Creation: the starting memories, the behaviours' own state, the sensors' first scans (a random phase each, as `Mob`).
 pub fn start(w: &mut World, e: Entity) {
@@ -721,6 +725,12 @@ pub fn get<'a>(w: &'a World, e: Entity, k: &MemKey) -> Option<&'a MemValue> {
 pub fn present(w: &World, e: Entity, k: &MemKey) -> bool {
     get(w, e, k).is_some()
 }
+/// The ticks a present memory has left before it expires; `None` when it never expires (or is absent).
+pub fn ttl_left(w: &World, e: Entity, k: &MemKey) -> Option<u64> {
+    let b = w.get::<Brain>(e)?;
+    let s = b.slots.get(b.plan.local(k)?)?;
+    (s.v.is_some() && s.until != u64::MAX).then(|| s.until.saturating_sub(now_of(w, e) + 1))
+}
 pub fn walk_target(w: &World, e: Entity) -> Option<WalkTarget> {
     match get(w, e, &WALK_TARGET) {
         Some(MemValue::Walk(t)) => Some(*t),
@@ -803,12 +813,15 @@ pub fn is_active(w: &World, e: Entity, name: &str) -> bool {
 fn step(w: &mut World, e: Entity) {
     let Some(mut b) = w.get_mut::<Brain>(e) else { return };
     b.awake = false;
-    let plan = b.plan;
+    let (plan, extra) = (b.plan, b.extra);
     drop(b);
     bp!("step", "total");
     {
         bp!("step", "empty");
     }
+    if extra {
+        extra::start_and_tick(w, e, plan);
+    } else {
     {
         bp!("step", "start loop");
         // One read of the brain finds the next behaviour that can be asked; the walk goes on after it (a start changes the flags).
@@ -819,7 +832,6 @@ fn step(w: &mut World, e: Entity) {
             i += k + 1;
         }
     }
-    let mut any;
     {
         bp!("step", "tick loop");
         let mut i = 0;
@@ -829,11 +841,12 @@ fn step(w: &mut World, e: Entity) {
             i += k + 1;
         }
     }
+    }
     {
         bp!("step", "update_activity");
         update_activity(w, e, plan);
     }
-    any = false;
+    let mut any = extra && extra::any_running(w, e);
     // The running flags are read in place (one lookup of the brain); the deadlines to arm are applied after the walk.
     let mut arm: Option<(usize, u64)> = None;
     let mut more: Vec<(usize, u64)> = Vec::new();

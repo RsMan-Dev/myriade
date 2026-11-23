@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Real block-hit arrow category, captured by the unchanged headless client's Studio recorder.
+"""Real block-hit arrow category, captured by the joueur-automate bot's packet capture.
 
 The contract is admission, air-to-ground, one arrow hit on NEUTRAL, and two
-independent RECORDS controls. Full packets (including random pitch/seed and
+independent sound controls. Full packets (including random pitch/seed and
 order) remain raw diagnostics; trajectories and random draws are not compared.
 """
 import argparse
@@ -12,51 +12,36 @@ import os
 from pathlib import Path
 import struct
 import subprocess
+import sys
 import time
 import uuid
-import zipfile
 
-try:
-    from . import lab, oracle_harness, test_rust_parity as base
-    from .test_dedicated_server_parity import Server, free_port, game_time
-except ImportError:
-    import lab
-    import oracle_harness
-    import test_rust_parity as base
-    from test_dedicated_server_parity import Server, free_port, game_time
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import lab  # noqa: E402
+import oracle_harness  # noqa: E402
+import test_rust_parity as base  # noqa: E402
+from bot_lab import Bot  # noqa: E402
+from test_dedicated_server_parity import Server, free_port, game_time  # noqa: E402
 
 UUID = '0000014b-0000-0000-0000-000000000001'
+SOUND_PACKET = 119  # ClientboundSoundPacket in pinned protocol 777
 
 
-def recorded_sounds(folder):
-    archives = list((folder / 'recordings').glob('*.mcpr'))
-    assert len(archives) == 1, archives
-    with zipfile.ZipFile(archives[0]) as archive:
-        assert archive.testzip() is None
-        data = archive.read('recording.tmcpr')
-        json.loads(archive.read('metaData.json'))
-    rows, at, previous = [], 0, -1
-    while at < len(data):
-        assert len(data)-at >= 8, 'truncated Studio header'
-        stamp, length = struct.unpack_from('>ii', data, at)
-        at += 8
-        assert stamp >= previous and 0 < length <= len(data)-at, 'incomplete/out-of-order recording'
-        previous = stamp
-        payload = data[at:at+length]
-        at += length
-        rows.append(dict(sequence=len(rows), timestamp_ms=stamp, payload=payload.hex()))
-    assert rows, 'empty recording'
+def sound_inputs(folder, packets):
+    """The captured packets as the rows the Java oracle reads (`payload`: the packet id then its body, hex; a
+    tick is 50 ms), and the sound packets among them."""
+    rows = [dict(sequence=i, timestamp_ms=p['tick'] * 50, payload=f"{p['id']:02x}{p['hex']}")
+            for i, p in enumerate(packets)]
+    assert rows, 'empty capture'
     (folder / 'packets.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
-    # 119 is ClientboundSoundPacket in pinned protocol 777. Decode and reencode
-    # with the existing official codec below; no handwritten sound decoder.
-    sounds = [r for r in rows if bytes.fromhex(r['payload'])[0] == 119]
+    sounds = [r for r, p in zip(rows, packets) if p['id'] == SOUND_PACKET]
     assert sounds, 'no sound packets'
     path = folder / 'sound-inputs.jsonl'
     path.write_text(''.join(json.dumps(r)+'\n' for r in sounds))
     return path
 
 
-def run_side(label, command, client, folder, decoder):
+def run_side(label, command, folder, decoder):
     folder.mkdir(parents=True, exist_ok=False)
     port = free_port()
     (folder / 'server.properties').write_text(
@@ -67,7 +52,7 @@ def run_side(label, command, client, folder, decoder):
     (folder / 'eula.txt').write_text('eula=true\n')
     player_uuid = str(uuid.UUID(bytes=hashlib.md5(b'OfflinePlayer:Tester').digest(), version=3))
     (folder / 'ops.json').write_text(json.dumps([dict(uuid=player_uuid, name='Tester', level=4, bypassesPlayerLimit=True)]))
-    server, process, serial, transcript, checks = Server(command, folder, label), None, 0, [], []
+    server, serial, transcript, checks = Server(command, folder, label), 0, [], []
 
     def reply(command):
         nonlocal serial
@@ -100,15 +85,10 @@ def run_side(label, command, client, folder, decoder):
         reply('fill 0 200 0 15 205 15 minecraft:air')
         passed('execute if block 4 199 4 minecraft:stone')
         passed('execute if block 4 201 4 minecraft:air')
-        # The final silent command keeps the existing net harness connected
-        # while the console runs this bounded scene. It then stops Studio.
-        env = lab.game_env(HORIZON_NET_REPORT=folder / 'client-report.json',
-            HORIZON_NET_CHAT='/studio record start h331;h331_capture_ready;'
-            '/scoreboard players set #hold h331 0;/studio record stop')
-        with (folder / 'client.log').open('w') as log:
-            process = subprocess.Popen([str(client), '--resources', str(lab.RESOURCES.resolve()),
-                '--server', f'127.0.0.1:{port}', '--name', 'Tester', '--render-distance', '2'],
-                cwd=folder, env=env, stdout=log, stderr=subprocess.STDOUT)
+        with Bot() as bot:
+            bot.join('127.0.0.1', port, 'Tester', render_distance=2)
+            bot.capture('start', filter_ids=[SOUND_PACKET])
+            bot.chat('h331_capture_ready')
             server.wait_for(r'<Tester> h331_capture_ready', timeout=180)
             reply('tp Tester 8.5 201 8.5')
             passed('execute if entity @a[name=Tester,nbt={Health:20f,playerGameType:3}]')
@@ -134,11 +114,9 @@ def run_side(label, command, client, folder, decoder):
                 'nbt={UUID:[I;331,0,0,1],inGround:1b,item:{id:"minecraft:arrow",count:1}}]')
             reply(f'data get entity {UUID}')
             reply(control)
-            process.wait(timeout=180)
-            assert process.returncode == 0
-        report = json.loads((folder / 'client-report.json').read_text())
-        assert report.get('error') is None, report
-        inputs = recorded_sounds(folder)
+            packets = bot.capture('stop')['packets']
+            assert bot.report().get('error') is None, bot.report()
+        inputs = sound_inputs(folder, packets)
         subprocess.run([*decoder, 'decode-recorded', inputs, folder / 'sounds.jsonl'], check=True)
         sounds = [json.loads(line) for line in (folder / 'sounds.jsonl').read_text().splitlines()]
         events = [s['event'] for s in sounds]
@@ -154,15 +132,12 @@ def run_side(label, command, client, folder, decoder):
                     contract_pass=sounds[1]['category'] == 6)
     finally:
         (folder / 'commands.json').write_text(json.dumps(transcript, indent=2)+'\n')
-        if process is not None and process.poll() is None:
-            process.kill(); process.wait()
         server.stop()
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, help='prebuilt server; otherwise build fast')
-    parser.add_argument('--client-binary', type=Path, help='unchanged Studio client; defaults to server binary')
     parser.add_argument('--out', type=Path, help='fresh capture directory; default retains a new run')
     parser.add_argument('--reference-dir', type=Path, help='retained fresh Java capture; never rewritten')
     parser.add_argument('--reference-only', action='store_true')
@@ -175,7 +150,6 @@ def main():
         subprocess.run(['cargo', 'build', '--locked', '--profile', 'fast', '-p', 'horizon-game',
                         '--bin', 'horizon-client'], cwd=lab.ROOT, check=True)
         binary = lab.cargo_target() / 'fast' / ('horizon-client.exe' if os.name == 'nt' else 'horizon-client')
-    client_binary = args.client_binary.resolve(strict=True) if args.client_binary else binary
     lock, jars, libraries = base.verify_artifacts()
     classes, dependencies, _ = oracle_harness.compile_oracle(out, 'VanillaEntitySoundPacketOracle',
         jars, libraries, lock['minecraft']['java_major'])
@@ -185,13 +159,13 @@ def main():
     reference = args.reference_dir.resolve() if args.reference_dir else out
     if not args.reference_dir:
         java = run_side('java', ['java', '-Xmx2g', '-cp', cp, 'net.minecraft.server.Main', 'nogui'],
-                        client_binary, out / 'java', decoder)
+                        out / 'java', decoder)
         assert java['contract_pass'], java
         (out / 'reference.json').write_text(json.dumps(java, indent=2)+'\n')
     if args.reference_only:
         return 0
     rust = run_side('horizon', [binary, '--resources', lab.RESOURCES.resolve(), '--dedicated', '--nogui'],
-                    client_binary, out / 'horizon', decoder)
+                    out / 'horizon', decoder)
     assert json.loads((reference / 'reference.json').read_text())['contract_pass']
     (out / 'report.json').write_text(json.dumps(rust, indent=2)+'\n')
     print(f"Arrow block-hit source: {rust['category']} (expected 6); {len(rust['admission'])} admission/control checks passed")

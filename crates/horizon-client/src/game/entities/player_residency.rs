@@ -7,7 +7,7 @@ pub(super) enum SpecializedSource<'a> {
 }
 use horizon_client::join_seq::{
     residency::{
-        Journal, Kind, Owner, Source,
+        Journal, Kind, Source,
         table::{Location, SourceEntity},
     },
 };
@@ -23,10 +23,8 @@ impl SpecializedSource<'_> {
 
 impl Game<'_> {
     pub(super) fn current_player_resident_location(&self) -> Option<Location> {
-        match self.lan_acting {
-            Some(conn) => self.command_guest(conn)?.residency.location(),
-            None => self.resident_entities.local_player.location(),
-        }
+        let conn = self.lan_acting?;
+        self.command_guest(conn)?.residency.location()
     }
 
     /// Engine UUID consumers retain a specialized owner's immutable identity
@@ -45,18 +43,13 @@ impl Game<'_> {
 
     pub(super) fn resident_target_id(&self, target: Target) -> Option<u32> {
         match target {
-            Target::Player => match self.lan_acting {
-                Some(conn) => self
-                    .command_guest(conn)?
+            Target::Player => {
+                let conn = self.lan_acting?;
+                self.command_guest(conn)?
                     .residency
                     .identity()
-                    .map(|identity| identity.id.get()),
-                None => self
-                    .resident_entities
-                    .local_player
-                    .identity()
-                    .map(|identity| identity.id.get()),
-            },
+                    .map(|identity| identity.id.get())
+            }
             Target::Guest(conn) => self
                 .command_guest(conn)?
                 .residency
@@ -66,37 +59,10 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn bind_local_player_residency(&mut self) {
-        if self.lan_acting.is_some() {
-            return;
-        }
-        let journal = self.resident_entities.table.borrow().producer();
-        let Some(player) = &self.player else {
-            self.resident_entities.local_player.retire();
-            return;
-        };
-        self.resident_entities.local_player.bind(
-            &journal,
-            Owner {
-                dimension: self.dim.key(),
-                kind: Kind::Player,
-            },
-            player.entity_id as u32,
-            Source::LocalPlayer,
-                self.level.player_uuid,
-        );
-    }
-
     pub(super) fn bind_specialized_resident_owners(&mut self, journal: &Journal) {
         self.resident_entities.local_player.rebind(journal);
         let body_id = self.player.as_ref().map(|player| player.entity_id as u32);
-        if self.lan_acting.is_some()
-            || self
-                .resident_entities
-                .local_player
-                .identity()
-                .is_some_and(|identity| Some(identity.id.get()) != body_id)
-        {
+        if self.lan_acting.is_some() {
             self.resident_entities.local_player.extract();
         }
         if let Some(host) = &mut self.lan {
@@ -119,24 +85,6 @@ impl Game<'_> {
         at: Location,
     ) -> Option<SourceEntity<(SpecializedSource<'_>, Target)>> {
         let (source, id, target) = match (at.owner.kind, at.source) {
-            (Kind::Player, Source::LocalPlayer) => {
-                if self.lan_acting.is_some()
-                    || self.resident_entities.local_player.location() != Some(at)
-                {
-                    return None;
-                }
-                let player = self.player.as_ref()?;
-                if self.resident_entities.local_player.identity()?.id.get()
-                    != player.entity_id as u32
-                {
-                    return None;
-                }
-                (
-                    SpecializedSource::Player(player),
-                    player.entity_id as u32,
-                    Target::Player,
-                )
-            }
             (Kind::Player, Source::Guest(conn)) => {
                 let host = self.lan.as_ref()?;
                 let guest = &host.hub.guests[host.hub.guests.connection_index(conn)?];

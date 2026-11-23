@@ -119,6 +119,12 @@ pub fn category(w: &World, e: Entity) -> Option<&'static str> {
     types.types.get(species(w, e)?).map(|t| t.category.as_str())
 }
 
+/// `EntityType.fireImmune` of the species of `e`, from the prepared mob types.
+pub fn fire_immune(w: &World, e: Entity) -> Option<bool> {
+    let types: &'static MobTypes = *TYPES.get()?;
+    types.types.get(species(w, e)?).map(|t| t.flags.fire_immune)
+}
+
 /// The category name of the species `name`, from the prepared mob types.
 pub fn category_of(name: &str) -> Option<&'static str> {
     let types: &'static MobTypes = *TYPES.get()?;

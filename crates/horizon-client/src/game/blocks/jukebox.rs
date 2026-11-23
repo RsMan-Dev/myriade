@@ -427,7 +427,6 @@ mod saved_song_clock_tests {
     #[ignore = "daily"]
     fn actual_start_tick_stop_and_loaded_record_use_the_modeled_clock() {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             game.world.chunks.insert(
                 (0, 0),
                 std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
@@ -580,7 +579,7 @@ mod jukebox_tests;
 #[cfg(test)]
 mod block_change_tests {
     use super::*;
-    use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
     use horizon_client::chunk::Chunk;
     use std::sync::Arc;
 
@@ -598,19 +597,18 @@ mod block_change_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
         game.world

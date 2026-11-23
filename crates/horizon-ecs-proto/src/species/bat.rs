@@ -8,7 +8,7 @@ pub static DEF: Def = Def {
     name: "minecraft:bat",
     goals: &[
         Entry::new(&bat_flutter::MODULE, 0, &bat_flutter::Params::DEFAULT),
-        Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { flap: crate::behaviours::move_emission::Flap::Every { period: 10, flying_only: false, offset: false }, ..crate::behaviours::move_emission::Params::DEFAULT }),
+        Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { flap: crate::behaviours::move_emission::Flap::Every { period: 10, flying_only: false, offset: false }, sounds: false, ..crate::behaviours::move_emission::Params::DEFAULT }),
     ],
     rules: &[crate::rules::RuleEntry::new(&crate::leash::NEVER, &()), crate::rules::RuleEntry::new(&bat_flutter::NO_FALL, &())],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Locomotion, Cap::IgnoresTriggers]),

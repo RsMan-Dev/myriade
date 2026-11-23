@@ -2,11 +2,6 @@
 //! paddling controls, collisions, riding (`positionRider`, `clampRotation`,
 //! dismounting), `BoatItem` placement, `VehicleEntity.hurtServer` breaking,
 //! saving and `AbstractBoatRenderer` with animated paddles.
-mod below_world;
-#[cfg(test)]
-mod friction_tests;
-#[cfg(test)]
-mod lifetime_tests;
 mod placement;
 pub(super) use placement::OutlineFluidRay;
 
@@ -265,9 +260,7 @@ impl Game<'_> {
         self.apply_item_stack_config(super::commands::Target::Boat(id), &kind, stack, true);
         let key = (at[0].floor() as i32 >> 4, at[2].floor() as i32 >> 4);
         self.world.modified.insert(key);
-        if self.serving.is_some() || self.options.dedicated.is_some() {
-            self.native_vehicle_create(kind.as_str(), at);
-        }
+        self.native_vehicle_create(kind.as_str(), at);
         let ctx = self.player_context(None);
         self.post_game_event("minecraft:entity_place", at, ctx);
         if !self.creative {

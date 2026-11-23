@@ -11,9 +11,8 @@ fn a_bullet_that_hits_a_block_plays_its_sound_and_is_gone() {
     if !have_data() {
         return;
     }
-    let (mut r, mut h) = flat_pair();
-    r.set_block(0, 1, 2, "minecraft:stone");
-    r.apply_block_events();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
+    h.set_block(0, 1, 2, "minecraft:stone");
     let flight = Flight { bullet: true, damage: Damage::Fixed(4.0), ..Flight::SNOWBALL };
     let e = launch(&mut h.world, flight, Vec3::new(0.5, 1.5, 0.5), Vec3::new(0.0, 0.0, 0.4), None);
     let mut out = Vec::new();
@@ -25,7 +24,7 @@ fn a_bullet_that_hits_a_block_plays_its_sound_and_is_gone() {
         }
     }
     assert!(h.world.get_entity(e).is_err(), "the bullet is gone at the block");
-    assert!(out.iter().any(|x| matches!(x, HostEvent::Sound { name: "entity.shulker_bullet.hit", .. })), "{out:?}");
+    assert!(out.iter().any(|x| matches!(x, HostEvent::Sound { name, .. } if *name == "entity.shulker_bullet.hit")), "{out:?}");
     assert!(out.iter().any(|x| matches!(x, HostEvent::Particles { kind: "minecraft:explosion", count: 2, .. })), "{out:?}");
 }
 
@@ -35,7 +34,7 @@ fn a_bullet_that_hits_a_creature_plays_its_hurt_and_is_gone() {
     if !have_data() {
         return;
     }
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let z = 2.5_f64.max(1.0 + f64::from(species().width));
     pool_if_aquatic(&mut h, 0, z as i32);
     let cow = ecs_cow(&mut h, 0.5, 1.0, z, 5);
@@ -66,6 +65,6 @@ fn a_bullet_that_hits_a_creature_plays_its_hurt_and_is_gone() {
     h.tick();
     out.extend(h.drain_host_out());
     assert!(before > health(&h, cow), "the creature is hurt");
-    assert!(out.iter().any(|x| matches!(x, HostEvent::Sound { name: "entity.shulker_bullet.hurt", .. })), "{out:?}");
+    assert!(out.iter().any(|x| matches!(x, HostEvent::Sound { name, .. } if *name == "entity.shulker_bullet.hurt")), "{out:?}");
     assert!(out.iter().any(|x| matches!(x, HostEvent::GameEvent { name: "minecraft:entity_damage", .. })), "{out:?}");
 }

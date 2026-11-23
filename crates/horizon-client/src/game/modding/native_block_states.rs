@@ -1242,12 +1242,8 @@ mod crafting_remainder_tests {
                     furnace.items[1].as_ref().map(|s| (s.damage, s.count)),
                     Some((3, 1))
                 );
-                let role = game.options.execution_role;
-                game.options.execution_role =
-                    crate::game::execution_role::ExecutionRole::DedicatedServer;
                 let remainder = game.crafting_remainder(grid[0].as_ref().unwrap()).unwrap();
                 assert_eq!((remainder.damage, remainder.count), (3, 1));
-                game.options.execution_role = role;
             })
         });
     }

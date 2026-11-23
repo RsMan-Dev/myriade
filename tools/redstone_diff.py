@@ -12,12 +12,13 @@ where the blocks differ is printed with the ones that differ. The entities near 
 too (see --keep) but not compared yet.
 
 Vanilla is the client of tools/perf_bench.py's driver (mods/horizon/src/bench: RedstoneDiff snapshots
-the box around every stepped overworld tick; no server, no EULA); Horizon is horizon-ctl on the same
+the box around every stepped overworld tick; no server, no EULA); Horizon is its window client on the same
 commands, reading `simulation blocks`. Needs the same artifacts as perf_bench.py (your own client
-jar, built horizon-client and horizon-ctl, prepared resources).
+jar, built horizon-client, prepared resources).
 """
 import argparse
 import json
+import math
 import os
 import random
 import re
@@ -31,6 +32,8 @@ try:
     from . import lab
 except ImportError:  # running as a script
     import lab
+from bot_lab import Bot  # noqa: E402
+from server_lab import Server  # noqa: E402
 
 ORIGIN = (200, 250, 200)
 SPACING = 24
@@ -351,82 +354,61 @@ def run_vanilla(batch, args, work):
 
 # ---- Horizon -----------------------------------------------------------------------------------
 
-class Ctl:
-    def __init__(self, ctl, sock):
-        self.ctl, self.sock = ctl, str(sock)
-
-    def run(self, *args, check=True):
-        p = subprocess.run([self.ctl, '--socket', self.sock, *map(str, args)], capture_output=True, text=True)
-        if check and p.returncode:
-            raise RuntimeError(f'{args}: {p.stdout} {p.stderr}')
-        return p.stdout
-
-    def json(self, *args):
-        return json.loads(self.run(*args))
-
-    def command(self, line):
-        return self.run('command', line, check=False)
-
-    def game_time(self):
-        return self.json('simulation')['game_time']
+def block_line(b):
+    """A `block` reply as the `x y z state` line that clean_blocks reads, the state with its properties."""
+    props = ','.join(f'{k}={v}' for k, v in sorted(b['properties'].items()))
+    return f"{b['x']} {b['y']} {b['z']} {b['id']}" + (f'[{props}]' if props else '')
 
 
 def run_horizon(batch, args, work):
-    ctl_path = ROOT / 'target' / args.profile / ('horizon-ctl.exe' if os.name == 'nt' else 'horizon-ctl')
-    sock = work / 'horizon.sock'
     game_dir = work / 'horizon-game'
     import shutil
     shutil.rmtree(game_dir, ignore_errors=True)
     game_dir.mkdir(parents=True)
-    env = lab.game_env(HORIZON_HOME=str(game_dir), HORIZON_TELEMETRY_URL='off')
-    ctl = Ctl(ctl_path, sock)
-    launch = subprocess.run([str(ctl_path), '--socket', str(sock), 'launch', '--world', WORLD, '--seed', str(SEED),
-                             '--creative', '--wait', '--offscreen', '--resources', str(args.resources),
-                             '--game-dir', str(game_dir), '--render-distance', '8', '--width', '640', '--height', '360'],
-                            env=env, capture_output=True, text=True, timeout=900)
-    if launch.returncode:
-        raise SystemExit('horizon launch failed: ' + launch.stdout + launch.stderr)
     ox, oy, oz = ORIGIN
-    ctl.command('gamemode spectator')
-    ctl.run('tp', ox + SPACING * 3.5, oy + 6.0, oz + 4.0)
-    time.sleep(8)
     result = {}
-    try:
+    spot = (ox + SPACING * 3.5, oy + 6.0, oz + 4.0)
+    with Server(ROOT / 'target' / args.profile, game_dir, args.resources,
+                {'level-seed': str(SEED), 'gamemode': 'creative', 'view-distance': '8'}) as server, \
+            Bot() as bot:
+        server.command('op Tester')
+        bot.join('127.0.0.1', server.port, 'Tester')
+        bot.command('gamemode spectator')
+        bot.command(f'tp @s {spot[0]} {spot[1]} {spot[2]}')
+        time.sleep(8)
         first = True
         for _, m in batch:
             if first:
                 for line in PRELUDE:
-                    ctl.command(line)
+                    server.command(line)
                 first = False
-            ctl.command('tick freeze')
+            server.command('tick freeze')
             for line in m['setup']:
-                ctl.command(line)
+                server.command(line)
             time.sleep(0.3)
             box = m['box']
             frames = []
 
             def snapshot(tick):
-                # The server's own blocks: `blocks` is this window's copy, which the server's changes reach
-                # in the next tick's broadcast, as vanilla's clients get them.
-                reply = ctl.json('simulation', 'blocks', *box)
-                near = ctl.json('entities', 16)
-                frames.append({'tick': tick, 'blocks': clean_blocks([' '.join(map(str, b[:3])) + ' ' + b[3] for b in reply['blocks']]),
+                # The server's own blocks (the `block` replies of the box, `id` and `properties`), and the entities
+                # within 16 blocks of the joined bot's spot.
+                reply = server.blocks(*box)
+                near = [e for e in server.entities_server()['entities'] if math.dist(e['pos'], spot) <= 16]
+                frames.append({'tick': tick, 'blocks': clean_blocks([block_line(b) for b in reply]),
                                'entities': near})
 
             snapshot(0)
             for tick in range(m['ticks']):
                 for line in m['events'].get(tick, []):
-                    ctl.command(line)
-                before = ctl.game_time()
-                ctl.command('tick step 1')
+                    server.command(line)
+                before = server.game_time()
+                server.command('tick step 1')
                 for _ in range(200):
-                    if ctl.game_time() != before:
+                    if server.game_time() != before:
                         break
                     time.sleep(0.01)
                 snapshot(tick + 1)
             result[m['name']] = frames
-    finally:
-        ctl.run('quit', check=False)
     return result
 
 
@@ -466,7 +448,7 @@ def main():
     p.add_argument('--seed', type=int, default=1)
     p.add_argument('--ticks', type=int, default=40)
     p.add_argument('--only', nargs='*', help='machine names')
-    p.add_argument('--profile', default='fast', help='the cargo profile of the built horizon-client and horizon-ctl')
+    p.add_argument('--profile', default='fast', help='the cargo profile of the built horizon-client')
     p.add_argument('--resources', default=str(ROOT / '.local/horizon-client/26.3'))
     p.add_argument('--near', nargs=4, type=int, metavar=('DX', 'DY', 'DZ', 'R'),
                    help='keep only the setup commands within R blocks of this offset from the machine\'s origin')

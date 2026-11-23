@@ -33,6 +33,11 @@ impl EcsWorld {
         self.world_mut().insert_resource(crate::conversion::ConversionWatched(on));
     }
 
+    /// While `on`, a new target waits for the host (`start_attacking::TargetAsk`) before the brain takes it: set when a mod hears `living_change_target`.
+    pub fn set_target_watched(&mut self, on: bool) {
+        self.world_mut().insert_resource(crate::brain::behaviours::start_attacking::TargetWatched(on));
+    }
+
     /// While `on`, a walking entity emits `step`, `swim`, `hit_ground` and `splash` (`move_events`): set when a vibration listener may hear.
     pub fn set_move_events(&mut self, on: bool) {
         self.world_mut().insert_resource(crate::move_events::MoveEventsOn(on));
@@ -51,6 +56,11 @@ impl EcsWorld {
     /// The answer to a `ConversionAsk`: the new entity, born while the old one stays (None when `cancel`).
     pub fn resolve_conversion(&mut self, e: Entity, cancel: bool) -> Option<Entity> {
         crate::conversion::resolve(self.world_mut(), e, cancel)
+    }
+
+    /// The answer to a `TargetAsk`: the brain takes the target it names, or none (`TargetAnswer::Keep`).
+    pub fn resolve_target(&mut self, e: Entity, answer: crate::brain::behaviours::start_attacking::TargetAnswer) {
+        crate::brain::behaviours::start_attacking::resolve_target(self.world_mut(), e, answer);
     }
 
     /// The old entity of a resolved conversion leaves.

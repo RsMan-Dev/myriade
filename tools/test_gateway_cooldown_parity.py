@@ -49,7 +49,7 @@ def main():
     if args.reference_only:
         return
     inherited = dict(os.environ)
-    for key in ('HORIZON_HOME', 'HORIZON_LAUNCHER_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME'):
+    for key in ('HORIZON_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME'):
         inherited.pop(key, None)
     env = lab.game_env(inherited, HORIZON_TELEMETRY_URL="off", HORIZON_PORTAL_REFERENCE=reference.resolve(),
                        HORIZON_PORTAL_REPORT=(build / 'native.json').resolve(),

@@ -91,7 +91,7 @@ def preflight(sdk, compiler):
     if compiler.strip() != identity["rustc"].strip():
         raise ValueError("full rustc -vV mismatch")
     if f"release: {pinned_release()}\n" not in compiler:
-        raise ValueError(f"probe requires the launcher's pinned rustc {pinned_release()}")
+        raise ValueError(f"probe requires the pinned rustc {pinned_release()}")
     for name, expected in identity["files"].items():
         path = sdk / name
         if not path.resolve().is_relative_to(sdk.resolve()):
@@ -135,11 +135,11 @@ def main():
             source = Path(command[index])
             lines = source.read_text().splitlines(keepends=True)
             insertion = next((i for i, line in enumerate(lines) if line.strip() and not line.startswith(("//", "#!["))), len(lines))
-            lines.insert(insertion, "extern crate horizon_mod_host;\n")
+            lines.insert(insertion, "extern crate horizon_game;\n")
             copied = output / (source.parent.name + "-" + source.name)
             copied.write_text("".join(lines))
             command[index] = str(copied)
-            command.extend(extern("horizon_mod_host"))
+            command.extend(extern("horizon_game"))
         with (output / "commands.log").open("a") as log:
             log.write(json.dumps(list(map(str, command))) + "\n")
             log.flush()
@@ -156,7 +156,7 @@ def main():
     host = next(line.split(": ", 1)[1] for line in compiler.splitlines() if line.startswith("host: "))
     runtime = sysroot / "lib/rustlib" / host / "lib"
     std_runtime = sorted(runtime.glob(f"{prefix}std-*{extension}"))
-    game = sdk_tools.dylib(deps, "horizon_mod_host")
+    game = sdk_tools.dylib(deps, "horizon_game")
     failures = []
 
     def runtime_env(*folders):
@@ -181,7 +181,7 @@ def main():
     if report.returncode != 0 or ("ONE ALLOCATOR" not in report.stdout and not windows):
         failures.append("cross-image allocations do not all go through the game's counting allocator (allocator/report.txt)")
 
-    # 2. The shipped route: the starter mod and the generated executable, with the launcher's flags.
+    # 2. The shipped route: the starter mod and the generated executable, with the installer's flags.
     shipped = output / "shipped"
     shipped.mkdir(exist_ok=True)
     route = ["rustc", "--edition", "2024", "-C", "prefer-dynamic", "-C", "opt-level=3", "-L", f"dependency={deps}",
@@ -197,7 +197,7 @@ def main():
     shipped_exe = shipped / ("horizon-client.exe" if windows else "horizon-client")
     subprocess.run([*route, "--crate-type", "bin", "--crate-name", "horizon_native_game",
                     *(flag for arg in identity["link_args"] for flag in ("-C", f"link-arg={arg}")),
-                    *extern("horizon_client"), *extern("horizon_mod_host"), *extern("mod_api"), *extern("mod_points"), *extern("horizon_mod_package"),
+                    *extern("horizon_client"), *extern("horizon_game"), *extern("mod_api"), *extern("mod_points"), *extern("horizon_mod_package"),
                     "--extern", f"mod_0={shipped / 'libmod_0.rlib'}", "-o", str(shipped_exe), str(shipped / "main.rs")], check=True)
     if windows:
         # std's DLL always exports the allocator shim; the game exports one only if it has its own allocator.

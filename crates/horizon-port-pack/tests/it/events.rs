@@ -579,7 +579,6 @@ fn a_jar_and_a_pack_are_ranked_by_how_many_mods_use_each_name() {
 
 #[test]
 fn all_api_mapping_targets_compile() {
-    let _ = <dyn mod_api::Registrar as mod_api::KeyMappingsRegistrar>::register_key_mapping;
     let _ =
         <dyn mod_api::Registrar as mod_api::EntityAttributesRegistrar>::declare_entity_attributes;
     let _ =

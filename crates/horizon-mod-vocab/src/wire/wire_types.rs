@@ -311,7 +311,7 @@ mod resource_wire_tests {
     use super::*;
     #[test]
     fn registration_runtime_crosses_wire_without_guest_backend() {
-        for dist in [crate::Dist::Client, crate::Dist::DedicatedServer] {
+        for dist in [crate::Dist::DedicatedServer] {
             for enabled in [false, true] {
                 let mut native = crate::RegistrationContext::new();
                 native.runtime = Some(crate::RuntimeEnvironment::new(

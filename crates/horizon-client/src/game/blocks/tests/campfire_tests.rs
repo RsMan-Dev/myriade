@@ -17,9 +17,6 @@ use std::sync::Arc;
 /// the main hand, the click forced onto that block.
 fn campfire_game<'a>(pos: [i32; 3], resources: &'a mut Option<Arc<Resources>>) -> Game<'a> {
     let mut game = server_game(resources);
-    // A local player, not a dedicated server's silent world: criteria and
-    // statistics apply to them.
-    game.options.dedicated = None;
     let state = game
         .pack
         .assets
@@ -42,6 +39,7 @@ fn campfire_game<'a>(pos: [i32; 3], resources: &'a mut Option<Arc<Resources>>) -
     .unwrap();
     // `Player.canEat`: hungry, so the beef's own use can start.
     player.health.food.food = 6;
+    // TODO(phase 2): joueur agissant = invité impossible ici : la faim (food 6), la main (beef) et le clic forcé sont posés sur le joueur local avant le tour ; un tour invité repart de l'état de l'invité et ces réglages ne sont pas encore exposés au fixture.
     game.player = Some(player);
     game.creative = false;
     *game.held_mut() = Some(ItemStack::new("minecraft:beef", 4));
@@ -71,6 +69,7 @@ fn slots(game: &Game<'_>, pos: [i32; 3]) -> usize {
 /// placed nor consumed; the item's own use, eating, starts instead. Without
 /// the sneak the campfire takes the beef, and the use it consumed triggers
 /// ITEM_USED_ON_BLOCK with the stack before the use.
+// TODO(phase 2): joueur local retiré — à faire agir par un joueur connecté (as_guest).
 #[test]
 #[ignore = "daily"]
 fn a_sneak_keeps_the_food_and_placing_it_fires_item_used_on_block() {

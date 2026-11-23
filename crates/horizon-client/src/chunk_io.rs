@@ -1,4 +1,4 @@
-//! `IntegratedServer.reportChunkLoadFailure` / `reportChunkSaveFailure` /
+//! vanilla's `reportChunkLoadFailure` / `reportChunkSaveFailure` /
 //! `sendLowDiskSpaceWarning`: the region storage runs on the server thread and
 //! its writer thread, and the toasts are the window's. Each failure is logged,
 //! checked for low disk space (`MinecraftServer.warnOnLowDiskSpace`) and queued

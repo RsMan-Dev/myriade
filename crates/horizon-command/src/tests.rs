@@ -454,7 +454,7 @@ fn vanilla_error_messages() {
 }
 #[test]
 fn commands_need_allow_commands() {
-    // IntegratedServer.getProfilePermissions: the owner of a world without
+    // vanilla's getProfilePermissions: the owner of a world without
     // Allow Commands is at LevelBasedPermissionSet.ALL.
     let reg = Registries {
         permission: 0,
@@ -1144,15 +1144,9 @@ fn only_a_dedicated_server_has_the_dedicated_commands() {
                 assert!(integrated.find(name).is_none(), "{name}");
                 assert!(server.find(name).is_some(), "{name}");
             }
-            // includeIntegrated: /publish and /unpublish are the integrated
-            // server's alone.
-            for name in ["publish", "unpublish"] {
-                assert!(integrated.find(name).is_some(), "{name}");
-                assert!(server.find(name).is_none(), "{name}");
-            }
             assert_eq!(
                 server.nodes[0].children.len(),
-                integrated.nodes[0].children.len() + dedicated.len() - 2
+                integrated.nodes[0].children.len() + dedicated.len()
             );
         }
     }

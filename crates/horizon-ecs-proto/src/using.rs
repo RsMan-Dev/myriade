@@ -1,6 +1,5 @@
 //! The item an entity uses (`LivingEntity.useItem`): its hand, and the ticks left as the deadline of the use on the timer wheel, never a
 //! counter ticked per tick. Sparse: present only during a use. The totem's pop goes to `UsingOut`; a lethal hit on a holder of a totem is `lethal`. Nothing here names a species.
-use crate::absorption::{self, Absorption};
 use crate::bridge::host_events_more::resolve_death;
 use crate::bridge::ids::id_of;
 use crate::cow::{Clock, Dying, Health, Immune, after, now_of, set_on_fire};
@@ -16,10 +15,9 @@ pub const MAIN: usize = 0;
 pub const OFF: usize = 1;
 /// The item whose `DEATH_PROTECTION` is the totem's (`ItemIds.TOTEM_OF_UNDYING`).
 const TOTEM: &str = "minecraft:totem_of_undying";
-/// `DeathProtection.TOTEM_OF_UNDYING`: regeneration 900 ticks at amplifier 1, fire resistance 800 ticks at amplifier 0, as (kind, amplifier, ticks).
-const TOTEM_EFFECTS: &[(Kind, i32, i32)] = &[(Kind::Regeneration, 1, 900), (Kind::FireResistance, 0, 800)];
-/// The totem's absorption: the vanilla absorption effect at amplifier 1 sets `max(current, 4 * (amplifier + 1))`.
-const TOTEM_ABSORPTION: f32 = 8.0;
+/// `DeathProtection.TOTEM_OF_UNDYING` (datagen report, 26.3): regeneration 900 ticks at amplifier 1, absorption 100 ticks at amplifier 1,
+/// fire resistance 800 ticks at amplifier 0, as (kind, amplifier, ticks).
+const TOTEM_EFFECTS: &[(Kind, i32, i32)] = &[(Kind::Regeneration, 1, 900), (Kind::Absorption, 1, 100), (Kind::FireResistance, 0, 800)];
 
 /// The item in use: the hand, the ticks left as the host set them, and the instant the use ends (`until`, on the entity's own clock).
 #[derive(Component, Clone, Copy, Debug)]
@@ -117,8 +115,6 @@ pub fn try_totem(w: &mut World, e: Entity) -> bool {
     for &(kind, amp, ticks) in TOTEM_EFFECTS {
         effects::add(w, e, kind, amp, ticks);
     }
-    let absorbed = w.get::<Absorption>(e).map_or(0.0, |a| a.0).max(TOTEM_ABSORPTION);
-    absorption::set(w, e, absorbed);
     push(w, UsingEvent::TotemPopped { entity: e, off_hand: slot == OFF });
     true
 }
@@ -138,12 +134,12 @@ pub struct TotemAsked {
 }
 
 /// The end of a lethal hit that `apply_damage` queued: a totem in a hand saves the entity (the host is asked first while it listens,
-/// `TotemWatched`), except from the void (`#bypasses_invulnerability`); else it dies.
+/// `TotemWatched`), except from the `#bypasses_invulnerability` damages (`out_of_world`, `generic_kill`); else it dies.
 pub(crate) fn lethal(w: &mut World, e: Entity, damage: &'static str, by: Option<crate::targeting::Who>, at: [f64; 3], health: f32) {
     if w.get_entity(e).is_err() || w.get::<TotemAsked>(e).is_some() || crate::tear_down::is_dead(w, e) {
         return;
     }
-    if damage != "out_of_world"
+    if !matches!(damage, "out_of_world" | "generic_kill")
         && let Some((slot, _)) = held_totem(w, e)
     {
         if w.get_resource::<TotemWatched>().is_some_and(|t| t.0) {
@@ -179,6 +175,9 @@ fn die(w: &mut World, e: Entity, damage: &'static str, by: Option<crate::targeti
     }
     if crate::conversion::zombie_kill(w, e, by) {
         return;
+    }
+    if let Some(crate::targeting::Who::Player(p)) = by {
+        crate::behaviours::gossip::witness_murder(w, e, p);
     }
     // A stack is no living body: it has no death animation and no fade, it is discarded (`ItemEntity.hurtServer`).
     let quiet = crate::remove_killed::silent(w, e) || w.get::<crate::item::Item>(e).is_some();

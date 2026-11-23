@@ -26,9 +26,7 @@ use horizon_world::registry::BlockStateId;
 use std::{collections::HashMap, time::Instant};
 
 mod cache;
-mod client;
 mod server;
-pub use client::{Inbox, RemoteSource};
 pub use server::{Delivery, Job, Service, Verdict};
 
 /// The custom payload channel, both ways.

@@ -77,7 +77,7 @@ fn registered_conditions_select_content_root_tags_and_structure_modifiers() {
             assert_eq!(value["values"], serde_json::json!(["minecraft:stone"]));
             assert!(value.get("neoforge:conditions").is_none());
         }
-        let spawns = crate::mobs::spawn_selection::StructureSpawns::load(&out);
+        let spawns = crate::mobs::spawn_place::StructureSpawns::load(&out);
         let rabbits = spawns
             .get("minecraft:swamp_hut", "creature")
             .is_some_and(|entry| {

@@ -1,6 +1,6 @@
 //! `ZombieHorse` (`mobs/equine.rs:234`): no mount panic. Its tempt has no items: it has no tag (`tempt_tag`, `food_tag`), so the
 //! tempt never starts, as in the `Mob`. No food tag either (no breeding item).
-use super::Def;
+use super::{Def, HorseGen};
 use crate::mount::{RideParams, RIDE};
 use crate::rules::RuleEntry;
 use crate::behaviours::{run_around_like_crazy, Cap, breed, float, follow_parent, look_at_player, random_look, random_stand, stroll, tempt, Entry};
@@ -18,8 +18,9 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
         Entry::new(&random_stand::MODULE, 9, &random_stand::Params::DEFAULT),
     ],
-    rules: &[crate::rules::RuleEntry::new(&crate::hostile::NOT_ENEMY, &()), crate::rules::RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT), RuleEntry::new(&RIDE, &RideParams::HORSE), RuleEntry::new(&crate::make_mad::ANGRY, &crate::make_mad::Angry::ZOMBIE_HORSE)],
+    rules: &[crate::rules::RuleEntry::new(&crate::rules::pushable::UNPUSHABLE, &()), crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), crate::rules::RuleEntry::new(&crate::hostile::NOT_ENEMY, &()), crate::rules::RuleEntry::new(&crate::hostile::SUN_BURN, &()), crate::rules::RuleEntry::new(&crate::hostile::SUN_BODY, &()), crate::rules::RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT), crate::rules::RuleEntry::new(&crate::leash::QUAD_LEASHEE, &crate::leash::QuadParams { front: 0.04, front_back: 0.41, left_right: 0.18, up: 0.73 }), crate::rules::RuleEntry::new(&crate::leash::GATE, &crate::leash::GateParams(crate::leash::tamed_or_unridden)), RuleEntry::new(&RIDE, &RideParams::HORSE), RuleEntry::new(&crate::make_mad::ANGRY, &crate::make_mad::Angry::ZOMBIE_HORSE)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable, Cap::Rideable]),
     spawn: Some(crate::spawning::SpawnDef { cluster: 6, ..crate::spawning::SpawnDef::MONSTER }), despawn: Some(crate::despawn::DespawnDef::MOB),
+    horse_gen: HorseGen::Zombie,
     ..Def::EMPTY
 };

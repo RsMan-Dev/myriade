@@ -382,7 +382,7 @@ These checks use synthetic packs and temporary profiles; in-game rendering still
 resources and has not been verified for this local batch.
 
 `check <jar> <out>` takes one mod jar on its own, as the launcher's mod browser installs it
-([mod-browser.md](mod-browser.md)): it carries the jar into `<out>/carry/` and reads its class
+(mod-browser.md): it carries the jar into `<out>/carry/` and reads its class
 files (constant pool, superclass, declared methods; no decompiling) for what the carry can't
 take, then writes the verdict to `<out>/check.json`. **Works**: content only, and the code just
 registers it. **Partly**: the content ports, and the code features listed don't (block entities,
@@ -988,20 +988,14 @@ Terrarium License; nothing is published.
 
 ## Measuring "10x"
 
-`tools/perf_bench.py` already measures Horizon against vanilla and vanilla with performance
-mods on the same machine, world and camera path ([benchmark.md](benchmark.md)). With
-`--game neoforge --mod-jars <dir> --deps <dir>` it runs the mods on their own loader (NeoForge
-21.1.259 for ATM10, installed under `.local/neoforge-oracle`, `-Xmx2G` like the launcher),
-driven by the same steps through a dev-only NeoForge port of the bench mod
-(`mods/horizon/src/neoforge-bench`). `--game horizon --port-work <work>` loads a work folder's
-carried-over mods into Horizon. A whole pack (`--pack`, its recommended JVM arguments) is next.
+
 
 | Metric | How | Horizon side |
 |---|---|---|
 | **Load time** | start → title screen; start → in a fresh world, every chunk around the spawn drawn | the same with the ported pack's `.hmod`s enabled |
 | **RAM** | peak and steady RSS of the process, sampled 4 times a second from outside (the whole JVM for Java) | the whole process |
 | **FPS** | the four flight scenes: mean, 1 % and 0.1 % lows, p99 frame time | same |
-| **TPS / MSPT** | a fixed server-load world: N loaded chunks with the pack's machines and mobs placed by the harness fixtures; mean and p99 milliseconds per tick over 60 s (NeoForge: `/neoforge tps` and spark; Horizon: the integrated server's tick times, which today feed only the debug chart, exposed through `horizon-ctl`) | same fixture, the ported content |
+| **TPS / MSPT** | a fixed server-load world: N loaded chunks with the pack's machines and mobs placed by the harness fixtures; mean and p99 milliseconds per tick over 60 s (NeoForge: `/neoforge tps` and spark; Horizon: the integrated server's tick times, which today feed only the debug chart, exposed through `the control socket`) | same fixture, the ported content |
 | **World generation** | chunks per second pregenerating a fixed square (Chunky on NeoForge; Horizon gets a pregeneration command for this) with the pack's worldgen | same |
 | **Disk and download** | install size of the pack against its `.hmod`s | |
 
@@ -1043,15 +1037,14 @@ not lower: Horizon's steady RSS grows 1.1 GB with the mods (61,816 block states 
 vanilla's 35,723; the per-state tables are the next thing to measure), while the JVM stays
 inside its 2 GB heap. Caveats, so none of this is a "10x" claim yet: other sessions and CI
 runners kept the machine's load average between 30 and 56 on 14 threads, so the confidence
-intervals are as wide as the means (`perf_bench.py --table`); Horizon's frames are paced near
+Horizon's frames are paced near
 the display's 144 Hz at 8 chunks; Horizon's title time includes building the content overlay
 (about 5 s for six mods; it was rebuilt on every start then, and is kept for later starts now);
 and the pack runs 1.21.1 against Horizon's 26.3.
 A quiet rerun with more games is the next measurement.
 
 **Where the RAM goes (2026-10-17).** RSS overstates it on macOS. `ps` counts pages the allocator
-freed and marked reusable, and the content tables free a lot at load. `perf_bench.py` now also
-samples the physical footprint (`footprint`, what the OS charges the process). The machine was
+freed and marked reusable, and the content tables free a lot at load. The machine was
 shared and very busy (load average 90-138 on 14 threads). RD 8, the same six mods, one or two
 games per row:
 
@@ -1108,8 +1101,8 @@ content root is kept between starts (#756). What is left at startup:
 
 **Against NeoForge, same 40 mods (2026-10-17).** The 40 data-tier mods carried from ATM10 (the
 42 without Regions Unexplored and MO Structures, whose libraries are only on CurseForge),
-against their jars on NeoForge 21.1.259 with `-Xmx2G`. `perf_bench.py --port-work`, RD 8, one
-game each, load average 80-125 on 14 threads; `--warm` measures a later start:
+against their jars on NeoForge 21.1.259 with `-Xmx2G`. RD 8, one game each, load average 80-125
+ on 14 threads; `--warm` measures a later start:
 
 | game | title / world s | RSS steady / peak MB | footprint steady / peak MB |
 |---|---|---|---|
@@ -1132,7 +1125,7 @@ benchmark; a quiet rerun with repeats is still to do.
 other sessions kept the CPU at 85 to 93 %, so times are upper bounds. The two Modrinth packs were imported with
 `horizon-launcher mods install <slug>` (the browser's Import), ATM10 from its CurseForge zip with `modpack import`
 (CurseForge support is coming soon), then each ported with `--resources` for 26.3 and opened as a survival
-world with every ported mod on (horizon-ctl `launch --dev-mod ...`, from a scratch script).
+world with every ported mod on (`--dev-mod ...`, from a scratch script).
 
 | Pack | Files | Import | Port | Ported mods | Coverage | Declared | World load (resources) | Crashes |
 |---|---|---|---|---|---|---|---|---|

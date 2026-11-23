@@ -3,9 +3,8 @@
 //! players, and takes the same target. Both then call less often. Nothing runs per tick: the damage step calls `on_hurt` for each hit, and a
 //! creature without `Reinforces` (set by the species table) returns at once.
 use crate::attr_mod::{self, AttrMods, Modifier, Operation};
-use crate::cow::{Rng, SpeciesId, SpeciesTable};
+use crate::cow::{Level, Rng, SpeciesId, SpeciesTable};
 use crate::rules::{no_attrs, no_interact, params, Rule};
-use crate::spawn_finalize::{finalize, Finalize};
 use crate::targeting::{self, Target, Who};
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::{Aabb, Vec3};
@@ -17,9 +16,6 @@ const ATTR: &str = "spawn_reinforcements";
 const CALLER_ID: &str = "minecraft:reinforcement_caller_charge";
 const CALLEE_ID: &str = "minecraft:reinforcement_callee_charge";
 
-/// The level's `spawn_mobs` and `spawn_monsters` rules (`ServerLevel.isSpawningMonsters`), written by the host; absent: both on.
-#[derive(Resource, Clone, Copy, Debug)]
-pub struct MonsterSpawning(pub bool);
 
 /// How a species calls reinforcements.
 #[derive(Clone, Copy, Debug)]
@@ -37,8 +33,6 @@ pub struct Params {
     pub callee_charge: f32,
     /// No living player within this many blocks of the spot.
     pub clear_radius: f64,
-    /// How the copy is finalized (`finalizeSpawn` with the reinforcement reason).
-    pub finalize: Finalize,
 }
 impl Params {
     pub const ZOMBIE: Self = Self {
@@ -50,7 +44,6 @@ impl Params {
         caller_charge: 0.05,
         callee_charge: 0.05,
         clear_radius: 7.0,
-        finalize: Finalize::Zombie { jockey: crate::species::lists::CHICKEN },
     };
     /// `ZombifiedPiglin.randomizeReinforcementsChance` sets the base to 0 and draws nothing.
     pub const PIGLIN: Self = Self { spread: 0.0, ..Self::ZOMBIE };
@@ -168,7 +161,8 @@ pub fn on_hurt(w: &mut World, e: Entity, by: Option<Who>) {
     let Some(mut rng) = w.get::<Rng>(e).copied() else { return };
     let roll = rng.next_f64();
     *w.get_mut::<Rng>(e).unwrap() = rng;
-    if roll >= chance || !w.get_resource::<MonsterSpawning>().is_none_or(|m| m.0) {
+    // `ServerLevel.isSpawningMonsters` (the level's rules, in `SpawnEnv`; absent: on).
+    if roll >= chance || !w.get_resource::<crate::spawn_env::SpawnEnv>().is_none_or(|m| m.spawn_mobs && m.monsters) {
         return;
     }
     let (Some(from), Some(sid)) = (w.get::<crate::cow::Pos>(e).map(|p| p.0), w.get::<SpeciesId>(e).map(|s| s.0)) else { return };
@@ -194,12 +188,11 @@ pub fn on_hurt(w: &mut World, e: Entity, by: Option<Who>) {
     }
     let Some((_, corner)) = at else { return };
     let near = crate::spawn_spawner::nearest_sqr(w, [corner.x, corner.y, corner.z]);
-    let copy = crate::spawning::born(w, &species, [corner.x, corner.y, corner.z], seed, near);
+    let mw = w.resource::<Level>().mw.0;
+    let Some(copy) = crate::spawn_natural::born_finalized(w, mw, &species, [corner.x, corner.y, corner.z], seed, near, crate::spawn_reason::SpawnReason::Reinforcement, &mut None) else { return };
     let mut t = Target::new(target, 0, u8::MAX);
     t.must_see = false;
     targeting::set_target(w, copy, t);
-    let special = w.get_resource::<crate::spawn_finalize::Special>().map_or(0.0, |s| s.0);
-    finalize(w, copy, p.finalize, None, crate::spawn_reason::SpawnReason::Reinforcement, special, &mut LegacyRandom::new(seed as i64));
     charge(w, copy, CALLEE_ID, |_| -f64::from(p.callee_charge));
     charge(w, e, CALLER_ID, |old| old - p.caller_charge);
 }

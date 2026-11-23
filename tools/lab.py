@@ -102,19 +102,18 @@ def _remove_scratch_dirs():
 
 
 def game_env(base=None, **extra):
-    """The environment for every run of the game, the launcher or horizon-ctl from a tool or a harness: no audio,
-    fresh scratch folders for the game's home (logs, saves, options), the launcher's home and the XDG folders,
+    """The environment for every run of the game or of a control client from a tool or a harness: no audio,
+    fresh scratch folders for the game's home (logs, saves, options) and the XDG folders,
     so a run never writes into a real player's folders (the game falls back to them when HORIZON_HOME is unset).
     A folder the caller already has in `base` (default os.environ) or passes in `extra` is kept. The scratch folders
     are removed when this process exits."""
     env = dict(os.environ if base is None else base)
     env.update({key: str(value) for key, value in extra.items()})
     env["HORIZON_NO_AUDIO"] = "1"
-    env["HORIZON_LAUNCHER_NO_SELF_UPDATE"] = "1"
     # Local fixtures use real TCP, but need no inbound access from other machines.
     # Network/discovery suites can explicitly set HORIZON_TEST_LOOPBACK=0.
     env.setdefault("HORIZON_TEST_LOOPBACK", "1")
-    for key, prefix in (("HORIZON_HOME", "horizon-home-"), ("HORIZON_LAUNCHER_HOME", "horizon-launcher-home-"),
+    for key, prefix in (("HORIZON_HOME", "horizon-home-"),
                         ("XDG_DATA_HOME", "horizon-xdg-data-"), ("XDG_CONFIG_HOME", "horizon-xdg-config-")):
         if not env.get(key):
             env[key] = _scratch_dir(prefix)

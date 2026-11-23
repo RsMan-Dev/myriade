@@ -14,10 +14,10 @@ A survival dedicated server in a flat world, a world border 20 blocks wide aroun
 - handleSetBeaconPacket: a player opens a beacon and sets Speed without paying; vanilla disconnects them
   (multiplayer.disconnect.generic) and warns "Player <name> tried to set invalid beacon effects".
 
-horizon-bots stand in for the clients (`--attack`, `--raw`). The server runs in a fresh folder with fresh
+myriade-bot stand in for the clients (`--attack`, `--raw`). The server runs in a fresh folder with fresh
 HORIZON_HOME and XDG folders (lab.game_env), on a free port. Build first:
     cargo build --profile fast -p horizon-game --bin horizon-client
-    cargo build --profile fast -p horizon-bots
+    cargo build --profile fast -p myriade-bot
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
@@ -97,7 +97,7 @@ def block_pos(x, y, z):
 
 def bot(bins, port, out, name, behaviour, *extra):
     report = out / f'{name}.json'
-    subprocess.run([bins / f'horizon-bots{EXE}', '--server', f'127.0.0.1:{port}', '--bots', '1',
+    subprocess.run([bins / f'myriade-bot{EXE}', '--server', f'127.0.0.1:{port}', '--bots', '1',
                     '--behaviour', behaviour, '--height', '0', '--seconds', str(SECONDS), '--name', name,
                     '--report', report, *extra],
                    check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=SECONDS + 180)

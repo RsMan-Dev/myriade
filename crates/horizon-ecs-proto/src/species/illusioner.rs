@@ -35,5 +35,6 @@ pub static DEF: Def = Def {
     ],
     rules: &[crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::ILLUSIONER)],
     not_in_peaceful: true,
+    sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY
 };

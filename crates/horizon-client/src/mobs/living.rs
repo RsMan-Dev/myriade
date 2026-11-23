@@ -10,7 +10,7 @@ use horizon_core::{
     position::BlockPos,
     random::RandomSource,
 };
-use horizon_world::native_load_context::{LoopContext, LoopSide};
+use horizon_world::native_load_context::LoopContext;
 use horizon_world::{
     block_landing::LandingEntityKind,
     entity_fluid::{CurrentAccumulator, CurrentTarget},
@@ -2255,7 +2255,6 @@ impl RestitutionWorld for MobRestitution<'_, '_, '_> {
     /// the block's parts, on the side that ticks the mob.
     fn block_bounce_restitution(&mut self, state: BlockStateId) -> Result<f32, ()> {
         let own = self.movement(state)?.coefficients.bounce_restitution;
-        let client_side = self.world.loop_context.side() == LoopSide::Client;
         let contact = crate::block_contact::Contact {
             entity: self.mob.id as i32,
             kind: &self.mob.kind.id,
@@ -2263,7 +2262,7 @@ impl RestitutionWorld for MobRestitution<'_, '_, '_> {
             position: self.on,
         };
         Ok(crate::block_contact::bounce_restitution(
-            &mut self.level.reborrow().on_client(client_side),
+            &mut self.level.reborrow(),
             contact,
             own,
         ))
@@ -2621,7 +2620,6 @@ mod tests {
             }
             let w = MobWorld {
                 mob_maps: horizon_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
-                goal_host: None,
                 live_mobs: None,
                 teams: Default::default(),
                 professions: crate::mobs::villager::profession_table(),
@@ -2753,7 +2751,6 @@ mod tests {
                 .unwrap();
             let w = MobWorld {
                 mob_maps: horizon_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
-                goal_host: None,
                 live_mobs: None,
                 teams: Default::default(),
                 professions: crate::mobs::villager::profession_table(),
@@ -2886,7 +2883,6 @@ mod tests {
         }
         let w = MobWorld {
             mob_maps: horizon_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
-            goal_host: None,
             live_mobs: None,
             teams: Default::default(),
             professions: crate::mobs::villager::profession_table(),
@@ -3030,7 +3026,6 @@ mod tests {
                 player_identity: None,
                 player_selection: None,
                 mob_hooks: None,
-                goal_host: None,
                 live_mobs: None,
                 asks_animal_tame: false,
                 asks_living_destroy_block: false,
@@ -3256,7 +3251,6 @@ mod tests {
             let mut east_edge = [0.0; 2];
             for (i, bordered) in [false, true].into_iter().enumerate() {
                 let w = MobWorld {
-                    goal_host: None,
                     live_mobs: None,
                     border: bordered.then_some(&border),
                     ..w.clone()

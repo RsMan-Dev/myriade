@@ -13,7 +13,7 @@ use horizon_core::nbt::Tag;
 /// Entity.DATA_SHARED_FLAGS_ID: on fire 0x01, invisible 0x20, glowing 0x40 (the saved `Glowing` key, `setGlowingTag`).
 fn shared(w: &World, e: Entity) -> Option<SyncValue> {
     let fire = w.get::<Burning>(e).is_some_and(|b| b.until > now_of(w, e) as i64);
-    let glow = w.get::<crate::nbt::NbtData>(e).is_some_and(|d| matches!(d.0.get(&horizon_core::nbt::JavaString::from("Glowing")), Some(horizon_core::nbt::Tag::Byte(v)) if *v != 0));
+    let glow = w.entity(e).contains::<crate::glowing::Glowing>();
     let bits = i8::from(fire) | i8::from(w.entity(e).contains::<Invisible>()) << 5 | i8::from(glow) << 6;
     (bits != 0).then_some(SyncValue::Byte(bits))
 }

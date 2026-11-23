@@ -142,19 +142,8 @@ impl Hooks for Registration {
 }
 
 fn lan(game: &mut super::Game<'_>) {
-    let port = game
-        .integrated
-        .as_ref()
-        .unwrap()
-        .call(|server| {
-            server.publish(super::super::lan::LanSettings {
-                port: 0,
-                guest_commands: false,
-                force_game_mode: false,
-            })
-        })
-        .expect("integrated server answered publication request")
-        .unwrap();
+    // TODO(phase 2): serveur intégré retiré — même vérification par un invité réel.
+    let port: u16 = todo!("phase 2 : passer par un invité connecté au serveur dédié");
     let nested = |levels: usize| {
         let mut body = vec![7, 0];
         body.extend(std::iter::repeat_n(1, levels));

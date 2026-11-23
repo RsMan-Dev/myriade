@@ -95,6 +95,7 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                 ));
                 assert_eq!(level.datapack_read(game, &handle), Err(E::WrongSession));
                 // The client must use the received snapshot, not this Game's server set.
+                // TODO(phase 2): joueur local retiré — à faire agir par un joueur connecté (as_guest).
                 let declarations = mod_api::__private::datapack_registry_declarations();
                 let remote = mod_api::DatapackCandidate::build(
                     declarations,
@@ -115,7 +116,6 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                 };
                 horizon_client::datapack_net::clear_received();
                 horizon_client::datapack_net::accept(&bytes).unwrap();
-                game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
                 assert_eq!(
                     level.datapack_entries(game, "registry_test:spell"),
                     Some(vec!["registry_test:fire".into()])

@@ -247,7 +247,7 @@ impl Hub {
         };
         // The `ServerChatEvent` counterpart runs here:
         // the game tells the mods, then broadcasts what they left.
-        if crate::native_client_hooks::has_mods() {
+        if crate::native_level_hooks::has_mods() {
             events.push(HostEvent::ChatSubmitted {
                 message: Box::new(message),
                 bound: Box::new(bound),

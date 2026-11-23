@@ -457,8 +457,8 @@ mod tests {
             tags: Arc::from([]),
         };
         with_test_packages(&["one", "two"], || {
-            let context = OwningLoop::new(LoopSide::Client, &source);
-            assert_eq!(context.side(), LoopSide::Client);
+            let context = OwningLoop::new(LoopSide::Server, &source);
+            assert_eq!(context.side(), LoopSide::Server);
             assert_eq!(
                 context.registry("item").as_deref(),
                 Some(&["a:b".to_owned()][..])
@@ -531,7 +531,7 @@ mod tests {
             ]),
             crate::InstanceDirectory::Unix(vec![47, 255]),
             crate::RuntimeEnvironment::new(
-                crate::Dist::Client,
+                crate::Dist::DedicatedServer,
                 "26.3".into(),
                 "test".into(),
                 false,
@@ -563,7 +563,7 @@ mod tests {
         with_test_packages(&["reader", "other"], || {
             with_test_registration_data(data, || {
                 let cx = RegistrationContext::new();
-                assert_eq!(cx.dist(), Dist::Client);
+                assert_eq!(cx.dist(), Dist::DedicatedServer);
                 assert_eq!(cx.game_version(), "26.3");
                 assert_eq!(cx.horizon_version(), "test");
                 assert!(!cx.game_tests_enabled());

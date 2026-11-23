@@ -10,10 +10,11 @@
 use super::{
     Species,
     spawn_rules::{self, Reason},
-    spawn_selection::{self, Category, NaturalLevel},
+    spawn_place::{self, Category, NaturalLevel},
 };
 use crate::chunk::block_entity::Next;
-pub use crate::chunk::block_entity::{CustomSpawnRules, SpawnData, Spawner};
+pub use crate::chunk::block_entity::Spawner;
+use horizon_client_core::trial_config::{CustomSpawnRules, SpawnData};
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use horizon_core::{geometry::Aabb, geometry::Vec3, random::RandomSource};
 
@@ -511,8 +512,8 @@ impl SpawnerExt for Spawner {
                 None => (None, 1.0, 1.0, Category::Misc),
             };
             let spawn_box = match species {
-                Some(s) => spawn_selection::spawn_aabb(s, at[0], at[1], at[2], width, height),
-                None => spawn_selection::spawn_box(at[0], at[1], at[2], width, height),
+                Some(s) => spawn_place::spawn_aabb(s, at[0], at[1], at[2], width, height),
+                None => spawn_place::spawn_box(at[0], at[1], at[2], width, height),
             };
             if !l.no_collision(spawn_box) {
                 continue;
@@ -566,22 +567,22 @@ impl SpawnerExt for Spawner {
                 placed[2].floor() as i32,
             ];
             let scale = cube_scale(&id, &data.entity);
-            let bounds = spawn_selection::spawn_box(
+            let bounds = spawn_place::spawn_box(
                 placed[0],
                 placed[1],
                 placed[2],
                 width * scale,
                 height * scale,
             );
-            let pending = spawn_selection::Pending {
+            let pending = spawn_place::Pending {
                 yaw,
                 fresh: data.unconfigured(),
             };
             let position_ok =
-                spawn_selection::position_ok(l, &id, Reason::Spawner, placed, pending, || {
+                spawn_place::position_ok(l, &id, Reason::Spawner, placed, pending, || {
                     (data.custom_spawn_rules.is_some()
-                        || spawn_selection::mob_spawn_rules(s, l, own[0], own[1], own[2]))
-                        && spawn_selection::spawn_obstruction(
+                        || spawn_place::mob_spawn_rules(s, l, own[0], own[1], own[2]))
+                        && spawn_place::spawn_obstruction(
                             s,
                             l,
                             bounds,

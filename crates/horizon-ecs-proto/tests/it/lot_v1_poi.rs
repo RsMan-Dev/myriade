@@ -1,6 +1,5 @@
-//! The villager's points, lot V1, ECS against `Mob` where the outcome is visible (profession, position): validation, competitors,
-//! assignment, reset, the walk to a potential site and its acquisition. Yield and the home's occupancy are not visible from the
-//! harness (no memory access on the `Mob`) and are not tested here.
+//! The villager's points, lot V1: validation, competitors, assignment, reset, the walk to a potential site and its acquisition.
+//! Yield and the home's occupancy are not tested here.
 use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
@@ -14,7 +13,7 @@ use horizon_ecs_proto::{
     poi::PoiRegistry,
     species::villager::{JOB_SITE, POTENTIAL_JOB_SITE},
 };
-use horizon_client_lib::mobs::{villager, MobWorld};
+use horizon_client_lib::mobs::villager;
 
 /// Mid-morning: the villager works (by night it rests).
 const DAY: i64 = 4000;
@@ -50,7 +49,7 @@ fn villager_at(h: &mut Herd, x: f64, z: f64, seed: u64) -> Entity {
 fn scene() -> Herd {
     let mut h = Herd::with_slab_awake(40, true, false);
     h.world.insert_resource(ClaimIndex::default());
-    let (items, enchantments, trades) = crate::trade_vs_mob::registries();
+    let (items, enchantments, trades) = crate::common::registries();
     h.world.insert_resource(horizon_ecs_proto::behaviours::trade_offers::TradeData { trades, items, enchantments, seed: 0x5EED, sequences: Default::default() });
     h.tick();
     h.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
@@ -79,25 +78,6 @@ fn ecs_validate_drops_a_gone_point() {
     assert!(!present(&h.world, e, &POTENTIAL_JOB_SITE));
 }
 
-/// The `Mob`: the job site goes with its block, and the profession with it (validation, then reset) within 5 ticks.
-#[test]
-fn mob_validate_drops_the_job_site_with_its_block() {
-    if !have_data() {
-        return;
-    }
-    let mut r = MobRef::new(40, false);
-    r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
-    let i = r.add_kind(Vec3::new(3.5, 1.0, 3.5), mob_kind("minecraft:villager"));
-    for _ in 0..40 {
-        r.step(None);
-    }
-    r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:air");
-    for _ in 0..5 {
-        r.step(None);
-    }
-    assert_eq!(r.mobs[i].extra.profession.index(), Some(villager::NONE));
-}
-
 static COMPETE: poi_competitor_scan::Params = poi_competitor_scan::Params { job: &JOB_SITE };
 
 /// Of two villagers of one profession with one job site, the one with less experience loses it.
@@ -119,24 +99,6 @@ fn ecs_competitor_scan_loses_to_a_more_experienced_villager() {
     }
     let kept = [a, b].iter().filter(|&&e| present(&h.world, e, &JOB_SITE)).count();
     assert_eq!(kept, 1, "exactly one of two equal villagers keeps the site");
-}
-
-/// The `Mob`: two villagers of one profession for one job site, exactly one keeps it.
-#[test]
-fn mob_competitor_one_site_one_profession() {
-    if !have_data() {
-        return;
-    }
-    let mut r = MobRef::new(40, false);
-    r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
-    let i = r.add_kind(Vec3::new(3.5, 1.0, 2.5), mob_kind("minecraft:villager"));
-    let j = r.add_kind(Vec3::new(3.5, 1.0, 4.5), mob_kind("minecraft:villager"));
-    for _ in 0..300 {
-        r.step(None);
-    }
-    let farmer = villager::profession_index("farmer").map(Some);
-    let held = [i, j].iter().filter(|&&k| Some(r.mobs[k].extra.profession.index()) == farmer).count();
-    assert_eq!(held, 1);
 }
 
 static YIELD: poi_yield_site::Params = poi_yield_site::Params { job: &JOB_SITE, potential: &POTENTIAL_JOB_SITE, baby: no_baby };
@@ -181,21 +143,6 @@ fn ecs_assign_profession_takes_the_site_within_two_blocks() {
     (poi_assign::ASSIGN.start)(&mut h.world, e, &c);
     assert!(present(&h.world, e, &JOB_SITE));
     assert_eq!(h.world.get::<Profession>(e), Some(&Profession(PoiType::Farmer)));
-}
-
-/// The `Mob`: the composter's point is taken and the villager becomes a farmer within 40 ticks.
-#[test]
-fn mob_assign_takes_the_profession_of_the_site() {
-    if !have_data() {
-        return;
-    }
-    let mut r = MobRef::new(40, false);
-    r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
-    let i = r.add_kind(Vec3::new(3.5, 1.0, 3.5), mob_kind("minecraft:villager"));
-    for _ in 0..40 {
-        r.step(None);
-    }
-    assert_eq!(Some(r.mobs[i].extra.profession.index()), villager::profession_index("farmer").map(Some));
 }
 
 static CLAIM: poi_claim::Params = poi_claim::Params { memory: &POTENTIAL_JOB_SITE, accept: accept_job, range: 48, filter: poi_claim::Filter::Any, on_acquired: no_acquired, on_lost: no_lost };
@@ -270,28 +217,8 @@ fn ecs_go_to_site_walks_then_stops_by_clearing_the_site() {
     assert!(!present(&h.world, e, &POTENTIAL_JOB_SITE));
 }
 
-/// The `Mob`: a villager that has the composter in range walks to it.
-#[test]
-fn mob_go_to_site_walks_to_the_potential_site() {
-    if !have_data() {
-        return;
-    }
-    let mut r = MobRef::new(40, false);
-    // By night the villager rests (activity `rest`): the walk to a site is of the day.
-    r.w = Box::leak(Box::new(MobWorld { day_time: DAY, ..r.w.clone() }));
-    r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
-    let i = r.add_kind(Vec3::new(12.5, 1.0, 3.5), mob_kind("minecraft:villager"));
-    let start = r.mobs[i].position;
-    for _ in 0..300 {
-        r.step(None);
-    }
-    let goal = Vec3::new(3.5, 1.0, 3.5);
-    // Moved at least 3 blocks closer (a villager that stays still, or wanders, fails).
-    assert!(r.mobs[i].position.distance(goal) + 3.0 < start.distance(goal), "from {start:?} to {:?}", r.mobs[i].position);
-}
-
 /// The same walk by the whole ECS brain, no module started by hand: a jobless villager 9 blocks from a composter, by day, acquires the
-/// point, walks to it and takes its profession; the `Mob` one does the same at the same tick (within 3).
+/// point, walks to it and takes its profession.
 #[test]
 fn ecs_villager_walks_to_the_site_and_takes_its_profession_as_the_mob() {
     if !have_data() {
@@ -312,17 +239,5 @@ fn ecs_villager_walks_to_the_site_and_takes_its_profession_as_the_mob() {
     let end = h.world.get::<horizon_ecs_proto::cow::Pos>(e).unwrap().0;
     assert!(end.distance(goal) + 3.0 < start.distance(goal), "the ECS villager did not walk: {start:?} -> {end:?}");
     assert!(matches!(h.world.get::<Profession>(e), Some(Profession(PoiType::Farmer))), "no farmer after 600 ticks");
-    let mut r = MobRef::new(40, false);
-    r.w = Box::leak(Box::new(MobWorld { day_time: DAY, ..r.w.clone() }));
-    r.set_block(SITE[0], SITE[1], SITE[2], "minecraft:composter");
-    let i = r.add_kind(Vec3::new(12.5, 1.0, 3.5), mob_kind("minecraft:villager"));
-    let mut mob_got = None;
-    for t in 0..600 {
-        r.step(None);
-        if mob_got.is_none() && r.mobs[i].extra.profession.index() == villager::profession_index("farmer") {
-            mob_got = Some(t);
-        }
-    }
-    let (a, b) = (got_at.expect("no profession in the ECS"), mob_got.expect("the Mob villager takes no profession in 600 steps"));
-    assert!((a as i64 - b as i64).abs() <= 3, "profession taken at tick {a} (ECS) against {b} (Mob)");
+    assert!(got_at.is_some_and(|t| t < 600), "the profession is taken within 600 ticks");
 }

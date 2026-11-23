@@ -28,8 +28,7 @@ impl Game<'_> {
                     .as_ref()
                     .is_some_and(|host| host.hub.guest(conn).is_some_and(|g| g.placed))
             });
-            let dimension = (self.serving.is_some() || self.options.dedicated.is_some())
-                .then_some(self.dim.id());
+            let dimension = Some(self.dim.id());
             let result = horizon_client::block_contact::in_level(dimension, || f(self));
             self.drain_entity_inside();
             result
@@ -266,10 +265,9 @@ impl Game<'_> {
         let level_up_sound = std::mem::replace(&mut self.level_up_sound, play.level_up_sound);
         // The acting player's sneak is the guest's for the turn.
         let host_sneak = std::mem::replace(&mut self.sneak_held, g.sneaking);
-        // The window's screens are the host's: a command block or mount menu
-        // the guest's action opens is not drawn over the host's world
+        // The window's command block and mount menu are the host's: one the
+        // guest's action opens is not drawn over the host's world
         // (arismoko/horizon#687). The guest's client opens its own.
-        let screen = std::mem::replace(&mut self.screen, Screen::Playing);
         let host_command_block = self.command_block_screen.take();
         let host_mount_menu = std::mem::take(&mut self.mount_menu);
         // The host's crafting grid stays theirs; a crafting table the guest
@@ -429,7 +427,6 @@ impl Game<'_> {
             xp,
             level_up_sound,
             host_sneak,
-            screen,
             host_command_block,
             host_mount_menu,
             craft_size,
@@ -565,7 +562,6 @@ impl Game<'_> {
             xp,
             level_up_sound,
             host_sneak,
-            screen,
             host_command_block,
             host_mount_menu,
             craft_size,
@@ -727,7 +723,6 @@ impl Game<'_> {
         std::mem::swap(&mut self.mount, &mut play.mount);
         std::mem::swap(&mut self.portals.player, &mut play.portal);
         self.container = container;
-        self.screen = screen;
         // A command block the guest's use opened (Player.openCommandBlock).
         let guest_command_block =
             std::mem::replace(&mut self.command_block_screen, host_command_block).map(|s| s.pos());

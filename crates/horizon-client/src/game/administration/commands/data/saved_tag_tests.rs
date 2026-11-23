@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
+use crate::game::{Options, Progress, Settings, load_resources};
 use horizon_client::motion::PlayerMotion;
 use horizon_core::geometry::Vec3;
 use std::collections::HashSet;
@@ -15,19 +15,18 @@ pub(super) fn with_command_game(name: &str, test: impl FnOnce(&mut Game<'_>)) {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(
@@ -40,10 +39,11 @@ pub(super) fn with_command_game(name: &str, test: impl FnOnce(&mut Game<'_>)) {
     ));
     std::fs::create_dir_all(&scratch).unwrap();
     game.world_root = scratch.clone();
+    // TODO(phase 2): assertion sur l'hôte : bind_local_player(uuid 1) lie l'identité de l'hôte ; le joueur invité porte un autre uuid (saved_tag_tests.rs:42)
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(10.5, 200.0, 0.5)).unwrap());
     game.reset_entity_residency();
     game.native_lifecycle
-        .begin_open(mod_api::Authority::IntegratedServer);
+        .begin_open(mod_api::Authority::DedicatedServer);
     crate::game::native_entity_refs::tests::bind_local_player(&mut game, 1, 1);
     game.build_registries();
     game.set_allow_commands(true);

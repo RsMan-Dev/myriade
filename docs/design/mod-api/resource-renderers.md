@@ -14,7 +14,7 @@ says otherwise, this section wins; "ours" marks what Horizon adds.
 - **Registration.** `register_special_model_renderer` (singular, after the
   reference's event) is asked once per process at start, before the first
   resource load, never on a reload; every resource load resolves it into the
-  table. Stage 1 ([how-to](../../modding/src/how-to/client/special-item-renderers.md))
+  table. Stage 1
   implements it.
 - **Duplicates.** A later registration of an id replaces the earlier one,
   vanilla ids included, as the reference does. Ours: one log line names both

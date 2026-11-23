@@ -40,6 +40,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 3, &look_at_player::Params { range: 6.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 4, &random_look::Params::DEFAULT),
     ],
+    caps: Some(super::FREEZE_IMMUNE_CAPS),
     rules: &[crate::rules::RuleEntry::new(&crate::behaviours::shear::SHEAR, &SHEARING)],
     ..Def::EMPTY
 };

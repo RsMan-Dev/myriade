@@ -48,7 +48,7 @@ CLIENT_OWN = re.compile(r"crates/horizon-client/src/(game(\.rs|/)|entry\.rs|main
 
 # (strand, pattern on the edge's path "crate::a::b"); the first match wins. Owners correct strands here.
 RULES = [
-    ("loading", r"^(horizon_mod_package|horizon_mod_wasm|horizon_mod_deps)\b"),
+    ("loading", r"^(horizon_mod_package|horizon_mod_wasm)\b"),
     ("loading", r"^mod_api::(ModEntry|Mods|ModFields|__private::(install|mods|set_mod_enabled|ModPhase|PhaseOwner"
                 r"|current_phase|LoadAccess|check_access|with_test_packages|loaded_mods|LoadedMods"
                 r"|installed_code_ids|mod_index\w*|mark_game_thread|command_argument_types))\b"),

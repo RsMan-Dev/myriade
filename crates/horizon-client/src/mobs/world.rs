@@ -1093,7 +1093,6 @@ fn run_test_world(
     let lid_openers = std::collections::HashMap::new();
     let w = MobWorld {
         mob_maps: horizon_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
-        goal_host: None,
         teams: Default::default(),
         professions: crate::mobs::villager::profession_table(),
         loop_context: crate::test_resources::server_loop_context(),
@@ -1301,6 +1300,16 @@ pub fn leaked_test_world_mut(
     mob_drops: bool,
     build: impl FnOnce(&mut crate::world::World, &horizon_world::registry::BlockRegistry),
 ) -> Option<(&'static MobWorld<'static>, &'static super::MobTypes, *mut crate::world::World)> {
+    leaked_test_world_bordered(mob_drops, None, build)
+}
+
+/// `leaked_test_world_mut` with the world border of the level (`None`: no border), for the walls a mob meets at the border.
+#[cfg(feature = "proto")]
+pub fn leaked_test_world_bordered(
+    mob_drops: bool,
+    border: Option<horizon_core::geometry::border::BorderGeometry>,
+    build: impl FnOnce(&mut crate::world::World, &horizon_world::registry::BlockRegistry),
+) -> Option<(&'static MobWorld<'static>, &'static super::MobTypes, *mut crate::world::World)> {
     let resources: &'static TestResources = TestResources::vanilla()?;
     let TestResources { assets, facts, motion, data, types, biomes, items, collision, suffocation, .. } = resources;
     let registry = assets.registry;
@@ -1315,7 +1324,6 @@ pub fn leaked_test_world_mut(
         Box::leak(Box::new(std::collections::HashMap::new()));
     let w = MobWorld {
         mob_maps: horizon_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
-        goal_host: None,
         teams: Default::default(),
         professions: crate::mobs::villager::profession_table(),
         loop_context: crate::test_resources::server_loop_context(),
@@ -1369,7 +1377,7 @@ pub fn leaked_test_world_mut(
         asks_animal_tame: false,
         asks_living_destroy_block: false,
         asks_baby_spawn: false,
-        border: None,
+        border,
         section_writer: None,
     };
     Some((Box::leak(Box::new(w)), types, blocks))

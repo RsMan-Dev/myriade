@@ -346,7 +346,6 @@ pub(super) mod tests {
     #[ignore = "daily"]
     fn unresolved_profession_preserves_offers_but_cannot_trade_them() {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
             // A mod's profession that is not loaded: read from the save, kept by name.
             use horizon_core::nbt::{Compound, JavaString, Tag};
             let mut data = Compound::default();

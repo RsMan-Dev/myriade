@@ -9,7 +9,30 @@ use crate::behaviours::{
     fox_search_for_items, fox_sleep, fox_stalk_prey, fox_stroll_village, leap_at_target, lookout, look_at_player, melee,
     nearest_target, panic, shelter, stroll, trust,
 };
-use crate::behaviours::{Cap, Cond, Entry};
+use crate::behaviours::{ambient_sound, Cap, Cond, Entry};
+use crate::cow::{Level, Pos, Rng};
+use crate::goals::Online;
+use crate::hostile::{Daylight, PlayerState};
+use bevy_ecs::prelude::*;
+
+/// `Fox.getAmbientSound`: the sleep while asleep; at night (no daylight), one call in ten with no player within 16 blocks, the screech; else the ambient.
+fn ambient(w: &mut World, e: Entity) -> &'static str {
+    if w.get::<crate::behaviours::fox_sleep::FoxSleeping>(e).is_some() {
+        return "entity.fox.sleep";
+    }
+    let at = w.get::<Pos>(e).unwrap().0;
+    // `Level.isBrightOutside`: no daylight in a dimension with a fixed time.
+    let day = w.get_resource::<Level>().is_some_and(|l| !l.mw.0.dimension_type.has_fixed_time) && w.get_resource::<Daylight>().is_some_and(|d| d.0);
+    if !day && w.get_mut::<Rng>(e).unwrap().next_u32() % 10 == 0 {
+        // `Fox.getAmbientSound`: a player within 16 blocks who is not a spectator keeps the screech off.
+        let ps = w.get_resource::<PlayerState>();
+        let near = w.get_resource::<Online>().is_some_and(|o| o.any_near(at.x, at.z, 16.0, |p| !ps.is_some_and(|s| s.spectator(p.id))));
+        if !near {
+            return "entity.fox.screech";
+        }
+    }
+    "entity.fox.ambient"
+}
 
 /// The pose bits (`Fox` entity data: sitting, crouching, interested, pouncing, sleeping, faceplanted, defending).
 const SITTING: u8 = 1;
@@ -86,6 +109,7 @@ pub static DEF: Def = Def {
         Entry::new(&lookout::MODULE, 13, &lookout::Params { chance: 0.02, blocked: SLEEPING | POUNCING | CROUCHING, sit: SITTING, alarm: Some(fox_sleep::alarmed) }),
         Entry::new(&fox_pick_up_loot::MODULE, 0, &fox_pick_up_loot::Params { foods: FOOD, ..fox_pick_up_loot::Params::DEFAULT }),
         Entry::new(&eat_held::MODULE, 0, &eat_held::Params { foods: FOOD, ..eat_held::Params::DEFAULT }),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(80), choose: Some(ambient), loud: &["entity.fox.screech"], ..ambient_sound::Params::DEFAULT }),
     ],
     changes: &[],
     rules: &[crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::FOX)],

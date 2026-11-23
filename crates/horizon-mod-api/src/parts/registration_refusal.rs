@@ -67,7 +67,6 @@ impl PartRegistrar {
             entity_part_states,
             biome_regions,
             controllers,
-            arm_poses,
             structure_types,
             dimensions,
             chunk_generators,

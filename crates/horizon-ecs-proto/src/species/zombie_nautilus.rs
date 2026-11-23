@@ -25,4 +25,5 @@ const RULES: &[crate::rules::RuleEntry] = &[
     crate::rules::RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::TAME_SADDLE_BODY),
     crate::rules::RuleEntry::new(&crate::mount::RIDE, &crate::mount::RideParams::ZOMBIE_NAUTILUS),
     crate::rules::RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT),
+    crate::rules::RuleEntry::new(&crate::leash::GATE, &crate::leash::GateParams(crate::leash::calm_and_unridden)),
 ];

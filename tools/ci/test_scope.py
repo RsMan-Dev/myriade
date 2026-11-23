@@ -29,11 +29,9 @@ HORIZON_CLIENT = [
     # The build script and the native hook tests read the hook targets' sources.
     "crates/horizon-client-render/src", "crates/horizon-world/src", "crates/horizon-items/src",
     "crates/horizon-guest-stack/src/guest_stack_constants.rs", "crates/horizon-mod-wasm/tests/fixture/src",
-    "docs/api/launch-reference.md", "docs/horizon-ctl-commands.md", "docs/modding/examples/src/worldgen.rs",
+    "docs/api/launch-reference.md", "docs/modding/examples/src/worldgen.rs",
     "docs/parity/random-chance-seeded.jsonl", "packaging/executable_link.rs", "packaging/windows/exe.rs",
     "research-lock.json", "tests/fixture_support/item_resource_properties.rs", "tests/fixtures",
-    # shader_packs.rs tests load the sample pack.
-    "crates/horizon-shader-api/packs/traced_shadows",
     # The registered slot-source test loads its pack and program.
     "tools/fixtures/registered_slot_sources",
 ]
@@ -43,7 +41,7 @@ MOD_API_GEN = [
     "Cargo.lock", "crates/horizon-assets/src", "crates/horizon-client", "crates/horizon-client-core/src",
     "crates/horizon-client-render", "crates/horizon-core/src", "crates/horizon-engine-slots", "crates/horizon-items",
     "crates/horizon-mod-api", "crates/horizon-mod-api-macros", "crates/horizon-mod-package/src",
-    "crates/horizon-mod-render", "crates/horizon-mod-runtime/src", "crates/horizon-mod-vocab/behaviours",
+    "crates/horizon-mod-runtime/src", "crates/horizon-mod-vocab/behaviours",
     "crates/horizon-mod-vocab/src", "crates/horizon-world", "packaging/executable_link.rs",
     "tools/layering/mod_vocab_state.json",
 ]
@@ -55,12 +53,10 @@ READERS = {
     "horizon-client": HORIZON_CLIENT,
     # Shares horizon-client's sources, so its unit tests run the same reads.
     "horizon-client-lib": HORIZON_CLIENT,
-    # lang.rs embeds the bundled language files.
+    # lang.rs embeds the bundled English file.
     "horizon-client-core": ["crates/horizon-client/assets/horizon/lang"],
-    # The world's shaders include the HDR look from its pack, and the look pack's tests load the pack.
     "horizon-client-render": [
         "crates/horizon-client/assets/horizon/lang", "crates/horizon-client/assets/horizon/textures/gui",
-        "crates/horizon-shader-api/packs/horizon_hdr",
     ],
     # The daily Character comparator reads the original public-JDK API helper.
     "horizon-core": ["tools/JavaCharacterTables.java"],
@@ -79,14 +75,11 @@ READERS = {
         "tools/mixins/narrow-reference-rule.patch",
     ],
     "horizon-mod-points": MOD_API_GEN,
-    "horizon-mod-render": MOD_API_GEN,
     "horizon-mod-wasm": [*MOD_API_GEN, "crates/horizon-guest-stack/src/guest_stack_constants.rs"],
     "horizon-mod-wasm-wire-loopback": [
         *MOD_API_GEN, "crates/horizon-guest-stack/src/guest_stack_constants.rs", "crates/horizon-mod-wasm/src/prepared.rs",
         "crates/horizon-mod-wasm/tests/fixture/src", "crates/horizon-mod-wasm/tests/support",
     ],
-    "horizon-official": ["packaging/windows/exe.rs"],
-    "horizon-perf": ["crates/horizon-perf-format/tests/fixtures", "tests/fixtures/pacing_slow_frames.hzperf"],
     "horizon-port-pack": ["docs/modpacks/atm10-mods.csv"],
     "horizon-prepare": [
         "crates/horizon-client/src/game/runtime/launch_api.rs", "mods/horizon/src/test/java", "research-lock.json",
@@ -97,12 +90,11 @@ READERS = {
         "packaging/executable_link.rs",
     ],
     "horizon-server-launch": ["docs/hosting.md"],
-    "horizon-shader-api": ["docs/api/shaders-reference-0.2.md", "tools/fixtures/shaderpacks"],
     "horizon-world": ["crates/horizon-core", "Cargo.lock"],
     # Commands (tokens, icons, package), not tests: listed so the scan finds nothing unexplained.
     "xtask": [
         "LICENSES/GPL-3.0.txt", "crates/horizon-client/src", "crates/horizon-mod-vocab/src/hooks",
-        "crates/horizon-perf/web", "crates/horizon-prepare", "crates/horizon-theme", "docs/media/brand",
+        "crates/horizon-prepare", "crates/horizon-theme", "docs/media/brand",
         "mods/horizon/src/test/java", "packaging", "research-lock.json", "tools",
     ],
 }

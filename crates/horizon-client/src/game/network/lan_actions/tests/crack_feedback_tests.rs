@@ -1,6 +1,6 @@
 #![cfg(test)]
 use super::*;
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
+use crate::game::{Options, Progress, Settings, load_resources};
 use horizon_client::{
     chunk::Chunk,
     lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig},
@@ -68,19 +68,18 @@ fn crack_packets_follow_start_clock_and_strict_observer_radius() {
         &root,
         &settings,
         std::time::Instant::now(),
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
+        crate::game::execution_role::ExecutionRole::DedicatedServer,
         &Progress::new(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     let mut game = Game::new(
         &loaded.resources,
         loaded.pack,
         options,
         settings,
-        Audio::default(),
     )
     .unwrap();
     let scratch =
@@ -122,7 +121,6 @@ fn crack_packets_follow_start_clock_and_strict_observer_radius() {
             allow_flight: false,
             seed: 0,
             max_players: 6,
-            integrated: false,
             levels: Default::default(),
             level_seeds: Default::default(),
         },

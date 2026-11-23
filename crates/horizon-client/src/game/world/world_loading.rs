@@ -11,8 +11,8 @@ pub(super) struct WorldRequest {
     pub creative: bool,
     pub create: Option<crate::game::world_options::WorldOptions>,
     pub rule_registry: Arc<horizon_client::gamerules::RuleRegistry>,
-    /// The account the world opens under, for an integrated server
-    /// (`IntegratedServer.getSingleplayerProfile`): its name and UUID.
+    /// The account the world opens under (vanilla's `getSingleplayerProfile`):
+    /// its name and UUID.
     owner: Option<(String, u128)>,
 }
 
@@ -35,15 +35,9 @@ pub(super) struct PreparedWorld {
 }
 
 /// The dedicated server's `Main` takes level.dat_old without asking
-/// (`getUnfixedDataTagWithFallback`): there is no world list to recover from. The integrated
-/// server's world opens from that list, which offers the recovery instead, whatever the launch
-/// configuration says.
-fn fall_back_to_level_dat_old_without_asking(
-    role: execution_role::ExecutionRole,
-    save_root: &std::path::Path,
-    folder: &str,
-) {
-    if role.is_dedicated_server() && horizon_client::save::fall_back_to_level_dat_old(save_root) {
+/// (`getUnfixedDataTagWithFallback`): there is no world list to recover from.
+fn fall_back_to_level_dat_old_without_asking(save_root: &std::path::Path, folder: &str) {
+    if horizon_client::save::fall_back_to_level_dat_old(save_root) {
         log::warn!("Horizon: level.dat of \"{folder}\" did not read; level.dat_old took its place");
     }
 }
@@ -69,7 +63,7 @@ impl WorldRequest {
         })
     }
 
-    /// The account this world opens under (`IntegratedServer.getSingleplayerProfile`):
+    /// The account this world opens under (vanilla's `getSingleplayerProfile`):
     /// a world older builds made under the offline profile moves its owner to it at
     /// open. A dedicated server has no single-player owner and leaves it unset.
     pub fn owned_by(mut self, player: &str, owner: u128) -> Self {
@@ -139,7 +133,7 @@ impl WorldRequest {
         // openWorldLoadLevelData: level data that does not read is RecoverWorldDataScreen's to
         // handle (the title screen shows it); a world opened another way must not become a
         // new one with a random seed under the same name.
-        fall_back_to_level_dat_old_without_asking(options.execution_role, &save_root, &folder);
+        fall_back_to_level_dat_old_without_asking(&save_root, &folder);
         if let Some(issue) = horizon_client::save::level_data_needs_recovery(&save_root) {
             let why = match issue {
                 horizon_client::save::DatIssue::Missing => "level.dat is missing".to_owned(),
@@ -190,7 +184,7 @@ impl WorldRequest {
             ..Level::default()
         });
         let mut level = level;
-        // `IntegratedServer.setSingleplayerProfile`: a world older Horizon builds made
+        // Vanilla's `setSingleplayerProfile`: a world older Horizon builds made
         // under the offline profile moves its owner to the account at open — the player
         // file, its `UUID` and level.dat's `singleplayer_uuid`. Its entities follow as
         // their chunks load (`owner_migration`, `entity_nbt::migrate_player_uuid`).
@@ -198,7 +192,7 @@ impl WorldRequest {
             let old = horizon_protocol::crypto::offline_uuid(&player);
             (old != account).then(|| {
                 if created {
-                    // `IntegratedServer.initServer` saves with the profile before the first
+                    // Vanilla's `initServer` saves with the profile before the first
                     // tick: a world made under the account names it from its first level.dat.
                     level.player_uuid = Some(horizon_client::lan::playerdata::uuid_ints(account));
                 } else if horizon_client::lan::playerdata::migrate_owner(
@@ -258,10 +252,6 @@ impl WorldRequest {
             horizon_client::save::biome_regions::open(&save_root)
                 .map_err(|why| format!("Failed to load world \"{folder}\": {why}"))?;
         }
-        if let Some(d) = &options.dimension {
-            level.dimension = d.clone();
-            level.position = None;
-        }
         // Bone meal's and saplings' features, over the world's data packs like its generator:
         // a pack's tree is a feature here too. The same entries, so the bundle loads once.
         growth::install_live_features(
@@ -318,7 +308,7 @@ impl WorldRequest {
             None,
         )?;
         drop(streaming_step);
-        streaming.radius = settings.render_distance;
+        streaming.radius = settings.view_distance;
         let mut world = Game::world_for_mods(res.facts().air, level.seed);
         world.attachments = save.load_attachments();
         world.shape = shape;
@@ -327,22 +317,9 @@ impl WorldRequest {
         )
         .fast_lava;
         world.game_time = level.time;
-        world.day_time = options.time.unwrap_or(level.day_time);
+        world.day_time = level.day_time;
         world.end_clock = level.end_clock.unwrap_or(level.time);
         world.weather = level.weather;
-        if let Some(w) = options.weather.as_deref() {
-            // /weather: clear, rain or thunder for a long duration.
-            let (rain, thunder) = (w != "clear", w == "thunder");
-            world.weather = horizon_client::world::Weather {
-                clear_time: if w == "clear" { 6000 } else { 0 },
-                rain_time: 6000,
-                thunder_time: 6000,
-                raining: rain,
-                thundering: thunder,
-                rain_level: if rain { (1.0, 1.0) } else { (0.0, 0.0) },
-                thunder_level: if thunder { (1.0, 1.0) } else { (0.0, 0.0) },
-            };
-        }
 
         // Persist new metadata on the worker too, before publishing the world.
         if !save_root.join("level.dat").exists() {
@@ -1049,18 +1026,6 @@ pub(super) fn make_streaming(
             pack.context_with(biomes.clone()),
             res.threads(),
         )
-    } else if options.test_terrain && dim == Dim::Overworld {
-        let inner = Arc::new(TestTerrain::new(pack.assets.registry, res.biomes())?);
-        Streaming::new(
-            Arc::new(Persistent {
-                inner,
-                save: save.clone(),
-                registry: pack.assets.clone(),
-                biomes: biomes.clone(),
-            }),
-            pack.context_with(biomes.clone()),
-            res.threads(),
-        )
     } else if let Some(level) = mod_terrain(
         world_root,
         &options.resources,
@@ -1180,7 +1145,7 @@ pub(super) fn make_streaming(
         save.load_forced_chunks(),
         save.load_mod_tickets(|id| mod_api::TicketController::from_id(id).map(|c| c.slot())),
     );
-    streaming.radius = settings.render_distance;
+    streaming.radius = settings.view_distance;
     let facts = horizon_world::dimension_type::DimensionFacts::of_builtin_level(
         horizon_core::LevelKey::builtin_or_overworld(dim.id()),
     );
@@ -1192,44 +1157,28 @@ pub(super) fn make_streaming(
 mod tests {
     use super::*;
 
-    /// A world whose level.dat does not read but whose level.dat_old does: only the
-    /// dedicated server restores it unasked. Every role here carries the launch configuration
-    /// (`options.dedicated`) a dedicated server and the integrated server thread both have, so
-    /// it cannot be what decides.
+    /// A world whose level.dat does not read but whose level.dat_old does: the server
+    /// restores it unasked.
     #[test]
-    fn only_the_dedicated_role_takes_level_dat_old_unasked() {
-        use execution_role::ExecutionRole::{Client, DedicatedServer, IntegratedServer};
-        for (role, restored) in [
-            (DedicatedServer, true),
-            (IntegratedServer, false),
-            (Client, false),
-        ] {
-            let dir = std::env::temp_dir().join(format!(
-                "horizon-level-dat-old-{role:?}-{}",
-                std::process::id()
-            ));
-            let _ = std::fs::remove_dir_all(&dir);
-            Level {
-                name: "Recovered".into(),
-                ..Level::default()
-            }
-            .write(&dir)
-            .unwrap();
-            std::fs::copy(dir.join("level.dat"), dir.join("level.dat_old")).unwrap();
-            std::fs::write(dir.join("level.dat"), b"not a level").unwrap();
-            let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-            options.dedicated = Some(Vec::new());
-            options.execution_role = role;
-
-            fall_back_to_level_dat_old_without_asking(options.execution_role, &dir, "world");
-
-            assert_eq!(
-                horizon_client::save::level_dat_issue(&dir, false).is_none(),
-                restored,
-                "{role:?}"
-            );
-            let _ = std::fs::remove_dir_all(&dir);
+    fn takes_level_dat_old_unasked() {
+        let dir = std::env::temp_dir().join(format!(
+            "horizon-level-dat-old-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        Level {
+            name: "Recovered".into(),
+            ..Level::default()
         }
+        .write(&dir)
+        .unwrap();
+        std::fs::copy(dir.join("level.dat"), dir.join("level.dat_old")).unwrap();
+        std::fs::write(dir.join("level.dat"), b"not a level").unwrap();
+
+        fall_back_to_level_dat_old_without_asking(&dir, "world");
+
+        assert!(horizon_client::save::level_dat_issue(&dir, false).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1697,7 +1646,6 @@ mod tests {
     fn both_server_roles_record_regions_before_world_generation() {
         mod_platform::__private::initialize().unwrap();
         use super::super::native_entity_refs::tests::with_game_role;
-        use execution_role::ExecutionRole::{DedicatedServer, IntegratedServer};
         struct Regions;
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Regions {
@@ -1728,13 +1676,13 @@ mod tests {
             }
         }
         let root = PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        for role in [IntegratedServer, DedicatedServer] {
+        {
             let scratch = tempfile::tempdir().unwrap();
             let world = scratch.path().join("world");
             mod_api::testing::with_dispatch(
                 vec![mod_api::ModEntry::new("region_fixture", Box::new(Regions))].into(),
                 || {
-                    with_game_role(root.clone(), role, |game| {
+                    with_game_role(root.clone(), |game| {
                         let request = WorldRequest {
                             owner: None,
                             save_root: world.clone(),
@@ -1752,7 +1700,7 @@ mod tests {
                         )
                         .unwrap()
                         .unwrap();
-                        assert_eq!(layout.regions.len(), 1, "{role:?}");
+                        assert_eq!(layout.regions.len(), 1);
                         assert_eq!(layout.regions[0].id, "region_fixture:ice");
                         assert_eq!(layout.regions[0].weight, 3);
                         assert_eq!(layout.regions[0].points[0].biome, "minecraft:ice_spikes");
@@ -1796,13 +1744,13 @@ mod unused_feature_startup_tests {
             &resources,
             &settings,
             Instant::now(),
-            execution_role::ExecutionRole::IntegratedServer,
+            execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = resources;
-        options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = execution_role::ExecutionRole::DedicatedServer;
         for (case, height) in [("valid", 0), ("invalid", -1)] {
             let root = std::env::current_dir().unwrap().join(case);
             let pack = root.join("datapacks/h259");
@@ -1901,13 +1849,13 @@ mod unused_feature_preservation_tests {
             &resources,
             &settings,
             Instant::now(),
-            execution_role::ExecutionRole::IntegratedServer,
+            execution_role::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = resources;
-        options.execution_role = execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = execution_role::ExecutionRole::DedicatedServer;
         let root = std::env::current_dir().unwrap().join("preservation");
         let pack = root.join("datapacks/h259");
         let entries = pack.join("data/controls/worldgen/feature");

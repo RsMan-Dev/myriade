@@ -82,8 +82,13 @@ pub static ZOMBIE_NAUTILUS: Table = registry("variant", NAUTILUS_LIST, &[0, 1], 
 /// `Parrot.finalizeSpawn`: `Util.getRandom(Variant.values())` always (the group's value does not override it).
 pub static PARROT: Table = Table { redraw: true, ..uniform(5, &[0, 1, 2, 3, 4]) };
 /// `Horse.finalizeSpawn`: the group's colour, else one of 7; the markings follow (`spawn_draw`).
-pub static HORSE: Table = uniform(7, &[0, 1, 2, 3, 4, 5, 6]);
+pub static HORSE: Table = Table {
+    component_names: &["white", "creamy", "chestnut", "brown", "black", "gray", "dark_brown"],
+    ..uniform(7, &[0, 1, 2, 3, 4, 5, 6])
+};
 /// `Llama.finalizeSpawn`: the group's variant, else one of 4.
-pub static LLAMA: Table = uniform(4, &[0, 1, 2, 3]);
+pub static LLAMA: Table = Table { component_names: &["creamy", "white", "brown", "gray"], ..uniform(4, &[0, 1, 2, 3]) };
+/// `MushroomCow.Variant` (red, brown): the colour the mooshroom reports as its component; not drawn from this table.
+pub static MUSHROOM: Table = Table { component_names: &["red", "brown"], ..uniform(2, &[0, 1]) };
 /// `Salmon`: small 30, medium 50, large 15 (`WeightedList`), saved as the string `type`.
 pub static SALMON: Table = Table { key: "type", pick: Pick::Weighted(&[(0, 30), (1, 50), (2, 15)]), ids: &[0, 1, 2], names: &["small", "medium", "large"], ..Table::EMPTY };

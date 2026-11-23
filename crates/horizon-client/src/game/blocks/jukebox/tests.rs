@@ -24,7 +24,6 @@ fn with_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> Option<R> {
     let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES")?);
     let mut answer = None;
     crate::game::native_entity_refs::tests::with_game_at(root, |game| {
-        game.options.dedicated = Some(Vec::new());
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

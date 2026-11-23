@@ -7079,7 +7079,7 @@ fn structure_modifier_mod(dir: &Path, modifiers: &[(&str, &str)]) -> ContentMod 
 
 #[test]
 fn structure_modifiers_apply_phases_and_reload_without_stale_spawns() {
-    use crate::mobs::spawn_selection::StructureSpawns;
+    use crate::mobs::spawn_place::StructureSpawns;
     let base = structure_modifier_base("structure-modifiers-reload");
     let scratch = base.parent().unwrap();
     let m = structure_modifier_mod(
@@ -7185,7 +7185,7 @@ fn structure_modifiers_apply_phases_and_reload_without_stale_spawns() {
 
 #[test]
 fn structure_modifiers_remove_keeps_empty_override_and_clear_removes_it() {
-    use crate::mobs::spawn_selection::StructureSpawns;
+    use crate::mobs::spawn_place::StructureSpawns;
     let base = structure_modifier_base("structure-modifiers-clear");
     let scratch = base.parent().unwrap();
     let out = scratch.join("out");
@@ -7270,7 +7270,7 @@ fn structure_modifiers_unknown_targets_and_types_warn_and_preserve_base() {
 
 #[test]
 fn structure_modifiers_follow_mod_order_and_use_overlaid_definitions() {
-    use crate::mobs::spawn_selection::StructureSpawns;
+    use crate::mobs::spawn_place::StructureSpawns;
     let base = structure_modifier_base("structure-modifiers-overlay");
     let scratch = base.parent().unwrap();
     let first = folder_mod(
@@ -7365,7 +7365,7 @@ fn structure_modifiers_and_biome_modifier_reject_out_of_range_spawns() {
 
 #[test]
 fn structure_modifiers_boundary_count_samples_through_reader() {
-    use crate::mobs::spawn_selection::{StructureSpawns, sample_count};
+    use crate::mobs::spawn_place::{StructureSpawns, sample_count};
     use horizon_core::random::LegacyRandom;
 
     let base = structure_modifier_base("structure-modifiers-boundary");
@@ -7420,7 +7420,7 @@ fn structure_modifiers_evaluate_conditions_before_required_fields() {
             .unwrap()
             .is_empty()
     );
-    let loaded = crate::mobs::spawn_selection::StructureSpawns::load(&out);
+    let loaded = crate::mobs::spawn_place::StructureSpawns::load(&out);
     assert_eq!(
         loaded.get("minecraft:hut", "creature").unwrap().spawns[0].entity,
         "minecraft:rabbit"
@@ -7433,7 +7433,7 @@ fn structure_modifiers_evaluate_conditions_before_required_fields() {
 #[test]
 #[ignore = "daily"]
 fn structure_modifiers_prepared_root_reloads_spawn_overrides() {
-    use crate::mobs::spawn_selection::StructureSpawns;
+    use crate::mobs::spawn_place::StructureSpawns;
     let Some(base) = prepared() else {
         return;
     };
@@ -7486,7 +7486,7 @@ fn structure_modifiers_prepared_root_reloads_spawn_overrides() {
 
 #[test]
 fn structure_modifiers_bundle_spawns_without_modifier_preserve_individual_files() {
-    use crate::mobs::spawn_selection::StructureSpawns;
+    use crate::mobs::spawn_place::StructureSpawns;
     let base = structure_modifier_base("structure-modifiers-bundle-only");
     let out = base.parent().unwrap().join("out");
     let m = folder_mod(

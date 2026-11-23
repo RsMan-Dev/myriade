@@ -3,7 +3,7 @@
 use horizon_client_lib::mobs::MobWorld;
 use crate::behaviours::{bed::Sleeping, breed::{BreedData, Params}, follow_parent, hurt_by, item_pickup::Pickup, move_towards_restriction::Restriction};
 use crate::bridge::{host::EcsWorld, view};
-use crate::cow::{box_at, Body, Bounds, GrowAt, MoveTo, Nav, Pos, Sizes};
+use crate::cow::{GrowAt, MoveTo, Nav, Pos, Sizes};
 use crate::goals::{self, AiPaused, Look, Looking};
 use crate::raids::Aggressive;
 use crate::targeting::{self, Target, Who};
@@ -68,6 +68,11 @@ impl EcsWorld {
         view::mark(w, e);
     }
 
+    /// `IronGolem.setPlayerCreated`: a golem built by a player refuses that player as a target.
+    pub fn set_player_created(&mut self, e: Entity, on: bool) {
+        crate::behaviours::hurt_by::set_player_created(self.world_mut(), e, on);
+    }
+
     /// The host's AI pause: the marker is posed or taken, and the view is marked since the follower reads it.
     pub fn set_ai_paused(&mut self, e: Entity, on: bool) {
         let w = self.world_mut();
@@ -83,7 +88,9 @@ impl EcsWorld {
     /// its own box back. A creature already in that state is left as it is.
     pub fn set_baby(&mut self, e: Entity, baby: bool) {
         let w = self.world_mut();
-        let (Some(s), Some(p)) = (w.get::<Sizes>(e).copied(), w.get::<Pos>(e).map(|p| p.0)) else { return };
+        if w.get::<Sizes>(e).is_none() || w.get::<Pos>(e).is_none() {
+            return;
+        }
         if baby == w.get::<GrowAt>(e).is_some() {
             return;
         }
@@ -92,13 +99,6 @@ impl EcsWorld {
             follow_parent::make_baby(w, e, ticks);
         } else {
             w.entity_mut(e).remove::<GrowAt>();
-            if let Some(mut b) = w.get_mut::<Body>(e) {
-                b.width = s.adult.0;
-                b.height = s.adult.1;
-            }
-            if let Some(mut b) = w.get_mut::<Bounds>(e) {
-                b.0 = box_at(p, s.adult.0, s.adult.1);
-            }
         }
         view::mark(w, e);
     }
@@ -124,6 +124,16 @@ impl EcsWorld {
         } else {
             let d = crate::behaviours::item_pickup::Params::DEFAULT;
             w.entity_mut(e).insert(Pickup { reach: d.reach, whole_stack: d.whole_stack, picks_up: on });
+        }
+    }
+
+    /// `Entity.setInvulnerable`: the `Invulnerable` marker, present when `on` and absent otherwise.
+    pub fn set_invulnerable(&mut self, e: Entity, on: bool) {
+        let w = self.world_mut();
+        if on {
+            w.entity_mut(e).insert(crate::invulnerable::Invulnerable);
+        } else {
+            w.entity_mut(e).remove::<crate::invulnerable::Invulnerable>();
         }
     }
 

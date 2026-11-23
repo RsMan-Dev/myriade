@@ -31,6 +31,8 @@ pub struct Leash {
     pub holder: Holder,
     /// `Leashable.angularMomentum` (the yaw turns by it each tick, with a friction).
     pub spin: f64,
+    /// Both ends support a quad lead: the four corners pull (`checkElasticInteractions`), chosen when the lead goes on.
+    pub quad: bool,
     /// The block the slack lead last asked a path to (a path is asked again when the holder's side moves, not every tick).
     goal: [i32; 3],
 }
@@ -88,6 +90,65 @@ fn equip(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
 #[derive(Component)]
 pub struct NoLead;
 pub static NEVER: Rule = Rule { name: "no_leash", equip: |w, e, _| { w.entity_mut(e).insert(NoLead); }, attrs: no_attrs, interact: crate::rules::no_interact };
+/// The quad attachment points of a creature, as fractions of its width (`front`, `front_back`, `left_right`) and height (`up`).
+#[derive(Clone, Copy, Debug)]
+pub struct QuadParams {
+    pub front: f64,
+    pub front_back: f64,
+    pub left_right: f64,
+    pub up: f64,
+}
+/// The creature takes a quad lead (`Leashable.supportQuadLeash`), with its own points.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct QuadLead(pub QuadParams);
+/// The creature holds a quad lead (`supportQuadLeashAsHolder`).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct QuadHolder;
+pub static QUAD_LEASHEE: Rule = Rule {
+    name: "quad_leash",
+    equip: |w, e, p| {
+        let p = *params::<QuadParams>(p);
+        w.entity_mut(e).insert(QuadLead(p));
+    },
+    attrs: no_attrs,
+    interact: crate::rules::no_interact,
+};
+pub static QUAD_HOLDER: Rule = Rule { name: "quad_leash_holder", equip: |w, e, _| { w.entity_mut(e).insert(QuadHolder); }, attrs: no_attrs, interact: crate::rules::no_interact };
+/// A creature's own test on a lead put on it (its `canBeLeashed` override); a creature without one takes a lead.
+#[derive(Component, Clone, Copy)]
+pub struct LeashGate(pub fn(&World, Entity) -> bool);
+/// The parameters of `GATE`: the test the species sets.
+#[derive(Clone, Copy)]
+pub struct GateParams(pub fn(&World, Entity) -> bool);
+pub static GATE: Rule = Rule {
+    name: "leash_gate",
+    equip: |w, e, p| {
+        let g = params::<GateParams>(p).0;
+        w.entity_mut(e).insert(LeashGate(g));
+    },
+    attrs: no_attrs,
+    interact: crate::rules::no_interact,
+};
+/// `Nautilus.canBeLeashed`: not while aggravated.
+pub fn not_angry(w: &World, e: Entity) -> bool {
+    !crate::behaviours::neutral_anger::is_angry(w, e)
+}
+/// `isMobControlled` is false: no mob rides it (a player rider does not count).
+pub fn no_mob_rider(w: &World, e: Entity) -> bool {
+    !matches!(crate::mount::rider_of(w, e), Some(crate::targeting::Who::Entity(_)))
+}
+/// `ZombieNautilus.canBeLeashed`: not aggravated, and no mob rides it.
+pub fn calm_and_unridden(w: &World, e: Entity) -> bool {
+    not_angry(w, e) && no_mob_rider(w, e)
+}
+/// `ZombieHorse.canBeLeashed`: tamed, or no mob rides it.
+pub fn tamed_or_unridden(w: &World, e: Entity) -> bool {
+    w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0.is_some()) || no_mob_rider(w, e)
+}
+/// `SulfurCube.canBeLeashed` (`hasBodyItem`): a block is held in its body.
+pub fn holds_body(w: &World, e: Entity) -> bool {
+    w.get::<crate::behaviours::swallow_hold::Held>(e).is_some()
+}
 /// `Mob.canBeLeashed` (`!(this instanceof Enemy)`) for a species no rule settles: a creature with goals that is not a monster, unless it
 /// carries `NEVER`. A monster that is leashable anyway (hoglin, zoglin, zombie horse) carries `LEASH`.
 pub fn equip_default(w: &mut World, e: Entity, name: &str) {
@@ -117,7 +178,7 @@ pub fn is_leashed(w: &World, e: Entity) -> bool {
 pub fn held_by(w: &World, h: Holder) -> Vec<Entity> {
     w.get_resource::<Leashes>().map_or_else(Vec::new, |l| l.held_by(h).to_vec())
 }
-pub use crate::rules::leash::{HolderState, elastic_pull, knot_state};
+pub use crate::rules::leash::{HolderState, elastic_pull, knot_state, quad_pull};
 fn player_state(p: Player) -> HolderState {
     // The bench keeps no box for its players: the standing one (0,6 by 1,8).
     let position = Vec3::new(p.x, p.y, p.z);
@@ -129,6 +190,10 @@ pub fn attach(w: &mut World, e: Entity, holder: Holder) -> bool {
     let Some(b) = w.get::<Bounds>(e).map(|b| b.0) else { return false };
     let Some(state) = holder_state(w, holder) else { return false };
     if center_of(b).distance(state.center) > l.snap {
+        return false;
+    }
+    let gate = w.get::<LeashGate>(e).map(|g| g.0);
+    if gate.is_some_and(|g| !g(w, e)) {
         return false;
     }
     attach_from_save(w, e, holder)
@@ -143,7 +208,8 @@ pub fn attach_from_save(w: &mut World, e: Entity, holder: Holder) -> bool {
         return false;
     }
     let goal = [i32::MIN; 3];
-    w.entity_mut(e).insert((Leash { holder, spin: 0.0, goal }, Moving));
+    let quad = w.get::<QuadLead>(e).is_some() && matches!(holder, Holder::Entity(h) if w.get::<QuadHolder>(h).is_some());
+    w.entity_mut(e).insert((Leash { holder, spin: 0.0, quad, goal }, Moving));
     w.get_resource_or_insert_with(Leashes::default).held.entry(holder).or_default().push(e);
     w.resource_mut::<Events>().leashed.push(e);
     true
@@ -250,8 +316,13 @@ pub(crate) fn tick(
             continue;
         }
         let stretched = is_stretched(distance, k.elastic, state.width, body.width);
-        let pulled = stretched
-            && elastic_pull(pos.0, yaw.0, (f64::from(body.width), f64::from(body.height)), &state, vel.0, k.elastic).is_some_and(|(force, torque)| {
+        let size = (f64::from(body.width), f64::from(body.height));
+        let pull = match (stretched, l.quad) {
+            (false, _) => None,
+            (true, true) => quad_pull(pos.0, yaw.0, size, &state, vel.0, k.elastic),
+            (true, false) => elastic_pull(pos.0, yaw.0, size, &state, vel.0, k.elastic),
+        };
+        let pulled = pull.is_some_and(|(force, torque)| {
                 l.spin += 10.0 * torque;
                 let rel = Vec3::new(state.velocity.x - vel.0.x, state.velocity.y - vel.0.y, state.velocity.z - vel.0.z);
                 let dv = Vec3::new(force[0] * 0.8 + rel.x * 0.11, force[1] * 0.2 + rel.y * 0.11, force[2] * 0.8 + rel.z * 0.11);

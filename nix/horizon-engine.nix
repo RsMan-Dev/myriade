@@ -1,6 +1,5 @@
-# The server build of the game (`horizon-client --no-default-features`): the game without sound,
-# controllers or Horizon's online extras, so it links neither ALSA nor udev. horizon-server runs it
-# headless as `horizon-engine` (docs/hosting.md, packaging/server/Dockerfile).
+# The server build of the game (`horizon-game --no-default-features`, its `horizon-client` binary): the
+# dedicated server, run headless by horizon-server as `horizon-engine` (docs/hosting.md).
 {
   lib,
   rustPlatform,
@@ -15,7 +14,7 @@ rustPlatform.buildRustPackage {
   cargoLock.lockFile = ../Cargo.lock;
 
   cargoBuildFlags = [
-    "--package=horizon-client"
+    "--package=horizon-game"
     "--bin=horizon-client"
   ];
   buildNoDefaultFeatures = true;

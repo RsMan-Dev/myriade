@@ -20,71 +20,98 @@ pub(in crate::game) fn with_guests_at(
     test: impl FnOnce(&mut super::Game<'_>),
 ) {
     super::native_entity_refs::tests::with_game_at(root, |game| {
-        let settings = LanSettings {
-            port: 0,
-            guest_commands: false,
-            force_game_mode: false,
-        };
-        let net = NetConfig {
-            listen: false,
-            announce: false,
-            lod_distance: 0,
-            ..NetConfig::lan(0, String::new(), 2)
-        };
-        let config = HubConfig {
-            default_game_mode: 0,
-            guest_commands: false,
-            force_game_mode: false,
-            hardcore: false,
-            view_distance: 2,
-            simulation_distance: 2,
-            dimension: game.dim.id().to_owned(),
-            allow_flight: true,
-            seed: 0,
-            max_players: 2,
-            integrated: true,
-            levels: game.level_shapes,
-            level_seeds: game.levels.runtime.seeds(),
-        };
-        game.lan_host(settings, net, config).unwrap();
-        for id in [12, 13] {
-            let (tx, _rx) = std::sync::mpsc::channel();
-            let mut guest = Guest::new(
-                Joined {
-                    conn: id,
-                    uuid: u128::from(id),
-                    name: format!("guest{id}"),
-                    properties: Vec::new(),
-                    info: ClientInformation::new(8),
-                    brand: String::new(),
-                    sender: PlayerSender::new(tx, Arc::new(AtomicUsize::new(0))),
-                    latency: Arc::new(AtomicI32::new(0)),
-                    address: "127.0.0.1:1".parse().unwrap(),
-                    expected: false,
-                },
-                id as i32,
-                [3.0, 64.0, 5.0],
-                10,
-            );
-            guest.placed = true;
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
-        }
+        lan_guests_on(game);
         test(game);
     });
 }
 
+/// Host `game` as a server, with no guest yet.
+pub(in crate::game) fn open_hub(game: &mut super::Game<'_>) {
+    let settings = LanSettings {
+        port: 0,
+        guest_commands: false,
+        force_game_mode: false,
+    };
+    let net = NetConfig {
+        listen: false,
+        announce: false,
+        lod_distance: 0,
+        ..NetConfig::lan(0, String::new(), 2)
+    };
+    let config = HubConfig {
+        default_game_mode: 0,
+        guest_commands: false,
+        force_game_mode: false,
+        hardcore: false,
+        view_distance: 2,
+        simulation_distance: 2,
+        dimension: game.dim.id().to_owned(),
+        allow_flight: true,
+        seed: 0,
+        max_players: 2,
+        levels: game.level_shapes,
+        level_seeds: game.levels.runtime.seeds(),
+    };
+    game.lan_host(settings, net, config).unwrap();
+}
+
+/// Host `game` on the LAN with two placed guests, conns 12 and 13.
+pub(in crate::game) fn lan_guests_on(game: &mut super::Game<'_>) {
+    open_hub(game);
+    for id in [12, 13] {
+        push_guest(game, id, u128::from(id));
+    }
+}
+
+/// Add a placed guest `id` with account `uuid` to `game`'s hub.
+pub(in crate::game) fn push_guest(game: &mut super::Game<'_>, id: u32, uuid: u128) {
+    let (tx, _rx) = std::sync::mpsc::channel();
+    let mut guest = Guest::new(
+        Joined {
+            conn: id,
+            uuid,
+            name: format!("guest{id}"),
+            properties: Vec::new(),
+            info: ClientInformation::new(8),
+            brand: String::new(),
+            sender: PlayerSender::new(tx, Arc::new(AtomicUsize::new(0))),
+            latency: Arc::new(AtomicI32::new(0)),
+            address: "127.0.0.1:1".parse().unwrap(),
+            expected: false,
+        },
+        id as i32,
+        [3.0, 64.0, 5.0],
+        10,
+    );
+    guest.placed = true;
+    game.lan.as_mut().unwrap().hub.guests.push(guest);
+}
+
+/// Run `f` during guest 12's turn on a `game` hosted by `lan_guests_on`, with its body at `feet`: `game.player` is the acting body.
+pub(in crate::game) fn with_acting_guest_on(
+    game: &mut super::Game<'_>,
+    feet: Vec3,
+    f: impl FnOnce(&mut super::Game<'_>),
+) {
+    game.as_guest(12, |game| {
+        game.player.as_mut().unwrap().position = feet;
+        f(game);
+    })
+    .unwrap();
+}
+
+/// Run `f` during guest 12's turn, with its body at `feet`: `game.player` is the acting body.
+pub(in crate::game) fn with_acting_guest(feet: Vec3, f: impl FnOnce(&mut super::Game<'_>)) {
+    with_guests(|game| with_acting_guest_on(game, feet, f));
+}
+
 #[test]
 #[ignore = "daily"]
-fn player_dimensions_validate_identity_on_both_server_roles() {
-    use super::execution_role::ExecutionRole;
+fn player_dimensions_validate_identity_on_the_dedicated_server() {
     let previous_extra = super::Dim::snapshot_extras();
     with_guests(|game| {
         super::Dim::add_extra("test:pocket");
-        for role in [
-            ExecutionRole::DedicatedServer,
-            ExecutionRole::IntegratedServer,
-        ] {
-            game.options.execution_role = role;
+        {
             game.lan
                 .as_mut()
                 .unwrap()
@@ -762,11 +789,11 @@ fn server_services_preserve_identity_and_message_delivery() {
 #[test]
 #[ignore = "daily"]
 fn canonical_permissions_preserve_owner_and_fake_player_reads() {
+    // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : le propriétaire est l'hôte, uuid 99, et ce test pose son corps)
     use horizon_client::motion::PlayerMotion;
     use mod_api::GameMode;
 
     with_guests(|game| {
-        let _serving = super::integrated::tests::install_serving(game, false);
         game.level.player_uuid = Some([0, 0, 0, 99]);
         let mut body = PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap();
         body.entity_id = 99;
@@ -845,6 +872,7 @@ pub(in crate::game) fn place_host(game: &mut super::Game<'_>) {
 #[test]
 #[ignore = "daily"]
 fn level_players_name_each_body_once_during_turns() {
+    // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : place_host pose l'hôte uuid 99, attendu dans les listes)
     with_guests(|game| {
         place_host(game);
         assert_eq!(level_uuids(game), [99, 12, 13]);
@@ -868,6 +896,7 @@ fn level_players_name_each_body_once_during_turns() {
 #[test]
 #[ignore = "daily"]
 fn level_players_exclude_guests_in_other_levels() {
+    // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : place_host pose l'hôte uuid 99, attendu dans les listes)
     with_guests(|game| {
         place_host(game);
         let host = game.lan.as_mut().unwrap();
@@ -884,8 +913,8 @@ fn level_players_exclude_guests_in_other_levels() {
 #[test]
 #[ignore = "daily"]
 fn level_players_exclude_fake_players() {
+    // TODO(phase 2): joueur agissant = invité (with_acting_guest ne suffit pas : place_host pose l'hôte uuid 99, attendu dans les listes)
     with_guests(|game| {
-        let _serving = super::integrated::tests::install_serving(game, false);
         place_host(game);
         game.next_entity = 100;
         let level = game.level(game.dim.id()).unwrap();
@@ -1308,7 +1337,6 @@ fn a_panic_in_a_turn_end_callback_still_restores_the_guest() {
 /// An armor stand summoned at (1.5, 70, 1.5) in the level in place, which `with_guests` puts
 /// its two players beside, at (3, 64, 5).
 fn summon_stand(game: &mut super::Game<'_>) -> mod_api::EntityRef {
-    game.options.dedicated = Some(Vec::new());
     game.world
         .chunks
         .insert((0, 0), Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));

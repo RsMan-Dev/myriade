@@ -13,12 +13,6 @@ impl Game<'_> {
         if self.native_lifecycle.epoch() != Some(entity.epoch()) {
             return EntityResidency::Gone;
         }
-        if !self.is_logical_server() {
-            return match None::<()> {
-                Some(_) => EntityResidency::InPlace,
-                None => EntityResidency::Gone,
-            };
-        }
         match self.server_resident_entity(entity.id()) {
             EntityLookup::Found { location, .. } if location.owner.dimension != self.dim.key() => {
                 EntityResidency::OtherLevel

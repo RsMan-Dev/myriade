@@ -29,7 +29,7 @@ pub struct Panic {
     p: &'static Params,
     pub until: u64,
     pub slot: u8,
-    pick: (f64, i32, f64),
+    pub pick: (f64, i32, f64),
 }
 impl std::ops::Deref for Panic {
     type Target = Params;

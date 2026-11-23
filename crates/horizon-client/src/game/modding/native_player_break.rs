@@ -52,7 +52,7 @@ impl Game<'_> {
         pos: [i32; 3],
         into_inventory: bool,
     ) -> bool {
-        if !self.native_authoritative() || !self.native_player_current(player) {
+        if !self.native_player_current(player) {
             return false;
         }
         let Some(_nested) = NestedBreak::enter() else {
@@ -135,27 +135,32 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_guest_turn_tests::{open_hub, push_guest};
     use super::*;
-    use horizon_client::{command::args::GameMode, items::ItemStack, motion::PlayerMotion};
+    use horizon_client::{command::args::GameMode, items::ItemStack};
     use horizon_core::geometry::Vec3;
 
-    /// A server's game with its own player in survival standing at the
-    /// origin chunk, holding `held`: their handle.
-    fn with_player(game: &mut Game<'_>, held: ItemStack) -> PlayerRef {
+    /// Guest 12 (uuid 123) breaks in survival at the origin chunk, holding `held`:
+    /// `f` runs in its turn with its handle.
+    fn as_breaker(
+        game: &mut Game<'_>,
+        held: ItemStack,
+        f: impl FnOnce(&mut Game<'_>, PlayerRef),
+    ) {
         // The shared fixture does not open a server or register a ticking chunk.
-        game.options.dedicated = Some(Vec::new());
         let _ = game
             .block_ticks
             .add_empty_chunk(horizon_core::position::ChunkPos::new(0, 0));
-        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
-        game.lan_acting_uuid = Some(123);
-        // The host acts, whose entity the hooks name as 0 while no guest acts.
-        game.lan_acting_entity = Some(0);
-        game.lan_acting_name = Some("Breaker".into());
-        game.lan_acting_permission = Some(0);
-        game.set_mode(GameMode::Survival);
-        game.inventory[game.selected] = Some(held);
-        game.native_acting_player().unwrap()
+        open_hub(game);
+        push_guest(game, 12, 123);
+        game.as_guest(12, |game| {
+            game.player.as_mut().unwrap().position = Vec3::new(4.5, 64.0, 4.5);
+            game.set_mode(GameMode::Survival);
+            game.inventory[game.selected] = Some(held);
+            let player = game.native_acting_player().unwrap();
+            f(game, player);
+        })
+        .unwrap();
     }
     fn place(game: &mut Game<'_>, pos: [i32; 3], block: &str) {
         let state = game.pack.assets.registry.default_state(block).unwrap();
@@ -184,7 +189,7 @@ mod tests {
                 (0, 0),
                 std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
             );
-            let player = with_player(game, ItemStack::new("minecraft:diamond_pickaxe", 1));
+            as_breaker(game, ItemStack::new("minecraft:diamond_pickaxe", 1), |game, player| {
             let pos = [6, 64, 4];
             place(game, pos, "minecraft:stone");
             assert!(game.player_destroy_block(player, pos, false));
@@ -192,6 +197,7 @@ mod tests {
             assert!(popped(game, "minecraft:cobblestone"));
             assert_eq!(game.held().unwrap().damage, 1);
             assert_eq!(game.stats.get("mined", "minecraft:stone"), 1);
+            });
         });
     }
 
@@ -207,7 +213,7 @@ mod tests {
             );
             let mut silk = ItemStack::new("minecraft:diamond_pickaxe", 1);
             silk.enchant("minecraft:silk_touch", 1);
-            let player = with_player(game, silk);
+            as_breaker(game, silk, |game, player| {
             let (stone, ore) = ([6, 64, 4], [7, 64, 4]);
             place(game, stone, "minecraft:stone");
             assert!(game.player_destroy_block(player, stone, true));
@@ -219,6 +225,7 @@ mod tests {
             assert!(game.player_destroy_block(player, ore, true));
             assert_eq!(carried(game, "minecraft:diamond"), 1);
             assert!(!game.ecs.orb_views().is_empty(), "the ore's experience");
+            });
         });
     }
 
@@ -233,7 +240,7 @@ mod tests {
                 (0, 0),
                 std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
             );
-            let player = with_player(game, ItemStack::new("minecraft:diamond_pickaxe", 1));
+            as_breaker(game, ItemStack::new("minecraft:diamond_pickaxe", 1), |game, player| {
             let (stone, bedrock, air) = ([6, 64, 4], [7, 64, 4], [8, 64, 4]);
             place(game, stone, "minecraft:stone");
             place(game, bedrock, "minecraft:bedrock");
@@ -248,6 +255,7 @@ mod tests {
             assert!(!game.player_destroy_block(player, stone, false));
             assert_eq!(block(game, stone), "minecraft:stone");
             assert_eq!(game.held().unwrap().damage, 0, "nothing wore the pickaxe");
+            });
         });
     }
 
@@ -345,7 +353,7 @@ mod tests {
                     (0, 0),
                     std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
                 );
-                with_player(game, ItemStack::new("minecraft:diamond_pickaxe", 1));
+                as_breaker(game, ItemStack::new("minecraft:diamond_pickaxe", 1), |game, _| {
                 for (i, &pos) in vein.iter().enumerate() {
                     let block = if i < ores {
                         "minecraft:diamond_ore"
@@ -389,6 +397,7 @@ mod tests {
                     let p = o.position;
                     near([p.x, p.y, p.z], 0.01)
                 }));
+                });
             });
         });
     }
@@ -426,7 +435,7 @@ mod tests {
                     (0, 0),
                     std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
                 );
-                let player = with_player(game, ItemStack::new("minecraft:diamond_pickaxe", 1));
+                as_breaker(game, ItemStack::new("minecraft:diamond_pickaxe", 1), |game, player| {
                 let pos = [6, 64, 4];
                 place(game, pos, "minecraft:stone");
                 assert!(!game.player_destroy_block(player, pos, false));
@@ -435,6 +444,7 @@ mod tests {
                     8
                 );
                 assert_eq!(block(game, pos), "minecraft:stone");
+                });
             });
         });
     }

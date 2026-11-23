@@ -52,7 +52,7 @@ impl Hooks for Mod {
 fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
     let mods: Mods = vec![ModEntry::new("shell", Box::new(Mod))].into();
     crate::game::api_values::install_parts(&mods).unwrap();
-    crate::entry::install_client_hooks();
+    crate::entry::install_level_hooks();
     let shell: &'static ModMenuType = Box::leak(Box::new(ModMenuType {
         id: "test:shell",
         slots: 27,

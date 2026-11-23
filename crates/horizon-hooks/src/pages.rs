@@ -1,6 +1,6 @@
 //! Pages (docs/layers.md, "Platform registries"): a crate above the engine adds a settings page to
 //! the options screens without an engine file naming it. The engine draws its rows with the same
-//! widgets, tooltips, narration, controller focus and `horizon-ctl` ids as its own pages, and asks
+//! widgets, tooltips, narration, controller focus and `the control socket` ids as its own pages, and asks
 //! for them only while the page is open.
 use crate::TooLate;
 use crate::registry::Registry;
@@ -29,7 +29,7 @@ pub enum Place {
 /// One page. Its values live in the crate (statics, often its settings [`crate::settings::Store`]);
 /// the engine rebuilds the rows when it draws the page and after each act.
 pub trait Page: Sync {
-    /// Stable and unique: `<crate>.<page>`, as `horizon-ctl` and logs name it.
+    /// Stable and unique: `<crate>.<page>`, as `the control socket` and logs name it.
     fn id(&self) -> &'static str;
     /// The page's title and its entry's label: a translation key.
     fn title(&self) -> &'static str;

@@ -155,7 +155,7 @@ fn schedule(w: &mut World, e: Entity, date: u64) {
 }
 
 /// `RAM_COOLDOWN_TICKS` : une date, et son échéance.
-fn set_cooldown(w: &mut World, e: Entity, ticks: i32) {
+pub(crate) fn set_cooldown(w: &mut World, e: Entity, ticks: i32) {
     let date = now_of(w, e) + ticks.max(0) as u64;
     if let Some(mut c) = w.get_mut::<RamCooldown>(e) {
         c.0 = date;
@@ -163,6 +163,23 @@ fn set_cooldown(w: &mut World, e: Entity, ticks: i32) {
     schedule(w, e, date);
     // The goat's long jump activity holds while the ram cools down: it is asked now (no polling for the end of the ram).
     crate::goals::wake(w, e, &crate::behaviours::long_jump::MODULE);
+}
+
+/// The ticks left of `RAM_COOLDOWN_TICKS` (the memory `minecraft:ram_cooldown_ticks`), None when it is over.
+pub fn cooldown_left(w: &World, e: Entity) -> Option<u64> {
+    let now = now_of(w, e);
+    w.get::<RamCooldown>(e).map(|c| c.0).filter(|d| *d > now).map(|d| d - now)
+}
+/// Sets the ticks left of the ram cooldown (`None`: over), as the memory read of a save gives them.
+pub fn set_cooldown_left(w: &mut World, e: Entity, left: Option<u64>) {
+    match left {
+        Some(t) => set_cooldown(w, e, t as i32),
+        None => {
+            if let Some(mut c) = w.get_mut::<RamCooldown>(e) {
+                c.0 = 0;
+            }
+        }
+    }
 }
 
 /// `RAMS` of this animal: the marked variant's range when its marker is there.
@@ -183,8 +200,8 @@ fn sounds(w: &World, e: Entity) -> (&'static str, &'static str) {
     }
 }
 
-/// `Mob.voice_pitch` of a goat: 1 ± 0,2 as an adult, 1,5 ± 0,2 as a baby (`GrowAt`), from two draws of its own random.
-fn voice_pitch(w: &mut World, e: Entity) -> f32 {
+/// `Mob.voice_pitch` (`LivingEntity.getVoicePitch`): 1 ± 0,2 as an adult, 1,5 ± 0,2 as a baby (`GrowAt`), from two draws of its own random.
+pub(crate) fn voice_pitch(w: &mut World, e: Entity) -> f32 {
     let base = if w.get::<GrowAt>(e).is_some() { 1.5 } else { 1.0 };
     with_rng(w, e, |r| {
         let a = (r.next_u32() >> 8) as f32 / 16_777_216.0;

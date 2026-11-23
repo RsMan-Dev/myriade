@@ -3,9 +3,9 @@ use super::*;
 
 /// The ticket controllers `mods` register, for a test's mods.
 #[cfg(any(test, feature = "testing"))]
-pub(crate) fn registered_controllers(mods: &[ModEntry]) -> (Vec<ControllerInfo>, Vec<PoseInfo>) {
+pub(crate) fn registered_controllers(mods: &[ModEntry]) -> Vec<ControllerInfo> {
     let registered = register_all(mods, |_| false);
-    (registered.controllers, registered.arm_poses)
+    registered.controllers
 }
 
 /// Fixtures that tests of other crates use to install Parts.

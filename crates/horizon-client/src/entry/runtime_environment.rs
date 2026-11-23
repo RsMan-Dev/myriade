@@ -6,10 +6,6 @@ use std::sync::OnceLock;
 static ENVIRONMENT: OnceLock<RuntimeEnvironment> = OnceLock::new();
 
 fn snapshot(launch: &LaunchArguments, enabled: Option<&str>) -> RuntimeEnvironment {
-    let dedicated = launch
-        .rest
-        .iter()
-        .any(|arg| matches!(arg, Argument::Dedicated(_)));
     let flag = launch.rest.iter().any(|arg| match arg {
         Argument::Switch(name) => name == "--game-tests",
         Argument::Dedicated(args) => super::dedicated_arguments::parse(args)
@@ -17,11 +13,7 @@ fn snapshot(launch: &LaunchArguments, enabled: Option<&str>) -> RuntimeEnvironme
         _ => false,
     });
     RuntimeEnvironment::new(
-        if dedicated {
-            Dist::DedicatedServer
-        } else {
-            Dist::Client
-        },
+        Dist::DedicatedServer,
         horizon_core::VANILLA_VERSION.to_owned(),
         crate::crash::version(),
         flag || matches!(enabled, Some("1" | "true")),
@@ -63,39 +55,27 @@ mod tests {
 
     #[test]
     fn physical_process_versions_and_test_opt_in() {
-        for dedicated in [false, true] {
-            for flag in [false, true] {
-                let mut args = Vec::new();
-                if flag {
-                    args.push("--game-tests".to_owned());
-                }
-                if dedicated {
-                    args.push("--dedicated".to_owned());
-                }
-                let launch = LaunchArguments::parse(
-                    args.into_iter(),
-                    std::path::Path::new("/"),
-                    std::path::Path::new("/"),
-                    None,
-                )
-                .unwrap();
-                for env in [None, Some("0"), Some("false"), Some("1"), Some("true")] {
-                    let info = snapshot(&launch, env);
-                    assert_eq!(
-                        info.dist(),
-                        if dedicated {
-                            Dist::DedicatedServer
-                        } else {
-                            Dist::Client
-                        }
-                    );
-                    assert_eq!(info.game_version(), horizon_core::VANILLA_VERSION);
-                    assert_eq!(info.horizon_version(), crate::crash::version());
-                    assert_eq!(
-                        info.game_tests_enabled(),
-                        flag || matches!(env, Some("1" | "true"))
-                    );
-                }
+        for flag in [false, true] {
+            let mut args = vec!["--dedicated".to_owned()];
+            if flag {
+                args.push("--game-tests".to_owned());
+            }
+            let launch = LaunchArguments::parse(
+                args.into_iter(),
+                std::path::Path::new("/"),
+                std::path::Path::new("/"),
+                None,
+            )
+            .unwrap();
+            for env in [None, Some("0"), Some("false"), Some("1"), Some("true")] {
+                let info = snapshot(&launch, env);
+                assert_eq!(info.dist(), Dist::DedicatedServer);
+                assert_eq!(info.game_version(), horizon_core::VANILLA_VERSION);
+                assert_eq!(info.horizon_version(), crate::crash::version());
+                assert_eq!(
+                    info.game_tests_enabled(),
+                    flag || matches!(env, Some("1" | "true"))
+                );
             }
         }
     }

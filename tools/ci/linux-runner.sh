@@ -153,7 +153,6 @@ PARITY_LOCAL_JOBS=$jobs
 JAVA_HOME=$java
 HORIZON_SHARED_SOURCE=$source
 HORIZON_NO_AUDIO=1
-HORIZON_LAUNCHER_NO_SELF_UPDATE=1
 EOF
     [ -n "$platform_env" ] && echo "$platform_env"
     command -v vscreen > /dev/null && echo "VSCREEN=ci-horizon"

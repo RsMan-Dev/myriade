@@ -1,13 +1,13 @@
 //! Trial spawners in the game: `TrialSpawner.tickServer` for every trial
 //! spawner (`mobs::trial_spawner`), the block's state as it changes, the mobs
 //! it adds and the rewards it ejects.
-use super::{Game, natural_spawning::GameLevel, spawner::Planned};
+use super::{Game, spawn_level::GameLevel, spawner::Planned};
 use horizon_client::{
     Result,
     containers::BlockEntity,
     items::ItemStack,
     mobs::{
-        Mob, Who,
+        Who,
         spawner::SpawnerSpawn,
         trial_spawner::{
             TRIAL_OMEN_TICKS_PER_LEVEL, TrialEvent, TrialPlayer, TrialSpawner, TrialSpawnerExt,
@@ -193,7 +193,7 @@ impl Game<'_> {
         )));
         let mut uuids: Vec<(u32, Uuid)> = Vec::new();
         let mut ejected: Vec<(ItemStack, [f64; 3])> = Vec::new();
-        let extras: (Vec<Mob>, Vec<(u32, u32)>);
+        let rides: Vec<(u32, u32)>;
         let next = {
             let mut level = self.natural_level();
             level.spawner = Some(mod_api::Spawner::Trial {
@@ -201,8 +201,8 @@ impl Game<'_> {
             });
             let loot = self.server_loot.get();
             let seed = self.level.seed;
-            let mut spawn = |l: &GameLevel, rng: &mut LevelRandom, r: &SpawnerSpawn| {
-                let added = l.game.plan_spawner_mob(l, r, source, &mut planned, rng)?;
+            let mut spawn = |l: &GameLevel, _rng: &mut LevelRandom, r: &SpawnerSpawn| {
+                let added = l.game.plan_spawner_mob(l, r, source, &mut planned)?;
                 let uuid = match planned.last_mut() {
                     Some(Planned::Loaded(Tag::Compound(tag), _, _)) => {
                         let tag_uuid =
@@ -254,16 +254,12 @@ impl Game<'_> {
                 &mut eject,
                 &mut events,
             );
-            extras = (
-                std::mem::take(&mut *level.spawned.borrow_mut()),
-                std::mem::take(&mut *level.rides.borrow_mut()),
-            );
+            rides = std::mem::take(&mut *level.rides.borrow_mut());
             state
         };
         self.world.random = random;
         self.rand_sequences = sequences;
-        let (created, rides) = extras;
-        let ids = self.add_planned(planned, created, rides);
+        let ids = self.add_planned(planned, rides);
         let mut by_uuid = HashMap::new();
         for (provisional, uuid) in uuids {
             if let Some(id) = ids.get(&provisional) {

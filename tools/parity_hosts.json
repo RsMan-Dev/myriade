@@ -21,9 +21,7 @@
    "nice": 10,
    "exclude": {
     "mob_ai": "the vanilla oracle runs out of its 3 GB heap here (OutOfMemoryError in IO workers; passes on the desktop and the Mac) - 2026-10-26 trial",
-    "lan_integration": "two clients rendered on the CPU (lavapipe): different timing subtests fail on each run (elytra, consume-release, barter, critical-hits) - 2026-10-26 trial",
     "world_reopen": "failed twice here (no Save and Quit button after reopening; the minecart-count flake), passes on the desktop - 2026-10-26 trial",
-    "remote_fireball": "fails here even alone, at bare main 3b19c386c (2 of 2 runs and the retry), and passes on the Mac mini: the guest's egg is seen in 2 of 6 samples. CPU-starved: the whole horizon-ci slice (runner on 4-7, workers on 0-3) shares a 700% quota and was throttled in 27% of periods, so lavapipe frames and screenshots outlast the projectile's flight - 2026-10-27",
     "remote_fireworks": "fails here even alone, at bare main 3b19c386c (2 of 2 runs and the retry), and passes on the Mac mini: the guest's sparks are gone by its trail screenshot (same CPU starvation as remote_fireball; a private Xvfb on CPUs 0-3 did not help) - 2026-10-27"
    },
    "note": "a partner's server (Ubuntu, 8 EPYC threads, 30 GB, Detroit; tailnet only), its CI runner has CPUs 4-7, so workers get 0-3 (as tools/remote.sh runs do) and 3 jobs, in the CI runner's environment, slice and Xvfb screen (tools/ci/linux-runner.sh); the always-on Linux host since the ThinkPad stopped running harnesses (2026-10-26)"
@@ -31,15 +29,6 @@
   "hosted": {
    "note": "Not a worker: the hosted runners without a GPU that .github/workflows/parity-hosted.yml uses. tools/parity_plan.py --hosted leaves these out, and known_failing and named_only too, and lists them as not run there.",
    "exclude": {
-    "ambient_sound": "needs the vanilla sounds, which the hosted runners' data leaves out (tools/ci/fetch-vanilla-data.sh)",
-    "audio_attributes": "needs the vanilla sounds, which the hosted runners' data leaves out (tools/ci/fetch-vanilla-data.sh)",
-    "music": "needs the vanilla sounds, which the hosted runners' data leaves out (tools/ci/fetch-vanilla-data.sh)",
-    "situational_music": "needs the vanilla sounds, which the hosted runners' data leaves out (tools/ci/fetch-vanilla-data.sh)",
-    "sound_engine": "needs the vanilla sounds, which the hosted runners' data leaves out (tools/ci/fetch-vanilla-data.sh)",
-    "sound_event": "needs the vanilla sounds, which the hosted runners' data leaves out (tools/ci/fetch-vanilla-data.sh)",
-    "subtitle": "needs the vanilla sounds, which the hosted runners' data leaves out (tools/ci/fetch-vanilla-data.sh)",
-    "pack_screen": "needs the vanilla languages besides en_us, which the hosted runners' data leaves out",
-    "entity_model": "reads the decompiled client sources, which the hosted runners' data leaves out",
     "datafix": "upgrades worlds made with the official server jars of 1.18.2 to 26.2, which the hosted runners' data leaves out",
     "redstone_catalog": "downloads its schematics from the network while it runs"
    }
@@ -50,18 +39,12 @@
  },
  "linux_only": {},
  "solo": {
-  "remote_fireball": "two game windows (lan_e2e); on 4 CPUs beside other harnesses, screenshots and control requests take ticks the check needs",
   "remote_fireworks": "two game windows (lan_e2e); a screenshot took ~1.5 s beside 3 other harnesses on playhorizon's runner, past the sparks' life (2026-10-27)",
   "return_to_sender": "a game window: an attack on a fireball and its flight to the ghast take ticks the check needs",
   "server_player_sculk": "two game windows (lan_e2e); failed on playhorizon's runner beside other harnesses, passes alone (2026-10-27)",
-  "world_reopen": "a game window reopening a world: failed on playhorizon's runner beside other harnesses (2026-10-27)",
-  "wire_stream": "a vanilla client, a vanilla server and a Horizon client: a loaded runner delays logins past their limits"
+  "world_reopen": "a game window reopening a world: failed on playhorizon's runner beside other harnesses (2026-10-27)"
  },
  "named_only": {
-  "frame_identity": "fails any change that moves the picture on purpose; a pull request that must leave it alone (HDR, shader packs) carries the frame-identity label, or run it by name",
-  "hdr_auto_flip": "Horizon's own HDR output, with no vanilla oracle: two games drawn offscreen on the float frame, about 5 min; run it by name on a change to HDR output or to how a renderer is replaced (#12989)",
-  "lan_integration": "the whole lan_e2e suite: ~40 min a run on a loaded runner, and single checks flake under load; run it by name, or tools/lan_e2e.py",
-  "wire_stream": "a real vanilla 26.3 client on a virtual screen beside a vanilla server and a headless Horizon client, ~15 min a run; run it by name (before a pull request that changes what the client sends) or nightly",
   "command_exec": "1 or 2 of its 19,566 commands differ in every run on main since #15161, other ones each time, on all three runners (#15158, #15316): most gameplay changes select it, so every such pull request and parity-main fail; back in automatic runs with the fix",
   "arrow_mob_permission": "capture-preserving harness: needs --work-dir (a fresh capture folder) and --reference-dir, which an automatic run doesn't pass, so it fails at startup whatever changed",
   "boat_passenger_tree": "capture-preserving harness: needs --work-dir (a fresh capture folder) and --reference-dir, which an automatic run doesn't pass, so it fails at startup whatever changed",
@@ -97,7 +80,6 @@
   "datafix": "#18133: runner's .local resolves into shared-local, so every shard refuses its default root",
   "dedicated_server": "#18133: extra config custom_payload horizon:payloads and one extra recipe_book_add entry",
   "dispenser": "#18133: container-entity slot0 and sapling-growth `set` records missing",
-  "dragon_render": "#18133: dragon tests exit 101; Rust log not in the artifact",
   "enchantment_map_validation": "#18133: an emptied enchantments component stays as {}",
   "fishing_rng": "#18133: test fixture leaves 5 hooks extracted (UnbalancedPass)",
   "living_damage": "#18133: NaN vs +Inf in a non-finite damage record",

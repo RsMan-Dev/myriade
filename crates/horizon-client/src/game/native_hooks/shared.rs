@@ -7,7 +7,6 @@ mod loot;
 
 use crate::game::api_values::{TryIntoApi, TryIntoEngine};
 use horizon_client::containers::ModBlockEntity as EngineBlockEntity;
-use screen_chars::chars_to_type;
 
 struct ContentsChangedGuard<'a, 'game> {
     game: &'a mut Game<'game>,
@@ -307,11 +306,6 @@ impl Game<'_> {
         title: &mut Text,
         description: &mut Option<Text>,
     ) -> bool {
-        // Shared advancement/recipe producers also run on logical servers;
-        // only their receiving client owns toast presentation and its hook.
-        if self.is_logical_server() {
-            return false;
-        }
         let mut cancel = false;
         !cancel
     }
@@ -327,31 +321,6 @@ impl Game<'_> {
         } else {
             vanilla
         }
-    }
-    /// The player-health HUD rows, once a frame the HUD draws them
-    /// (`HealthHud::layout`, not under F1): `inputs` carries the health,
-    /// food, air and vehicle state the layout reads, `wi`/`hi` the screen's
-    /// GUI size. A mod that sets `draws` replaces every row — armour,
-    /// hearts, food and air are the answer's to give; `bubble_pop_sound`
-    /// too.
-    /// Nothing set draws Horizon's own.
-    /// The hearts the local player's health bar draws (`Gui.HeartType.forPlayer`, then
-    /// NeoForge's `PlayerHeartTypeEvent`): poisoned, else withered, else frozen when fully
-    /// frozen, else normal, as a mod's `player_heart_type` leaves it. None without a player.
-    pub(super) fn player_heart_kind(&mut self) -> Option<mod_api::client::hud_layout::HeartKind> {
-        use mod_api::client::hud_layout::HeartKind;
-        let p = self.player.as_ref()?;
-        let effects = &self.potions.effects;
-        let mut kind = if effects.get("poison").is_some() {
-            HeartKind::Poisoned
-        } else if effects.get("wither").is_some() {
-            HeartKind::Withered
-        } else if p.is_fully_frozen() {
-            HeartKind::Frozen
-        } else {
-            HeartKind::Normal
-        };
-        Some(kind)
     }
     /// The living entity an effect decision names: `Some(id)` a mob's
     /// `Entity.getId`, `None` the acting player. `None` when no native
@@ -936,7 +905,7 @@ impl GameLevel<'_> {
         volume: f32,
         pitch: f32,
     ) -> bool {
-        if !self.native_authoritative || !mod_sound_ok(sound, at, source, volume, pitch) {
+        if !mod_sound_ok(sound, at, source, volume, pitch) {
             return false;
         }
         // `Level.playSound` draws `soundSeedGenerator.nextLong` at the call;
@@ -976,9 +945,7 @@ impl GameLevel<'_> {
         count: i32,
     ) -> bool {
         let state_ok = |id| self.registry.state(id).is_some();
-        if !self.native_authoritative
-            || !mod_particles_ok(options, state, state_ok, at, spread, speed)
-        {
+        if !mod_particles_ok(options, state, state_ok, at, spread, speed) {
             return false;
         }
         self.native_particles
@@ -1020,9 +987,8 @@ impl GameLevel<'_> {
     /// level's `ticks`: the old block's block entity is removed and the new
     /// block's is created in the write (`LevelChunk.setBlockState`), and the
     /// write's level events stay queued for the caller, in order; a mod block
-    /// entity starts with the data `native_block_entity` gives. True when the block changed; false off an
-    /// authoritative server, for a position that is not loaded or outside the
-    /// build height, an invalid state, or an unchanged state. Never loads a
+    /// entity starts with the data `native_block_entity` gives. True when the block changed; false for a
+    /// position that is not loaded or outside the build height, an invalid state, or an unchanged state. Never loads a
     /// chunk.
     pub(super) fn native_set_block(
         &mut self,
@@ -1031,9 +997,7 @@ impl GameLevel<'_> {
         state: BlockStateId,
         flags: i32,
     ) -> bool {
-        if !self.native_authoritative
-            || !self.world.is_loaded_at(pos[0], pos[1], pos[2])
-            || self.registry.state(state).is_none()
+        if !self.world.is_loaded_at(pos[0], pos[1], pos[2]) || self.registry.state(state).is_none()
         {
             return false;
         }
@@ -1057,7 +1021,7 @@ impl GameLevel<'_> {
         pos: [i32; 3],
         moved: bool,
     ) -> bool {
-        if !self.native_authoritative || !self.world.is_loaded_at(pos[0], pos[1], pos[2]) {
+        if !self.world.is_loaded_at(pos[0], pos[1], pos[2]) {
             return false;
         }
         self.behaviours
@@ -1211,8 +1175,7 @@ impl Game<'_> {
         state: BlockStateId,
         flags: i32,
     ) -> bool {
-        if (self.serving.is_none() && self.options.dedicated.is_none())
-            || dimension != self.dim.id()
+        if dimension != self.dim.id()
             || self.pack.assets.registry.state(state).is_none()
         {
             return false;
@@ -1234,9 +1197,7 @@ impl Game<'_> {
         min: [f64; 3],
         max: [f64; 3],
     ) -> Vec<NativeItemEntity> {
-        if (self.serving.is_none() && self.options.dedicated.is_none())
-            || dimension != self.dim.id()
-        {
+        if dimension != self.dim.id() {
             return Vec::new();
         }
         self.ecs.item_views()
@@ -1325,11 +1286,10 @@ impl Game<'_> {
             .join(mod_list::DIR)
             .join(".horizon-mod-data")
     }
-    /// The game's `config/` folder beside `options.txt`, shared by every mod
-    /// as on Fabric and NeoForge. The same folder on the window, its server
-    /// thread and a LAN host; a dedicated server's is in its own folder,
-    /// beside `server.properties`. Made when missing. Mods reach their own
-    /// files in it through `Host::config_files`.
+    /// The game's `config/` folder, shared by every mod as on Fabric and
+    /// NeoForge. It lies in the game folder, beside `server.properties`. Made
+    /// when missing. Mods reach their own files in it through
+    /// `Host::config_files`.
     pub(super) fn native_config_dir() -> std::io::Result<PathBuf> {
         config_dir(&Self::game_dir())
     }
@@ -1675,6 +1635,7 @@ impl Game<'_> {
             );
         }
         for (x, z, new) in loaded {
+            self.ecs_chunk_loaded([x, z], true);
             self.native_chunk_load(dimension, [x, z], new);
         }
     }
@@ -1689,6 +1650,7 @@ impl Game<'_> {
                 .terrain_residency_changed(unloaded.iter().map(|chunk| (chunk.x, chunk.z)));
         }
         for chunk in unloaded {
+            self.ecs_chunk_loaded([chunk.x, chunk.z], false);
             self.native_chunk_and_block_entities_unload(dimension, [chunk.x, chunk.z]);
         }
     }
@@ -2050,10 +2012,6 @@ impl Game<'_> {
     }
     /// Options > Mods' rows for loaded code mods, after the content-only rows.
     pub(super) fn list_native_mods(&mut self) {
-        let registered = super::mods::collect_key_mappings(
-            self.options.execution_role,
-            mod_api::__private::key_mappings(),
-        );
         let native = self.mods.native.clone();
         // Wasm proxies are installed in the same dispatch table as native mods. Their rows
         // need the same live switch and settings page, not a frozen content-only toggle.
@@ -2089,23 +2047,10 @@ impl Game<'_> {
             .retain(|row| !rows.iter().any(|code| code.id == row.id));
         for mut row in rows {
             let settings = self.native_page_settings(&row.id);
-            let mappings: Vec<KeyMapping> = registered
-                .iter()
-                .filter(|(owner, _)| *owner == row.id)
-                .map(|(_, k)| KeyMapping {
-                    id: k.id.clone(),
-                    label: k.label.clone(),
-                    key: k.key.clone(),
-                    modifiers: k.modifiers.bits,
-                    context: crate::game::api_values::TryIntoEngine::try_into_engine(
-                        &k.context,
-                        &(),
-                    )
-                    .unwrap(),
-                    category: k.category.clone(),
-                })
-                .collect();
-            row.native = Some(NativePage { mappings, settings });
+            row.native = Some(NativePage {
+                mappings: Vec::new(),
+                settings,
+            });
             self.settings.mods.installed.push(row);
         }
     }
@@ -2254,7 +2199,7 @@ fn property_change(
     with_property(registry, state, key, value).filter(|&id| id != state)
 }
 
-/// `config/` in the game folder, beside `options.txt`, made when missing.
+/// `config/` in the game folder, made when missing.
 fn config_dir(game_dir: &Path) -> std::io::Result<PathBuf> {
     let dir = game_dir.join("config");
     fs::create_dir_all(&dir)?;
@@ -2312,25 +2257,6 @@ fn box_meets(b: &horizon_core::geometry::Aabb, min: [f64; 3], max: [f64; 3]) -> 
         && hi.y > min[1]
         && lo.z < max[2]
         && hi.z > min[2]
-}
-
-/// What `mod_screen_open(mod_id)` does over `screen` (`blocked`: an
-/// overlay, the title screen, no window or no player; `owner`'s own screen
-/// open): `None` opens it, `Some` answers without changing anything (true:
-/// `mod_id`'s is already open).
-fn mod_screen_opens(
-    screen: Screen,
-    blocked: bool,
-    owner: Option<&str>,
-    mod_id: &str,
-) -> Option<bool> {
-    if screen == Screen::Mod {
-        return Some(owner == Some(mod_id));
-    }
-    if screen != Screen::Playing || blocked {
-        return Some(false);
-    }
-    None
 }
 
 fn client_packet_view(packet: &horizon_protocol::packets::play::Clientbound) -> ClientPacket {
@@ -2598,7 +2524,6 @@ mod tests {
         }
         assert_eq!(keys.shared.get(), keys.own.get());
         with_game_at(root.unwrap().prepared().to_path_buf(), |game| {
-            game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -2773,7 +2698,7 @@ mod tests {
         ) {
             return;
         }
-        use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
+        use super::super::{Game, Options, Progress, Settings, load_resources};
         use horizon_client::mod_content::{ContentMod, build};
         use horizon_mod_package::content::{Block, Content};
 
@@ -2834,19 +2759,18 @@ mod tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            super::ExecutionRole::IntegratedServer,
+            super::ExecutionRole::DedicatedServer,
             &Progress::new(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = super::ExecutionRole::IntegratedServer;
+        options.execution_role = super::ExecutionRole::DedicatedServer;
         let mut game = Game::new(
             &loaded.resources,
             loaded.pack,
             options,
             settings,
-            Audio::default(),
         )
         .unwrap();
 
@@ -2886,35 +2810,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// A mod's own screen opens only over the world, never over another
-    /// screen, an overlay (the title screen, a book, loading, no window) or
-    /// another mod's; opening it again is a no-op.
-    #[test]
-    fn a_mod_screen_opens_only_over_the_world() {
-        use super::{Screen, mod_screen_opens};
-        assert_eq!(mod_screen_opens(Screen::Playing, false, None, "a"), None);
-        assert_eq!(
-            mod_screen_opens(Screen::Playing, true, None, "a"),
-            Some(false)
-        );
-        for other in [
-            Screen::Paused,
-            Screen::Inventory,
-            Screen::Chat,
-            Screen::Options,
-        ] {
-            assert_eq!(mod_screen_opens(other, false, None, "a"), Some(false));
-        }
-        assert_eq!(
-            mod_screen_opens(Screen::Mod, false, Some("a"), "a"),
-            Some(true)
-        );
-        assert_eq!(
-            mod_screen_opens(Screen::Mod, false, Some("b"), "a"),
-            Some(false)
-        );
-    }
-
     /// The characters a `ScreenEvent.CharacterTyped.Pre` sees are the
     /// printable ones of a text: a cancelled one leaves that text and a
     /// control character (a key, not text) is never offered a hook.
@@ -2940,18 +2835,6 @@ mod tests {
             super::screen_text_hooked("hello", |_| false).as_deref(),
             Some("hello")
         );
-    }
-
-    /// The window's key path: only a key's printable characters go on to the
-    /// hook and the text box.
-    #[test]
-    fn a_key_offers_only_its_printable_characters() {
-        // Backspace, Escape and the like are keys, not text.
-        assert_eq!(super::chars_to_type("a\u{7f}\u{1b}b", true), "ab");
-        // Nothing typed: nothing to hand over.
-        assert_eq!(super::chars_to_type("", true), "");
-        // Ctrl+A is a shortcut: its `a` reaches no hook and no box.
-        assert_eq!(super::chars_to_type("a", false), "");
     }
 
     /// A mod's camera replaces vanilla's value by value; one that isn't finite keeps vanilla's.
@@ -3368,7 +3251,7 @@ mod tests {
         assert_eq!(mod_menu("hopper"), None);
     }
 
-    /// The config folder is `config/` beside `options.txt`, made when
+    /// The config folder is `config/` in the game folder, made when
     /// missing.
     #[test]
     fn config_dir_is_config_in_the_game_folder() {
@@ -3552,7 +3435,6 @@ mod item_fall_on_tests {
         let _ = horizon_client::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
         with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
                 let state = |name| game.pack.assets.registry.default_state(name).unwrap();
                 let (stone, air) = (state("minecraft:stone"), state("minecraft:air"));
                 for x in -1..=1 {

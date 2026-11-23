@@ -1,6 +1,7 @@
 //! `BreedGoal`: an animal in love walks to the nearest other animal in love of its species and, after the delay,
 //! gives birth to a baby. Love is given by `feed`.
 use super::*;
+use crate::behaviours::sit_when_ordered::{SitPose, SitRules};
 use crate::rules::breed::{birth_due, birth_orbs, gives_up, inherited_deadline, is_selector_tick, love_ticks};
 use crate::{cow::*, goals::*};
 
@@ -118,11 +119,22 @@ fn systems(s: &mut Schedule, slot: GoalSlot) {
 /// animals around (their partner just appeared).
 pub fn feed(world: &mut World, e: Entity) -> bool {
     let now = crate::cow::now_of(world, e);
-    if world.get::<GrowAt>(e).is_some()
-        || world.get::<Resting>(e).is_some_and(|r| r.0 > now)
+    if world.get::<Resting>(e).is_some_and(|r| r.0 > now)
         || world.get::<Love>(e).is_some_and(|l| l.0 > now)
+        || crate::behaviours::turtle_state::has_egg(world, e)
+        || world.get::<crate::age_lock::AgeLocked>(e).is_some()
     {
         return false;
+    }
+    // `Animal.mobInteract`: a baby takes the food and grows a tenth of its remaining time (`getSpeedUpSecondsWhenFeeding`).
+    // A wild tamable animal (`TamableAnimal`) takes no food here: `Wolf.mobInteract` only tries to tame it.
+    if world.get::<crate::tame::Owner>(e).is_some_and(|o| o.0.is_none()) {
+        return false;
+    }
+    if let Some(g) = world.get::<GrowAt>(e).map(|g| g.0) {
+        let left = g.saturating_sub(now);
+        world.entity_mut(e).insert(GrowAt(g - left / 10));
+        return true;
     }
     // An animal that died is not fed.
     let Some(b) = world.get::<BreedData>(e).copied() else { return false };
@@ -268,7 +280,8 @@ fn birth(w: &mut World, a: Entity, b: Entity) {
 /// Whether `b` is a partner for `a` (`BreedGoal`'s lovers, `AnimalMakeLove.canMateWith`): the same species, both in love, `b` not a baby.
 pub fn can_mate(w: &World, a: Entity, b: Entity) -> bool {
     let in_love = |x: Entity| w.get::<Love>(x).is_some_and(|l| l.0 > crate::cow::now_of(w, x));
-    a != b && w.get::<SpeciesId>(a) == w.get::<SpeciesId>(b) && in_love(a) && in_love(b) && w.get::<GrowAt>(b).is_none()
+    let refuses = w.get::<SitPose>(b).is_some() && w.get::<SitRules>(b).is_some_and(|r| r.0.refuses_mate);
+    a != b && w.get::<SpeciesId>(a) == w.get::<SpeciesId>(b) && in_love(a) && in_love(b) && w.get::<GrowAt>(b).is_none() && !refuses
 }
 /// `Animal.spawnChildFromBreeding`, public and shared by the goal and by the brain's `make_love`: a baby of age -`baby_age` of
 /// the parents' species at the parent's place, both parents rest and love ends, the experience of the birth, the baby takes
@@ -281,6 +294,11 @@ pub fn give_birth(w: &mut World, a: Entity, b: Entity) -> Option<Entity> {
     let seed = with_rng(w, a, |r| u64::from(r.next_u32()) << 32 | u64::from(r.next_u32()));
     // The baby is of its parents' species (the mate was checked to be the same).
     let baby = spawn_like(w, a, pos.x, pos.z, seed);
+    if w.get::<crate::behaviours::defend_trusted::DefendTrusted>(a).is_some() {
+        let cause = |p: Entity| w.get::<LoveCause>(p).and_then(|c| c.0);
+        let trust = crate::behaviours::trust::breeders(cause(a), cause(b));
+        w.entity_mut(baby).insert(trust);
+    }
     crate::species::goat::inherit_screaming(w, baby, a, b);
     crate::behaviours::variant::inherit_baby(w, baby, a, b);
     crate::behaviours::variant::breed_sound(w, a, baby);
@@ -333,7 +351,7 @@ pub static LOVE: crate::rules::Rule = crate::rules::Rule {
     attrs: crate::rules::no_attrs,
     interact: |w, e, p, i| {
         let p = crate::rules::params::<Params>(p);
-        i.item != 0 && p.foods.iter().any(|f| crate::goals::item_id(f) == i.item) && feed(w, e)
+        p.foods.iter().any(|f| crate::items::is(f, i.item)) && feed(w, e)
     },
 };
 

@@ -30,7 +30,7 @@ fn entity_type_tags_are_the_original_s_for_every_species() {
     if !have_data() {
         return;
     }
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let made = one_of_each(&mut h);
     for name in TAGS {
         let tag = type_tags::id(name).expect(name);
@@ -46,7 +46,7 @@ fn a_query_of_a_tag_gives_exactly_the_entities_of_its_members() {
     if !have_data() {
         return;
     }
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let made = one_of_each(&mut h);
     let members = original("undead");
     let mut expected: Vec<Entity> = made.iter().filter(|(_, sp)| members.contains(sp.name)).map(|(e, _)| *e).collect();
@@ -65,7 +65,7 @@ fn a_nested_tag_is_flattened_into_the_tag_naming_it() {
     if !have_data() {
         return;
     }
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let made = one_of_each(&mut h);
     let undead = original("undead");
     assert!(!undead.is_empty());
@@ -80,7 +80,7 @@ fn an_entity_without_a_species_has_no_marker_and_an_unknown_tag_has_no_id() {
     if !have_data() {
         return;
     }
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let bare = h.world.spawn_empty().id();
     for name in TAGS {
         assert!(!type_tags::has(&h.world, type_tags::id(name).expect(name), bare), "{name}");
@@ -96,7 +96,7 @@ fn a_harming_splash_heals_a_zombie_and_hurts_a_cow() {
     if !have_data() {
         return;
     }
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let cow = ecs_cow(&mut h, 0.5, 1.0, 0.5, 5);
     if horizon_ecs_proto::type_tags::named(&h.world, "undead", cow) {
         let t = std::thread::current();

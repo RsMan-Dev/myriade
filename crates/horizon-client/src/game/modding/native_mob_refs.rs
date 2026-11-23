@@ -846,7 +846,7 @@ mod tests {
             game.held_out.pop();
             assert!(mob.set_baby(game, true));
 
-            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 15));
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(), &mut || 15));
             let dragon = game.mob(game.entity(15).unwrap()).unwrap();
             assert_eq!(dragon.requires_custom_persistence(game), None);
             assert!(!dragon.set_baby(game, true));
@@ -881,7 +881,6 @@ mod tests {
                 allow_flight: false,
                 seed: 0,
                 max_players: 2,
-                integrated: false,
                 levels: Default::default(),
                 level_seeds: Default::default(),
             };
@@ -1047,7 +1046,7 @@ mod tests {
             add_mob(game, 13, "minecraft:zombie");
             crate::game::ecs::test_support::place_test_stand(game, 14, &ArmorStand::new(14, Vec3::ZERO, 0.0));
             // Reserve the dragon's eight consecutive part IDs away from the mobs.
-            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 40));
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(), &mut || 40));
             assert!(
                 game.mob(game.entity(40).unwrap()).is_some(),
                 "the dragon is a Mob"
@@ -1203,7 +1202,7 @@ mod tests {
         use horizon_core::nbt::Tag;
         with_game(|game| {
             let mob = add_mob(game, 12, "minecraft:zombie");
-            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 15));
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &horizon_ecs_proto::spawn_sheet::SpawnSheet::default(), &mut || 15));
             let entity = game.entity(12).unwrap();
             assert_eq!(game.mob_left_handed(mob), Some(false));
             assert!(game.mob_set_left_handed(mob, true));

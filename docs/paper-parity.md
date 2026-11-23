@@ -1,7 +1,7 @@
 # Paper event parity
 
 `tools/paper_parity.py` runs the same fixed-seed scenario against Paper 26.3
-(a logging Java plugin) and Horizon (a native trace mod), driven by `horizon-bots`.
+(a logging Java plugin) and Horizon (a native trace mod), driven by `myriade-bot`.
 It compares observable events, cancellation and resulting state where covered.
 Hook → event mappings come from `paper = "..."` attributes in
 `crates/horizon-mod-vocab/src/hooks/`, not a second hand-maintained mapping.
@@ -27,8 +27,6 @@ Install stable Rust, Python 3.10+ and JDK 25 (`java` and `javac` on PATH).
 On Linux install the build prerequisites in [CONTRIBUTING](../CONTRIBUTING.md).
 Use your own Minecraft 26.3 installation and server jar: `lab.py prepare`
 imports and checks them against `research-lock.json`; it does not download Mojang's game.
-See [the research lab](research-lab.md) for non-default installation paths.
-
 From the repository root, on Linux:
 
 ```sh
@@ -37,8 +35,8 @@ cargo run --release --locked -p horizon-prepare -- --root "$PWD"
 export CARGO_TARGET_DIR="$PWD/.local/paper-parity/target"
 python3 tools/prepare_paper_trace_engine.py
 cargo build --release --manifest-path .local/paper-parity/engine-project/Cargo.toml
-cargo build --release --locked -p horizon-bots
-python3 tools/paper_parity.py run --engine "$CARGO_TARGET_DIR/release/paper-trace-engine" --bots "$CARGO_TARGET_DIR/release/horizon-bots"
+cargo build --release --locked -p myriade-bot
+python3 tools/paper_parity.py run --engine "$CARGO_TARGET_DIR/release/paper-trace-engine" --bots "$CARGO_TARGET_DIR/release/myriade-bot"
 ```
 
 On Windows (PowerShell, from the repository root):
@@ -49,8 +47,8 @@ cargo run --release --locked -p horizon-prepare -- --root "$PWD"
 $env:CARGO_TARGET_DIR = Join-Path $PWD '.local/paper-parity/target'
 python tools/prepare_paper_trace_engine.py
 cargo build --release --manifest-path .local/paper-parity/engine-project/Cargo.toml
-cargo build --release --locked -p horizon-bots
-python tools/paper_parity.py run --engine "$env:CARGO_TARGET_DIR/release/paper-trace-engine.exe" --bots "$env:CARGO_TARGET_DIR/release/horizon-bots.exe"
+cargo build --release --locked -p myriade-bot
+python tools/paper_parity.py run --engine "$env:CARGO_TARGET_DIR/release/paper-trace-engine.exe" --bots "$env:CARGO_TARGET_DIR/release/myriade-bot.exe"
 ```
 
 Set `CARGO_TARGET_DIR` before staging: the script installs the trace fixture beside

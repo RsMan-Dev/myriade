@@ -27,7 +27,7 @@ GREEN_JOBS = [job("shards / plan"), job("shards / ignored-tests-shards (horizon-
               job("fn-replace-check / route"), job("fn-replace-check / fn-replace-check"),
               job("linkage / route"), job("linkage / linkage x86_64-unknown-linux-gnu"),
               job("windows-runtime-leases / gate"), job("windows-runtime-leases / test", "skipped"),
-              job("windows-runtime-leases / runtime-leases"), job("windows-runtime-leases / launcher-processes")]
+              job("windows-runtime-leases / runtime-leases")]
 # Every other shard of the daily matrix, green (the summary expects each by name: summary.expected_shards).
 GREEN_JOBS += [job(name) for name in summary.expected_shards() if name != "shards / ignored-tests-shards (horizon-world)"]
 
@@ -229,23 +229,23 @@ class DailySummaryTests(unittest.TestCase):
         self.assertEqual(summary.stopped_text({"shard": "x"}), "`x` did not complete")
 
     def test_every_shard_of_the_matrix_must_report_by_name(self):
-        launcher = "shards / ignored-tests-shards (daily-rows-launcher)"
-        self.assertIn(launcher, summary.expected_shards())
+        rows = "shards / ignored-tests-shards (daily-rows)"
+        self.assertIn(rows, summary.expected_shards())
         api = Api(GREEN_JOBS)
         self.run_summary(api, [shard_report()])
         self.assertEqual(api.writes, [])
-        # Every other job green, the launcher's shard absent: red, with one leg issue naming it.
-        api = Api([entry for entry in GREEN_JOBS if entry["name"] != launcher])
+        # Every other job green, the daily-rows shard absent: red, with one leg issue naming it.
+        api = Api([entry for entry in GREEN_JOBS if entry["name"] != rows])
         self.run_summary(api, [shard_report()])
         self.assertEqual([body["title"] for _, path, body in api.writes if path == "issues"],
-                         [f"Daily: {launcher} did not complete"])
+                         [f"Daily: {rows} did not complete"])
         # A shard renamed in the workflow but not in the matrix's source: the expected name is missing.
-        renamed = [job("shards / ignored-tests-shards (daily-rows-tools)") if entry["name"] == launcher else entry
+        renamed = [job("shards / ignored-tests-shards (daily-rows-tools)") if entry["name"] == rows else entry
                    for entry in GREEN_JOBS]
         api = Api(renamed)
         self.run_summary(api, [shard_report()])
         self.assertEqual([body["title"] for _, path, body in api.writes if path == "issues"],
-                         [f"Daily: {launcher} did not complete"])
+                         [f"Daily: {rows} did not complete"])
 
     def test_a_stopped_runs_test_names_are_bounded_in_length(self):
         long = "a" * 301

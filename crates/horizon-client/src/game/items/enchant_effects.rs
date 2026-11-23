@@ -294,11 +294,9 @@ impl Game<'_> {
         };
         // Read effective levels once: get_enchantment_level may itself be mod-provided.
         let levels = held.all_enchantments();
-        let custom = true
-            && self.is_logical_server()
-            && world_stations!(self)
-                .enchantments
-                .has_custom_damage(&levels);
+        let custom = world_stations!(self)
+            .enchantments
+            .has_custom_damage(&levels);
         let actors = actors.filter(|_| custom).and_then(|(attacker, victim)| {
             let epoch = self.native_lifecycle.epoch()?;
             Some((
@@ -966,8 +964,7 @@ impl Game<'_> {
     /// `ExperienceOrb.repairPlayerItems`: returns the experience left over.
     pub(in crate::game) fn mending(&mut self, amount: u32) -> u32 {
         let mut amount = amount;
-        let player = (self.serving.is_some() || self.options.dedicated.is_some())
-            .then(|| self.native_acting_id());
+        let player = Some(self.native_acting_id());
         loop {
             // EnchantmentHelper.getRandomItemWith(REPAIR_WITH_XP, damaged), in
             // EquipmentSlot order, drawn from the player's own random.
@@ -1766,10 +1763,8 @@ mod tests {
     #[ignore = "daily"]
     fn thorns_and_boots_wear_break_the_equipped_piece() {
         use horizon_client::items::ItemStack;
-        use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+        crate::game::native_guest_turn_tests::with_acting_guest(Vec3::ZERO, |game| {
             let mut chest = ItemStack::new("minecraft:diamond_chestplate", 1);
             chest.damage = game.items().get(&chest.item).unwrap().max_damage - 1;
             chest.data_mut().enchantments = vec![("minecraft:thorns".into(), 255)];

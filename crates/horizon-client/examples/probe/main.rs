@@ -35,7 +35,6 @@ mod environment_timeline_fixture;
 mod falling_block_fixture;
 mod finalize_spawn_fixture;
 mod furnace_fixture;
-mod hotbar_fixture;
 mod lan_probe;
 mod late_entity_pair_fixture;
 mod lava_cauldron_item_fixture;
@@ -43,14 +42,11 @@ mod light_parity;
 mod mob_ai_probe;
 mod mob_attribute_nbt_fixture;
 mod mob_attributes_fixture;
-mod natural_spawn_fixture;
 mod pick_block_data_fixture;
-mod player_sync_fixture;
 mod portal_tickets_fixture;
 mod raid_fixture;
 mod random_tick_sections_probe;
 mod recipe_fixture;
-mod remote_attack_probe;
 mod scene_collision_probe;
 mod scene_motion_probe;
 mod scoreboard_fixture;
@@ -58,7 +54,6 @@ mod server_files_probe;
 mod sheep_dye_fixture;
 mod shulker_bullet_probe;
 mod spawn_rules_fixture;
-mod squid_client_probe;
 mod stack_mining_probe;
 mod storage_menu_fixture;
 mod team_rules_fixture;
@@ -73,7 +68,6 @@ probes! {
     block_transform_fixture,
     furnace_fixture,
     brewing_fixture,
-    squid_client_probe,
     creative_mining_probe,
     stack_mining_probe,
     cushion_placement_probe,
@@ -94,20 +88,16 @@ probes! {
     environment_system_fixture,
     environment_timeline_fixture,
     finalize_spawn_fixture,
-    hotbar_fixture,
     lan_probe,
     light_parity,
     mob_ai_probe,
     mob_attribute_nbt_fixture,
     mob_attributes_fixture,
-    natural_spawn_fixture,
     pick_block_data_fixture,
-    player_sync_fixture,
     portal_tickets_fixture,
     raid_fixture,
     random_tick_sections_probe,
     recipe_fixture,
-    remote_attack_probe,
     scene_collision_probe,
     scene_motion_probe,
     scoreboard_fixture,

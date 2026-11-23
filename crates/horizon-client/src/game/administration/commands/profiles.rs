@@ -20,9 +20,9 @@ impl Game<'_> {
     pub(super) fn dedicated_lists(
         &self,
     ) -> R<std::sync::Arc<std::sync::Mutex<super::super::dedicated::Lists>>> {
-        match (&self.server_lists, self.is_dedicated_server()) {
-            (Some(lists), true) => Ok(lists.clone()),
-            _ => Err(err("command.unknown.command", &[])),
+        match &self.server_lists {
+            Some(lists) => Ok(lists.clone()),
+            None => Err(err("command.unknown.command", &[])),
         }
     }
 

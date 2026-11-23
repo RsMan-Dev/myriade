@@ -853,21 +853,8 @@ class CompileLockTests(unittest.TestCase):
         self.assertTrue(any(run.rstrip().endswith(wrapped) for run in steps))
         compiles = [run for run in steps if "cargo build" in run]
         self.assertEqual(len(compiles), 1, "no other cargo build in exporters")
-        build = {step.get("name"): step for step in jobs["build"]["steps"]}
-        game_build = build["Build the official game, horizon-ctl, horizon-prepare and horizon-server"]["run"]
-        self.assertIn('if [ -f tools/ci/compile-lock.sh ]; then lock="bash tools/ci/compile-lock.sh build --"',
-                      game_build)
-        self.assertIn('if [ "${{ matrix.mac }}" = true ]; then', game_build)
-        self.assertIn("exec $lock cargo build --release --locked", game_build)
-        xtask = build["The packaging tool, compiled in its turn"]
-        self.assertEqual(xtask["if"], "matrix.mac")
-        self.assertTrue(xtask["run"].rstrip().endswith("exec bash tools/ci/compile-lock.sh build -- cargo build "
-                                                       "--locked -p xtask"))
-        names = list(build)
-        self.assertLess(names.index("The packaging tool, compiled in its turn"), names.index("Package"))
-        # Room for the job's 60 min of waiting: 150 min for exporters, 180 for the Mac build legs.
+        # Room for the job's 60 min of waiting: 150 min for exporters.
         self.assertEqual(jobs["exporters"]["timeout-minutes"], 150)
-        self.assertTrue(jobs["build"]["timeout-minutes"].startswith("${{ matrix.mac && 180 ||"))
         main = load("parity-main.yml")["jobs"]["parity-main"]
         # 20 min of waiting and the 240 min prebuild limit (tools/parity.py) leave setup and the harnesses 100.
         self.assertEqual(main["timeout-minutes"], 360)
@@ -878,19 +865,6 @@ class CompileLockTests(unittest.TestCase):
         self.assertEqual(verdict["env"]["HORIZON_COMPILE_LOCK_ROLE"], "off")
         parity = [step.get("run", "") for step in load("parity.yml")["jobs"]["parity"]["steps"]]
         self.assertEqual(len([run for run in parity if run.startswith("exec python3 tools/parity.py")]), 2)
-        # The launcher's Mac leg on main: tests and launcher in one turn, before the steps that run them; branch
-        # builds (GitHub's Macs) never run it.
-        launcher = load("launcher.yml")["jobs"]["build"]
-        names = [step.get("name") for step in launcher["steps"]]
-        turn = launcher["steps"][names.index("The launcher and its tests, compiled in their turn")]
-        self.assertEqual(turn["if"], "matrix.mac && needs.decide.outputs.main == 'true'")
-        self.assertIn("exec bash ../tools/ci/compile-lock.sh build -- bash -c \"$compile\"", turn["run"])
-        self.assertIn("cargo test --release --locked --no-run", turn["run"])
-        self.assertLess(names.index("The launcher and its tests, compiled in their turn"),
-                        names.index("Test every launcher target in a scratch home"))
-        # 90 min on the Mac mini (main); GitHub's Macs (branch builds) keep 60.
-        self.assertEqual(launcher["timeout-minutes"],
-                         "${{ matrix.mac && needs.decide.outputs.main == 'true' && 90 || matrix.mac && 60 || 40 }}")
         vanilla = (ROOT / "tools/ci/vanilla-data.sh").read_text(encoding="utf-8")
         self.assertIn('in_turn="bash tools/ci/compile-lock.sh ${HORIZON_COMPILE_LOCK_ROLE:-pr} --"', vanilla)
         self.assertEqual(vanilla.count("$in_turn "), 2)

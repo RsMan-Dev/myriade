@@ -6,33 +6,26 @@ pub const TIERS: [(u32, usize); 4] = [(1, 600), (10, 360), (60, 1440), (900, 672
 /// Durations one second keeps for its percentiles; the count, mean and max stay exact beyond this.
 const SECOND_BUFFER: usize = 1024;
 
-const FIELDS: usize = 23;
+const FIELDS: usize = 16;
 const TPS: usize = 0;
 const MSPT_AVG: usize = 1;
 const MSPT_P50: usize = 2;
 const MSPT_P95: usize = 3;
 const MSPT_MAX: usize = 4;
-const FPS: usize = 5;
-const FRAME_P50: usize = 6;
-const FRAME_P95: usize = 7;
-const FRAME_P99: usize = 8;
-const FRAME_MAX: usize = 9;
-const FRAME_CPU_P50: usize = 10;
-const FRAME_GPU_P50: usize = 11;
-const CPU_PROCESS: usize = 12;
-const CPU_SYSTEM: usize = 13;
-const RSS: usize = 14;
-const PHYSICAL: usize = 15;
-const SWAP: usize = 16;
-const ALLOCATOR_COMMIT: usize = 17;
-const ALLOCS_PER_S: usize = 18;
-const ALLOC_MIB_PER_S: usize = 19;
-const PLAYERS: usize = 20;
-const CHUNKS: usize = 21;
-const ENTITIES: usize = 22;
+const CPU_PROCESS: usize = 5;
+const CPU_SYSTEM: usize = 6;
+const RSS: usize = 7;
+const PHYSICAL: usize = 8;
+const SWAP: usize = 9;
+const ALLOCATOR_COMMIT: usize = 10;
+const ALLOCS_PER_S: usize = 11;
+const ALLOC_MIB_PER_S: usize = 12;
+const PLAYERS: usize = 13;
+const CHUNKS: usize = 14;
+const ENTITIES: usize = 15;
 
 /// A coarser sample takes the largest value of these fields and the mean of the others.
-const MAX_FIELDS: [usize; 2] = [MSPT_MAX, FRAME_MAX];
+const MAX_FIELDS: [usize; 1] = [MSPT_MAX];
 
 /// One sample: NaN stands for a field that is not set.
 #[derive(Clone, Copy)]
@@ -40,11 +33,9 @@ struct Slot([f32; FIELDS]);
 
 const EMPTY: Slot = Slot([f32::NAN; FIELDS]);
 
-/// What the producer measures once a second besides tick or frame times; the latest value holds until replaced.
+/// What the producer measures once a second besides tick times; the latest value holds until replaced.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Gauges {
-    pub frame_cpu_ms_p50: Option<f32>,
-    pub frame_gpu_ms_p50: Option<f32>,
     pub cpu_process_cores: f32,
     pub cpu_system_cores: f32,
     pub rss_mb: f32,
@@ -241,7 +232,7 @@ impl HealthRecorder {
         }
     }
 
-    /// One tick (server) or frame (client) that took `ms`, finished at `t`.
+    /// One tick that took `ms`, finished at `t`.
     pub fn record(&mut self, t: f64, ms: f32) {
         self.advance(t);
         let s = &mut self.second;
@@ -259,38 +250,27 @@ impl HealthRecorder {
         let rate = s.n as f32;
         s.durations.sort_by(f32::total_cmp);
         let timed = s.n > 0;
-        let (avg, p50, p95, p99, max) = if timed {
+        let (avg, p50, p95, max) = if timed {
             (
                 (s.sum / s.n as f64) as f32,
                 s.percentile(0.50),
                 s.percentile(0.95),
-                s.percentile(0.99),
                 s.max,
             )
         } else {
-            (f32::NAN, f32::NAN, f32::NAN, f32::NAN, f32::NAN)
+            (f32::NAN, f32::NAN, f32::NAN, f32::NAN)
         };
-        if self.side == Side::Client {
-            slot.0[FPS] = rate;
-            slot.0[FRAME_P50] = p50;
-            slot.0[FRAME_P95] = p95;
-            slot.0[FRAME_P99] = p99;
-            slot.0[FRAME_MAX] = max;
-        } else {
-            slot.0[TPS] = rate;
-            slot.0[MSPT_AVG] = avg;
-            slot.0[MSPT_P50] = p50;
-            slot.0[MSPT_P95] = p95;
-            slot.0[MSPT_MAX] = max;
-        }
+        slot.0[TPS] = rate;
+        slot.0[MSPT_AVG] = avg;
+        slot.0[MSPT_P50] = p50;
+        slot.0[MSPT_P95] = p95;
+        slot.0[MSPT_MAX] = max;
         s.n = 0;
         s.sum = 0.0;
         s.max = 0.0;
         s.durations.clear();
         let g = &self.gauges;
         let opt = |v: Option<f32>| v.unwrap_or(f32::NAN);
-        slot.0[FRAME_CPU_P50] = opt(g.frame_cpu_ms_p50);
-        slot.0[FRAME_GPU_P50] = opt(g.frame_gpu_ms_p50);
         slot.0[CPU_PROCESS] = g.cpu_process_cores;
         slot.0[CPU_SYSTEM] = g.cpu_system_cores;
         slot.0[RSS] = g.rss_mb;
@@ -381,13 +361,6 @@ impl HealthRecorder {
             mspt_p50: opt(MSPT_P50),
             mspt_p95: opt(MSPT_P95),
             mspt_max: opt(MSPT_MAX),
-            fps: opt(FPS),
-            frame_ms_p50: opt(FRAME_P50),
-            frame_ms_p95: opt(FRAME_P95),
-            frame_ms_p99: opt(FRAME_P99),
-            frame_ms_max: opt(FRAME_MAX),
-            frame_cpu_ms_p50: opt(FRAME_CPU_P50),
-            frame_gpu_ms_p50: opt(FRAME_GPU_P50),
             cpu_process_cores: num(CPU_PROCESS),
             cpu_system_cores: num(CPU_SYSTEM),
             rss_mb: num(RSS),

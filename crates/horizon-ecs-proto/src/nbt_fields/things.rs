@@ -2,6 +2,7 @@
 //! `save_trident`, `save_projectile`, and `entity_chunks` for the end crystal). Each key is declared by the component that holds its
 //! state (`FIELDS`); a key with no component to hold it (`Health`, `Fire`) stays a free key. The owners by UUID (`Owner`, `Thrower`) are in `owners.rs`.
 //! Ticks become durations here: `Age` and `PickupDelay` are read against the entity's own clock (`now_of`), not stored.
+use crate::behaviours::charged_shot::ExplosionPower;
 use crate::behaviours::homing_projectile::Homing;
 use crate::blocks::world_of;
 use crate::cow::now_of;
@@ -44,6 +45,7 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("weapon"), write: write_weapon, read: read_weapon, accepts: compound, owner: Some(owner::<FiredFrom>) },
     Field { key: Cow::Borrowed("ExplosionPower"), write: write_explosion_power, read: read_explosion_power, accepts: byte, owner: Some(owner::<Flight>) },
     Field { key: Cow::Borrowed("acceleration_power"), write: write_acceleration, read: read_acceleration, accepts: double, owner: Some(owner::<Flight>) },
+    Field { key: Cow::Borrowed("ExplosionPower"), write: write_ghast_power, read: read_ghast_power, accepts: integer, owner: Some(owner::<ExplosionPower>) },
     Field { key: Cow::Borrowed("dangerous"), write: write_dangerous, read: read_dangerous, accepts: byte, owner: Some(owner::<Flight>) },
     Field { key: Cow::Borrowed("LeftOwner"), write: write_left_owner, read: read_left_owner, accepts: byte, owner: Some(owner::<Projectile>) },
     Field { key: Cow::Borrowed("Life"), write: write_life, read: read_life, accepts: accept::int, owner: Some(owner::<Projectile>) },
@@ -347,6 +349,30 @@ fn read_explosion_power(w: &mut World, e: Entity, t: &Tag) -> bool {
         *power = i32::from(*v);
     }
     true
+}
+
+/// `Ghast.addAdditionalSaveData`: the ghast's `ExplosionPower` as a byte; `readAdditionalSaveData` reads any number, narrowed to a byte
+/// (`getByteOr`, 1 when absent: the component's creation value).
+fn write_ghast_power(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(p) = w.get::<ExplosionPower>(e) {
+        c.insert("ExplosionPower".into(), Tag::Byte(p.0 as i8));
+    }
+}
+fn read_ghast_power(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let v = match t {
+        Tag::Byte(v) => i64::from(*v),
+        Tag::Short(v) => i64::from(*v),
+        Tag::Int(v) => i64::from(*v),
+        Tag::Long(v) => *v,
+        _ => return false,
+    };
+    if let Some(mut p) = w.get_mut::<ExplosionPower>(e) {
+        p.0 = i32::from(v as i8);
+    }
+    true
+}
+fn integer(t: &Tag) -> bool {
+    matches!(t, Tag::Byte(_) | Tag::Short(_) | Tag::Int(_) | Tag::Long(_))
 }
 
 /// `AbstractHurtingProjectile.accelerationPower` (a double): the fireballs and the wind charges, whose flight is the hurting one.

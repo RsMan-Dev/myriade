@@ -61,7 +61,7 @@ fn a_creature_is_dosed_again_one_reapplication_delay_later() {
     if !have_data() {
         return;
     }
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let hit = ecs_cow(&mut h, 0.5, 1.0, 0.5, 5);
     h.tick();
     let spec = CloudSpec { wait: 0, duration: -1, ..CloudSpec::new(2.0, "minecraft:harming", None) };
@@ -86,7 +86,7 @@ fn a_custom_healing_effect_heals_a_creature_at_half_strength() {
     if !have_data() {
         return;
     }
-    let (_, mut h) = flat_pair();
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     let hit = ecs_cow(&mut h, 0.5, 1.0, 0.5, 5);
     h.tick();
     h.world.get_mut::<Health>(hit).expect("a creature has health").0 = 1.0;

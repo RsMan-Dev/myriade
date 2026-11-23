@@ -125,6 +125,37 @@ pub fn creature_visibility_to(w: &World, c: Entity, looker: Option<u8>) -> f64 {
     let fooled = crate::species::mob_heads::MOB_HEADS.iter().any(|(item, who)| who.contains(&name) && crate::items::item_id(item) == head);
     (if fooled { base * 0.5 } else { base }).clamp(0.0, 10.0)
 }
+/// The game's side of a mod's `living_visibility` (`LivingVisibilityEvent`): the visibility of player `player` as the mob `looking` (its
+/// network id) sees it, applied last. Lent for one step like the mod goals; without a lend nothing changes.
+pub trait LivingVisibilityHost {
+    fn visibility(&self, player: u32, looking: u32, visibility: f64) -> f64;
+}
+/// The host lent for one step, its lifetime erased: `LivingVisibility` is emptied by `step_with` before the host's borrow ends.
+#[derive(Clone, Copy)]
+pub struct LentVisibility(&'static dyn LivingVisibilityHost, std::thread::ThreadId);
+// SAFETY: it is only read by the nearest-target search, which runs with the whole world on the thread that lent it (`get` checks it in debug).
+unsafe impl Send for LentVisibility {}
+unsafe impl Sync for LentVisibility {}
+impl LentVisibility {
+    pub fn lend(host: &dyn LivingVisibilityHost) -> LentVisibility {
+        // SAFETY: the only holder is `LivingVisibility`, emptied by `step_with` before `host`'s borrow ends.
+        LentVisibility(unsafe { std::mem::transmute::<&dyn LivingVisibilityHost, &'static dyn LivingVisibilityHost>(host) }, std::thread::current().id())
+    }
+    pub fn get(self) -> &'static dyn LivingVisibilityHost {
+        debug_assert_eq!(self.1, std::thread::current().id());
+        self.0
+    }
+}
+#[derive(bevy_ecs::prelude::Resource, Default)]
+pub struct LivingVisibility(pub Option<LentVisibility>);
+
+/// `Player.getVisibilityPercent` under a worn mob head: half the visibility against the mob species `looker` it fools (`MOB_HEADS`), 1 otherwise.
+pub fn head_factor(helmet: u32, looker: Option<u8>) -> f64 {
+    let (true, Some(looker)) = (helmet != 0, looker) else { return 1.0 };
+    let name = crate::species::registry().species[usize::from(looker)].name;
+    let fooled = crate::species::mob_heads::MOB_HEADS.iter().any(|(item, who)| who.contains(&name) && crate::items::item_id(item) == helmet);
+    if fooled { 0.5 } else { 1.0 }
+}
 /// [`Targets::info`] for the code that holds the world.
 pub fn info(w: &World, who: Who) -> Option<Info> {
     let mut i = read(w.resource::<Online>(), w.resource::<PlayerState>(), who, |e| {
@@ -214,10 +245,14 @@ pub fn target_continue(clock: Res<Clock>, tg: Targets, teams: Option<Res<Teams>>
         }
     }
 }
-/// `TargetingConditions` for `e`: `who` is alive and not creative or spectator (`Info.exempt`), not `e` itself, and not in its team.
+/// `TargetingConditions` for `e`: `who` is alive and not creative or spectator (`Info.exempt`), not `e` itself, not in its team, and not
+/// invulnerable (the `Invulnerable` flag, which `Warden.canTargetEntity` refuses).
 pub fn can_target(w: &World, e: Entity, who: Who) -> bool {
-    who != Who::Entity(e) && info(w, who).is_some_and(|i| !i.exempt) && !allied(w, Who::Entity(e), who)
+    who != Who::Entity(e) && info(w, who).is_some_and(|i| !i.exempt) && !allied(w, Who::Entity(e), who) && !matches!(who, Who::Entity(t) if w.get::<crate::invulnerable::Invulnerable>(t).is_some())
 }
+/// `Mob.canAttack` refuses this target (the ghast): no mob takes it as a target, nor answers its hit. Put at creation by `Cap::RefusedByMobs`.
+#[derive(bevy_ecs::prelude::Component, Clone, Copy, Debug)]
+pub struct RefusedByMobs;
 /// The first creature within `radius` of `e` (by identifier, ascending) that `e` can target, read from the spatial index.
 pub fn attackable_near(w: &World, e: Entity, radius: f64) -> Option<Who> {
     let pos = w.get::<Pos>(e)?.0;

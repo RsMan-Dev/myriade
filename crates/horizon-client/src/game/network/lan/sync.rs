@@ -117,7 +117,7 @@ pub(in crate::game) fn install_server_sources(
     });
 }
 
-/// The recipes of a load of `origin`: a server's are shared, a client's own.
+/// The recipes of a load of `origin`: a server's are shared.
 pub(in crate::game) fn load_sources(
     root: &std::path::Path,
     item_data: &ItemData,
@@ -127,7 +127,7 @@ pub(in crate::game) fn load_sources(
     use horizon_world::native_load_context::DataLoadOrigin;
     match origin {
         DataLoadOrigin::ServerDataLoad => server_sources(root, item_data, overlay),
-        DataLoadOrigin::ClientPreload | _ => Ok(Arc::new(
+        _ => Ok(Arc::new(
             ResolvedSources::load(root, overlay, &data_load_context(root, item_data, origin)?)
                 .map_err(|error| std::io::Error::other(error.to_string()))?,
         )),
@@ -424,26 +424,5 @@ impl SyncPreload {
                 });
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod initial_source_tests {
-    use super::*;
-    use horizon_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs};
-
-    #[test]
-    fn client_preload_propagates_source_errors_instead_of_empty_tables() {
-        let root = tempfile::tempdir().unwrap();
-        std::fs::write(root.path().join("items.json"), "{}").unwrap();
-        std::fs::create_dir_all(root.path().join("data/minecraft")).unwrap();
-        // A file where the recipe directory belongs is an owning-load error.
-        std::fs::write(root.path().join("data/minecraft/recipe"), "not a directory").unwrap();
-        let inputs = Arc::new(LoadInputs::new(Default::default(), Default::default()));
-        let context = LoadContext::new(DataLoadOrigin::ClientPreload, inputs, [] as [&str; 0]);
-        let data = ItemData::load(root.path(), context).unwrap();
-        assert!(
-            initial_sources(root.path(), &data, &horizon_world::loot::PackOverlay::NONE).is_err()
-        );
     }
 }

@@ -27,7 +27,7 @@ impl Game<'_> {
         self.award_stat("used", &stack.item, 1);
     }
 
-    pub(super) fn break_block(&mut self, pos: [i32; 3]) -> Result<()> {
+    pub(in crate::game) fn break_block(&mut self, pos: [i32; 3]) -> Result<()> {
         self.carrier_break_block(pos)
     }
 

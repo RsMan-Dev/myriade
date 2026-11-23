@@ -16,7 +16,7 @@ use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
 
 use super::native_data_maps::DataMapType;
 use super::{
-    Game, GameLevel, LevelDimension, Screen,
+    Game, GameLevel, LevelDimension,
     execution_role::{self, ExecutionRole},
     mod_api_host,
     native_configs::ConfigFile,
@@ -62,13 +62,13 @@ use mod_api::{
     self, Answered, BlockPlacement, BlockTintSources, CauldronFluidContents,
     CauldronInteractions, ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions,
     ClientGuiOptions, ClientInputOptions, ClientMiningPrediction, ClientModifiers,
-    ClientReloadListeners, ColorResolvers, CommandInvocation, EnchantmentDamageEffects,
-    client::first_person::Hand, EnchantmentInfo, EntityLayers, EntityRef, EntityRenderers, GameRuleActor, HandRender,
+    ColorResolvers, CommandInvocation, EnchantmentDamageEffects,
+    client::first_person::Hand, EnchantmentInfo, EntityRef, GameRuleActor, HandRender,
     InsideEffects, InteractionAttempt, InteractionKey, ItemEntityRef, JsonAnimationType,
-    LayerDefinition, LifecycleContext, LivingRef, LoadConditions, NoteBlockChange,
-    ParticleProviders, PathComputationType, Placement, PlayerRef, PoiTypeExtensions,
-    RecipeBookCategory, ScreenId, ScreenOpening, ScreenshotImage, ServerReloadListeners,
-    ServerTickPhase, SpecialModelRenderers, TicketController, ToolUse, VillagerProfessions,
+    LifecycleContext, LivingRef, LoadConditions, NoteBlockChange,
+    PathComputationType, Placement, PlayerRef, PoiTypeExtensions,
+    RecipeBookCategory, ScreenId, ScreenOpening, ServerReloadListeners,
+    ServerTickPhase, TicketController, ToolUse, VillagerProfessions,
     WorldPhase,
 };
 use mod_api::{
@@ -77,8 +77,8 @@ use mod_api::{
     TriState, UsePhase,
 };
 use mod_api::{
-    BlockKey, DebugEntry, DebugRenderer, EffectKey, GuiLayer, HiddenParts, MapDecorationType,
-    ParticleGroup, PosedParts, RuntimeSprite, SkullModel, TaskId, TextureAtlasRegistration,
+    BlockKey, EffectKey, MapDecorationType,
+    ParticleGroup, RuntimeSprite, TaskId, TextureAtlasRegistration,
 };
 pub(crate) use mod_api::{
     BlockRim, ClientPacket, ClientPayload, ColoredLight, ContainerLootFilled, ExplosionStart,

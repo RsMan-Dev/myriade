@@ -179,7 +179,6 @@ fn progress_events_capture_each_players_full_mutation_state() {
                     conn: 12,
                     command: "reload".into(),
                     permission: 4,
-                    integrated: true,
                     quiet: false,
                 }));
             };

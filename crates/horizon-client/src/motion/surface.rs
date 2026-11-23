@@ -20,7 +20,7 @@ pub fn native_friction(
     friction: &mut f32,
 ) {
     let own = *friction;
-    crate::native_client_hooks::friction(context, entity, kind, pos, state, friction);
+    crate::native_level_hooks::friction(context, entity, kind, pos, state, friction);
     if !(0.0..=2.0).contains(&*friction) {
         *friction = own;
     }
@@ -47,7 +47,7 @@ pub fn block_friction(
 /// its inputs.
 #[inline(never)]
 pub fn native_block_jump_factor(context: &LoopContext, state: BlockStateId, factor: &mut f32) {
-    crate::native_client_hooks::block_jump_factor(context, state, factor);
+    crate::native_level_hooks::block_jump_factor(context, state, factor);
 }
 
 /// A block state's speed factor (`Block.getSpeedFactor`) is being read (beyond NeoForge: no
@@ -55,7 +55,7 @@ pub fn native_block_jump_factor(context: &LoopContext, state: BlockStateId, fact
 /// function of its inputs.
 #[inline(never)]
 pub fn native_block_speed_factor(context: &LoopContext, state: BlockStateId, factor: &mut f32) {
-    crate::native_client_hooks::block_speed_factor(context, state, factor);
+    crate::native_level_hooks::block_speed_factor(context, state, factor);
 }
 
 /// Whether a block is a ladder to a living entity (`IBlockExtension.isLadder`, which
@@ -70,7 +70,7 @@ pub fn native_is_ladder(
     state: BlockStateId,
     ladder: &mut bool,
 ) {
-    crate::native_client_hooks::is_ladder(context, entity, pos, state, ladder);
+    crate::native_level_hooks::is_ladder(context, entity, pos, state, ladder);
 }
 
 /// The factors the `block_jump_factor` and `block_speed_factor` parts give the blocks an entity
