@@ -182,4 +182,5 @@ pub static DEF: Def = Def {
     draws: None,
     merchant: false,
     no_portal: false,
+    ..Def::EMPTY
 };

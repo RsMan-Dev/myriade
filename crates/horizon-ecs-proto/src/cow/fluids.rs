@@ -203,13 +203,13 @@ pub(crate) fn fluid_update(
 #[allow(clippy::type_complexity)]
 pub(crate) fn breathing(
     level: Res<Level>,
-    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &FluidParams, &Immune, &TypeName, &crate::goals::Uid, Has<crate::behaviours::ender_teleport::WaterSensitive>, Has<crate::effects::CanBreatheUnderWater>, Has<crate::effects::HoldsAir>, Option<&OwnAir>, Has<crate::dragon::flight::NoAi>, Option<&OxygenBonus>), Or<(With<InFluid>, With<AirLow>, With<OwnAir>)>>,
+    mut q: Query<(Entity, &Pos, &FluidState, &mut Air, Has<AirLow>, Has<InFluid>, &FluidParams, &Immune, &TypeName, &crate::goals::Uid, (Has<crate::behaviours::ender_teleport::WaterSensitive>, Has<crate::effects::CanBreatheUnderWater>, Has<crate::effects::HoldsAir>, Option<&OwnAir>, Has<crate::dragon::flight::NoAi>, Option<&OxygenBonus>)), Or<(With<InFluid>, With<AirLow>, With<OwnAir>)>>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
     clock: Res<Clock>,
 ) {
     let mw = level.mw.0;
-    for (e, pos, fs, mut air, low, in_fluid, fp, imm, tn, uid, wet, tag_breathes, holds, own, no_ai, bonus) in &mut q {
+    for (e, pos, fs, mut air, low, in_fluid, fp, imm, tn, uid, (wet, tag_breathes, holds, own, no_ai, bonus)) in &mut q {
         let max = own.map_or(fp.max_air, |o| o.max);
         let before = air.0;
         // `Enderman.aiStep`: the water hurts it (1 a tick, through the invulnerability window), and the hurt sends it away.

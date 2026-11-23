@@ -216,9 +216,6 @@ impl PrimedTnt {
         // before the stuck multiplier of the move itself; PR 1a records the
         // movement unchanged.
         let mut gate = myriade_engine::move_gate::armed(
-            context,
-            self.id,
-            "minecraft:tnt",
             horizon_world::entity_move::MoverType::SelfMovement,
             wanted,
         );

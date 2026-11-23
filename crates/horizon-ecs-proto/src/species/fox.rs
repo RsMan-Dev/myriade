@@ -67,6 +67,7 @@ static VARIANT: crate::rules::variant::Table = crate::rules::variant::Table {
     redraw: false,
     ids: &[0, crate::rules::variant::SNOW],
     names: &["red", "snow"],
+    component_names: &["red", "snow"],
     traits: &[],
     group_baby: Some(2),
     inherit: crate::rules::variant::Inherit::None,

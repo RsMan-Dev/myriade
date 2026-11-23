@@ -23,7 +23,6 @@ pub fn ticker_name(entity: &BlockEntity) -> &'static str {
         BlockEntity::Brewing(_) => "brewing_stand",
         BlockEntity::DaylightDetector => "daylight_detector",
         BlockEntity::Campfire(_) => "campfire",
-        BlockEntity::Mod(_) => "mod_block_entity",
         BlockEntity::PotentSulfur(_) => "potent_sulfur",
         _ => "block_entity",
     }

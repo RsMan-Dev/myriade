@@ -34,6 +34,7 @@ static VARIANT: crate::rules::variant::Table = crate::rules::variant::Table {
     redraw: true,
     ids: &[0, 1, 2, 3, 4, 5, crate::rules::variant::RABBIT_EVIL],
     names: &[],
+    component_names: &["brown", "white", "black", "white_splotched", "gold", "salt", "evil"],
     traits: &[crate::rules::variant::Trait { variant: crate::rules::variant::RABBIT_EVIL, armor: Some(8.0), damage_add: 5.0, name: Some("entity.minecraft.killer_bunny") }],
     group_baby: None,
     inherit: crate::rules::variant::Inherit::None,

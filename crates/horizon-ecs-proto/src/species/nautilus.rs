@@ -7,7 +7,7 @@
 use super::Def;
 use crate::behaviours::breed::Love;
 use crate::behaviours::spawn_draw::{Draw, Draws, Kind, Store, When};
-use crate::behaviours::{animal_panic, breed, fish_swim, nearest_target, tempt, Cap, Entry};
+use crate::behaviours::{animal_panic, breed, charge_attack, fish_swim, nearest_target, tempt, Cap, Entry};
 use crate::cow::{FluidState, GrowAt};
 use crate::locomotion::{swim, Medium};
 use crate::rules::spawn_draw::Roll;

@@ -140,15 +140,12 @@ impl EcsWorld {
         out
     }
 
-    /// `step` with the mods' goal and behaviour hooks answered by `goals`, and the natural pass's spawn hooks by `spawn` (None: no mod listens).
-    pub fn step_with(&mut self, mw: &MobWorld<'_>, goals: &dyn crate::mod_goals::ModGoalHost, spawn: Option<&dyn crate::spawn_mod_host::SpawnModHost>) -> Vec<HostEvent> {
-        use crate::mod_goals::{LentHost, ModGoalCalls};
+    /// `step` with the natural pass's spawn hooks answered by `spawn` (None: no mod listens).
+    pub fn step_with(&mut self, mw: &MobWorld<'_>, spawn: Option<&dyn crate::spawn_mod_host::SpawnModHost>) -> Vec<HostEvent> {
         use crate::spawn_mod_host::{LentSpawnHost, SpawnModCalls};
-        self.world.insert_resource(ModGoalCalls(Some(LentHost::lend(goals))));
         self.world.insert_resource(SpawnModCalls(spawn.map(LentSpawnHost::lend)));
         let ran = catch_unwind(AssertUnwindSafe(|| self.step(mw)));
         self.world.insert_resource(SpawnModCalls(None));
-        self.world.insert_resource(ModGoalCalls(None));
         self.world.insert_resource(crate::targeting::LivingVisibility(None));
         match ran {
             Ok(out) => out,

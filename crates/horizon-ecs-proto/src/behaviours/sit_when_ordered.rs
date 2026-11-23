@@ -29,7 +29,7 @@ impl Params {
 }
 /// The species' parameters, kept on the entity by `equip`.
 #[derive(Component, Clone, Copy)]
-pub struct SitRules(&'static Params);
+pub struct SitRules(pub &'static Params);
 /// The sitting pose, taken while this goal runs on land (`OCC_SITTING` stays the order). Vanilla's `isInSittingPose`.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]

@@ -61,9 +61,9 @@ fn landing_trample(
     level: Res<Level>,
     mut changes: ResMut<BlockChanges>,
     mut events: ResMut<Events>,
-    q: Query<(Entity, &Landed, &Body, Option<&mut Rng>), With<Landed>>,
+    mut q: Query<(Entity, &Landed, &Body, Option<&mut Rng>), With<Landed>>,
 ) {
-    for (e, landed, body, rng) in &q {
+    for (e, landed, body, rng) in &mut q {
         commands.entity(e).remove::<Landed>();
         let roll = match rng {
             Some(mut r) => r.next_f64(),

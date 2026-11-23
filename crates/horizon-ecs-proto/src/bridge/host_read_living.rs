@@ -29,7 +29,7 @@ fn default_attack_reach() -> f64 {
 }
 
 /// The vanilla registry names of the effects this crate models, with their kind.
-const NAMES: [(&str, Kind); 22] = [
+const NAMES: [(&str, Kind); 24] = [
     ("minecraft:speed", Kind::Speed),
     ("minecraft:slowness", Kind::Slowness),
     ("minecraft:weakness", Kind::Weakness),

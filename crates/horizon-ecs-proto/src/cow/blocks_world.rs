@@ -175,6 +175,69 @@ pub fn build_level_neutral(half: i32, patches: bool) -> Level {
 }
 
 
+/// The row of every species the prototype knows, by id, read from the types (`malus_of`, `can_float_of`... take the fresh state).
+fn species_rows(types: &'static myriade_engine_lib::mobs::MobTypes) -> Vec<Species> {
+    // Every species the prototype knows, by id: the same table for the whole process.
+    let names: Vec<&'static str> = crate::species::names();
+    let mut table: Vec<Species> = Vec::new();
+    for (i, name) in names.into_iter().enumerate() {
+        // An entity that is not a mob (a display, a TNT, a projectile) has no `MobType`: its row is a stand-in (the cow's), never read.
+        let kind = types.types.get(name).unwrap_or(&types.types[crate::species::lists::STAND_IN]);
+        let is_creature = types.types.contains_key(name);
+        let screaming = crate::species::registry().by_name(name).unwrap().screaming;
+        let lost_horn = crate::species::registry().by_name(name).unwrap().lost_horn;
+        table.push(Species {
+            id: i as u8,
+            malus: crate::cow::species::malus_of(kind),
+            can_float: crate::cow::species::can_float_of(kind),
+            can_open_doors: crate::cow::species::can_open_doors_of(kind),
+            can_pass_doors: true,
+            can_walk_over_fences: false,
+            follow_range: kind.follow_range as f32,
+            max_health: kind.max_health,
+            water_slowdown: kind.water_slowdown,
+            lava_walker: kind.flags.lava_walker,
+            water_efficiency: kind.water_efficiency as f32,
+            eye_height: kind.eye_height,
+            sound_source: crate::species::registry().by_name(name).unwrap().sound_source,
+            name,
+            saved: crate::species::registry().by_name(name).unwrap().saved,
+            width: kind.width as f32,
+            height: kind.height as f32,
+            step_height: kind.step_height as f32,
+            gravity: crate::species::registry().by_name(name).unwrap().gravity.then_some(kind.gravity),
+            speed: kind.speed,
+            flying_speed: crate::cow::species::flying_speed_of(kind),
+            air_speed: kind.air_speed,
+            omnidirectional: kind.flags.omnidirectional,
+            baby: ((kind.width * kind.baby_scale) as f32, (kind.height * kind.baby_scale) as f32),
+            goals: crate::species::config(name),
+            rules: crate::species::registry().by_name(name).unwrap().rules,
+            knockback_resistance: kind.knockback_resistance,
+            attack_knockback: kind.attack_knockback,
+            armor: (kind.armor as f32, kind.armor_toughness as f32),
+            attack_damage: kind.attack_damage,
+            walk: crate::cow::species::walk_value_of(kind),
+            caps: crate::species::registry().by_name(name).unwrap().caps,
+            brain: crate::species::registry().by_name(name).unwrap().brain,
+            modes: crate::species::registry().by_name(name).unwrap().modes,
+            tags: if is_creature { crate::cow::species::tags_of(kind) | if screaming.is_some() { crate::cow::species::tag::SCREAMER } else { 0 } } else { 0 },
+            max_air: if is_creature { crate::cow::species::max_air_of(kind) } else { 300 },
+            persistent: false,
+            screaming,
+            lost_horn,
+            max_scale: crate::species::registry().by_name(name).unwrap().max_scale,
+            load_attrs: crate::species::registry().by_name(name).unwrap().load_attrs,
+            llama_strength: crate::species::registry().by_name(name).unwrap().llama_strength,
+            random_max_health: crate::species::registry().by_name(name).unwrap().random_max_health,
+            horse_gen: crate::species::registry().by_name(name).unwrap().horse_gen,
+            body_wear: crate::species::registry().by_name(name).unwrap().body_wear,
+            not_in_peaceful: crate::species::registry().by_name(name).unwrap().not_in_peaceful,
+        });
+    }
+    table
+}
+
 /// The level of a host world (`bridge/host.rs`): the mob world it is given (read only, lent for one call), no blocks of its own
 /// (`blocks` is null: `block_changes` reports the change as a `HostEvent::SetBlock`), a spatial index of `half` blocks each way.
 pub(crate) fn host_level(mw: &'static MobWorld<'static>, types: &'static myriade_engine_lib::mobs::MobTypes, half: i32) -> Level {
@@ -300,7 +363,7 @@ pub(crate) fn block_changes(
             }
         }
         // The paths that run near the change.
-        for (e, pos, s, nav) in &mut paths {
+        for (e, pos, s, mut nav) in &mut paths {
             let Some(path) = nav.path.as_ref().filter(|p| !p.is_done()) else { continue };
             let Some(end) = path.nodes.last() else { continue };
             let middle = Vec3::new(

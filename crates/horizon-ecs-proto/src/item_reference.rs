@@ -9,7 +9,6 @@ use horizon_core::random::RandomSource;
 pub fn original(id: u32, stack: ItemStack, at: Vec3, velocity: Vec3, delay: i64) -> ItemEntity {
     ItemEntity {
         random: horizon_core::random::EntityRandom::own(horizon_core::random::LegacyRandom::new(i64::from(id))),
-        attachment_lifetime: Default::default(),
         rotation: [0.0, 0.0],
         join: Default::default(),
         health: 5,

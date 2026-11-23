@@ -1029,8 +1029,9 @@ pub fn split_biomes(w: &mut World) {
     // SAFETY: the level was just built and no system runs: the pointer is the one `block_changes` reads the chunks by, and no other
     // reference reads them here.
     let blocks = unsafe { &mut *level.blocks.0 };
-    for (&(cx, cz), chunk) in blocks.chunks.iter_mut() {
-        let c = std::sync::Arc::make_mut(chunk);
+    let keys: Vec<(i32, i32)> = (&blocks.chunks).into_iter().map(|(&k, _)| k).collect();
+    for (cx, cz) in keys {
+        let c = std::sync::Arc::make_mut(blocks.chunks.get_mut(&(cx, cz)).unwrap());
         let biome = if cx < 0 { plains } else { desert };
         for qx in 0..4 {
             for qz in 0..4 {

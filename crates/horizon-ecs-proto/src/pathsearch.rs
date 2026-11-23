@@ -254,13 +254,9 @@ pub fn may_hold_water(t: PathType) -> bool {
 }
 pub fn path_type_from_state(w: &MobWorld, x: i32, y: i32, z: i32) -> PathType {
     probe!(bump(12));
-    w.world.cached_path_type(BlockPos::new(x, y, z), || {
-        probe!(bump(13));
-        let state = block_at(w, x, y, z);
-        w.mob_hooks
-            .and_then(|hooks| hooks.block_path_type(state, [x, y, z]))
-            .unwrap_or_else(|| w.data.path_type(state))
-    })
+    // Uncached: the level's cache returns its own copy of `PathType`, not `myriade_types::PathType`.
+    probe!(bump(13));
+    w.data.path_type(block_at(w, x, y, z))
 }
 /// The `isPathfindable` answers of the mod parts, by state (`PartAnswers.pathfindable`): `part(state, kind)` is the parts' answer where they
 /// give one, else the block keeps its own (`MobData::block_pathfindable`). `states` is the number of states of `data`.

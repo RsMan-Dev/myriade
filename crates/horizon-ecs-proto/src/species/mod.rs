@@ -458,9 +458,7 @@ impl Registry {
     /// module nobody carries is zero). `REGISTER_ALL=1` registers every module (to measure what the guarantee saves).
     pub fn carried(&self, module: usize) -> bool {
         // The unit tests of a module inject their own configuration into the library under test: every module is inscribed there.
-        // The mod goals' family is carried by whichever entity holds a mod goal (`mod_goals`), not by a species' configuration.
         cfg!(test)
-            || crate::mod_goals::FAMILY.iter().any(|f| behaviours::same(f, self.modules[module]))
             || EVERY_MODULE.load(std::sync::atomic::Ordering::Relaxed)
             || std::env::var_os("REGISTER_ALL").is_some()
             || self.species.iter().any(|s| s.config.entries.iter().chain(s.modes.iter().map(|m| &m.1)).any(|e| self.module_id(e.module) == Some(module)))
@@ -494,7 +492,7 @@ impl Builder {
         for (n, f) in predicates::BUILTIN {
             b.predicates.push(("base", n, *f));
         }
-        for m in behaviours::TABLE.iter().chain(crate::locomotion::TABLE).chain(crate::mod_goals::FAMILY.iter()) {
+        for m in behaviours::TABLE.iter().chain(crate::locomotion::TABLE) {
             b.modules.push(m);
         }
         for d in BUILTIN {

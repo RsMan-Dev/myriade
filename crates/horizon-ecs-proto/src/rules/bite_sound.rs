@@ -11,6 +11,7 @@ pub struct BiteSound(pub &'static str);
 pub static BITE: crate::rules::Rule = crate::rules::Rule {
     name: "bite_sound",
     equip: |w, e, p| {
+        let p: &dyn std::any::Any = p;
         if let Some(s) = p.downcast_ref::<&'static str>() {
             w.entity_mut(e).insert(BiteSound(s));
         }

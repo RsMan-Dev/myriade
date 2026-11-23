@@ -216,6 +216,183 @@ pub mod tag {
 }
 
 
+/// `getWalkTargetValue` of the template mob, from its type (the species the prototype ports; the others read zero).
+pub(crate) fn walk_value_of(kind: &myriade_engine_lib::mobs::MobType) -> crate::spots::WalkValue {
+    use crate::spots::WalkValue as W;
+    use myriade_engine_lib::mobs::Species as S;
+    match kind.species {
+        S::Mooshroom => W::Mooshroom,
+        S::Bee => W::Bee,
+        S::Turtle => W::Turtle,
+        S::Guardian | S::ElderGuardian => W::Guardian,
+        S::HappyGhast => W::HappyGhast,
+        S::Hoglin => W::Hoglin,
+        S::Strider => W::Strider,
+        S::Silverfish => W::Silverfish,
+        S::Enderman | S::Pillager | S::Warden | S::Axolotl | S::Nautilus | S::ZombieNautilus | S::Creaking => W::Zero,
+        S::Slime | S::MagmaCube | S::Ghast | S::Phantom => W::Zero,
+        _ if kind.category == "monster" => W::Monster,
+        _ if kind.flags.animal => W::Animal,
+        _ => W::Zero,
+    }
+}
+
+/// The path maluses of a fresh mob of the type: `constructor_maluses` (the vanilla base classes), then the species' own
+/// `register`, in that order. The writes that depend on a live mob (a state, a position) are left out.
+pub(crate) fn malus_of(kind: &myriade_engine_lib::mobs::MobType) -> [Option<f32>; myriade_engine_lib::mobs::path::PATH_TYPES] {
+    use myriade_engine_lib::mobs::{path::PathType as P, Species as S};
+    let s = kind.species;
+    let animal = matches!(
+        s,
+        S::Armadillo | S::Axolotl | S::Bee | S::Camel | S::CamelHusk | S::Cat | S::Chicken | S::Cow | S::Donkey | S::Fox | S::Frog
+            | S::Goat | S::HappyGhast | S::Hoglin | S::Horse | S::Llama | S::Mule | S::Mooshroom | S::Nautilus | S::Ocelot
+            | S::Panda | S::Parrot | S::Pig | S::PolarBear | S::Rabbit | S::Sheep | S::SkeletonHorse | S::Sniffer | S::Strider
+            | S::TraderLlama | S::Turtle | S::Wolf | S::ZombieHorse | S::ZombieNautilus
+    );
+    let mut w: Vec<(P, f32)> = Vec::new();
+    if animal || matches!(s, S::Villager | S::WanderingTrader | S::Piglin | S::PiglinBrute | S::CopperGolem) {
+        w.extend([(P::FireInNeighbor, 16.0), (P::Fire, -1.0)]);
+    }
+    w.extend(match s {
+        S::Fox => vec![(P::DamagingInNeighbor, 0.0), (P::Damaging, 0.0)],
+        S::Parrot => vec![(P::FireInNeighbor, -1.0), (P::Fire, -1.0), (P::Cocoa, -1.0)],
+        S::Frog => vec![(P::Water, 4.0), (P::Trapdoor, -1.0)],
+        S::Goat | S::Wolf => vec![(P::PowderSnow, -1.0), (P::OnTopOfPowderSnow, -1.0)],
+        S::CopperGolem => vec![(P::DamagingInNeighbor, 16.0)],
+        S::Blaze => vec![(P::Water, -1.0), (P::Lava, 8.0), (P::FireInNeighbor, 0.0), (P::Fire, 0.0)],
+        S::ZombifiedPiglin | S::WitherSkeleton => vec![(P::Lava, 8.0)],
+        // The species' own `register`: water costs nothing to the swimmers, and the others' fixed writes.
+        S::Cod | S::Salmon | S::TropicalFish | S::Pufferfish | S::Tadpole | S::Squid | S::GlowSquid | S::Dolphin | S::Axolotl
+        | S::Chicken | S::Guardian | S::ElderGuardian | S::Nautilus | S::ZombieNautilus | S::Turtle | S::Drowned => {
+            vec![(P::Water, 0.0)]
+        }
+        S::Enderman => vec![(P::Water, -1.0)],
+        S::Bee => vec![(P::Fire, -1.0), (P::Water, -1.0), (P::WaterBorder, 16.0), (P::Cocoa, -1.0), (P::Fence, -1.0)],
+        S::Breeze => vec![(P::OnTopOfTrapdoor, -1.0), (P::Fire, -1.0)],
+        S::Ravager => vec![(P::Leaves, 0.0)],
+        S::Sniffer => vec![(P::Water, -1.0), (P::OnTopOfPowderSnow, -1.0), (P::DamageCautious, -1.0)],
+        S::Strider => vec![(P::Water, -1.0), (P::Lava, 0.0), (P::FireInNeighbor, 0.0), (P::Fire, 0.0)],
+        S::Warden => vec![
+            (P::UnpassableRail, 0.0),
+            (P::Damaging, 8.0),
+            (P::PowderSnow, 8.0),
+            (P::Lava, 8.0),
+            (P::Fire, 0.0),
+            (P::FireInNeighbor, 0.0),
+        ],
+        _ => vec![],
+    });
+    if matches!(s, S::Turtle) {
+        w.extend([(P::DoorIronClosed, -1.0), (P::DoorWoodClosed, -1.0), (P::DoorOpen, -1.0)]);
+    }
+    let mut m = [None; myriade_engine_lib::mobs::path::PATH_TYPES];
+    for (t, v) in w {
+        m[t as usize] = Some(v);
+    }
+    m
+}
+
+/// Whether a fresh mob of the type can float (`nav.can_float`): the `FloatGoal` species and the final list of `ai::register`.
+pub(crate) fn can_float_of(kind: &myriade_engine_lib::mobs::MobType) -> bool {
+    use myriade_engine_lib::mobs::Species as S;
+    matches!(
+        kind.species,
+        S::Slime
+            | S::MagmaCube
+            | S::SulfurCube
+            | S::Bee
+            | S::Creaking
+            | S::HappyGhast
+            | S::Rabbit
+            | S::Sniffer
+            | S::Villager
+            | S::Warden
+            | S::Parrot
+            | S::Allay
+            | S::Armadillo
+            | S::Camel
+            | S::Goat
+            | S::Wither
+    )
+}
+
+/// Whether a fresh mob of the type opens doors (`nav.can_open_doors`): the villager and piglin families (the zombies' is state).
+pub(crate) fn can_open_doors_of(kind: &myriade_engine_lib::mobs::MobType) -> bool {
+    use myriade_engine_lib::mobs::Species as S;
+    matches!(kind.species, S::CopperGolem | S::Villager | S::Piglin | S::PiglinBrute)
+}
+
+/// The flying speed of a fresh mob of the type: its attribute default, else the registry's 0.4 (`finalize::value`).
+pub(crate) fn flying_speed_of(kind: &myriade_engine_lib::mobs::MobType) -> f64 {
+    kind.attributes.get("minecraft:flying_speed").copied().unwrap_or(0.4)
+}
+
+/// The air a mob of the type holds at most (`Mob::max_air_supply`): the axolotl's and the dolphin's, else 300.
+pub(crate) fn max_air_of(kind: &myriade_engine_lib::mobs::MobType) -> i32 {
+    use myriade_engine_lib::mobs::Species as S;
+    match kind.species {
+        S::Axolotl => myriade_engine_lib::mobs::axolotl::MAX_AIR,
+        S::Dolphin => 4800,
+        _ => 300,
+    }
+}
+
+/// Whether a fresh mob of the type picks up loot (`Mob::can_pick_up_loot`, no item in hand, so the allay's is false).
+pub(crate) fn can_pick_up_of(kind: &myriade_engine_lib::mobs::MobType) -> bool {
+    use myriade_engine_lib::mobs::Species as S;
+    matches!(kind.species, S::SulfurCube | S::Villager | S::Piglin | S::PiglinBrute | S::Dolphin | S::Fox | S::Panda)
+}
+
+/// The class bits of a species, from its type (the fresh mob's pickup and anger are the type's).
+pub(crate) fn tags_of(kind: &myriade_engine_lib::mobs::MobType) -> u32 {
+    use myriade_engine_lib::mobs::{finalize, species::can_be_a_baby, Species as S};
+    let s = kind.species;
+    let mut t = 0;
+    // `flags.animal` also marks the allay and the giant, which do not extend `Animal`.
+    if (kind.flags.animal && !matches!(s, S::Allay | S::Giant)) || s == S::Hoglin {
+        t |= tag::ANIMAL;
+    }
+    if s == S::Tadpole || (finalize::ageable(s) && can_be_a_baby(s)) {
+        t |= tag::AGEING;
+        if s != S::Tadpole {
+            t |= tag::FORCED_AGE;
+        }
+    }
+    if matches!(s, S::Horse | S::Donkey | S::Mule | S::SkeletonHorse | S::ZombieHorse | S::Camel | S::CamelHusk | S::Llama | S::TraderLlama) {
+        t |= tag::EQUINE;
+    }
+    if can_pick_up_of(kind) {
+        t |= tag::PICKS_UP;
+    }
+    if matches!(s, S::Bee | S::Wolf) {
+        t |= tag::ANGER_UNSET;
+    } else if myriade_engine_lib::mobs::neutral_anger::persistent_anger(s) {
+        t |= tag::ANGER_ZERO;
+    }
+    if s == S::Tadpole {
+        t |= tag::TADPOLE;
+    }
+    if matches!(s, S::Camel | S::CamelHusk) {
+        t |= tag::CAMEL;
+    }
+    if matches!(s, S::Donkey | S::Mule | S::Llama | S::TraderLlama) {
+        t |= tag::CHESTED;
+    }
+    if matches!(s, S::Zombie | S::Husk | S::Drowned | S::ZombieVillager | S::ZombifiedPiglin) {
+        t |= tag::ZOMBIE;
+    }
+    if matches!(s, S::Pillager | S::Vindicator | S::Evoker | S::Illusioner | S::Witch | S::Ravager) {
+        t |= tag::RAIDER;
+    }
+    if matches!(s, S::Zombie | S::Husk | S::Drowned | S::ZombieVillager | S::ZombifiedPiglin | S::Piglin | S::Zoglin) {
+        t |= tag::BABY_FLAG;
+    }
+    if matches!(s, S::Cod | S::Salmon | S::Pufferfish | S::TropicalFish | S::Axolotl) {
+        t |= tag::BUCKETABLE;
+    }
+    t
+}
+
 /// The class bits of the species of an entity (0 when no level was built).
 pub fn tags_of_id(id: SpeciesId) -> u32 {
     TABLE.get().and_then(|t| t.get(usize::from(id.0))).map_or(0, |s| s.tags)

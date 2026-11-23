@@ -88,7 +88,7 @@ const MOVE_KIDS: &[Kid] = &[
 ];
 
 pub static DEF: Def = Def {
-    load_attrs: &[crate::attr_mod::LoadAttr { name: "movement_speed", base: None, when: crate::attr_mod::LoadWhen::Always }, crate::attr_mod::LoadAttr { name: "movement_speed", base: Some(f64::from(0.2f32)), when: crate::attr_mod::LoadWhen::BabyBonus }],
+    load_attrs: &[crate::attr_mod::LoadAttr { name: "movement_speed", base: None, when: crate::attr_mod::LoadWhen::Always }, crate::attr_mod::LoadAttr { name: "movement_speed", base: Some((0.2f32 as f64)), when: crate::attr_mod::LoadWhen::BabyBonus }],
     name: "minecraft:piglin",
     targets: &[
         Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, alert_types: &["minecraft:piglin", "minecraft:piglin_brute"], ignoring: &["minecraft:piglin", "minecraft:piglin_brute"], ..hurt_by::Params::DEFAULT }),

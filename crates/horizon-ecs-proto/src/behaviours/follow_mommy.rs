@@ -49,7 +49,7 @@ pub fn tick(w: &mut World) {
     for (e, at, range) in babies {
         let mut near = Vec::new();
         w.resource::<Index>().for_radius(at.x, at.z, range, |c| near.push(c));
-        let mut best = None;
+        let mut best: Option<(horizon_core::geometry::Vec3, f64)> = None;
         for c in near {
             if c == e || w.get::<GrowAt>(c).is_some() || w.get::<Bred>(c).is_none() || !equine(w, c) {
                 continue;

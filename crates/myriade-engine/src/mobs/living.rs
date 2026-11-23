@@ -1,3 +1,4 @@
+use super::MobWorld;
 use crate::health::DamageLevel;
 use crate::{blocks::Fluid, collisions::SceneCollisions};
 use horizon_core::{
@@ -99,6 +100,32 @@ pub struct Fluids {
     pub eye_in_water: bool,
     pub eye_in_lava: bool,
 }
+/// `FluidFlowWorld` over the mob's scene: the neighbours a flow vector reads.
+struct FlowScene<'a, 'w>(&'a MobWorld<'w>);
+impl FluidFlowWorld for FlowScene<'_, '_> {
+    type Error = std::convert::Infallible;
+    type Block = BlockStateId;
+    fn fluid(&mut self, p: BlockPos) -> Result<FluidState, Self::Error> {
+        Ok(self.0.fluid_tables.fluid(self.0.world.block(p.x, p.y, p.z)))
+    }
+    fn block(&mut self, p: BlockPos) -> Result<BlockStateId, Self::Error> {
+        Ok(self.0.world.block(p.x, p.y, p.z))
+    }
+    fn blocks_fluid_flow(&self, s: BlockStateId) -> bool {
+        self.0.fluid_tables.blocks_flow(s)
+    }
+    fn is_ice_class(&self, s: BlockStateId) -> bool {
+        self.0.fluid_tables.ice(s)
+    }
+    fn is_face_sturdy(
+        &mut self,
+        s: BlockStateId,
+        _: BlockPos,
+        d: horizon_core::geometry::Direction,
+    ) -> Result<bool, Self::Error> {
+        Ok(self.0.fluid_tables.sturdy(s, d))
+    }
+}
 /// The mob's velocity, for `CurrentAccumulator::apply_to`.
 struct Pushed<'a>(&'a mut Vec3);
 impl CurrentTarget for Pushed<'_> {
@@ -130,6 +157,189 @@ pub fn wrap(a: f32) -> f32 {
         a += 360.0;
     }
     a
+}
+impl MobWorld<'_> {
+    /// Entity.updateFluidHeightAndDoFluidPushing's currents over the deflated
+    /// box: the flow of every water and lava block it touches, summed (a thin
+    /// fluid layer scales its flow down), as (water, lava).
+    fn fluid_currents(&self, bounds: Aabb) -> (CurrentAccumulator, CurrentAccumulator) {
+        let base_y = bounds.min_position().y;
+        let b = bounds.deflate(Vec3::new(0.001, 0.001, 0.001));
+        let (lo, hi) = (b.min_position(), b.max_position());
+        let mut scene = FlowScene(self);
+        let (mut water, mut lava) = (CurrentAccumulator::default(), CurrentAccumulator::default());
+        for x in lo.x.floor() as i32..=(hi.x.ceil() as i32 - 1) {
+            for y in lo.y.floor() as i32..=(hi.y.ceil() as i32 - 1) {
+                for z in lo.z.floor() as i32..=(hi.z.ceil() as i32 - 1) {
+                    let p = BlockPos::new(x, y, z);
+                    let state = self.fluid_tables.fluid(self.world.block(x, y, z));
+                    let current = match state.kind() {
+                        // A mod's fluid is in neither tag, so it pushes no entity.
+                        FluidKind::Empty | FluidKind::Mod(_) | FluidKind::ModFlowing(_) => continue,
+                        FluidKind::Water | FluidKind::FlowingWater => &mut water,
+                        FluidKind::Lava | FluidKind::FlowingLava => &mut lava,
+                    };
+                    let surface = f64::from(y) + self.fluid_height(x, y, z).1;
+                    if surface < lo.y {
+                        continue;
+                    }
+                    current.height = current.height.max(surface - base_y);
+                    let mut flow =
+                        crate::motion::pushing_flow(self.loop_context, &mut scene, state, p)
+                            .unwrap_or(Vec3::ZERO);
+                    if current.height < 0.4 {
+                        flow = flow.scale(current.height);
+                    }
+                    current.accumulate(flow);
+                }
+            }
+        }
+        (water, lava)
+    }
+    /// `Entity.updateFluidInteraction`'s pushes for an entity fluids push
+    /// (`isPushedByFluid`) with the box `bounds`: its `velocity` after the
+    /// water's and the lava's currents (`EntityFluidInteraction.applyCurrentTo`).
+    pub fn pushed_by_currents(&self, bounds: Aabb, mut velocity: Vec3) -> Vec3 {
+        let (water, lava) = self.fluid_currents(bounds);
+        let lava_scale = if self.dimension_type.fast_lava {
+            0.007
+        } else {
+            0.0023333333333333335
+        };
+        let mut pushed = Pushed(&mut velocity);
+        if water.height > 0.0 {
+            let _ = water.apply_to(&mut pushed, 0.014);
+        }
+        if lava.height > 0.0 {
+            let _ = lava.apply_to(&mut pushed, lava_scale);
+        }
+        velocity
+    }
+    /// `BlockState.getCollisionShape(level, pos)` (the empty collision
+    /// context) as boxes in the world.
+    pub fn block_collision_boxes(&self, x: i32, y: i32, z: i32) -> Vec<Aabb> {
+        let offset = Vec3::new(f64::from(x), f64::from(y), f64::from(z));
+        self.block_shape(x, y, z)
+            .map(|shape| shape.boxes().iter().map(|b| b.move_by(offset)).collect())
+            .unwrap_or_default()
+    }
+    /// Whether the block's collision shape (empty context) has a box meeting `area`.
+    fn block_collides_with(&self, x: i32, y: i32, z: i32, area: Aabb) -> bool {
+        let offset = Vec3::new(f64::from(x), f64::from(y), f64::from(z));
+        self.block_shape(x, y, z).is_some_and(|shape| {
+            shape
+                .boxes()
+                .iter()
+                .any(|b| b.move_by(offset).intersects(area))
+        })
+    }
+    fn block_shape(&self, x: i32, y: i32, z: i32) -> Option<horizon_core::geometry::VoxelShape> {
+        let mut scene = SceneCollisions {
+            world: self.world,
+            binding: self.collision,
+            subject: None,
+        };
+        let state = self.world.block(x, y, z);
+        let at = horizon_core::position::BlockPos::new(x, y, z);
+        let context = horizon_world::collision_context::CollisionContext::empty(false);
+        self.collision
+            .collision_shape_with_context(&mut scene, state, at, &context)
+            .ok()
+    }
+    /// `Level.findSupportingBlock`: of the blocks whose collision shape
+    /// meets `area`, the one whose centre is nearest `from` (ties: the
+    /// greatest by `Vec3i.compareTo`, y then z then x).
+    ///
+    /// Like `BlockCollisions`' cursor, a block whose shape stays inside its
+    /// own cell (not `hasLargeCollisionShape`, not a moving piston) is only
+    /// shaped when that cell meets `area`: elsewhere it cannot. The pick is
+    /// a total order, so the column-by-column visit finds the same block.
+    pub fn supporting_block(&self, area: Aabb, from: Vec3) -> Option<[i32; 3]> {
+        use horizon_core::geometry::Axis;
+        let range = |axis| {
+            (area.min(axis) - 1.0e-7).floor() as i32 - 1
+                ..=(area.max(axis) + 1.0e-7).floor() as i32 + 1
+        };
+        // Aabb.intersects of the unit cell at `c` along one axis.
+        let meets = |axis, c: i32| {
+            let c = f64::from(c);
+            c < area.max(axis) && c + 1.0 > area.min(axis)
+        };
+        // Where no section of the cursor holds a block reaching out of its
+        // cell, only the cells meeting `area` can hold the support.
+        let (rx, ry, rz) = (range(Axis::X), range(Axis::Y), range(Axis::Z));
+        let outer = self.world.may_hold(
+            [*rx.start(), *ry.start(), *rz.start()],
+            [*rx.end(), *ry.end(), *rz.end()],
+            |s| self.collision.reaches_out(s),
+        );
+        let mut best: Option<(f64, [i32; 3])> = None;
+        for x in rx {
+            for z in rz.clone() {
+                let column = meets(Axis::X, x) && meets(Axis::Z, z);
+                if !outer && !column {
+                    continue;
+                }
+                let Some(chunk) = self.world.chunks.get(&(x >> 4, z >> 4)) else {
+                    continue;
+                };
+                for y in ry.clone() {
+                    if !outer && !meets(Axis::Y, y) {
+                        continue;
+                    }
+                    let state = chunk.block(x & 15, y, z & 15);
+                    let Ok(block) = self.collision.collision_block(state) else {
+                        continue;
+                    };
+                    if !(block.large_collision_shape
+                        || block.moving_piston
+                        || (column && meets(Axis::Y, y)))
+                    {
+                        continue;
+                    }
+                    if !self.block_collides_with(x, y, z, area) {
+                        continue;
+                    }
+                    let d = (f64::from(x) + 0.5 - from.x).powi(2)
+                        + (f64::from(y) + 0.5 - from.y).powi(2)
+                        + (f64::from(z) + 0.5 - from.z).powi(2);
+                    let greater = |b: [i32; 3]| (y, z, x) > (b[1], b[2], b[0]);
+                    if best.is_none_or(|(bd, b)| d < bd || d == bd && greater(b)) {
+                        best = Some((d, [x, y, z]));
+                    }
+                }
+            }
+        }
+        best.map(|(_, p)| p)
+    }
+    pub fn no_collision(&self, b: Aabb) -> bool {
+        let mut scene = SceneCollisions {
+            world: self.world,
+            binding: self.collision,
+            subject: None,
+        };
+        scene.unobstructed(b).unwrap_or(false)
+    }
+    /// `LevelReader.containsAnyLiquid`: the blocks from the box's minimum
+    /// corner to the block holding its maximum corner.
+    pub fn contains_any_liquid(&self, b: Aabb) -> bool {
+        let (lo, hi) = (b.min_position(), b.max_position());
+        let (x0, y0, z0) = (
+            lo.x.floor() as i32,
+            lo.y.floor() as i32,
+            lo.z.floor() as i32,
+        );
+        let (x1, y1, z1) = (
+            hi.x.floor() as i32,
+            hi.y.floor() as i32,
+            hi.z.floor() as i32,
+        );
+        (x0..=x1).any(|x| {
+            (y0..=y1).any(|y| {
+                (z0..=z1).any(|z| self.facts.get(self.world.block(x, y, z)).fluid != Fluid::None)
+            })
+        })
+    }
 }
 /// LivingEntity.getFluidFallingAdjustedMovement.
 pub fn fluid_falling(gravity: f64, falling: bool, sprinting: bool, m: Vec3) -> Vec3 {

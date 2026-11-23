@@ -309,10 +309,50 @@ pub struct MobTypes {
     pub types: HashMap<String, MobType>,
 }
 impl MobTypes {
+    /// The types with the attribute catalog of the same resources
+    /// (`attributes.json`), for a caller without the game's own.
+    pub fn load(root: &Path) -> crate::Result<Self> {
+        Self::load_with_models(root, true, None, None, &Self::root_catalog(root)?)
+    }
 
+    /// Load client mob data using defaults already decoded by the resource
+    /// bootstrap. This avoids decoding `items.json` a second time for Allay
+    /// inventory limits.
+    pub fn load_with_defaults(
+        root: &Path,
+        defaults: &horizon_world::item_defaults::Defaults,
+        attributes: &horizon_world::attributes::entity::Catalog,
+    ) -> crate::Result<Self> {
+        Self::load_with_models(root, true, None, Some(defaults), attributes)
+    }
 
+    /// The dedicated server needs entity facts and AI, but never their render
+    /// geometry. Keep one empty part for the fields shared with the client
+    /// rather than parsing and retaining every entity-model layer.
+    pub fn load_for_server(
+        root: &Path,
+        attributes: &horizon_world::attributes::entity::Catalog,
+    ) -> crate::Result<Self> {
+        Self::load_with_models(root, false, None, None, attributes)
+    }
 
+    /// The client startup already parsed `entity-models.json` for the handoff
+    /// and the other model loaders; read the model layers from that copy.
+    pub fn load_with_document(root: &Path, document: &EntityModelDocument) -> crate::Result<Self> {
+        Self::load_with_models(root, true, Some(document), None, &Self::root_catalog(root)?)
+    }
 
+    /// The client startup already has the entity model document, the item
+    /// defaults and the attribute catalog. Reuse them instead of decoding
+    /// their files again.
+    pub fn load_with_document_and_defaults(
+        root: &Path,
+        document: &EntityModelDocument,
+        defaults: &horizon_world::item_defaults::Defaults,
+        attributes: &horizon_world::attributes::entity::Catalog,
+    ) -> crate::Result<Self> {
+        Self::load_with_models(root, true, Some(document), Some(defaults), attributes)
+    }
 
     fn root_catalog(root: &Path) -> crate::Result<horizon_world::attributes::entity::Catalog> {
         let json = horizon_world::json_file::read(&root.join("attributes.json"))?;
@@ -321,6 +361,190 @@ impl MobTypes {
         )?)
     }
 
+    /// `attributes`: the catalog whose bounds the types' mobs clamp to.
+    fn load_with_models(
+        root: &Path,
+        models_needed: bool,
+        document: Option<&EntityModelDocument>,
+        item_defaults: Option<&horizon_world::item_defaults::Defaults>,
+        attributes: &horizon_world::attributes::entity::Catalog,
+    ) -> crate::Result<Self> {
+        let attribute_bounds = finalize::AttrBounds::of(attributes);
+        let bytes = fs::read(root.join("entity-types.json"))?;
+        let types: Value = serde_json::from_slice(&bytes)?;
+        let exact = exact_attributes(&bytes);
+        let models = models_needed
+            .then(|| -> crate::Result<EntityModelDocument> {
+                match document {
+                    Some(document) => Ok(document.clone()),
+                    None => EntityModelDocument::load(root),
+                }
+            })
+            .transpose()?;
+        let entity_type_tags =
+            crate::items::load_tags(root, "entity_type", &horizon_world::loot::PackOverlay::NONE)?;
+        let empty_model = Arc::new(Part::parse("root", &Value::Null));
+        let item_tags =
+            crate::items::load_tags(root, "item", &horizon_world::loot::PackOverlay::NONE)
+                .unwrap_or_default();
+        sulfur_cube::load_archetype_items(&item_tags);
+        let tag = |name: &str| -> Arc<[String]> {
+            let mut v: Vec<String> = item_tags
+                .get(&format!("minecraft:{name}"))
+                .into_iter()
+                .flatten()
+                .cloned()
+                .collect();
+            v.sort();
+            v.into()
+        };
+        // The Allay's InventoryCarrier loading needs item limits before a
+        // Game exists. Other mob-only resource sets need no item data.
+        let item_stack_limits: Arc<HashMap<String, u32>> = if types.get("minecraft:allay").is_some()
+        {
+            match item_defaults {
+                Some(items) => Arc::new(
+                    items
+                        .iter()
+                        .map(|(id, components)| {
+                            (
+                                id.clone(),
+                                components["minecraft:max_stack_size"]
+                                    .as_u64()
+                                    .unwrap_or(64) as u32,
+                            )
+                        })
+                        .collect(),
+                ),
+                None => {
+                    let items: HashMap<String, Value> =
+                        serde_json::from_slice(&fs::read(root.join("items.json"))?)?;
+                    Arc::new(
+                        items
+                            .into_iter()
+                            .map(|(id, components)| {
+                                (
+                                    id,
+                                    components["minecraft:max_stack_size"]
+                                        .as_u64()
+                                        .unwrap_or(64) as u32,
+                                )
+                            })
+                            .collect(),
+                    )
+                }
+            }
+        } else {
+            Arc::new(HashMap::new())
+        };
+        let mut out = HashMap::new();
+        // A content mod's living type (its row names a vanilla `template`) is
+        // its template's mob under its own id: the template's model, sounds
+        // and behaviour, with the attributes its row has.
+        let mod_types = types
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter_map(|(id, row)| {
+                let template = row["template"].as_str()?.strip_prefix("minecraft:")?;
+                let def = species::ALL.iter().find(|d| d.name == template)?;
+                Some((id.clone(), def))
+            });
+        let vanilla = species::ALL
+            .iter()
+            .map(|def| (format!("minecraft:{}", def.name), def));
+        for (id, def) in vanilla.chain(mod_types) {
+            let t = &types[&id];
+            if t.is_null() {
+                continue;
+            }
+            let model_key = format!("minecraft:{}", def.model);
+            let model = models
+                .as_ref()
+                .and_then(|models| models.value().get(&model_key));
+            if models_needed && model.is_none() {
+                continue;
+            }
+            let defaults = exact.get(&id).cloned().unwrap_or_default();
+            let fields = MobType::catalog_fields(&defaults, attributes);
+            let mut layers = crate::fast_hash::FxHashMap::default();
+            if let Some(all) = models.as_ref().and_then(|m| m.value().as_object()) {
+                for prefix in def.layer_prefixes() {
+                    let start = format!("minecraft:{prefix}#");
+                    for (k, v) in all.iter().filter(|(k, _)| k.starts_with(&start)) {
+                        let part = Part::parse("root", v);
+                        layers.insert(
+                            k.trim_start_matches("minecraft:").to_owned(),
+                            Arc::new(part),
+                        );
+                    }
+                }
+            }
+            let category = t["category"].as_str().unwrap_or("creature").to_owned();
+            let mut flags = def.flags(t["fire_immune"].as_bool().unwrap_or(false));
+            flags.powder_snow_walkable = entity_type_tags
+                .get("minecraft:powder_snow_walkable_mobs")
+                .is_some_and(|members| members.contains(&id));
+            let passenger_attachments =
+                riders::parse_passenger_attachments(&t["passenger_attachments"]);
+            out.insert(
+                id.clone(),
+                MobType {
+                    species: def.species,
+                    item_stack_limits: item_stack_limits.clone(),
+                    attribute_bounds,
+                    width: t["width"].as_f64().unwrap_or(0.6),
+                    height: t["height"].as_f64().unwrap_or(1.8),
+                    eye_height: t["eye_height"].as_f64().unwrap_or(1.6),
+                    max_health: fields.max_health,
+                    speed: fields.speed,
+                    flying_speed: fields.flying_speed,
+                    attack_damage: fields.attack_damage,
+                    attack_knockback: fields.attack_knockback,
+                    follow_range: fields.follow_range,
+                    step_height: fields.step_height,
+                    armor: fields.armor,
+                    armor_toughness: fields.armor_toughness,
+                    knockback_resistance: fields.knockback_resistance,
+                    jump_strength: fields.jump_strength,
+                    attributes: Arc::new(defaults.clone()),
+                    gravity: fields.gravity,
+                    safe_fall_distance: fields.safe_fall_distance,
+                    fall_damage_multiplier: fields.fall_damage_multiplier,
+                    water_efficiency: fields.water_efficiency,
+                    water_slowdown: def.water_slowdown(),
+                    air_speed: def.air_speed(),
+                    baby_scale: def.baby_scale(),
+                    head_rot_speed: def.head_rot_speed(),
+                    max_head_x_rot: def.max_head_x_rot(),
+                    max_head_y_rot: def.max_head_y_rot(),
+                    ambient_interval: def.ambient_interval(),
+                    flags,
+                    model: model.map_or_else(
+                        || empty_model.clone(),
+                        |model| {
+                            Arc::new(Part::parse("root", model))
+                        },
+                    ),
+                    layers,
+                    texture: def.texture.to_owned(),
+                    brain: def.brain(),
+                    anim: def.anim,
+                    sounds: def.sounds,
+                    sound_overrides: entity_sounds::Sounds::default(),
+                    food: def.food_tag().map_or_else(|| Arc::from(Vec::new()), tag),
+                    tempt: def
+                        .tempt_tag()
+                        .or(def.food_tag())
+                        .map_or_else(|| Arc::from(Vec::new()), tag),
+                    passenger_attachments,
+                    category,
+                    id,
+                },
+            );
+        }
+        Ok(Self { types: out })
+    }
 }
 pub use myriade_data::who::Who;
 /// A native damage type's registry name and the tags consumed by mob combat.

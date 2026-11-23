@@ -1,3 +1,4 @@
+use super::MobWorld;
 use horizon_core::nbt::Tag;
 use horizon_core::{
     geometry::{Aabb, Vec3},
@@ -223,4 +224,17 @@ mod tests {
     }
 
 
+}
+
+/// `Heightmap.Types.MOTION_BLOCKING_NO_LEAVES` position above (x, z).
+pub fn heightmap_pos(w: &MobWorld, x: i32, z: i32) -> [i32; 3] {
+    let top = w.world.top_y();
+    let y = (w.world.bottom_y()..top)
+        .rev()
+        .find(|&y| {
+            let f = w.facts.get(w.world.block(x, y, z));
+            (f.full_collision || f.fluid != crate::blocks::Fluid::None) && !f.name.ends_with("leaves")
+        })
+        .map_or(w.world.bottom_y(), |y| y + 1);
+    [x, y, z]
 }

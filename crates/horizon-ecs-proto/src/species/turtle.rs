@@ -45,6 +45,6 @@ pub static DEF: Def = Def {
     ],
     rules: &[crate::rules::RuleEntry::new(&crate::leash::NEVER, &()), RuleEntry::new(&GROW_GIFT, &GROWN)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
-    locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: false, amphibious: Some(false), breach: false, control: swim::Control::Turtle, push: swim::Push::Fixed(0.1), sinks: true, squid: false, reset_pitch: false }))],
+    locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { flop: None, needs_water: false, amphibious: Some(false), breach: false, control: swim::Control::Turtle, push: swim::Push::Fixed(0.1), sinks: true, squid: false, reset_pitch: false }))],
     ..Def::EMPTY
 };

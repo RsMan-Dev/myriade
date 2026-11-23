@@ -3,7 +3,6 @@
 // Listed in portable.pending (tools/layers.json) until the types it needs move to portable crates.
 extern crate myriade_engine_lib as myriade_engine;
 pub mod allays;
-pub mod api_values;
 pub mod block_entity_ticks;
 pub mod boats;
 pub mod cat_spawner;

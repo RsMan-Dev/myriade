@@ -416,7 +416,6 @@ fn copy_of(world: &World, e: Entity, now: u64) -> ItemEntity {
     let delay = delay_of(it, now);
     ItemEntity {
         random: horizon_core::random::EntityRandom::own(horizon_core::random::LegacyRandom::new(i64::from(it.id))),
-        attachment_lifetime: Default::default(),
         rotation: [0.0, 0.0],
         join: Default::default(),
         health: 5,

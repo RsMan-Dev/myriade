@@ -265,9 +265,6 @@ impl Rocket {
         }
         let from = self.position;
         let mut gate = myriade_engine::move_gate::armed(
-            context,
-            self.id,
-            "minecraft:firework_rocket",
             horizon_world::entity_move::MoverType::SelfMovement,
             wanted,
         );
