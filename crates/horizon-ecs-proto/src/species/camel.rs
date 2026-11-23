@@ -12,6 +12,7 @@ static NOT_SITTING: Cond = Cond::Not(&Cond::Is("horizon:is_sitting"));
 const FOOD: &[&str] = &["#minecraft:camel_food"];
 
 pub static DEF: Def = Def {
+    spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Bright { on: "minecraft:camels_spawnable_on" }, cluster: 6, ..crate::spawning::SpawnDef::ANIMAL }),
     name: "minecraft:camel",
     goals: &[
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),

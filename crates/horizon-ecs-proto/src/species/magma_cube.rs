@@ -5,6 +5,7 @@ use crate::behaviours::{cube_attack, float, nearest_target, Entry};
 use crate::locomotion::{hop, Medium};
 
 pub static DEF: Def = Def {
+    spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Any, ..crate::spawning::SpawnDef::MONSTER }),
     name: "minecraft:magma_cube",
     caps: Some(super::FIRE_IMMUNE_CAPS),
     targets: &[

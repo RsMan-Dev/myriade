@@ -9,6 +9,7 @@ use crate::mount::{RideParams, RIDE};
 use crate::rules::RuleEntry;
 
 pub static DEF: Def = Def {
+    spawn: Some(crate::spawning::SpawnDef { place: crate::spawning::Place::InLava, rule: crate::spawning::Rule::Strider, liquid: true, ..crate::spawning::SpawnDef::ANIMAL }),
     name: "minecraft:strider",
     goals: &[
         Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { step_gap: 0.6, ..crate::behaviours::move_emission::Params::DEFAULT }),

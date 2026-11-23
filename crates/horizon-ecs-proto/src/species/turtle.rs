@@ -28,6 +28,7 @@ fn turtle_ambient(w: &mut World, e: Entity) -> &'static str {
 static GROWN: GiftDrop = GiftDrop { table: "minecraft:gameplay/turtle_grow", sound: None, game_event: None, needs_mob_drops: true };
 
 pub static DEF: Def = Def {
+    spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Turtle, ..crate::spawning::SpawnDef::ANIMAL }),
     name: "minecraft:turtle",
     reference: None,
     goals: &[

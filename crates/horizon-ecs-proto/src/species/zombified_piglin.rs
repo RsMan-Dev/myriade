@@ -6,6 +6,7 @@ use crate::species::Def;
 static ANGRY: Cond = Cond::Is("neutral:angry");
 
 pub static DEF: Def = Def {
+    spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::NotOn { block: "minecraft:nether_wart_block" }, ..crate::spawning::SpawnDef::MONSTER }),
     load_attrs: super::templates::zombie_base::LOAD_ATTRS,
     name: "minecraft:zombified_piglin",
     caps: Some(super::FIRE_IMMUNE_CAPS),

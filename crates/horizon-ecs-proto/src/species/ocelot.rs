@@ -11,6 +11,7 @@ static UNTRUSTING: Cond = Cond::Not(&Cond::Is("ocelot:trusting"));
 static AVOID: avoid_entity::Params = avoid_entity::Params { what: Avoid::Player, max_dist: 16.0, walk: 0.8, sprint: 1.33, ..avoid_entity::Params::DEFAULT };
 
 pub static DEF: Def = Def {
+    spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Ocelot, despawn: crate::despawn::DespawnDef { removable: crate::despawn::Removable::UntamedAfter(2400), ..crate::despawn::DespawnDef::MOB }, ..crate::spawning::SpawnDef::ANIMAL }),
     name: "minecraft:ocelot",
     despawn: Some(crate::despawn::DespawnDef { removable: crate::despawn::Removable::UntamedAfter(2400), ..crate::despawn::DespawnDef::MOB }),
     targets: &[

@@ -23,6 +23,7 @@ pub const FOOD: &[&str] = &[
 pub const LOCOMOTION: &[crate::locomotion::ModeEntry] = &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: false, breach: false, control: swim::Control::Smooth { max_turn_x: 85.0, max_turn_y: 10.0, in_water: 0.011, outside: 0.0, gravity: true }, push: swim::Push::Speed, sinks: false, ..swim::Params::DEFAULT }))];
 
 pub static DEF: Def = Def {
+    spawn: Some(crate::spawning::SpawnDef { category: crate::spawning::Category::WaterCreature, place: crate::spawning::Place::InWater, rule: crate::spawning::Rule::Nautilus, peaceful: true, liquid: true, ..crate::spawning::SpawnDef::MONSTER }),
     name: "minecraft:nautilus",
     goals: &[
         Entry::new(&animal_panic::MODULE, 0, &animal_panic::Params { speed: 1.6, ..animal_panic::Params::DEFAULT }),

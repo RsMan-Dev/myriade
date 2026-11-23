@@ -12,6 +12,7 @@ const FOOD: &[&str] = &["minecraft:spider_eye"];
 static SHED: GiftDrop = GiftDrop { table: "minecraft:gameplay/armadillo_shed", sound: Some(GiftSound { name: "minecraft:entity.armadillo.scute_drop", volume: 1.0 }), game_event: Some("minecraft:entity_place"), needs_mob_drops: true };
 
 pub static DEF: Def = Def {
+    spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Bright { on: "minecraft:armadillo_spawnable_on" }, ..crate::spawning::SpawnDef::ANIMAL }),
     name: "minecraft:armadillo",
     goals: &[
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),

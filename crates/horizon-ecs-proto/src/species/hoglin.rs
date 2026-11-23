@@ -171,7 +171,7 @@ pub static DEF: Def = Def {
         ],
     },
     locomotion: &[],
-    spawn: None,
+    spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::NotOn { block: "minecraft:nether_wart_block" }, ..crate::spawning::SpawnDef::MONSTER }),
     despawn: None,
     saved: true,
     screaming: None,

@@ -88,6 +88,7 @@ const MOVE_KIDS: &[Kid] = &[
 ];
 
 pub static DEF: Def = Def {
+    spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::NotOn { block: "minecraft:nether_wart_block" }, peaceful: true, ..crate::spawning::SpawnDef::MONSTER }),
     load_attrs: &[crate::attr_mod::LoadAttr { name: "movement_speed", base: None, when: crate::attr_mod::LoadWhen::Always }, crate::attr_mod::LoadAttr { name: "movement_speed", base: Some((0.2f32 as f64)), when: crate::attr_mod::LoadWhen::BabyBonus }],
     name: "minecraft:piglin",
     targets: &[

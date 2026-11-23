@@ -108,6 +108,22 @@ pub enum Rule {
     Drowned,
     /// `Bat.checkBatSpawnRules`: under the surface, in the dark, on a block of the tag.
     Cave { on: &'static str },
+    /// The block below has the tag, whatever the light (`Axolotl.checkAxolotlSpawnRules`).
+    OnBlock { on: &'static str },
+    /// The block below is not `block` (`Hoglin`, `Piglin`, `ZombifiedPiglin`: the nether wart block).
+    NotOn { block: &'static str },
+    /// `Ocelot.checkOcelotSpawnRules` (`nextInt(3) != 0`) and `Ocelot.checkSpawnObstruction` (at or above the sea level, grass or leaves below).
+    Ocelot,
+    /// `Ghast.checkGhastSpawnRules`: one draw in `bound` is 0, then `Ground`.
+    GroundOneIn { bound: i32 },
+    /// `Turtle.checkTurtleSpawnRules`: under the sea level + 4, sand below, bright.
+    Turtle,
+    /// `PolarBear.checkPolarBearSpawnRules`: the alternate blocks in the biomes that have them, else `Bright`.
+    PolarBear,
+    /// `Nautilus.checkNautilusSpawnRules`: between the sea level - 25 and - 5, water below and above.
+    Nautilus,
+    /// `Strider.checkStriderSpawnRules`: the first block above the lava column is air.
+    Strider,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct SpawnDef {
@@ -547,6 +563,32 @@ pub(crate) fn rule_ok(mw: &myriade_engine_lib::mobs::MobWorld, biome: &str, d: &
                 return false;
             }
             tag(mw, on, x, y - 1, z) && valid_spawn(mw, x, y - 1, z)
+        }
+        Rule::OnBlock { on } => tag(mw, on, x, y - 1, z),
+        Rule::NotOn { block } => SpawnLevel::facts(mw).get(SpawnLevel::state(mw, x, y - 1, z)).name.as_ref() != block,
+        Rule::Ocelot => {
+            r.next_int_bound(3).unwrap_or(0) != 0 && y >= mw.sea_level() && (tag(mw, "minecraft:leaves", x, y - 1, z) || SpawnLevel::facts(mw).get(SpawnLevel::state(mw, x, y - 1, z)).name.as_ref() == "minecraft:grass_block")
+        }
+        Rule::GroundOneIn { bound } => r.next_int_bound(bound).unwrap_or(1) == 0 && valid_spawn(mw, x, y - 1, z),
+        Rule::Turtle => y < mw.sea_level() + 4 && tag(mw, "minecraft:sand", x, y - 1, z) && raw_brightness(mw, x, y, z, 0) > 8,
+        Rule::PolarBear => {
+            let on = if biome_has(mw, biome, "minecraft:polar_bears_spawn_on_alternate_blocks") {
+                "minecraft:polar_bears_spawnable_on_alternate"
+            } else {
+                "minecraft:animals_spawnable_on"
+            };
+            tag(mw, on, x, y - 1, z) && raw_brightness(mw, x, y, z, 0) > 8
+        }
+        Rule::Nautilus => {
+            let sea = mw.sea_level();
+            y >= sea - 25 && y <= sea - 5 && fluid_is(mw, x, y - 1, z, myriade_engine_lib::blocks::Fluid::Water) && is_water(mw, x, y + 1, z)
+        }
+        Rule::Strider => {
+            let mut up = y + 1;
+            while fluid_is(mw, x, up, z, myriade_engine_lib::blocks::Fluid::Lava) {
+                up += 1;
+            }
+            SpawnLevel::facts(mw).is_air(SpawnLevel::state(mw, x, up, z))
         }
     }
 }

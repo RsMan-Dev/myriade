@@ -6,6 +6,7 @@ use crate::behaviours::{float, leap_at_target, look_at_player, random_look, stro
 use crate::locomotion::{walk, Medium};
 
 pub static DEF: Def = Def {
+    spawn: Some(crate::spawning::SpawnDef::MONSTER),
     name: "minecraft:cave_spider",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::PoisonImmune, Cap::NoWebStick]),
     targets: spider::TARGETS,

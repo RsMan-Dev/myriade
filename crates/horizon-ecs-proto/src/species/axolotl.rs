@@ -73,6 +73,7 @@ static DRAWS: crate::behaviours::spawn_draw::Draws = crate::behaviours::spawn_dr
 };
 
 pub static DEF: Def = Def {
+    spawn: Some(crate::spawning::SpawnDef { category: crate::spawning::Category::Axolotls, place: crate::spawning::Place::InWater, rule: crate::spawning::Rule::OnBlock { on: "minecraft:axolotls_spawnable_on" }, peaceful: true, liquid: true, despawn: crate::despawn::DespawnDef { removable: crate::despawn::Removable::UnlessNamed, ..crate::despawn::DespawnDef::MOB }, ..crate::spawning::SpawnDef::MONSTER }),
     name: "minecraft:axolotl",
     despawn: Some(crate::despawn::DespawnDef { removable: crate::despawn::Removable::UnlessNamed, ..crate::despawn::DespawnDef::MOB }),
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),

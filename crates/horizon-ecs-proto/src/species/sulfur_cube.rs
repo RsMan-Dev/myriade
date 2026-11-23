@@ -38,6 +38,7 @@ pub static SHEARING: ShearDef = ShearDef {
 const SWALLOWABLE: &[&str] = &["minecraft:magma_block", "minecraft:tnt"];
 
 pub static DEF: Def = Def {
+    spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Any, peaceful: true, ..crate::spawning::SpawnDef::MONSTER }),
     name: "minecraft:sulfur_cube",
     goals: &[
         Entry::new(&bounce_drag::MODULE, 0, &bounce_drag::Params::DEFAULT),
