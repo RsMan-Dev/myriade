@@ -15,8 +15,12 @@ impl WorldborderHost for Game<'_> {
     fn border_set_size(&mut self, size: f64) {
         self.border.set_size(size);
     }
-    fn border_bounds_changed(&mut self) {}
-    fn border_center_changed(&mut self) {}
+    fn border_bounds_changed(&mut self) {
+        self.ecs_border_changed();
+    }
+    fn border_center_changed(&mut self) {
+        self.ecs_border_changed();
+    }
     fn border_center(&self) -> [f64; 2] {
         self.border.center()
     }

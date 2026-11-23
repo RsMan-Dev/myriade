@@ -4,8 +4,9 @@
 //! only an entity that moved this tick (or the tick before, to see it stop) is visited, a resting one costs nothing.
 use crate::behaviours::move_emission::{Cfg, Flap, Params};
 use crate::behaviours::swim_sound::{splash_volume, swim_sound, SwimSounds};
-use crate::cow::{Body, Clock, Contact, FluidState, Level, Moving, Pos, Rng, Vel};
+use crate::cow::{is_monster, Body, Clock, Contact, FluidState, Level, Moving, Pos, Rng, TypeName, Vel};
 use crate::mount::Mount;
+use crate::species::swim::splash_sound;
 use crate::goals::Events;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
@@ -70,6 +71,7 @@ pub fn move_events(
     mut ev: ResMut<Events>,
     mut cmd: Commands,
     mut q: Query<Visit, Or<(With<Moving>, With<StepState>)>>,
+    names: Query<&TypeName>,
 ) {
     // The sounds of a movement play for the players whatever listens; only its game events wait for a vibration listener.
     let heard = on(heard);
@@ -143,12 +145,13 @@ pub fn move_events(
             if heard {
                 ev.host.game_event_by(e, "minecraft:splash", at, false, sneaking, cfg.dampens);
             }
-            // `Entity.doWaterSplashSound`: the generic splash, its volume the speed (`min(1, 0.2 * |v|)`) and a pitch from the entity's stream.
+            // `Entity.doWaterSplashSound`: the species' splash, its volume the speed (`min(1, 0.2 * |v|)`) and a pitch from the entity's stream.
             if !silent {
                 let [x, y, z] = vel.map_or([0.0; 3], |v| [v.0.x, v.0.y, v.0.z]);
                 let speed = ((x * x * 0.2 + y * y + z * z * 0.2).sqrt() as f32 * 0.2).min(1.0);
                 let pitch = splash_pitch(rng.as_deref_mut());
-                ev.host.sound("entity.generic.splash", at, speed, pitch);
+                let name = names.get(e).map_or("", |n| n.0);
+                ev.host.sound(splash_sound(name, is_monster(name)), at, speed, pitch);
             }
         }
         if heard && !s.was_ground && c.on_ground && s.fall > 0.0 {

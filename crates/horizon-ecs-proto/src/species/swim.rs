@@ -2,6 +2,16 @@
 //! `behaviours/swim_sound.rs`. A species without an entry has `entity.generic.swim`; a monster (`Monster.getSwimSound`) has the hostile one.
 use crate::behaviours::swim_sound::{Sounds, SwimSounds};
 
+/// The splash of a species entering water (`getSwimSplashSound`): dolphin, axolotl, the hostile one for a monster, else the generic one.
+pub fn splash_sound(name: &str, monster: bool) -> &'static str {
+    match name {
+        "minecraft:dolphin" => "entity.dolphin.splash",
+        "minecraft:axolotl" => "entity.axolotl.splash",
+        _ if monster => "entity.hostile.splash",
+        _ => "entity.generic.splash",
+    }
+}
+
 /// The `SwimSounds` a species of this name is created with, `None` for the generic sound.
 pub fn swim_sounds(name: &str, monster: bool) -> Option<SwimSounds> {
     let one = |n: &'static str| SwimSounds { sounds: Sounds::one(n), steps: 0, baby: None };
