@@ -158,6 +158,11 @@ fn copy_common(w: &mut World, e: Entity, n: Entity) {
     use crate::left_handed::LeftHanded;
     use crate::no_gravity::NoGravity;
     use crate::cow::GrowAt;
+    // `Entity.restoreFrom`: the command tags follow the creature.
+    let tags: Vec<String> = crate::nbt_tag::names(w, e).into_iter().map(str::to_owned).collect();
+    for t in tags {
+        crate::nbt_tag::add(w, n, &t);
+    }
     if let Some(c) = w.get::<CustomName>(e).cloned() {
         w.entity_mut(n).insert(c);
     }

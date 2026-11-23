@@ -125,7 +125,9 @@ pub fn resolve_death(w: &mut World, e: Entity, veto: Option<f32>) {
 
 /// `Spawned`: the creature `e` has just appeared (the host's spawn calls it once the entity is armed and indexed).
 pub fn said_spawned(w: &mut World, e: Entity, natural: bool, reason: crate::spawn_reason::SpawnReason) {
-    w.entity_mut(e).insert(crate::spawn_reason::Spawn(reason));
+    // A creature past its despawn distance may be gone before the host reports it.
+    let Ok(mut m) = w.get_entity_mut(e) else { return };
+    m.insert(crate::spawn_reason::Spawn(reason));
     w.resource_mut::<Events>().host.spawned(e, natural, reason);
 }
 

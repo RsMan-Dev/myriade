@@ -44,6 +44,13 @@ pub static MODULE: Module = Module {
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let eye = w.get::<FluidParams>(e).map_or(0.0, |p| p.eye_height);
     w.entity_mut(e).insert(Buoyancy(buoyancy(eye)));
+    // `FloatGoal.<init>`: `getNavigation().setCanFloat(true)`, which also makes `Mob.jumpInLiquid` a 0.04 lift instead of 0.3.
+    if let Some(mut f) = w.get_mut::<FluidParams>(e) {
+        f.can_float = true;
+    }
+    if let Some(mut n) = w.get_mut::<NavParams>(e) {
+        n.can_float = true;
+    }
     if params::<Params>(p).unless_still {
         w.entity_mut(e).insert(UnlessStill);
     }
