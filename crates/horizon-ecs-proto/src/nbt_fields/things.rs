@@ -583,7 +583,12 @@ fn with_block_pos(at: Vec3, c: &Compound) -> Compound {
 
 /// An item frame or a glow frame hung on its saved face (`frame_item::load`).
 fn build_frame(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
-    crate::frame_item::load(w, &with_block_pos(at, c))
+    // `HangingEntity.DEFAULT_DIRECTION` is south (3D data value 3) when `Facing` is absent.
+    let mut c = with_block_pos(at, c);
+    if !c.contains_key(&JavaString::from("Facing")) {
+        c.insert("Facing".into(), Tag::Byte(3));
+    }
+    crate::frame_item::load(w, &c)
 }
 
 /// A painting hung on its saved face with its saved variant (`painting::load`).
@@ -615,7 +620,11 @@ fn build_breath_cloud(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
 
 /// The block state is read against the registry; the cell is the block `at` is in.
 fn build_falling_block(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
-    let state = world_of(w).registry.saved_state_id(tag(c, "BlockState")?)?;
+    // `FallingBlockEntity.DEFAULT_BLOCK_STATE` is sand when `BlockState` is absent.
+    let state = match tag(c, "BlockState") {
+        Some(t) => world_of(w).registry.saved_state_id(t)?,
+        None => world_of(w).registry.default_state("minecraft:sand")?,
+    };
     let cell = [at.x.floor() as i32, at.y.floor() as i32, at.z.floor() as i32];
     // `DropItem` defaults to true: the block's own item is what it drops when it cannot land (`read_drop_item` sets it from the key).
     let name = world_of(w).registry.state(state).map(|s| s.name.clone())?;

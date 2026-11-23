@@ -50,7 +50,6 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("powered"), write: write_powered, read: read_powered, accepts: byte, owner: Some(owner::<Fuse>) },
     Field { key: Cow::Borrowed("Invul"), write: write_invul, read: read_invul, accepts: accept::int, owner: Some(owner::<Charge>) },
     Field { key: Cow::Borrowed("IsScreamingGoat"), write: write_screaming, read: read_screaming, accepts: byte, owner: Some(owner::<Rammer>) },
-    Field { key: Cow::Borrowed("Brain"), write: write_brain, read: read_brain, accepts: compound, owner: Some(owner::<LongJumpState>) },
     Field { key: Cow::Borrowed("HasLeftHorn"), write: write_left_horn, read: read_left_horn, accepts: byte, owner: Some(owner::<Rammer>) },
     Field { key: Cow::Borrowed("HasRightHorn"), write: write_right_horn, read: read_right_horn, accepts: byte, owner: Some(owner::<Rammer>) },
     Field { key: Cow::Borrowed("CannotHunt"), write: write_cannot_hunt, read: read_cannot_hunt, accepts: byte_or_int, owner: Some(owner::<Hunt>) },
@@ -219,7 +218,7 @@ fn read_phantom_anchor(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-fn write_brain(w: &World, e: Entity, c: &mut Compound) {
+pub(super) fn write_brain(w: &World, e: Entity, c: &mut Compound) {
     use crate::behaviours::{long_jump, nearest_target, ram};
     let now = now_of(w, e);
     let dig = w.get::<crate::behaviours::act_phase::ActPhase>(e).map(|a| a.dig_cooldown_until.saturating_sub(now)).filter(|&t| t > 0);
@@ -250,7 +249,7 @@ fn write_brain(w: &World, e: Entity, c: &mut Compound) {
 }
 
 /// Reads the memories back: their ticks left, or none (the cooldown is over) when a memory is absent.
-fn read_brain(w: &mut World, e: Entity, t: &Tag) -> bool {
+pub(super) fn read_brain(w: &mut World, e: Entity, t: &Tag) -> bool {
     use crate::behaviours::{long_jump, nearest_target, ram};
     if !matches!(t, Tag::Compound(_)) {
         return false;

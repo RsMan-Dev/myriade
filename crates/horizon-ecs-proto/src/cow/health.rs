@@ -86,6 +86,10 @@ pub struct CombatLog {
 
 /// `CombatTracker.recordDamage` for a hit that took `amount`.
 pub fn record_combat(w: &mut World, e: Entity, damage_type: &'static str, by: Option<crate::targeting::Who>, direct: bool, projectile: Option<&'static str>, amount: f32) {
+    // Queued by `apply_damage`: the hit may have removed the entity before the queue runs.
+    if w.get_entity(e).is_err() {
+        return;
+    }
     let now = now_of(w, e);
     let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
     let fall_distance = w.get::<Contact>(e).map_or(0.0, |c| c.fall_distance as f32);

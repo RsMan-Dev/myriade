@@ -10,12 +10,38 @@ use bevy_ecs::prelude::*;
 use horizon_core::nbt::{Compound, Tag};
 use std::borrow::Cow;
 
-/// One field per memory; the owner is the entity whose brain holds it (none: the brain is written on every entity).
-pub const FIELDS: &[Field] = &[
-    Field { key: Cow::Borrowed("Brain"), write: write_golem, read: read_golem, accepts: crate::nbt::accept::any, owner: None },
-    Field { key: Cow::Borrowed("Brain"), write: write_slept, read: read_slept, accepts: crate::nbt::accept::any, owner: Some(crate::nbt::owner::<LastSlept>) },
-    Field { key: Cow::Borrowed("Brain"), write: write_site, read: read_site, accepts: crate::nbt::accept::any, owner: None },
-];
+/// `Brain` is one key with one field: every memory writes into the same compound and reads from it. The memories owned by a
+/// component (long jump, liked player, last sleep) are only written and read on the entities that carry it.
+pub const FIELDS: &[Field] = &[Field { key: Cow::Borrowed("Brain"), write: write_all, read: read_all, accepts: crate::nbt::accept::any, owner: None }];
+
+fn write_all(w: &World, e: Entity, c: &mut Compound) {
+    write_golem(w, e, c);
+    write_slept(w, e, c);
+    write_site(w, e, c);
+    if w.get::<crate::behaviours::long_jump::LongJumpState>(e).is_some() {
+        super::creatures::write_brain(w, e, c);
+    }
+    super::owners::write_liked(w, e, c);
+}
+
+/// A `Brain` that is not a compound is refused; a memory that is absent is not.
+fn read_all(w: &mut World, e: Entity, t: &Tag) -> bool {
+    if !matches!(t, Tag::Compound(_)) {
+        return false;
+    }
+    read_golem(w, e, t);
+    if w.get::<LastSlept>(e).is_some() {
+        read_slept(w, e, t);
+    }
+    read_site(w, e, t);
+    if w.get::<crate::behaviours::long_jump::LongJumpState>(e).is_some() {
+        super::creatures::read_brain(w, e, t);
+    }
+    if w.get::<crate::hand_over::Liked>(e).is_some() {
+        super::owners::read_liked(w, e, t);
+    }
+    true
+}
 
 /// The memory's tag: its value, and its ttl when it expires.
 fn memory(value: Tag, ttl: Option<u64>) -> Tag {

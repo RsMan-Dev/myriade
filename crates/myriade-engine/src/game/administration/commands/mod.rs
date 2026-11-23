@@ -2051,6 +2051,14 @@ impl Game<'_> {
         self.feedback(message);
         Ok(targets.len() as i32)
     }
+    /// The name in the summon feedback: the target's, or the type's when the ECS holds no view of the entity
+    /// (an arrow or a bottle is not a species the selector lists).
+    fn summoned_name(&self, target: Target, kind: &str) -> Text {
+        match target {
+            Target::Mob(id) if self.ecs.kind(id).is_none_or(str::is_empty) => data::summon_type_name(kind),
+            _ => self.target_name(target),
+        }
+    }
     /// `SummonCommand.createEntity`: Peaceful admission uses the entity-type
     /// policy for both forms, independently of the mob category.
     fn cmd_summon(&mut self, ctx: &Context) -> R<i32> {
@@ -2067,7 +2075,7 @@ impl Game<'_> {
             // With an NBT argument the entity is built from it, unfinalized.
             let before = self.spawned_mark();
             let name = match self.summon_with_nbt(&kind, pos, &nbt)? {
-                Some(target) => self.target_name(target),
+                Some(target) => self.summoned_name(target, &kind),
                 // Spawned as a kind no command target stands for (primed
                 // TNT, falling blocks, projectiles): its type's name.
                 None if self.spawned_mark() != before => data::summon_type_name(&kind),
@@ -2135,7 +2143,7 @@ impl Game<'_> {
                 _ => {
                     let before = self.spawned_mark();
                     name = match self.summon_with_nbt(&kind, pos, "{}")? {
-                        Some(target) => self.target_name(target),
+                        Some(target) => self.summoned_name(target, &kind),
                         // Spawned as a kind no command target stands for
                         // (primed TNT, falling blocks, projectiles).
                         None if self.spawned_mark() != before => data::summon_type_name(&kind),
