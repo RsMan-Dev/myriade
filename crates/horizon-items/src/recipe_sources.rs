@@ -71,10 +71,9 @@ pub fn sources(root: &Path, overlay: &PackOverlay) -> Result<Vec<(String, Value)
     // `mod_loaded` asks which mods are loaded, not which namespaces
     // they own: a mod that also owns a namespace doesn't make that
     // namespace another mod.
-    let inventory = horizon_mod_package::enabled::EnabledMods::read(root)?;
     let conditions = overlay
         .conditions
-        .with_mod_inventory(inventory.server_ids())
+        .with_mod_inventory(std::iter::empty())
         .with_diagnostics();
     for file in &horizon_world::json_folder::read(&root.join("data/minecraft/recipe"))?.files {
         sources.push((file.name.clone(), file.bytes()?.to_vec()));
@@ -151,88 +150,4 @@ mod tests {
     use serde_json::json;
     use std::fs;
 
-    /// A content mod's recipes guarded by NeoForge's item conditions are
-    /// answered from the root's items and item tags, and the load goes on.
-    #[test]
-    fn recipes_with_item_conditions_load() {
-        let root =
-            std::env::temp_dir().join(format!("horizon-recipe-conditions-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        let write = |path: &str, v: &Value| {
-            let file = root.join(path);
-            fs::create_dir_all(file.parent().unwrap()).unwrap();
-            fs::write(file, serde_json::to_vec(v).unwrap()).unwrap();
-        };
-        let enabled = horizon_mod_package::enabled::EnabledMods::new([(
-            "gem".to_owned(),
-            horizon_mod_package::manifest::Side::Both,
-        )]);
-        write(
-            horizon_mod_package::enabled::MARKER,
-            &serde_json::to_value(&enabled).unwrap(),
-        );
-        write(crate::content_namespaces::MARKER, &json!(["gem"]));
-        write(
-            "items.json",
-            &json!({"minecraft:stick": {}, "gem:ruby": {}}),
-        );
-        write(
-            "data/c/tags/item/ingots/copper.json",
-            &json!({"values": ["minecraft:stick"]}),
-        );
-        write(
-            "data/c/tags/item/ingots/silver.json",
-            &json!({"values": [{"id": "gem:silver_ingot", "required": false}]}),
-        );
-        fs::create_dir_all(root.join("data/minecraft/recipe")).unwrap();
-        for (name, condition) in [
-            (
-                "ruby",
-                json!({"type": "neoforge:item_exists", "item": "gem:ruby"}),
-            ),
-            (
-                "topaz",
-                json!({"type": "neoforge:item_exists", "item": "gem:topaz"}),
-            ),
-            (
-                "from_copper",
-                json!({"type": "neoforge:not",
-                "value": {"type": "neoforge:tag_empty", "tag": "c:ingots/copper"}}),
-            ),
-            (
-                "copper_fallback",
-                json!({"type": "neoforge:tag_empty", "tag": "c:ingots/copper"}),
-            ),
-            (
-                "tin_fallback",
-                json!({"type": "neoforge:tag_empty", "tag": "c:ingots/tin"}),
-            ),
-            (
-                "silver_fallback",
-                json!({"type": "neoforge:tag_empty", "tag": "c:ingots/silver"}),
-            ),
-            ("never", json!({"type": "neoforge:false"})),
-        ] {
-            let recipe = json!({"type": "minecraft:crafting_shapeless",
-                "ingredients": ["minecraft:stick"], "result": {"id": "gem:ruby"},
-                "neoforge:conditions": [condition]});
-            write(&format!("data/gem/recipe/{name}.json"), &recipe);
-        }
-        let mut loaded: Vec<String> = sources(&root, &PackOverlay::NONE)
-            .unwrap()
-            .into_iter()
-            .map(|(name, _)| name)
-            .collect();
-        loaded.sort();
-        assert_eq!(
-            loaded,
-            [
-                "gem:from_copper",
-                "gem:ruby",
-                "gem:silver_fallback",
-                "gem:tin_fallback"
-            ]
-        );
-        let _ = fs::remove_dir_all(&root);
-    }
 }

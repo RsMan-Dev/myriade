@@ -23,9 +23,8 @@
 //! Which states tick is a table by state id, built by the game from the block
 //! registry; whether a slot is made is decided when the slot is promoted at
 //! the start of the next tick, from the block state then.
-use crate::chunk::block_entity::{BlockEntity, ModContainer, ModEnergyBuffer, ModFluidTanks};
+use crate::chunk::block_entity::{BlockEntity};
 use crate::fast_hash::{FxHashMap, FxHashSet};
-use horizon_mod_runtime::attachments::{Attachments, observer::AttachmentObserver};
 use std::collections::HashMap;
 use std::sync::{
     Arc,
@@ -79,15 +78,7 @@ pub struct BlockEntities {
     map: HashMap<Pos, BlockEntity>,
     generations: FxHashMap<Pos, u64>,
     on_load: std::collections::VecDeque<(Pos, u64)>,
-    on_load_enabled: bool,
-    attachments: FxHashMap<Pos, Attachments>,
-    attachment_observer: Option<Arc<dyn AttachmentObserver<BlockEntityIdentity>>>,
-    /// While a transaction is open (`defer_retirement`): the maps of block entities it
-    /// removed or replaced, still bound to their index entries, by position and generation.
-    /// The root commit retires them (`publish_retirement`); an abort puts back the ones it
-    /// restores (`put_back_attachments`) first.
-    retiring: Option<Vec<(Pos, u64, Attachments)>>,
-    /// `Level.blockEntityTickers`: positions and the slot each was given.
+    on_load_enabled: bool,/// `Level.blockEntityTickers`: positions and the slot each was given.
     tickers: Arc<Vec<(Pos, u32)>>,
     /// `LevelChunk.tickersInLevel`: the live slot of each ticking position.
     live: FxHashMap<Pos, u32>,
@@ -110,20 +101,9 @@ pub struct BlockEntities {
     /// (`updateBlockEntityTicker`: rebind, or remove without a ticker).
     replaced: FxHashSet<Pos>,
     /// `Ticking` by block state id; empty until the game builds it.
-    states: Vec<Ticking>,
-    /// The containers of mod blocks' block entities, by block state id;
-    /// built with `states`.
-    mod_containers: FxHashMap<u32, Arc<ModContainer>>,
-    /// The fluid tanks of mod blocks' block entities, by block state id;
-    /// built with `states`, like the containers.
-    mod_fluids: FxHashMap<u32, Arc<ModFluidTanks>>,
-    /// State-aware native factory ownership. Shared across level snapshots;
+    states: Vec<Ticking>,/// State-aware native factory ownership. Shared across level snapshots;
     /// an empty slice means the declarations have not yet been compiled.
-    stateful_entities: Arc<[bool]>,
-    /// The energy buffers of mod blocks' block entities, by block state id;
-    /// built with `states`, like the containers.
-    mod_energy: FxHashMap<u32, Arc<ModEnergyBuffer>>,
-    /// The positions of the mod block entities (`BlockEntity::Mod`) by chunk,
+    stateful_entities: Arc<[bool]>,    /// The positions of the mod block entities (`BlockEntity::Mod`) by chunk,
     /// for the renderer: the mesher lists block entities by their template,
     /// which leaves out a mod block whose template has none. One taken out
     /// (`take`) stays listed until `put` or `remove`.
@@ -165,12 +145,7 @@ pub struct Broken {
 
 /// A client copy of a mod block entity as its client tick shows it to mods: made once for each
 /// revision of the copy (an update merged into it is a new one), not once a tick.
-pub struct ClientSnapshot {
-    /// The copy's revision the snapshot was made from.
-    pub revision: crate::chunk::block_entity::ModRevision,
-    /// The snapshot, or `None` when that revision could not be made into one.
-    pub entity: Option<mod_api::ModBlockEntity>,
-}
+pub struct ClientSnapshot {}
 
 /// Storage-owned identity passed to attachment residency observers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -187,24 +162,10 @@ fn identity(pos: Pos, generations: &FxHashMap<Pos, u64>) -> BlockEntityIdentity 
     }
 }
 
-fn retire_attachments(
-    maps: &mut FxHashMap<Pos, Attachments>,
-    observer: Option<&Arc<dyn AttachmentObserver<BlockEntityIdentity>>>,
-    generations: &FxHashMap<Pos, u64>,
-    pos: &Pos,
-) {
-    if let Some(previous) = maps.remove(pos) {
-        if let Some(observer) = observer {
-            observer.unload(identity(*pos, generations));
-        }
-        drop(previous);
-    }
-}
 
 impl Drop for BlockEntities {
     fn drop(&mut self) {
         self.publish_retirement();
-        self.unload_attachments();
     }
 }
 
@@ -385,7 +346,7 @@ impl BlockEntities {
             *remaining -= 1;
             let (pos, generation) = self.on_load.pop_front()?;
             if self.generation(&pos) == Some(generation)
-                && matches!(self.map.get(&pos), Some(BlockEntity::Mod(_)))
+                && false
             {
                 return Some((pos, generation));
             }
@@ -407,39 +368,13 @@ impl BlockEntities {
     pub fn restore_generation(&mut self, pos: Pos, generation: u64) {
         assert!(self.map.contains_key(&pos));
         if self.generation(&pos) != Some(generation) {
-            retire_attachments(
-                &mut self.attachments,
-                self.attachment_observer.as_ref(),
-                &self.generations,
-                &pos,
-            );
             self.generations.insert(pos, generation);
         }
     }
     fn new_generation(&mut self, pos: Pos) {
         self.generations.insert(pos, next_token());
     }
-    /// Bind this dimension's authoritative maps, including saved entries not yet read.
-    pub fn observe_attachments(
-        &mut self,
-        observer: Arc<dyn AttachmentObserver<BlockEntityIdentity>>,
-    ) {
-        self.unload_attachments();
-        for (pos, map) in &mut self.attachments {
-            if map.has_index_entries() || map.has_index_binding() {
-                let _ = observer.bind(identity(*pos, &self.generations), map);
-            }
-        }
-        self.attachment_observer = Some(observer);
-    }
 
-    fn unload_attachments(&self) {
-        if let Some(observer) = &self.attachment_observer {
-            for pos in self.attachments.keys() {
-                observer.unload(identity(*pos, &self.generations));
-            }
-        }
-    }
 
     /// The client tick snapshots, lent for one pass over the tickers: give them back with
     /// `keep_client_snapshots`.
@@ -461,20 +396,6 @@ impl BlockEntities {
     pub fn ticking(&self, state: u32) -> Ticking {
         self.states.get(state as usize).copied().unwrap_or_default()
     }
-    pub fn set_mod_containers(&mut self, containers: FxHashMap<u32, Arc<ModContainer>>) {
-        self.mod_containers = containers;
-    }
-    /// The container of a mod block's block entity in block state `state`.
-    pub fn mod_container(&self, state: u32) -> Option<&Arc<ModContainer>> {
-        self.mod_containers.get(&state)
-    }
-    pub fn set_mod_fluids(&mut self, fluids: FxHashMap<u32, Arc<ModFluidTanks>>) {
-        self.mod_fluids = fluids;
-    }
-    /// The fluid tanks of a mod block's block entity in block state `state`.
-    pub fn mod_fluids(&self, state: u32) -> Option<&Arc<ModFluidTanks>> {
-        self.mod_fluids.get(&state)
-    }
     pub fn set_stateful_entities(&mut self, states: Vec<bool>) {
         self.stateful_entities = states.into();
     }
@@ -489,13 +410,6 @@ impl BlockEntities {
             .get(state as usize)
             .copied()
             .unwrap_or(false)
-    }
-    pub fn set_mod_energy(&mut self, energy: FxHashMap<u32, Arc<ModEnergyBuffer>>) {
-        self.mod_energy = energy;
-    }
-    /// The energy buffer of a mod block's block entity in block state `state`.
-    pub fn mod_energy(&self, state: u32) -> Option<&Arc<ModEnergyBuffer>> {
-        self.mod_energy.get(&state)
     }
 
     fn next(&mut self) -> u32 {
@@ -516,173 +430,28 @@ impl BlockEntities {
         self.pending.remove(pos);
     }
 
-    /// Attachment map for a live block entity.
-    pub fn attachments_mut(
-        &mut self,
-        pos: Pos,
-    ) -> Option<&mut horizon_mod_runtime::attachments::Attachments> {
-        // Identity survives a temporary take and retires on removal or an
-        // abandoned-lease sweep, exactly like attachment ownership.
-        if !self.generations.contains_key(&pos) {
-            return None;
-        }
-        let map = self.attachments.entry(pos).or_default();
-        if let Some(observer) = &self.attachment_observer
-            && !map.has_index_binding()
-        {
-            let _ = observer.bind(identity(pos, &self.generations), map);
-        }
-        Some(map)
-    }
-    /// The attachment map of the block entity at `pos`, if it has one.
-    pub fn attachments(&self, pos: Pos) -> Option<&horizon_mod_runtime::attachments::Attachments> {
-        self.attachments.get(&pos)
-    }
-    /// Puts the attachment map of the live block entity at `pos` back as `data`, or removes it
-    /// where it had none: a transaction's abort.
-    pub fn set_attachments(
-        &mut self,
-        pos: Pos,
-        data: Option<horizon_mod_runtime::attachments::Attachments>,
-    ) {
-        match data {
-            Some(data) => self.restore_attachments(pos, data),
-            None => {
-                retire_attachments(
-                    &mut self.attachments,
-                    self.attachment_observer.as_ref(),
-                    &self.generations,
-                    &pos,
-                );
-            }
-        }
-    }
     /// Retires the map of the block entity leaving `pos`: at once, or, while a transaction
     /// defers retirement, kept bound until it closes.
     fn retire(&mut self, pos: Pos) {
-        if let Some(retiring) = &mut self.retiring {
-            if let (Some(map), Some(&generation)) =
-                (self.attachments.remove(&pos), self.generations.get(&pos))
-            {
-                retiring.push((pos, generation, map));
-            }
-            return;
-        }
-        retire_attachments(
-            &mut self.attachments,
-            self.attachment_observer.as_ref(),
-            &self.generations,
-            &pos,
-        );
     }
     /// From now until `publish_retirement`, a block entity that goes keeps its map bound to
     /// its index entries: the root transaction opened, and only its commit publishes what it
     /// removed.
     pub fn defer_retirement(&mut self) {
-        self.retiring.get_or_insert_with(Vec::new);
     }
     /// Whether a transaction is open: between `defer_retirement` and `publish_retirement`.
     pub fn defers_retirement(&self) -> bool {
-        self.retiring.is_some()
+        false
     }
     /// Retires every map kept since `defer_retirement`, and stops deferring: the root
     /// transaction closed. What an abort did not put back goes: those of block entities a
     /// committed transaction removed, and those of block entities an aborted one made.
     pub fn publish_retirement(&mut self) {
-        for (pos, generation, map) in self.retiring.take().into_iter().flatten() {
-            if let Some(observer) = &self.attachment_observer {
-                observer.unload(BlockEntityIdentity {
-                    position: [pos.0, pos.1, pos.2],
-                    generation,
-                });
-            }
-            drop(map);
-        }
     }
     /// Gives the block entity of `generation` that stands at `pos` again the map it went with
     /// in this transaction, as it was then, still bound: a removed block entity a later write
     /// in the same transaction put back.
     pub fn reattach_retired(&mut self, pos: Pos, generation: u64) {
-        if self.generation(&pos) != Some(generation) || self.attachments.contains_key(&pos) {
-            return;
-        }
-        let Some(retiring) = &mut self.retiring else {
-            return;
-        };
-        if let Some(at) = retiring
-            .iter()
-            .position(|(p, g, _)| *p == pos && *g == generation)
-        {
-            let (_, _, map) = retiring.swap_remove(at);
-            self.attachments.insert(pos, map);
-        }
-    }
-    /// Puts the attachment map of the block entity at `pos` back as a transaction kept it,
-    /// `data`, for the block entity of `generation` that stands there again: the very map it
-    /// had, still bound, where it went in this transaction, so its index entries never left.
-    pub fn put_back_attachments(
-        &mut self,
-        pos: Pos,
-        generation: Option<u64>,
-        data: Option<horizon_mod_runtime::attachments::Attachments>,
-    ) {
-        let kept = self.retiring.as_mut().and_then(|retiring| {
-            let at = retiring
-                .iter()
-                .position(|(p, g, _)| *p == pos && Some(*g) == generation)?;
-            Some(retiring.swap_remove(at).2)
-        });
-        match (kept, data) {
-            (Some(mut map), Some(data)) if self.generation(&pos) == generation => {
-                map.replace_contents(data);
-                if let Some(current) = self.attachments.insert(pos, map) {
-                    // A map the transaction made for the same block entity after it went:
-                    // never bound apart from this one, which holds the index entries.
-                    drop(current);
-                }
-            }
-            (Some(map), _) => {
-                if let (Some(observer), Some(generation)) = (&self.attachment_observer, generation)
-                {
-                    observer.unload(BlockEntityIdentity {
-                        position: [pos.0, pos.1, pos.2],
-                        generation,
-                    });
-                }
-                drop(map);
-                self.set_attachments(pos, None);
-            }
-            (None, data) => self.set_attachments(pos, data),
-        }
-    }
-    /// Attachment maps in a loaded chunk, for a save snapshot.
-    pub fn chunk_attachments(
-        &self,
-        x: i32,
-        z: i32,
-    ) -> Vec<(Pos, horizon_mod_runtime::attachments::Attachments)> {
-        self.attachments
-            .iter()
-            .filter(|(p, _)| p.0 >> 4 == x && p.2 >> 4 == z)
-            .map(|(p, data)| (*p, data.clone()))
-            .collect()
-    }
-    /// Restore a loaded block entity's attachment map.
-    pub fn restore_attachments(
-        &mut self,
-        pos: Pos,
-        data: horizon_mod_runtime::attachments::Attachments,
-    ) {
-        if self.map.contains_key(&pos) || self.out.contains_key(&pos) {
-            let map = self.attachments.entry(pos).or_default();
-            map.replace_contents(data);
-            if let Some(observer) = &self.attachment_observer
-                && map.has_index_entries()
-                && !map.has_index_binding()
-            {
-                let _ = observer.bind(identity(pos, &self.generations), map);
-            }
-        }
     }
     /// Whether any mod block entity is in the map: until one is, a block change
     /// never looks one up (`LevelAccess::has_mod_block_entity`).
@@ -818,14 +587,12 @@ impl BlockEntities {
         entity: BlockEntity,
         replace_identity: bool,
     ) -> Option<BlockEntity> {
-        let new_is_mod = matches!(entity, BlockEntity::Mod(_));
+        let new_is_mod = false;
         let same_type = |old: &BlockEntity| match (old, &entity) {
-            (BlockEntity::Mod(old), BlockEntity::Mod(new)) => old.id() == new.id(),
             (old, new) => std::mem::discriminant(old) == std::mem::discriminant(new),
         };
         let new_identity = replace_identity || !self.map.get(&pos).is_some_and(same_type);
         if new_identity {
-            self.retire(pos);
             self.new_generation(pos);
         }
         self.replace_taken(pos);
@@ -862,7 +629,6 @@ impl BlockEntities {
         let absent = !self.map.contains_key(&pos);
         if absent {
             self.replace_taken(pos);
-            self.retire(pos);
             self.new_generation(pos);
             forget_mod(&mut self.mods, pos);
             self.boxes.remove(&pos);
@@ -871,7 +637,7 @@ impl BlockEntities {
         self.asleep.remove(&pos);
         index_chunk(&mut self.by_chunk, pos);
         let entity = self.map.entry(pos).or_insert_with(make);
-        if absent && matches!(entity, BlockEntity::Mod(_)) {
+        if absent && false {
             if self.on_load_enabled {
                 self.on_load.push_back((pos, self.generations[&pos]));
             }
@@ -919,7 +685,6 @@ impl BlockEntities {
     /// `LevelChunk.removeBlockEntity`: the block entity and its slot.
     pub fn remove(&mut self, pos: &Pos) -> Option<BlockEntity> {
         self.out.remove(pos);
-        self.retire(*pos);
         self.generations.remove(pos);
         self.asleep.remove(pos);
         self.cancel(pos);
@@ -972,7 +737,7 @@ impl BlockEntities {
         }
         self.out.remove(&pos);
         self.asleep.remove(&pos);
-        if matches!(entity, BlockEntity::Mod(_)) {
+        if false {
             self.mods.entry(chunk_of(pos)).or_default().insert(pos);
         }
         self.note_box(pos, Some(&entity));
@@ -1014,22 +779,15 @@ impl BlockEntities {
     /// Removes the block entities `keep` refuses, and their slots
     /// (`clearAllBlockEntities` of unloaded chunks).
     pub fn retain(&mut self, mut keep: impl FnMut(&Pos, &mut BlockEntity) -> bool) {
-        let (live, pending, freed, attachments) = (
-            &mut self.live,
-            &mut self.pending,
-            &mut self.freed,
-            &mut self.attachments,
-        );
+        let (live, pending, freed) = (&mut self.live, &mut self.pending, &mut self.freed);
         let (mods, boxes, listed) = (&mut self.mods, &mut self.boxes, &mut self.listed);
         let by_chunk = &mut self.by_chunk;
         let generations = &mut self.generations;
-        let observer = self.attachment_observer.as_ref();
         let sign_editors = &mut self.sign_editors;
         self.asleep.clear();
         self.map.retain(|p, e| {
             let kept = keep(p, e);
             if !kept {
-                retire_attachments(attachments, observer, generations, p);
                 generations.remove(p);
                 *freed |= live.remove(p).is_some();
                 pending.remove(p);
@@ -1059,12 +817,6 @@ impl BlockEntities {
             if self.map.remove(p).is_none() {
                 continue;
             }
-            retire_attachments(
-                &mut self.attachments,
-                self.attachment_observer.as_ref(),
-                &self.generations,
-                p,
-            );
             self.generations.remove(p);
             self.freed |= self.live.remove(p).is_some();
             self.pending.remove(p);
@@ -1078,10 +830,8 @@ impl BlockEntities {
         self.retire_taken(gone);
     }
     pub fn clear(&mut self) {
-        self.unload_attachments();
         self.generations.clear();
         self.on_load.clear();
-        self.attachments.clear();
         self.map.clear();
         self.by_chunk.clear();
         self.mods.clear();
@@ -1110,15 +860,9 @@ impl BlockEntities {
         let order = chunk_map_order(entities.iter().map(|(p, _)| *p));
         for (p, e) in entities {
             self.replace_taken(p);
-            retire_attachments(
-                &mut self.attachments,
-                self.attachment_observer.as_ref(),
-                &self.generations,
-                &p,
-            );
             self.new_generation(p);
             self.asleep.remove(&p);
-            let new_is_mod = matches!(e, BlockEntity::Mod(_));
+            let new_is_mod = false;
             self.note_box(p, Some(&e));
             note_listed(&mut self.listed, p, Some(&e));
             self.note_sign_editor(p, &e);
@@ -1134,7 +878,7 @@ impl BlockEntities {
             }
         }
         for p in order {
-            if self.on_load_enabled && matches!(self.map.get(&p), Some(BlockEntity::Mod(_))) {
+            if self.on_load_enabled && false {
                 self.on_load.push_back((p, self.generations[&p]));
             }
             self.add(p);
@@ -1215,650 +959,4 @@ impl BlockEntities {
 
 
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    fn hopper() -> BlockEntity {
-        BlockEntity::Chest(vec![None; 5])
-    }
-    /// States: 0 air, 1 ticks, 2 idle.
-    fn level() -> BlockEntities {
-        let mut b = BlockEntities::default();
-        b.set_states(vec![Ticking::No, Ticking::Yes, Ticking::Idle]);
-        b
-    }
-    fn order(b: &mut BlockEntities, states: &HashMap<Pos, u32>) -> Vec<Pos> {
-        b.tickers(|p| states.get(&p).copied().unwrap_or(0))
-            .iter()
-            .map(|(p, _)| *p)
-            .collect()
-    }
-
-    #[test]
-    fn generations_follow_identity_not_position_or_tick_storage() {
-        let mut b = level();
-        let p = (1, 64, 1);
-        b.get_or_insert_with(p, hopper);
-        let first = b.generation(&p).unwrap();
-        b.insert(p, hopper()); // Same-type payload load, as /data does.
-        assert_eq!(b.generation(&p), Some(first));
-        let (lease, taken) = b.take(&p).unwrap();
-        assert_eq!(b.generation(&p), Some(first));
-        assert!(b.put(lease, taken));
-        assert_eq!(b.generation(&p), Some(first));
-        b.insert(
-            p,
-            BlockEntity::Mod(Box::new(crate::chunk::block_entity::ModBlockEntity::new(
-                "test:other".into(),
-                Default::default(),
-            ))),
-        );
-        let replaced = b.generation(&p).unwrap();
-        assert_ne!(replaced, first);
-        b.remove(&p);
-        assert_eq!(b.generation(&p), None);
-        b.insert(p, hopper());
-        let recreated = b.generation(&p).unwrap();
-        assert_ne!(recreated, replaced);
-        b.unload(|pos| *pos == p);
-        assert_eq!(b.generation(&p), None);
-        b.load_chunk(vec![(p, hopper())]);
-        let loaded = b.generation(&p).unwrap();
-        assert_ne!(loaded, recreated);
-        b.load_chunk(vec![(p, hopper())]);
-        assert_ne!(b.generation(&p), Some(loaded));
-        let before_clear = b.generation(&p).unwrap();
-        b.clear();
-        assert_eq!(b.generation(&p), None);
-        b.insert(p, hopper());
-        assert_ne!(b.generation(&p), Some(before_clear));
-        let mut another = level();
-        another.insert(p, hopper());
-        assert_ne!(b.generation(&p), another.generation(&p));
-    }
-
-    /// Unloading a chunk removes its block entities and leaves the others'
-    /// sleep alone; `retain`, which may change what it keeps, wakes them all.
-    #[test]
-    fn unloading_a_chunk_keeps_the_others_asleep() {
-        let mut b = level();
-        let (kept, gone) = ((1, 64, 1), (17, 64, 1));
-        b.insert(kept, hopper());
-        b.insert(gone, hopper());
-        b.sleep(kept);
-        b.sleep(gone);
-        b.unload(|p| p.0 >> 4 == 1);
-        assert!(b.get(&gone).is_none());
-        assert!(!b.is_asleep(&gone));
-        assert!(b.is_asleep(&kept));
-        b.retain(|_, _| true);
-        assert!(!b.is_asleep(&kept));
-    }
-
-    fn near(b: &BlockEntities, x: f64, z: f64, radius: f64) -> Vec<Pos> {
-        let mut found: Vec<Pos> = b.mods_near(x, z, radius).copied().collect();
-        found.sort();
-        found
-    }
-    #[test]
-    fn a_sleeping_block_entity_wakes_on_any_change() {
-        let p = (1, 64, 1);
-        let mut b = level();
-        b.sleep(p);
-        assert!(!b.is_asleep(&p));
-        b.insert(p, hopper());
-        let asleep = |b: &mut BlockEntities, wake: &dyn Fn(&mut BlockEntities)| {
-            b.sleep(p);
-            assert!(b.is_asleep(&p));
-            wake(b);
-            b.is_asleep(&p)
-        };
-        assert!(asleep(&mut b, &|_| {}));
-        assert!(!asleep(&mut b, &|b| {
-            b.get_mut(&p);
-        }));
-        assert!(!asleep(&mut b, &|b| {
-            b.insert(p, hopper());
-        }));
-        assert!(!asleep(&mut b, &|b| {
-            b.get_or_insert_with(p, hopper);
-        }));
-        assert!(!asleep(&mut b, &|b| {
-            let (lease, held) = b.take(&p).unwrap();
-            b.put(lease, held);
-        }));
-        assert!(!asleep(&mut b, &|b| b.state_changed(p, 1, 1)));
-        assert!(!asleep(&mut b, &|b| b.forget(&p)));
-        assert!(!asleep(&mut b, &|b| {
-            b.iter_mut().count();
-        }));
-        assert!(!asleep(&mut b, &|b| {
-            b.values_mut().count();
-        }));
-        assert!(!asleep(&mut b, &|b| b.retain(|_, _| true)));
-        assert!(!asleep(&mut b, &|b| b.load_chunk(vec![(p, hopper())])));
-        assert!(!asleep(&mut b, &|b| {
-            b.remove(&p);
-            b.insert(p, hopper());
-        }));
-        b.sleep(p);
-        b.clear();
-        assert!(!b.is_asleep(&p));
-    }
-    #[test]
-    fn mod_block_entities_are_listed_by_chunk_until_they_go() {
-        let mut b = level();
-        let modded = || BlockEntity::Mod(Box::default());
-        b.insert((1, 64, 1), modded());
-        b.insert((200, 64, 1), modded());
-        b.insert((2, 64, 2), hopper());
-        b.get_or_insert_with((3, 64, 3), modded);
-        b.load_chunk(vec![((4, 64, 4), modded()), ((5, 64, 5), hopper())]);
-        // Only mods, and only chunks within reach.
-        assert_eq!(
-            near(&b, 0.0, 0.0, 64.0),
-            [(1, 64, 1), (3, 64, 3), (4, 64, 4)]
-        );
-        assert_eq!(near(&b, 200.0, 0.0, 8.0), [(200, 64, 1)]);
-        // Taken out for a tick, still listed; removed or replaced, gone.
-        let (lease, taken) = b.take(&(1, 64, 1)).unwrap();
-        assert_eq!(near(&b, 0.0, 0.0, 64.0).len(), 3);
-        b.put(lease, taken);
-        b.remove(&(3, 64, 3));
-        b.insert((4, 64, 4), hopper());
-        assert_eq!(near(&b, 0.0, 0.0, 64.0), [(1, 64, 1)]);
-        b.retain(|p, _| p.0 != 1);
-        assert!(near(&b, 0.0, 0.0, 64.0).is_empty());
-        b.clear();
-        assert!(near(&b, 200.0, 0.0, 8.0).is_empty());
-    }
-    #[test]
-    fn attachments_follow_block_entity_lifetime() {
-        use horizon_mod_runtime::attachments::{AttachmentType, Holder};
-        let ty = AttachmentType {
-            namespace: "test",
-            name: "value",
-            default: || 0,
-            codec: None,
-            copy_on_death: false,
-            sync: false,
-        };
-        let p = (1, 64, 2);
-        let mut entities = level();
-        assert!(entities.attachments_mut(p).is_none());
-        entities.insert(p, hopper());
-        ty.set(entities.attachments_mut(p).unwrap(), Holder::Level, 4)
-            .unwrap();
-        let (lease, held) = entities.take(&p).unwrap();
-        entities.put(lease, held);
-        assert_eq!(
-            ty.get(entities.attachments_mut(p).unwrap(), Holder::Level),
-            Ok(4)
-        );
-        entities.insert(p, hopper());
-        assert_eq!(
-            ty.get(entities.attachments_mut(p).unwrap(), Holder::Level),
-            Ok(4)
-        );
-        let machine = |id: &str| {
-            BlockEntity::Mod(Box::new(crate::chunk::block_entity::ModBlockEntity::new(
-                id.into(),
-                Default::default(),
-            )))
-        };
-        entities.insert(p, machine("test:a"));
-        assert_eq!(
-            ty.get(entities.attachments_mut(p).unwrap(), Holder::Level),
-            Ok(0)
-        );
-        ty.set(entities.attachments_mut(p).unwrap(), Holder::Level, 4)
-            .unwrap();
-        entities.insert(p, machine("test:a"));
-        assert_eq!(
-            ty.get(entities.attachments_mut(p).unwrap(), Holder::Level),
-            Ok(4)
-        );
-        entities.insert(p, machine("test:b"));
-        assert_eq!(
-            ty.get(entities.attachments_mut(p).unwrap(), Holder::Level),
-            Ok(0)
-        );
-        ty.set(entities.attachments_mut(p).unwrap(), Holder::Level, 4)
-            .unwrap();
-        entities.remove(&p);
-        entities.insert(p, hopper());
-        assert_eq!(
-            ty.get(entities.attachments_mut(p).unwrap(), Holder::Level),
-            Ok(0)
-        );
-        ty.set(entities.attachments_mut(p).unwrap(), Holder::Level, 5)
-            .unwrap();
-        entities.retain(|_, _| false);
-        entities.insert(p, hopper());
-        assert_eq!(
-            ty.get(entities.attachments_mut(p).unwrap(), Holder::Level),
-            Ok(0)
-        );
-    }
-
-    #[test]
-    fn slots_follow_vanilla_lifecycle() {
-        let mut b = level();
-        let mut s = HashMap::new();
-        for p in [(0, 0, 0), (1, 0, 0), (2, 0, 0)] {
-            s.insert(p, 1);
-            b.insert(p, hopper());
-        }
-        assert_eq!(order(&mut b, &s), [(0, 0, 0), (1, 0, 0), (2, 0, 0)]);
-        // Replacing keeps the slot; removing and placing again appends.
-        b.insert((0, 0, 0), hopper());
-        b.remove(&(1, 0, 0));
-        b.insert((1, 0, 0), hopper());
-        assert_eq!(order(&mut b, &s), [(0, 0, 0), (2, 0, 0), (1, 0, 0)]);
-        // Take and put keep it; an idle state frees it, ticking again appends.
-        let (lease, e) = b.take(&(0, 0, 0)).unwrap();
-        b.put(lease, e);
-        assert_eq!(order(&mut b, &s), [(0, 0, 0), (2, 0, 0), (1, 0, 0)]);
-        s.insert((2, 0, 0), 2);
-        b.state_changed((2, 0, 0), 1, 2);
-        assert_eq!(order(&mut b, &s), [(0, 0, 0), (1, 0, 0)]);
-        s.insert((2, 0, 0), 1);
-        b.state_changed((2, 0, 0), 2, 1);
-        assert_eq!(order(&mut b, &s), [(0, 0, 0), (1, 0, 0), (2, 0, 0)]);
-        // A slot freed during a tick is not live any more.
-        let slots = b.tickers(|p| s.get(&p).copied().unwrap_or(0));
-        b.retain(|p, _| *p != (1, 0, 0));
-        assert!(b.is_live(slots[0]) && !b.is_live(slots[1]));
-        // A block entity taken and never brought back loses its slot.
-        b.take(&(0, 0, 0));
-        assert_eq!(order(&mut b, &s), [(2, 0, 0)]);
-        assert_eq!(order(&mut b, &s), [(2, 0, 0)]);
-    }
-
-    #[test]
-    fn chunk_loads_in_open_hash_map_order() {
-        // A few keys: their mixed hashes over 32 slots, read from the top.
-        let positions = [
-            (0, 64, 0),
-            (1, 64, 0),
-            (0, 64, 1),
-            (15, -64, 15),
-            (3, 70, 9),
-        ];
-        let slot = |p: &Pos| mix(java_hash(*p)) & 31;
-        let mut expected = positions.to_vec();
-        expected.sort_by_key(|p| std::cmp::Reverse(slot(p)));
-        let distinct: std::collections::HashSet<usize> = positions.iter().map(slot).collect();
-        assert_eq!(distinct.len(), positions.len());
-        assert_eq!(chunk_map_order(positions), expected);
-        // Past 24 keys the table doubles; every key stays, once.
-        let many: Vec<Pos> = (0..100).map(|i| (i % 16, i / 16, 3)).collect();
-        let order = chunk_map_order(many.iter().copied().chain(many.iter().copied()));
-        assert_eq!(order.len(), 100);
-    }
-
-    /// A chunk loaded over a block entity already there: the new one replaces
-    /// it, and keeps the old slot only while its block state ticks.
-    #[test]
-    fn loaded_chunk_replaces_block_entity_by_state() {
-        let mut b = level();
-        let mut s = HashMap::new();
-        let (p, q) = ((0, 0, 0), (1, 0, 0));
-        for pos in [p, q] {
-            s.insert(pos, 1);
-        }
-        // Two chunks, so the order is the order they load in.
-        b.load_chunk(vec![(p, hopper())]);
-        b.load_chunk(vec![(q, hopper())]);
-        assert_eq!(order(&mut b, &s), [p, q]);
-        // Replaced where the state ticks: the slot stays in its place.
-        b.load_chunk(vec![(p, hopper())]);
-        assert_eq!(order(&mut b, &s), [p, q]);
-        // Replaced where the state has no ticker: the slot is freed, and the
-        // new block entity is the one in the map.
-        s.insert(p, 2);
-        b.load_chunk(vec![(p, BlockEntity::Chest(vec![None; 27]))]);
-        assert_eq!(order(&mut b, &s), [q]);
-        assert!(matches!(b.get(&p), Some(BlockEntity::Chest(items)) if items.len() == 27));
-        // Ticking again later appends it, as any new ticker does.
-        s.insert(p, 1);
-        b.state_changed(p, 2, 1);
-        assert_eq!(order(&mut b, &s), [q, p]);
-    }
-
-    #[test]
-    fn boxes_list_exactly_the_structure_and_test_blocks() {
-        let test_block = || BlockEntity::TestInstanceBlock(Box::default());
-        let listed = |b: &BlockEntities| {
-            let mut v: Vec<Pos> = b.boxes().map(|(p, _)| *p).collect();
-            v.sort();
-            v
-        };
-        let mut b = level();
-        let (p, q, r) = ((0, 0, 0), (1, 0, 0), (2, 0, 0));
-        b.insert(p, test_block());
-        b.insert(q, hopper());
-        assert_eq!(listed(&b), [p]);
-        // Replaced by another kind, and back.
-        b.insert(p, hopper());
-        assert_eq!(listed(&b), []);
-        b.insert(q, test_block());
-        b.get_or_insert_with(r, test_block);
-        assert_eq!(listed(&b), [q, r]);
-        // Taken out: not shown until put back; replacement during take wins.
-        let (lease, taken) = b.take(&q).unwrap();
-        assert_eq!(listed(&b), [r]);
-        b.put(lease, taken);
-        assert_eq!(listed(&b), [q, r]);
-        let (lease, taken) = b.take(&r).unwrap();
-        b.insert(r, hopper());
-        assert!(!b.put(lease, taken));
-        assert_eq!(listed(&b), [q]);
-        b.remove(&q);
-        assert_eq!(listed(&b), []);
-        b.load_chunk(vec![(p, test_block()), (q, hopper())]);
-        assert_eq!(listed(&b), [p]);
-        b.retain(|pos, _| *pos != p);
-        assert_eq!(listed(&b), []);
-        b.insert(r, test_block());
-        b.clear();
-        assert!(b.boxes.is_empty());
-    }
-
-    #[test]
-    fn unloading_chunks_by_the_index_is_unloading_by_a_scan() {
-        let campfire = || BlockEntity::Campfire(Box::default());
-        let fill = |b: &mut BlockEntities| {
-            for x in [-20, -3, 0, 5, 17, 33] {
-                for z in [-17, 0, 9, 40] {
-                    let entity = if (x + z) % 2 == 0 {
-                        hopper()
-                    } else {
-                        campfire()
-                    };
-                    b.insert((x, 64, z), entity);
-                }
-            }
-            b.insert((15, -80, 15), hopper());
-            b.insert((15, 400, 15), campfire());
-            b.insert((16, 400, 15), campfire());
-            b.sleep((5, 64, 9));
-            b.sleep((17, 64, -17));
-            b.take(&(0, 64, 0)).unwrap()
-        };
-        let (mut a, mut b) = (level(), level());
-        let (_lease_a, _) = fill(&mut a);
-        let (_lease_b, _) = fill(&mut b);
-        let chunks = [(0, 0), (2, 2), (-2, -2)];
-        a.unload(|p| chunks.contains(&chunk_of(*p)));
-        b.unload_chunks(&chunks);
-        let keys = |b: &BlockEntities| {
-            let mut v: Vec<Pos> = b.keys().copied().collect();
-            v.sort();
-            v
-        };
-        assert_eq!(keys(&a), keys(&b));
-        assert!(!b.contains_key(&(15, -80, 15)));
-        assert!(!b.contains_key(&(15, 400, 15)));
-        assert!(b.contains_key(&(16, 400, 15)));
-        for p in keys(&a) {
-            assert_eq!(a.is_asleep(&p), b.is_asleep(&p), "{p:?}");
-        }
-        assert!(b.is_asleep(&(17, 64, -17)));
-        let listed_camps = |b: &BlockEntities| {
-            let mut v: Vec<Pos> = b.listed(Listed::Campfire).map(|(p, _)| *p).collect();
-            v.sort();
-            v
-        };
-        assert_eq!(listed_camps(&a), listed_camps(&b));
-        let mut indexed: Vec<Pos> = b.by_chunk.values().flatten().copied().collect();
-        indexed.sort();
-        assert_eq!(indexed, keys(&b));
-        assert!(b.by_chunk.values().all(|set| !set.is_empty()));
-    }
-
-    #[test]
-    fn each_listed_kind_lists_exactly_its_block_entities() {
-        let campfire = || BlockEntity::Campfire(Box::default());
-        let shelf = || BlockEntity::Shelf(Box::default());
-        let listed = |b: &BlockEntities, kind: Listed| {
-            let mut v: Vec<Pos> = b.listed(kind).map(|(p, _)| *p).collect();
-            v.sort();
-            v
-        };
-        let mut b = level();
-        let (p, q, r) = ((0, 0, 0), (1, 0, 0), (2, 0, 0));
-        b.insert(p, campfire());
-        b.insert(q, hopper());
-        assert_eq!(listed(&b, Listed::Campfire), [p]);
-        assert_eq!(listed(&b, Listed::Shelf), []);
-        b.insert(p, shelf());
-        assert_eq!(listed(&b, Listed::Campfire), []);
-        assert_eq!(listed(&b, Listed::Shelf), [p]);
-        b.insert(q, campfire());
-        b.get_or_insert_with(r, campfire);
-        assert_eq!(listed(&b, Listed::Campfire), [q, r]);
-        let (lease, taken) = b.take(&q).unwrap();
-        assert_eq!(listed(&b, Listed::Campfire), [r]);
-        b.put(lease, taken);
-        assert_eq!(listed(&b, Listed::Campfire), [q, r]);
-        let (lease, taken) = b.take(&r).unwrap();
-        b.insert(r, hopper());
-        assert!(!b.put(lease, taken));
-        assert_eq!(listed(&b, Listed::Campfire), [q]);
-        b.remove(&q);
-        assert_eq!(listed(&b, Listed::Campfire), []);
-        b.load_chunk(vec![(q, campfire()), (r, shelf())]);
-        assert_eq!(listed(&b, Listed::Campfire), [q]);
-        assert_eq!(listed(&b, Listed::Shelf), [p, r]);
-        b.retain(|pos, _| *pos != r);
-        assert_eq!(listed(&b, Listed::Shelf), [p]);
-        let scanned = |b: &BlockEntities| {
-            let mut v: Vec<Pos> = b
-                .iter()
-                .filter(|(_, e)| matches!(e, BlockEntity::Campfire(_) | BlockEntity::Shelf(_)))
-                .map(|(p, _)| *p)
-                .collect();
-            v.sort();
-            v
-        };
-        let mut both = [listed(&b, Listed::Campfire), listed(&b, Listed::Shelf)].concat();
-        both.sort();
-        assert_eq!(both, scanned(&b));
-        b.clear();
-        assert!(b.listed.iter().all(FxHashSet::is_empty));
-    }
-
-    const HOPPERS: i32 = 8000;
-    const SAMPLE_CHUNKS: [(i32, i32); 5] = [(0, 0), (16, 0), (32, 0), (48, 0), (64, 0)];
-
-    fn many_block_entities() -> BlockEntities {
-        let mut b = level();
-        for i in 0..HOPPERS {
-            let x = (i % 200) * 16;
-            let z = (i / 200) * 16;
-            b.insert((x, 64, z), hopper());
-        }
-        for i in 0..8 {
-            b.insert((i, 70, 1), BlockEntity::Beacon(Box::default()));
-            b.insert((i, 71, 2), BlockEntity::Campfire(Box::default()));
-        }
-        b
-    }
-
-    #[test]
-    fn the_indexes_match_a_full_scan() {
-        let mut scanned = many_block_entities();
-        let mut indexed = many_block_entities();
-        let mut beacons: Vec<_> = scanned
-            .iter()
-            .filter_map(|(p, e)| matches!(e, BlockEntity::Beacon(_)).then_some(*p))
-            .collect();
-        let mut listed: Vec<_> = indexed.listed(Listed::Beacon).map(|(p, _)| *p).collect();
-        beacons.sort_unstable();
-        listed.sort_unstable();
-        assert_eq!(beacons.len(), 8);
-        assert_eq!(beacons, listed);
-
-        scanned.unload(|p| SAMPLE_CHUNKS.contains(&chunk_of(*p)));
-        indexed.unload_chunks(&SAMPLE_CHUNKS);
-        let keys = |ents: &BlockEntities| {
-            let mut positions: Vec<_> = ents.keys().copied().collect();
-            positions.sort_unstable();
-            positions
-        };
-        assert_eq!(keys(&scanned), keys(&indexed));
-    }
-
-    /// Same machine, one process. The scan walks every block entity; the index walks the kind or chunk.
-    #[test]
-    fn measure_block_entity_indexes_against_a_full_scan() {
-        use std::time::Instant;
-        if !std::env::var("HORIZON_MEASURE_BLOCK_ENTITIES").is_ok_and(|value| value == "1") {
-            return;
-        }
-        const RUNS: usize = 11;
-        let b = many_block_entities();
-        let time_scan = || {
-            let start = Instant::now();
-            let n = b
-                .iter()
-                .filter(|(_, e)| matches!(e, BlockEntity::Beacon(_)))
-                .count();
-            (start.elapsed().as_nanos(), n)
-        };
-        let time_index = || {
-            let start = Instant::now();
-            let n = b.listed(Listed::Beacon).count();
-            (start.elapsed().as_nanos(), n)
-        };
-        for _ in 0..2 {
-            let _ = time_scan();
-            let _ = time_index();
-        }
-        let mut scan = Vec::with_capacity(RUNS);
-        let mut index = Vec::with_capacity(RUNS);
-        for _ in 0..RUNS {
-            let (dt, n) = time_scan();
-            assert_eq!(n, 8);
-            scan.push(dt);
-            let (dt, n) = time_index();
-            assert_eq!(n, 8);
-            index.push(dt);
-        }
-        let (scan_m, scan_p, scan_w) = spread(&mut scan);
-        let (index_m, index_p, index_w) = spread(&mut index);
-        let mut unload_scan = Vec::new();
-        let mut unload_index = Vec::new();
-        for _ in 0..2 {
-            let mut warm = many_block_entities();
-            warm.unload(|p| SAMPLE_CHUNKS.contains(&chunk_of(*p)));
-            let mut warm = many_block_entities();
-            warm.unload_chunks(&SAMPLE_CHUNKS);
-        }
-        for _ in 0..RUNS {
-            let mut left = many_block_entities();
-            let start = Instant::now();
-            left.unload(|p| SAMPLE_CHUNKS.contains(&chunk_of(*p)));
-            unload_scan.push(start.elapsed().as_nanos());
-            let mut right = many_block_entities();
-            let start = Instant::now();
-            right.unload_chunks(&SAMPLE_CHUNKS);
-            unload_index.push(start.elapsed().as_nanos());
-        }
-        let (us_m, us_p, us_w) = spread(&mut unload_scan);
-        let (ui_m, ui_p, ui_w) = spread(&mut unload_index);
-        let report = format!(
-            "scene hoppers={HOPPERS} beacons=8 campfires=8 runs={RUNS}\n             kind_scan_ns median={scan_m} p95={scan_p} worst={scan_w}\n             kind_index_ns median={index_m} p95={index_p} worst={index_w}\n             unload_scan_ns median={us_m} p95={us_p} worst={us_w}\n             unload_index_ns median={ui_m} p95={ui_p} worst={ui_w}\n"
-        );
-        let path = std::env::temp_dir().join("hz-measure-blocks.txt");
-        std::fs::write(&path, &report).unwrap();
-        println!("{report}");
-    }
-
-    fn spread(samples: &mut [u128]) -> (u128, u128, u128) {
-        samples.sort_unstable();
-        let n = samples.len();
-        let median = samples[n / 2];
-        let p95_at = ((n as f64) * 0.95).ceil() as usize - 1;
-        (median, samples[p95_at], samples[n - 1])
-    }
-
-    /// Marker drawing and `boxes` name the same test instance blocks, and the box list is
-    /// faster than walking every block entity. Scene: 8000 chests and 3 test blocks.
-    #[test]
-    fn test_instance_markers_come_from_the_box_list() {
-        use std::time::Instant;
-        const CHESTS: i32 = 8000;
-        const RUNS: usize = 11;
-        let mut entities = level();
-        for i in 0..CHESTS {
-            entities.insert(((i % 200) * 16, 64, (i / 200) * 16), hopper());
-        }
-        let tests = [(1, 70, 1), (40, 70, 2), (90, 80, 3)];
-        for pos in tests {
-            entities.insert(pos, BlockEntity::TestInstanceBlock(Box::default()));
-        }
-        let from_scan = |entities: &BlockEntities| {
-            let mut v: Vec<_> = entities
-                .iter()
-                .filter_map(|(pos, entity)| {
-                    matches!(entity, BlockEntity::TestInstanceBlock(_)).then_some(*pos)
-                })
-                .collect();
-            v.sort();
-            v
-        };
-        let from_boxes = |entities: &BlockEntities| {
-            let mut v: Vec<_> = entities
-                .boxes()
-                .filter_map(|(pos, entity)| {
-                    matches!(entity, BlockEntity::TestInstanceBlock(_)).then_some(*pos)
-                })
-                .collect();
-            v.sort();
-            v
-        };
-        assert_eq!(from_scan(&entities), tests.to_vec());
-        assert_eq!(from_boxes(&entities), from_scan(&entities));
-        let mut scans = Vec::new();
-        let mut boxes = Vec::new();
-        for _ in 0..2 {
-            let _ = from_scan(&entities);
-            let _ = from_boxes(&entities);
-        }
-        for _ in 0..RUNS {
-            let start = Instant::now();
-            assert_eq!(from_scan(&entities).len(), 3);
-            scans.push(start.elapsed().as_nanos());
-            let start = Instant::now();
-            assert_eq!(from_boxes(&entities).len(), 3);
-            boxes.push(start.elapsed().as_nanos());
-        }
-        scans.sort_unstable();
-        boxes.sort_unstable();
-        let med = |s: &[u128]| s[s.len() / 2];
-        let p95 = |s: &[u128]| s[((s.len() as f64) * 0.95).ceil() as usize - 1];
-        let report = format!(
-            "scene chests={CHESTS} test_instances=3 runs={RUNS}\n\
-             scan_ns median={} p95={} worst={}\n\
-             boxes_ns median={} p95={} worst={}\n",
-            med(&scans),
-            p95(&scans),
-            scans[scans.len() - 1],
-            med(&boxes),
-            p95(&boxes),
-            boxes[boxes.len() - 1],
-        );
-        std::fs::write(std::env::temp_dir().join("hz-measure-markers.txt"), &report).unwrap();
-        println!("{report}");
-        // Pin the work avoided, not host scheduling: wall-clock samples remain diagnostics.
-        assert_eq!(entities.iter().count(), CHESTS as usize + tests.len());
-        assert_eq!(entities.boxes().count(), tests.len());
-    }
-}
-
-#[cfg(test)]
-#[path = "block_entities/on_load_tests.rs"]
-mod on_load_tests;

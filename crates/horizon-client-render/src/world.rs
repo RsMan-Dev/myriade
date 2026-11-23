@@ -66,21 +66,7 @@ pub struct World {
     // Initialized only for a logical server level, then borrowed by every AI worker.
     path_type_cache: OnceLock<path_type_cache::PathTypeCache>,
     /// The dimension type's fire-source tag, resolved at entry and data reload.
-    pub infiniburn: Option<Arc<horizon_world::level::data::BlockSet>>,
-    /// Server-owned mod data attached to this dimension.
-    pub attachments: horizon_mod_runtime::attachments::Attachments,
-    /// Mod-owned watered areas; never serialized with the world.
-    pub water_tickets: horizon_mod_runtime::water_tickets::WaterTickets,
-    /// The holders lent to mods since the last flush, whose synced changes
-    /// `flush_attachment_sync` sends.
-    pub attachment_syncs: FxHashSet<horizon_mod_runtime::attachments::Holder>,
-    /// Block entities a moving piston landed since the last flush, whose
-    /// synced attachments `flush_attachment_sync` sends whole (arismoko/horizon#3184).
-    pub attachment_landings: FxHashSet<horizon_mod_runtime::attachments::Holder>,
-    /// The capability generations mods' providers advanced here
-    /// (`level_invalidate_capabilities`), which kept capabilities compare.
-    pub capability_generations: horizon_mod_runtime::capability_generations::CapabilityGenerations,
-    /// The level's build range and skylight (its dimension type); its
+    pub infiniburn: Option<Arc<horizon_world::level::data::BlockSet>>,/// The level's build range and skylight (its dimension type); its
     /// chunks hold `shape.column()`.
     pub shape: LevelShape,
     pub fast_lava: bool,
@@ -314,10 +300,6 @@ impl World {
         let key = (chunk.x, chunk.z);
         self.load_chunk_block_entities(key, std::mem::take(&mut chunk.block_entities));
         if let Some(extras) = &chunk.saved {
-            for (pos, attachments) in &extras.block_entity_attachments {
-                self.block_entities
-                    .restore_attachments(*pos, attachments.clone());
-            }
         }
     }
     /// Queue ordinary NBT; transient transfer state is never decoded from it.
@@ -345,11 +327,6 @@ impl World {
             entities_pending: FxHashSet::default(),
             loaded_chunks: Vec::new(),
             modified: ModifiedChunks::default(),
-            attachments: Default::default(),
-            water_tickets: Default::default(),
-            attachment_syncs: FxHashSet::default(),
-            attachment_landings: FxHashSet::default(),
-            capability_generations: Default::default(),
             block_entities: Default::default(),
             carrier_fences: Default::default(),
             carrier_data_existed_at_open: false,
@@ -613,7 +590,6 @@ impl World {
     /// Takes chunk `key` out of the level as it unloads, with the capability generations its
     /// positions held.
     pub fn unload_chunk(&mut self, key: (i32, i32)) -> Option<Arc<Chunk>> {
-        self.capability_generations.unload_chunk(key);
         self.chunks.remove(&key)
     }
     /// `Level.isLoaded`: `y` is inside the build height and the chunk of `(x, z)` is loaded.

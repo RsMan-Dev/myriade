@@ -1072,15 +1072,7 @@ impl PendingContainerLoot {
 
 /// Save data loaded with a chunk that Horizon keeps but does not simulate.
 #[derive(Clone, Debug, Default)]
-pub struct ChunkExtras {
-    /// Server-owned mod data attached to this chunk.
-    pub attachments: horizon_mod_runtime::attachments::Attachments,
-    /// Attachment maps of the chunk's block entities, on a save snapshot.
-    pub block_entity_attachments: Vec<(
-        (i32, i32, i32),
-        horizon_mod_runtime::attachments::Attachments,
-    )>,
-    /// Chunk root keys written back as loaded (structures, PostProcessing,
+pub struct ChunkExtras {/// Chunk root keys written back as loaded (structures, PostProcessing,
     /// InhabitedTime, blending data, ...).
     pub root: Compound,
     /// Block entities Horizon does not model.

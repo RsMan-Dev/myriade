@@ -76,8 +76,7 @@ fn uses_registered_payload_codec(channel: &str, play: bool, clientbound: bool) -
             }
         }
         "horizon:lod" => play || clientbound,
-        crate::attachment_sync::CHANNEL
-        | crate::anvil_cost::CHANNEL
+        crate::anvil_cost::CHANNEL
         | crate::passage_sync::CHANNEL
         | "horizon:recipe_content"
         | "horizon:selector_tokens" => play && clientbound,
@@ -229,7 +228,6 @@ mod tests {
             ("minecraft:brand", [true, true, true, true]),
             ("horizon:quiet_commands", [false, true, true, false]),
             ("horizon:mod_list", [true, false, false, false]),
-            ("horizon:attachment_sync", [false, false, false, true]),
             ("horizon:menu_extra", [true, true, false, true]),
             ("horizon:anvil_cost", [false, false, false, true]),
             ("horizon:passage_sync", [false, false, false, true]),

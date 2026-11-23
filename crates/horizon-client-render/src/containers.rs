@@ -2,12 +2,7 @@
 //! kinds, ticking as `AbstractFurnaceBlockEntity.serverTick` with fuel times
 //! from the data-driven `context_int_provider`/`context_float_provider` files.
 
-pub use crate::chunk::block_entity::{
-    Banner, Beacon, BlockEntity, Brushable, Campfire, ChiseledBookshelf, Crafter, CreakingHeart,
-    EndGateway, Furnace, FurnaceKind, Jukebox, Lectern, MOD_MENUS, ModBlockEntity,
-    ModBlockEntityFields, ModContainer, ModEnergyBuffer, ModFluidTanks, ModRevision, PotentSulfur,
-    Shelf, Skull,
-};
+pub use crate::chunk::block_entity::{Banner, Beacon, BlockEntity, Brushable, Campfire, ChiseledBookshelf, Crafter, CreakingHeart, EndGateway, Furnace, FurnaceKind, Jukebox, Lectern, PotentSulfur, Shelf, Skull};
 use crate::items::ItemStack;
 use std::collections::HashMap;
 
@@ -581,7 +576,6 @@ impl BlockEntity {
             Self::Banner(_) => name.ends_with("_banner"),
             Self::CopperGolemStatue(_) => name.ends_with("copper_golem_statue"),
             Self::Shelf(_) => name == "minecraft:shelf" || name.ends_with("_shelf"),
-            Self::Mod(m) => crate::block_entity_types::type_for(name) == Some(m.id()),
             Self::Beehive(_) => matches!(name, "minecraft:beehive" | "minecraft:bee_nest"),
             Self::Campfire(_) => {
                 matches!(name, "minecraft:campfire" | "minecraft:soul_campfire")
@@ -645,7 +639,6 @@ impl BlockEntity {
             Self::Campfire(_) => "minecraft:campfire",
             Self::ChiseledBookshelf(_) => StockItemContainer::Bookshelf.type_id(),
             Self::Shelf(_) => StockItemContainer::Shelf.type_id(),
-            Self::Mod(m) => m.id(),
             Self::PotentSulfur(_) => "minecraft:potent_sulfur",
             Self::StructureBlock(_) => "minecraft:structure_block",
             Self::JigsawBlock(_) => "minecraft:jigsaw",
@@ -680,7 +673,6 @@ impl BlockEntity {
             | Self::EndPortal
             | Self::EnchantingTable
             | Self::Brushable(_) => Vec::new(),
-            Self::Mod(m) => m.items.iter().flatten().cloned().collect(),
             Self::Lectern(l) => l.book.iter().cloned().collect(),
             Self::Sculk(_) => Vec::new(),
             Self::Banner(_) | Self::CopperGolemStatue(_) => Vec::new(),
@@ -718,7 +710,6 @@ impl BlockEntity {
             Self::Crafter(c) => &c.items,
             Self::ChiseledBookshelf(b) => &b.items,
             Self::Shelf(b) => &b.items,
-            Self::Mod(m) => &m.items,
             Self::CreakingHeart(_)
             | Self::Spawner(_)
             | Self::TrialSpawner(_)
@@ -757,7 +748,6 @@ impl BlockEntity {
             Self::Crafter(c) => &mut c.items,
             Self::ChiseledBookshelf(b) => &mut b.items,
             Self::Shelf(b) => &mut b.items,
-            Self::Mod(m) => &mut m.items,
             Self::CreakingHeart(_)
             | Self::Spawner(_)
             | Self::TrialSpawner(_)

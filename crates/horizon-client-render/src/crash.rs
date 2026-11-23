@@ -1,20 +1,3 @@
-//! Crash reports, laid out like vanilla's CrashReport.getFriendlyReport: a comment, the time,
-//! a description, the error with its stack, then the details of the game and the machine.
-//! Written to `crash-reports/crash-<yyyy-MM-dd_HH.mm.ss>-client.txt` in the game folder when
-//! the main thread panics or `main` gets an error back. It stays a local file: the player
-//! reads it and shares it by hand.
-pub use mod_api::content::crash::{ModCall, ModGuard};
-use mod_api::content::crash::{current_converted_call, current_native_mod};
-// Tests run without the executable's startup: the platform's versions install the crash
-// backend on first use and keep details, as the started game's do.
-#[cfg(not(test))]
-use mod_api::content::crash::details;
-#[cfg(not(test))]
-pub use mod_api::content::crash::{clear_detail, enter_native_mod, set_detail};
-#[cfg(test)]
-use mod_platform::content::crash::details;
-#[cfg(test)]
-pub use mod_platform::content::crash::{clear_detail, enter_native_mod, set_detail};
 use std::cell::{Cell, RefCell};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -36,31 +19,7 @@ thread_local! {
 /// `message`, with the native mod hook this thread is inside, if any, and the converted package
 /// the hook's runtime is executing.
 fn attributed(message: String) -> String {
-    let Some(call) = mod_api::content::crash::current_native_call() else {
-        return message;
-    };
-    let part = call
-        .part
-        .map(|part| format!(", part {part}"))
-        .unwrap_or_default();
-    let mut out = format!(
-        "{message}\nin native mod {}, hook {}{part}",
-        call.id, call.hook
-    );
-    if let Some(scoped) = mod_api::content::crash::current_converted_call()
-        && scoped.runtime == call.id
-    {
-        // `export` and `site` come from the runtime, and for wasm from module bytes: a name
-        // with a newline could forge another line of this report, so keep each on one line.
-        let _ = write!(
-            out,
-            "\nin converted package {}, export {}, call site {}",
-            scoped.package,
-            scoped.export.escape_debug(),
-            scoped.site.escape_debug()
-        );
-    }
-    out
+    message
 }
 
 /// Runs `f`, and returns a panic in it as an error with the panic's message instead of letting
@@ -331,13 +290,6 @@ pub fn system_details(side: &str) -> Vec<(String, String)> {
         ("CPU".to_owned(), cpu()),
         ("Memory".to_owned(), memory()),
     ];
-    out.extend(
-        details()
-            .into_iter()
-            .filter(|(k, _)| side != "server" || *k != "Render Settings")
-            .map(|(k, v)| (k.to_owned(), v)),
-    );
-    out.extend(mod_lines(false));
     out
 }
 
@@ -359,68 +311,8 @@ const MOD_LINES_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
 /// second panic would end the process before any catch could. A line that panics, traps or misses
 /// [`MOD_LINES_WAIT`] reads `~~ERROR~~`; one that answers `None` is left out, as are the lines of
 /// the mod this thread's crash is attributed to. No mod line, no thread.
-fn mod_lines(headers: bool) -> Vec<(String, String)> {
-    let faulted = current_native_mod();
-    let lines: Vec<_> = mod_api::__private::game::mod_crash_lines()
-        .into_iter()
-        .filter(|(owner, label, _)| label.is_none() == headers && Some(*owner) != faulted)
-        .collect();
-    if lines.is_empty() {
-        return Vec::new();
-    }
-    let (send, answers) = std::sync::mpsc::channel();
-    let asked: Vec<_> = lines
-        .iter()
-        .map(|(owner, _, line)| (*owner, line.clone()))
-        .collect();
-    // A thread that doesn't start drops `send`: every line then reads as an error.
-    let _ = horizon_guest_stack::spawn("Crash report lines".into(), move || {
-        let failures = horizon_mod_runtime::dispatch_failures::dispatch_failure_counter();
-        for (owner, line) in asked {
-            let before = failures.get();
-            let answer = contain(|| {
-                let _mod = enter_native_mod(ModCall {
-                    id: owner,
-                    hook: "crash_section",
-                    part: None,
-                });
-                line.value()
-            });
-            // A wasm line that traps answers `None` through its proxy; the failed call tells.
-            if send
-                .send(answer.ok().filter(|_| failures.get() == before))
-                .is_err()
-            {
-                break;
-            }
-        }
-    });
-    let deadline = std::time::Instant::now() + MOD_LINES_WAIT;
-    let mut waiting = true;
-    lines
-        .into_iter()
-        .filter_map(|(owner, label, _)| {
-            // After one line misses the wait, a later answer would belong to that line, not this.
-            let answer = waiting
-                .then(|| {
-                    answers
-                        .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
-                        .ok()
-                })
-                .flatten();
-            waiting = answer.is_some();
-            let text = match answer {
-                Some(Some(None)) => return None,
-                Some(Some(Some(text))) => one_line(&text),
-                _ => "~~ERROR~~".to_owned(),
-            };
-            let name = match label {
-                Some(label) => format!("{owner}: {}", one_line(&label)),
-                None => owner.to_owned(),
-            };
-            Some((name, text))
-        })
-        .collect()
+fn mod_lines(_headers: bool) -> Vec<(String, String)> {
+    Vec::new()
 }
 
 /// `text` on one line, so no mod line passes for one of the report's own: control characters
@@ -750,8 +642,6 @@ pub fn report_error(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mod_api::__private::game::*;
-    use mod_api::content::crash::ConvertedPackages;
 
     /// The panic hook is process-wide: tests that swap it hold this so they never overlap.
     static PANIC_HOOK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -1183,121 +1073,14 @@ mod tests {
     }
 
     struct Quiet;
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for Quiet {}
 
     struct Broken;
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for Broken {
-        fn component_types(
-            &self,
-            _context: &mod_api::RegistrationContext,
-            _event: &mut mod_api::ComponentTypesEvent<'_>,
-        ) {
-            panic!("a broken mod");
-        }
-    }
 
     struct Line(Option<&'static str>);
-    impl mod_api::CrashSection for Line {
-        fn value(&self) -> Option<String> {
-            self.0.map(str::to_owned)
-        }
-    }
 
     struct Panics;
-    impl mod_api::CrashSection for Panics {
-        fn value(&self) -> Option<String> {
-            panic!("a broken crash line")
-        }
-    }
 
     struct Lines;
-    impl mod_api::Hooks for Lines {
-        fn subscribed(&self) -> &'static [Option<mod_api::HookId>] {
-            &[]
-        }
-        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.crash_section(
-                "caches",
-                std::sync::Arc::new(Line(Some("3 caches\n\tHorizon Version: forged"))),
-            );
-            r.crash_section("idle", std::sync::Arc::new(Line(None)));
-            r.crash_section("worker", std::sync::Arc::new(Panics));
-            r.crash_header(std::sync::Arc::new(Line(Some("modded"))));
-        }
-    }
 
-    #[test]
-    fn mod_lines_are_asked_when_the_report_is_written() {
-        let _hook = PANIC_HOOK.lock().unwrap_or_else(|e| e.into_inner());
-        let mods: mod_api::Mods =
-            std::sync::Arc::from([mod_api::ModEntry::new("test", Box::new(Lines))]);
-        mod_platform::testing::with_mods(mods.clone(), || {
-            mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
-            let details = system_details("client");
-            let lines: Vec<_> = details
-                .iter()
-                .filter(|(key, _)| key.starts_with("test"))
-                .map(|(key, value)| (key.as_str(), value.as_str()))
-                .collect();
-            assert_eq!(
-                lines,
-                [
-                    ("test: caches", "3 caches  Horizon Version: forged"),
-                    ("test: worker", "~~ERROR~~"),
-                ]
-            );
-            let text = Report {
-                headers: mod_headers(),
-                ..report()
-            }
-            .text();
-            let lines: Vec<&str> = text.lines().collect();
-            assert_eq!(
-                lines[..2],
-                ["---- Horizon Crash Report ----", "test: modded"]
-            );
-            assert!(lines[2].starts_with("// "));
-        });
-    }
 
-    #[test]
-    fn a_panic_in_a_hook_names_the_mod_and_the_hook() {
-        let mods: Vec<mod_api::ModEntry> = vec![
-            mod_api::ModEntry::new("quiet", Box::new(Quiet)),
-            mod_api::ModEntry::new("broken", Box::new(Broken)),
-        ];
-        let caught = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let sink = caught.clone();
-        let _hook = PANIC_HOOK.lock().unwrap_or_else(|e| e.into_inner());
-        let previous = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |info| {
-            let error = panic_report(info, "client").error;
-            if error.contains("a broken mod") {
-                sink.lock().unwrap().push(error);
-            }
-        }));
-        let unwound = mod_platform::testing::with_mods(mods.into(), || {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                mod_api::dispatch_component_types(
-                    &mod_api::RegistrationContext::new(),
-                    &mut Vec::new(),
-                )
-            }))
-        });
-        // Once the dispatch has unwound, the thread is in no mod.
-        let _ = std::panic::catch_unwind(|| panic!("a broken mod's caller"));
-        std::panic::set_hook(previous);
-        // The game stops as before: the panic goes on to the dispatch's caller.
-        assert!(unwound.is_err());
-        let errors = caught.lock().unwrap();
-        assert_eq!(errors.len(), 2);
-        assert!(
-            errors[0].ends_with("\nin native mod broken, hook component_types"),
-            "{}",
-            errors[0]
-        );
-        assert!(!errors[1].contains("in native mod"), "{}", errors[1]);
-    }
 }

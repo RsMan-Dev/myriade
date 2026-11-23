@@ -3,7 +3,6 @@
 //! hands immutable `Arc` snapshots to workers; results carry a sequence number
 //! so stale work is dropped.
 use crate::fast_hash::{FxHashMap, FxHashSet};
-use crate::mod_chunk_tickets::{ModTicket, ModTickets};
 use crate::section_mask::SectionMask;
 use crate::{
     chunk::Chunk,
@@ -539,9 +538,7 @@ pub struct Streaming {
     /// `clear_forced`, `set_mod_forced` and `load_forced`, through `settle`.
     pub forced: HashSet<(i32, i32)>,
     /// The `/forceload`ed chunks, the ones saved in `chunk_tickets.dat`.
-    commanded: HashSet<(i32, i32)>,
-    mod_tickets: ModTickets,
-    /// No work is scheduled while paused (title screen).
+    commanded: HashSet<(i32, i32)>,    /// No work is scheduled while paused (title screen).
     pub paused: bool,
     /// Dimension flag: sky light.
     pub sky_light: bool,
@@ -1068,7 +1065,6 @@ impl Streaming {
             radius: 8,
             forced: HashSet::new(),
             commanded: HashSet::new(),
-            mod_tickets: ModTickets::default(),
             paused: false,
             sky_light: true,
             light_tables,
@@ -2307,51 +2303,14 @@ impl Streaming {
             self.settle(chunk);
         }
     }
-    /// The level's saved forced state: `/forceload`'s chunks, and the mods'
-    /// tickets (of controllers that are registered), which wait in
-    /// `take_loaded_tickets`.
-    pub fn load_forced(&mut self, commanded: HashSet<(i32, i32)>, tickets: Vec<ModTicket>) {
-        self.mod_tickets = ModTickets::from_saved(tickets);
-        self.commanded = commanded;
-        self.forced.clear();
-        let held: Vec<_> = self.commanded.iter().copied().collect();
-        for chunk in held {
-            self.settle(chunk);
-        }
-    }
-    /// The mods' tickets read from the save, which hold nothing until the
-    /// mods have validated them and the survivors are put back with
-    /// `set_mod_forced`.
-    pub fn take_loaded_tickets(&mut self) -> Vec<ModTicket> {
-        self.mod_tickets.take_loaded()
-    }
     /// The `/forceload`ed chunks.
     pub fn commanded(&self) -> &HashSet<(i32, i32)> {
         &self.commanded
     }
-    /// The chunk tickets of mods.
-    pub fn mod_tickets(&self) -> &ModTickets {
-        &self.mod_tickets
-    }
-    /// Hold or release a mod's ticket: true when the ticket set changed. A
-    /// chunk stays forced while `/forceload` or any ticket holds it; one
-    /// newly forced is ranked for decoration as `/forceload add` does.
-    pub fn set_mod_forced(&mut self, ticket: ModTicket, forced: bool) -> bool {
-        let chunk = ticket.chunk;
-        let changed = if forced {
-            self.mod_tickets.insert(ticket)
-        } else {
-            self.mod_tickets.remove(&ticket)
-        };
-        if self.settle(chunk) {
-            self.rank_forced(chunk.0, chunk.1, chunk.0, chunk.1);
-        }
-        changed
-    }
     /// Bring `forced` in line with who holds `chunk`: true when it just
     /// became forced. The one writer of `forced`.
     fn settle(&mut self, chunk: (i32, i32)) -> bool {
-        if self.commanded.contains(&chunk) || self.mod_tickets.holds(chunk) {
+        if self.commanded.contains(&chunk) {
             self.forced.insert(chunk)
         } else {
             self.forced.remove(&chunk);

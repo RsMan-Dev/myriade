@@ -4,13 +4,35 @@ use crate::Result;
 use horizon_assets::resource_source::{ResourceRoot, ResourceSource};
 use horizon_client_core::particle_type::ParticleType;
 use horizon_core::{noise::SimplexNoise, position::BlockPos, random::LegacyRandom};
-pub use mod_api::world::biome::{BiomeColors, SpawnEntry};
 use serde_json::Value;
 use std::{
     borrow::Cow,
     collections::{BTreeMap, BTreeSet, HashMap},
     sync::{Arc, Mutex, OnceLock},
 };
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpawnEntry {
+    pub entity: String,
+    pub weight: u32,
+    pub min: u32,
+    pub max: u32,
+    /// A `ConstantInt` count (sampling draws nothing).
+    pub constant: bool,
+}
+
+/// A biome's colours as a mod may change them (`biome_colors`), each
+/// 0xRRGGBB: what tints grass (before the dark forest's modifier; the swamp's
+/// noise colours replace it), leaves and vines, dry foliage (leaf litter) and
+/// water.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BiomeColors {
+    pub grass: u32,
+    pub foliage: u32,
+    pub dry_foliage: u32,
+    pub water: u32,
+}
+
+
 
 /// The missing saved biomes already warned about in the open world: each dimension's table
 /// keeps its own placeholders, but a name is reported once per world.
@@ -581,16 +603,6 @@ impl Biomes {
             .get(usize::from(id))
             .map_or("minecraft:plains", |b| b.name.as_str())
     }
-    /// A biome's `Biome.ClimateSettings` by name; None for a name this table lacks.
-    pub fn properties(&self, name: &str) -> Option<mod_api::BiomeProperties> {
-        let info = self.list.get(usize::from(*self.index.get(name)?))?;
-        Some(mod_api::BiomeProperties {
-            temperature: info.temperature,
-            downfall: info.downfall,
-            has_precipitation: info.precipitation,
-            frozen: info.frozen,
-        })
-    }
     pub fn grass(&self, id: u16, x: f64, z: f64) -> u32 {
         let b = self.get(id);
         match b.modifier {
@@ -984,7 +996,6 @@ mod source_tests {
 #[cfg(test)]
 mod climate_tests {
     use super::*;
-    use mod_api::BiomeProperties;
     use serde_json::json;
 
     /// Climates as Mojang's biome files declare them, so a dropped or swapped field fails.

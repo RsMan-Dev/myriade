@@ -25,7 +25,6 @@ pub mod light;
 pub mod lod;
 pub mod particle_options;
 pub mod logging;
-pub mod mod_chunk_tickets;
 pub mod mod_list;
 pub mod pack_meta;
 pub mod poi_sections;

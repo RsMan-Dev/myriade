@@ -1,6 +1,21 @@
 //! Engine particle provider options, independent of API registry keys.
 use horizon_client_core::particle_type::ParticleType;
-use mod_api::client::particles::PositionSource;
+/// The listener of a vibration signal (`VibrationParticleOption`), independent
+/// of its resolved rendering destination and of the network protocol.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PositionSource {
+    /// A block listener, addressed by its block coordinates (not its centre).
+    Block([i32; 3]),
+    /// An entity listener, addressed by its network id and an offset above its feet.
+    Entity {
+        /// The entity's network id, preserved as the protocol's signed value.
+        id: i32,
+        /// The vertical offset from the entity's feet, in blocks.
+        y_offset: f32,
+    },
+}
+
+
 /// `ParticleOptions` with the parameters of the option classes used here.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods use the constructors

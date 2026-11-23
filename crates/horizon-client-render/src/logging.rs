@@ -29,7 +29,22 @@ const FLOOD_WINDOW: Duration = Duration::from_secs(60);
 
 /// The platform data folder, shared with launcher command preparation.
 pub fn data_dir() -> PathBuf {
-    horizon_mod_package::selection::data_dir_with(|key| std::env::var_os(key))
+    let path = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let home = path("HOME").or_else(|| path("USERPROFILE"));
+    if cfg!(windows) {
+        if let Some(d) = path("APPDATA") {
+            return d;
+        }
+    } else if cfg!(target_os = "macos") {
+        if let Some(h) = &home {
+            return h.join("Library/Application Support");
+        }
+    } else if let Some(d) = path("XDG_DATA_HOME") {
+        return d;
+    } else if let Some(h) = &home {
+        return h.join(".local/share");
+    }
+    std::env::temp_dir()
 }
 
 /// `--home DIR`, set once at start; it wins over `HORIZON_HOME`.
