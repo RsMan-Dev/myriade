@@ -39,16 +39,16 @@ def main():
     if args.prepare:
         subprocess.run([sys.executable, str(lab.ROOT / 'tools/prepare_native_client.py'),
                         '--prepare'], cwd=lab.ROOT, check=True)
-    root = lab.LOCAL / 'horizon-client'
+    root = lab.LOCAL / 'myriade-engine'
     root.mkdir(parents=True, exist_ok=True)
     report = root / 'startup-smoke.json'
     report.unlink(missing_ok=True)
     resources = resource_fingerprint(root / lab.VERSION)
     sources = [lab.ROOT / 'Cargo.toml', lab.ROOT / 'Cargo.lock', Path(__file__).resolve(),
-               lab.ROOT / 'crates/horizon-client/Cargo.toml', lab.ROOT / 'crates/horizon-assets/Cargo.toml',
-               *sorted((lab.ROOT / 'crates/horizon-client/src').rglob('*')),
-               lab.ROOT / 'crates/horizon-client-render/Cargo.toml',
-               *sorted((lab.ROOT / 'crates/horizon-client-render/src').rglob('*')),
+               lab.ROOT / 'crates/myriade-engine/Cargo.toml', lab.ROOT / 'crates/horizon-assets/Cargo.toml',
+               *sorted((lab.ROOT / 'crates/myriade-engine/src').rglob('*')),
+               lab.ROOT / 'crates/myriade-level/Cargo.toml',
+               *sorted((lab.ROOT / 'crates/myriade-level/src').rglob('*')),
                *sorted((lab.ROOT / 'crates/horizon-assets/src').rglob('*.rs'))]
     oracle = lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaGallerySelectionOracle.java'
     helper = oracle.with_name('VanillaCuboidModelOracle.java')
@@ -68,7 +68,7 @@ def main():
         ['cargo', 'metadata', '--locked', '--no-deps', '--format-version', '1'],
         cwd=lab.ROOT, env=environment))
     executable = Path(metadata['target_directory']) / 'debug' / (
-        'horizon-client.exe' if os.name == 'nt' else 'horizon-client')
+        'myriade-engine.exe' if os.name == 'nt' else 'myriade-engine')
     command = (['vscreen', 'run'] if args.vscreen else []) + [
         str(executable), '--radius', '1', '--frames', '30',
         '--smoke-report', str(report), '--timeout-seconds', '60']

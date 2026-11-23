@@ -60,7 +60,7 @@ and see the same hook through the generator.
 ## Ownership and route map
 
 References verified at worktree HEAD `9556bd72a8`; paths below are relative to
-`crates/horizon-client/src/`. These are current owners, not claims that hooks exist.
+`crates/myriade-engine/src/`. These are current owners, not claims that hooks exist.
 
 | Route / owner | Current file:line | Required integration |
 | --- | --- | --- |

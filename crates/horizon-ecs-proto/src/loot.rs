@@ -4,7 +4,7 @@
 //! orbs are another kind of entity and are not made.
 use crate::cow::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use crate::rules::loot::{death_seed, entity_table, xp_amount};
 use horizon_core::random::{LegacyRandom, RandomSource};
 use horizon_world::loot::{EntityLootParams, LootData, LootEntity, PackOverlay};

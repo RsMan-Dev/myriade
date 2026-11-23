@@ -9,7 +9,7 @@ use super::*;
 use crate::{cow::*, goals::*};
 use crate::host_out::HostOut;
 use crate::rules::snow_trail as rules;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {

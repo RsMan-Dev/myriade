@@ -93,13 +93,13 @@ pub fn teleport_avoiding(w: &mut World, e: Entity, target: Vec3, avoid: Option<&
     for cx in lo.x.floor() as i32..=hi.x.floor() as i32 {
         for cy in lo.y.floor() as i32..=hi.y.floor() as i32 {
             for cz in lo.z.floor() as i32..=hi.z.floor() as i32 {
-                if mw.fluid(cx, cy, cz) != horizon_client_lib::blocks::Fluid::None || refused(mw.block_name(cx, cy, cz)) {
+                if mw.fluid(cx, cy, cz) != myriade_engine_lib::blocks::Fluid::None || refused(mw.block_name(cx, cy, cz)) {
                     return false;
                 }
             }
         }
     }
-    if dry_ground && mw.fluid(bx, by, bz) == horizon_client_lib::blocks::Fluid::Water {
+    if dry_ground && mw.fluid(bx, by, bz) == myriade_engine_lib::blocks::Fluid::Water {
         return false;
     }
     land(w, e, Vec3::new(target.x, ny, target.z));

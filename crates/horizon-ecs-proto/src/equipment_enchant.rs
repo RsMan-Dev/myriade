@@ -2,7 +2,7 @@
 //! and `enchant_by_cost`), and the drowned's trident (`Drowned` in `populate`). The enchantment choice is Horizon's `Enchantments::select`
 //! on the pool `#minecraft:on_mob_spawn_equipment`; nothing about the enchantments is written here.
 use crate::rules::equipment_enchant as rule;
-use horizon_client_lib::items::{ItemStack, Items};
+use myriade_engine_lib::items::{ItemStack, Items};
 use horizon_core::random::RandomSource;
 use horizon_items::enchant::Enchantments;
 use horizon_items::item_data::Levels;

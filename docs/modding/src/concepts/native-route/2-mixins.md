@@ -17,7 +17,7 @@ Add this row to the `horizon-mod.toml` of your native mod. Keep the `[native]` p
 ```toml
 [[native.mixin]]
 id = "head"
-target = "horizon_client::game::autosave::Game<'_>::on_tick_rate_changed"
+target = "myriade_engine::game::autosave::Game<'_>::on_tick_rate_changed"
 kind = "HEAD"
 cancellable = true
 helper = "src/mixins/head.rs"
@@ -107,18 +107,18 @@ Read these files at the `mixins` revision pinned in your manifest when checking 
 
 A target is the function's module path, then its type and name:
 
-- a method: `horizon_client::game::autosave::Game<'_>::on_tick_rate_changed`, where the module is the one
+- a method: `myriade_engine::game::autosave::Game<'_>::on_tick_rate_changed`, where the module is the one
   holding the `impl` block and the type is written as there, lifetimes included;
-- a free function: `horizon_client::game::commands::misc::millis`;
+- a free function: `myriade_engine::game::commands::misc::millis`;
 - a trait method: the module of the `impl Trait for Type` block, then `<Type as Trait>` as written, then the
-  function: `horizon_client::game::level_access::<GameLevel<'_> as LevelAccess>::block_state`.
+  function: `myriade_engine::game::level_access::<GameLevel<'_> as LevelAccess>::block_state`.
 
-To get the module from the file, start from `crates/horizon-client/src/`, which is `horizon_client`. A folder
+To get the module from the file, start from `crates/myriade-engine/src/`, which is `myriade_engine`. A folder
 directly under `src/game/` that holds a `.game-area` file is an **area**, and an area is not a module.
 
-So `src/game/world/autosave.rs` is `horizon_client::game::autosave` (`world/` is an area). But
+So `src/game/world/autosave.rs` is `myriade_engine::game::autosave` (`world/` is an area). But
 `src/game/native_hooks/` has no `.game-area`, so `src/game/native_hooks/base.rs` is
-`horizon_client::game::native_hooks::base`.
+`myriade_engine::game::native_hooks::base`.
 
 Any function of the game crate can take a mixin. A function in a crate below it, such as `horizon_world`, needs
 the marker `#[horizon_mod_api_macros::replaceable]` in its source. Otherwise, target a replaceable caller or callee.

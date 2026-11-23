@@ -95,7 +95,7 @@ fn a_block_still_in_the_air_after_600_ticks_is_removed_and_drops_its_item() {
     let mut h = Herd::with_slab_awake(16, true, false);
     let top = floor_under(&h, 0, 0, 40);
     let sand = stone(&h);
-    let item = horizon_client_lib::items::ItemStack::new("minecraft:sand", 1);
+    let item = myriade_engine_lib::items::ItemStack::new("minecraft:sand", 1);
     let e = fall(&mut h.world, [0, top + 10, 0], sand, Some(item));
     h.world.entity_mut(e).remove::<Gravity>();
     let mut gone = None;
@@ -134,7 +134,7 @@ fn concrete_powder_landing_in_water_sets_as_concrete() {
     assert!(!placed.contains(&powder), "no powder left");
 }
 
-/// The golden of Horizon's own falling block (`falling_golden_tests.rs` in `horizon-client`, 9 blocks onto a floor): the ECS block is at the
+/// The golden of Horizon's own falling block (`falling_golden_tests.rs` in `myriade-engine`, 9 blocks onto a floor): the ECS block is at the
 /// same height after every tick, and lands on the same tick.
 #[test]
 fn a_falling_block_follows_horizons_own_golden_tick_by_tick() {

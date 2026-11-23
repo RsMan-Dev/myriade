@@ -11,7 +11,7 @@ use crate::equipment::Armor;
 use crate::targeting::{Eye, FollowRange};
 use crate::type_tags;
 use bevy_ecs::{entity::Entity, prelude::*};
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// The flags a host reads by name (`EcsWorld::flag`).
@@ -93,12 +93,12 @@ impl EcsWorld {
     }
 
     /// The mods' swirls kept on `e` (`ModifiedSwirls`), while the host keeps them.
-    pub fn modified_swirls(&self, e: Entity) -> Option<horizon_client_render::effects::ModifiedEffectParticles> {
+    pub fn modified_swirls(&self, e: Entity) -> Option<myriade_level::effects::ModifiedEffectParticles> {
         self.world().get::<crate::effects::ModifiedSwirls>(e).map(|s| s.0.clone())
     }
 
     /// Keeps the mods' swirls on `e`, or clears them with None (`effects::set_modified_swirls`).
-    pub fn set_modified_swirls(&mut self, e: Entity, swirls: Option<horizon_client_render::effects::ModifiedEffectParticles>) {
+    pub fn set_modified_swirls(&mut self, e: Entity, swirls: Option<myriade_level::effects::ModifiedEffectParticles>) {
         crate::effects::set_modified_swirls(self.world_mut(), e, swirls);
     }
     /// The ticks left on the effect of `kind`: its last tick less the entity's own time.

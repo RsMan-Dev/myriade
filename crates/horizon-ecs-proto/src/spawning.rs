@@ -19,8 +19,8 @@ use crate::spawn_cost::{self, Charges};
 use crate::spawn_structures::StructureHost;
 use bevy_ecs::prelude::*;
 use bevy_ecs::{lifecycle::HookContext, world::DeferredWorld};
-use horizon_client_lib::biome::{SpawnCost, SpawnEntry};
-use horizon_client_lib::mobs::spawn_rules::{is_dark_enough, SpawnLevel};
+use myriade_engine_lib::biome::{SpawnCost, SpawnEntry};
+use myriade_engine_lib::mobs::spawn_rules::{is_dark_enough, SpawnLevel};
 use horizon_core::biome::BiomeZoom;
 use horizon_core::geometry::Vec3;
 use horizon_core::random::{LegacyRandom, RandomSource};
@@ -149,7 +149,7 @@ pub struct Table {
     pub unported: Vec<String>,
 }
 impl Table {
-    pub fn from_biome(info: &horizon_client_lib::biome::BiomeInfo, species: &SpeciesTable) -> Self {
+    pub fn from_biome(info: &myriade_engine_lib::biome::BiomeInfo, species: &SpeciesTable) -> Self {
         let mut t = Table::default();
         for (cat, list) in &info.spawns {
             let Some(c) = Category::from_name(cat) else { continue };
@@ -364,11 +364,11 @@ pub struct Reach {
     started: bool,
 }
 const MIN_Y: i32 = -64;
-fn conductor(mw: &horizon_client_lib::mobs::MobWorld, id: u32) -> bool {
-    mw.mob_data().state(horizon_world::registry::BlockStateId(id)).flags & horizon_client_lib::mobs::data::REDSTONE_CONDUCTOR != 0
+fn conductor(mw: &myriade_engine_lib::mobs::MobWorld, id: u32) -> bool {
+    mw.mob_data().state(horizon_world::registry::BlockStateId(id)).flags & myriade_engine_lib::mobs::data::REDSTONE_CONDUCTOR != 0
 }
 /// The sections of the chunk that are one conducting block through and through.
-fn solid_sections(mw: &horizon_client_lib::mobs::MobWorld, chunk: &horizon_client_render::chunk::Chunk) -> u32 {
+fn solid_sections(mw: &myriade_engine_lib::mobs::MobWorld, chunk: &myriade_level::chunk::Chunk) -> u32 {
     let base = chunk.min_y();
     (0..chunk.section_count().min(32)).filter(|&s| {
         let v = chunk.get(0, base + 16 * s as i32, 0);
@@ -376,7 +376,7 @@ fn solid_sections(mw: &horizon_client_lib::mobs::MobWorld, chunk: &horizon_clien
     }).fold(0, |m, s| m | 1 << s)
 }
 /// One column: its surface and its free heights.
-fn scan_column(mw: &horizon_client_lib::mobs::MobWorld, chunk: &horizon_client_render::chunk::Chunk, solid: u32, cx: i32, cz: i32, lx: i32, lz: i32) -> (i16, u16) {
+fn scan_column(mw: &myriade_engine_lib::mobs::MobWorld, chunk: &myriade_level::chunk::Chunk, solid: u32, cx: i32, cz: i32, lx: i32, lz: i32) -> (i16, u16) {
     let top = SpawnLevel::world_surface(mw, cx * 16 + lx, cz * 16 + lz);
     let base = chunk.min_y();
     let mut open = 0;
@@ -391,7 +391,7 @@ fn scan_column(mw: &horizon_client_lib::mobs::MobWorld, chunk: &horizon_client_r
     (top as i16, open as u16)
 }
 impl Reach {
-    fn new(mw: &horizon_client_lib::mobs::MobWorld, cx: i32, cz: i32) -> Option<Self> {
+    fn new(mw: &myriade_engine_lib::mobs::MobWorld, cx: i32, cz: i32) -> Option<Self> {
         mw.world.chunks.get(&(cx, cz))?;
         Some(Reach { top: [0; 256], open: [0; 256], p: 0.0, done: 0, solid: u32::MAX, started: false })
     }
@@ -399,7 +399,7 @@ impl Reach {
         self.done >= 256
     }
     /// Scans up to `budget` more columns; true once the chunk is ready.
-    fn advance(&mut self, mw: &horizon_client_lib::mobs::MobWorld, cx: i32, cz: i32, budget: u16) -> bool {
+    fn advance(&mut self, mw: &myriade_engine_lib::mobs::MobWorld, cx: i32, cz: i32, budget: u16) -> bool {
         let Some(chunk) = mw.world.chunks.get(&(cx, cz)).cloned() else { return false };
         if !self.started {
             // The sections read first, against the whole budget of the tick.
@@ -423,7 +423,7 @@ impl Reach {
         self.p = (0..256).map(|i| f64::from(self.open[i]) / f64::from(i32::from(self.top[i]) - MIN_Y + 1)).sum::<f64>() / 256.0;
     }
     /// A start that reached a free position: its column and height.
-    fn sample(&self, mw: &horizon_client_lib::mobs::MobWorld, cx: i32, cz: i32, r: &mut LegacyRandom) -> [i32; 3] {
+    fn sample(&self, mw: &myriade_engine_lib::mobs::MobWorld, cx: i32, cz: i32, r: &mut LegacyRandom) -> [i32; 3] {
         let mut t = r.next_double() * self.p * 256.0;
         let mut col = 255;
         for i in 0..256 {
@@ -468,45 +468,45 @@ fn pick<'a>(list: &'a [Entry], r: &mut LegacyRandom) -> Option<&'a Entry> {
     }
     None
 }
-fn flags(mw: &horizon_client_lib::mobs::MobWorld, x: i32, y: i32, z: i32) -> u16 {
+fn flags(mw: &myriade_engine_lib::mobs::MobWorld, x: i32, y: i32, z: i32) -> u16 {
     mw.mob_data().state(SpawnLevel::state(mw, x, y, z)).flags
 }
-fn raw_brightness(mw: &horizon_client_lib::mobs::MobWorld, x: i32, y: i32, z: i32, dark: i32) -> i32 {
+fn raw_brightness(mw: &myriade_engine_lib::mobs::MobWorld, x: i32, y: i32, z: i32, dark: i32) -> i32 {
     mw.block_light(x, y, z).max(mw.sky_light(x, y, z) - dark)
 }
-fn tag(mw: &horizon_client_lib::mobs::MobWorld, t: &str, x: i32, y: i32, z: i32) -> bool {
+fn tag(mw: &myriade_engine_lib::mobs::MobWorld, t: &str, x: i32, y: i32, z: i32) -> bool {
     mw.block_tag(t, &SpawnLevel::facts(mw).get(SpawnLevel::state(mw, x, y, z)).name)
 }
-fn valid_spawn(mw: &horizon_client_lib::mobs::MobWorld, x: i32, y: i32, z: i32) -> bool {
-    flags(mw, x, y, z) & horizon_client_lib::mobs::data::VALID_SPAWN != 0
+fn valid_spawn(mw: &myriade_engine_lib::mobs::MobWorld, x: i32, y: i32, z: i32) -> bool {
+    flags(mw, x, y, z) & myriade_engine_lib::mobs::data::VALID_SPAWN != 0
 }
-fn valid_empty(mw: &horizon_client_lib::mobs::MobWorld, x: i32, y: i32, z: i32) -> bool {
-    flags(mw, x, y, z) & horizon_client_lib::mobs::data::VALID_EMPTY_SPAWN != 0
+fn valid_empty(mw: &myriade_engine_lib::mobs::MobWorld, x: i32, y: i32, z: i32) -> bool {
+    flags(mw, x, y, z) & myriade_engine_lib::mobs::data::VALID_EMPTY_SPAWN != 0
 }
 /// `SpawnPlacements.isSpawnPositionOk`.
-pub(crate) fn place_ok(mw: &horizon_client_lib::mobs::MobWorld, d: &SpawnDef, x: i32, y: i32, z: i32) -> bool {
+pub(crate) fn place_ok(mw: &myriade_engine_lib::mobs::MobWorld, d: &SpawnDef, x: i32, y: i32, z: i32) -> bool {
     if d.place != Place::Anywhere && !mw.within_world_border(x, z) {
         return false;
     }
     let fluid = |yy| SpawnLevel::facts(mw).get(SpawnLevel::state(mw, x, yy, z)).fluid;
     match d.place {
         Place::OnGround => valid_spawn(mw, x, y - 1, z) && valid_empty(mw, x, y, z) && valid_empty(mw, x, y + 1, z),
-        Place::InWater => fluid(y) == horizon_client_lib::blocks::Fluid::Water && flags(mw, x, y + 1, z) & horizon_client_lib::mobs::data::REDSTONE_CONDUCTOR == 0,
-        Place::InLava => fluid(y) == horizon_client_lib::blocks::Fluid::Lava,
+        Place::InWater => fluid(y) == myriade_engine_lib::blocks::Fluid::Water && flags(mw, x, y + 1, z) & myriade_engine_lib::mobs::data::REDSTONE_CONDUCTOR == 0,
+        Place::InLava => fluid(y) == myriade_engine_lib::blocks::Fluid::Lava,
         Place::Anywhere => true,
     }
 }
 /// The predicate of the type.
-fn biome_has(mw: &horizon_client_lib::mobs::MobWorld, biome: &str, tag: &str) -> bool {
+fn biome_has(mw: &myriade_engine_lib::mobs::MobWorld, biome: &str, tag: &str) -> bool {
     mw.data.biome_tags.get(tag.trim_start_matches('#')).is_some_and(|m| m.contains(biome))
 }
-fn is_water(mw: &horizon_client_lib::mobs::MobWorld, x: i32, y: i32, z: i32) -> bool {
+fn is_water(mw: &myriade_engine_lib::mobs::MobWorld, x: i32, y: i32, z: i32) -> bool {
     SpawnLevel::facts(mw).get(SpawnLevel::state(mw, x, y, z)).name.as_ref() == "minecraft:water"
 }
-fn fluid_is(mw: &horizon_client_lib::mobs::MobWorld, x: i32, y: i32, z: i32, f: horizon_client_lib::blocks::Fluid) -> bool {
+fn fluid_is(mw: &myriade_engine_lib::mobs::MobWorld, x: i32, y: i32, z: i32, f: myriade_engine_lib::blocks::Fluid) -> bool {
     SpawnLevel::facts(mw).get(SpawnLevel::state(mw, x, y, z)).fluid == f
 }
-pub(crate) fn rule_ok(mw: &horizon_client_lib::mobs::MobWorld, biome: &str, d: &SpawnDef, r: &mut impl RandomSource, x: i32, y: i32, z: i32) -> bool {
+pub(crate) fn rule_ok(mw: &myriade_engine_lib::mobs::MobWorld, biome: &str, d: &SpawnDef, r: &mut impl RandomSource, x: i32, y: i32, z: i32) -> bool {
     if !d.peaceful && mw.peaceful() {
         return false;
     }
@@ -525,14 +525,14 @@ pub(crate) fn rule_ok(mw: &horizon_client_lib::mobs::MobWorld, biome: &str, d: &
         }
         Rule::SurfaceWater => {
             let sea = mw.sea_level();
-            y >= sea - 13 && y <= sea && fluid_is(mw, x, y - 1, z, horizon_client_lib::blocks::Fluid::Water) && is_water(mw, x, y + 1, z)
+            y >= sea - 13 && y <= sea && fluid_is(mw, x, y - 1, z, myriade_engine_lib::blocks::Fluid::Water) && is_water(mw, x, y + 1, z)
         }
         Rule::GlowSquid => y <= mw.sea_level() - 33 && raw_brightness(mw, x, y, z, 0) == 0 && is_water(mw, x, y, z),
         Rule::Drowned => {
-            if !fluid_is(mw, x, y - 1, z, horizon_client_lib::blocks::Fluid::Water) {
+            if !fluid_is(mw, x, y - 1, z, myriade_engine_lib::blocks::Fluid::Water) {
                 return false;
             }
-            let can_spawn = !mw.peaceful() && is_dark_enough(mw, r, x, y, z) && fluid_is(mw, x, y, z, horizon_client_lib::blocks::Fluid::Water);
+            let can_spawn = !mw.peaceful() && is_dark_enough(mw, r, x, y, z) && fluid_is(mw, x, y, z, myriade_engine_lib::blocks::Fluid::Water);
             if biome_has(mw, biome, "minecraft:more_frequent_drowned_spawns") {
                 r.next_int_bound(15).unwrap_or(1) == 0 && can_spawn
             } else {
@@ -553,7 +553,7 @@ pub(crate) fn rule_ok(mw: &horizon_client_lib::mobs::MobWorld, biome: &str, d: &
 
 /// The players as the pass sees them: positions.
 struct Ctx<'a> {
-    mw: &'static horizon_client_lib::mobs::MobWorld<'static>,
+    mw: &'static myriade_engine_lib::mobs::MobWorld<'static>,
     tables: &'a [Table],
     species: &'a SpeciesTable,
     defs: &'a [Option<&'static SpawnDef>],
@@ -582,7 +582,7 @@ fn category_for_position(w: &mut World, sp: &mut Spawner, cx: &Ctx, cat: Categor
     let mw = cx.mw;
     // The mods' spawn hooks, lent for this step (None when no mod listens: the checks are vanilla's alone).
     let hooks = crate::spawn_mod_host::lent(w);
-    if flags(mw, x0, y, z0) & horizon_client_lib::mobs::data::REDSTONE_CONDUCTOR != 0 {
+    if flags(mw, x0, y, z0) & myriade_engine_lib::mobs::data::REDSTONE_CONDUCTOR != 0 {
         return;
     }
     let mut cluster = 0u32;
@@ -1046,9 +1046,9 @@ pub fn set_kind(k: Kind) {
     KIND.store(k as u8, std::sync::atomic::Ordering::Relaxed);
 }
 /// The world of the natural spawning tests (`set_kind`): `half` blocks each way.
-pub fn world_builder(half: i32) -> impl FnOnce(&mut horizon_client_render::world::World, &horizon_world::registry::BlockRegistry) {
+pub fn world_builder(half: i32) -> impl FnOnce(&mut myriade_level::world::World, &horizon_world::registry::BlockRegistry) {
     move |blocks, registry| {
-        use horizon_client_render::chunk::Chunk;
+        use myriade_level::chunk::Chunk;
         let kind = KIND.load(std::sync::atomic::Ordering::Relaxed);
         let (stone, dirt, grass) = (registry.default_state("minecraft:stone").unwrap(), registry.default_state("minecraft:dirt").unwrap(), registry.default_state("minecraft:grass_block").unwrap());
         let (air, water) = (registry.default_state("minecraft:air").unwrap(), registry.default_state("minecraft:water").unwrap());

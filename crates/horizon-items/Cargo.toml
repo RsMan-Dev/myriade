@@ -7,7 +7,7 @@ rust-version.workspace = true
 description = "Blocks and items as the client knows them: block facts, item stacks and their data components, enchantments, cooldowns, bundles, and items in NBT"
 
 [dependencies]
-horizon-client-core = { path = "../horizon-client-core" }
+myriade-data = { path = "../myriade-data" }
 horizon-core = { path = "../horizon-core" }
 horizon-world = { path = "../horizon-world" }
 serde = { version = "1", features = ["derive"] }
@@ -15,7 +15,7 @@ log = "0.4"
 serde_json = { version = "1.0.151", features = ["raw_value"] }
 
 [features]
-# Test helpers (`Items::for_tests`, `enchant::tests`) for horizon-client's unit tests.
+# Test helpers (`Items::for_tests`, `enchant::tests`) for myriade-engine's unit tests.
 test-support = []
 
 [lints]

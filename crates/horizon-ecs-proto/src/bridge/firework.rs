@@ -5,7 +5,7 @@ use crate::firework::{launch, Shot};
 use crate::firework_burst::{FireworkStar, Stars};
 use crate::targeting::Who;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 impl EcsWorld {

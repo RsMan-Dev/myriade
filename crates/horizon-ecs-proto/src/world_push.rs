@@ -5,7 +5,7 @@
 use crate::cow::*;
 use crate::zone::{wake, Dormant};
 use bevy_ecs::prelude::*;
-use horizon_client_render::collisions::{with_piston_noclip, SceneCollisions};
+use myriade_level::collisions::{with_piston_noclip, SceneCollisions};
 use horizon_core::geometry::{Aabb, Direction, Vec3};
 use horizon_core::position::BlockPos;
 use horizon_world::level::data::PushReaction;

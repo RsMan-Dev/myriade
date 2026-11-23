@@ -246,7 +246,7 @@ fn seek_run(w: &mut World) {
 mod tests {
     use super::*;
     use crate::species::Config;
-    use horizon_client_lib::items::ItemStack;
+    use myriade_engine_lib::items::ItemStack;
 
     static ENTRIES: [Entry; 1] = [Entry::new(&MODULE, 11, &Params::DEFAULT)];
 

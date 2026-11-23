@@ -71,11 +71,11 @@ def main():
          os.pathsep.join([str(classes), str(jars['server']), dependency_path]),
          'dev.horizonlab.parity.VanillaCommandExecOracle', vanilla_dir / 'universe', script_path,
          build / 'vanilla.jsonl', str(SEED)], 'java', cwd=vanilla_dir)
-    run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client', '--bin', 'horizon-client'], 'compile-rust',
+    run(['cargo', 'build', '--profile', 'fast', '-p', 'myriade-engine', '--bin', 'myriade-engine'], 'compile-rust',
         cwd=lab.ROOT)
     metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'],
                                                   cwd=lab.ROOT, text=True))
-    binary = Path(metadata['target_directory']) / 'fast' / 'horizon-client'
+    binary = Path(metadata['target_directory']) / 'fast' / 'myriade-engine'
     rust_dir = build / 'rust'
     rust_dir.mkdir()
     commands.run_as_player(binary, script_path, build / 'rust.jsonl', commands.SERVER_ENV, rust_dir)

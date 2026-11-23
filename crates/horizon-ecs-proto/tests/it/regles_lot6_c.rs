@@ -22,7 +22,7 @@ fn spawn(h: &mut Herd, name: &str, x: f64, z: f64) -> Entity {
 }
 
 /// The level's world the walk values read.
-fn mob_world(h: &Herd) -> &'static horizon_client_lib::mobs::world::MobWorld<'static> {
+fn mob_world(h: &Herd) -> &'static myriade_engine_lib::mobs::world::MobWorld<'static> {
     h.world.resource::<Level>().mw.0
 }
 

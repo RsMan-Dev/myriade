@@ -58,7 +58,7 @@ def quiet_batch(server, lines):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--bin-dir', help='a prebuilt horizon-client (default: build it with the fast profile)')
+    parser.add_argument('--bin-dir', help='a prebuilt myriade-engine (default: build it with the fast profile)')
     parser.add_argument('--out', default=str(ROOT / '.local/quiet-commands-e2e'), help='the server runs here')
     args = parser.parse_args()
     out = Path(args.out)
@@ -67,7 +67,7 @@ def main():
     if args.bin_dir:
         bins = Path(args.bin_dir)
     else:
-        subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'horizon-client'],
+        subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'myriade-engine'],
                        cwd=ROOT, check=True)
         bins = Path(lab.cargo_target()) / 'fast'
     failures = []

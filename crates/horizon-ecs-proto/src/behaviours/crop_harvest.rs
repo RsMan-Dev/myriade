@@ -9,7 +9,7 @@ use crate::goals::Events;
 use crate::rules::bonemeal::near_crop;
 use crate::rules::farm::{crop_max_age, first_seed, is_ripe};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_world::registry::BlockStateId;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {

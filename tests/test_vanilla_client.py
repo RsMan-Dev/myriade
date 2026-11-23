@@ -106,12 +106,12 @@ class BinaryTests(unittest.TestCase):
     def test_a_built_program_is_found_with_or_without_exe(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)
-            (folder / "horizon-client.exe").touch()
+            (folder / "myriade-engine.exe").touch()
             # Only lab's os.name: pathlib keeps this machine's path flavour.
             with mock.patch.object(lab, "os", SimpleNamespace(name="nt")):
-                self.assertEqual(lab.binary(folder, "horizon-client"), folder / "horizon-client.exe")
-                (folder / "horizon-client").touch()
-                self.assertEqual(lab.binary(folder, "horizon-client"), folder / "horizon-client")
+                self.assertEqual(lab.binary(folder, "myriade-engine"), folder / "myriade-engine.exe")
+                (folder / "myriade-engine").touch()
+                self.assertEqual(lab.binary(folder, "myriade-engine"), folder / "myriade-engine")
 
 
 if __name__ == "__main__":

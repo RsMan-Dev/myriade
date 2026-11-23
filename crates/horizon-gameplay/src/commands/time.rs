@@ -1,6 +1,6 @@
 //! `/time`.
 use super::host::{CommandHost, R, int};
-use horizon_client::{
+use myriade_engine::{
     command::{Arg, Context},
     text::Text,
 };

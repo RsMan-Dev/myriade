@@ -63,8 +63,8 @@ fn an_invisible_player_tempts_only_within_two_blocks() {
 fn grazes(griefing: bool, floor: &'static str, feet: &'static str) -> Vec<(i32, i32, i32, &'static str)> {
     let mut h = Herd::with_slab_awake(16, false, false);
     let mut level = *h.world.resource::<Level>();
-    let rule: &'static horizon_client_lib::mobs::MobWorld<'static> =
-        Box::leak(Box::new(horizon_client_lib::mobs::MobWorld { mob_griefing: griefing, ..level.mw.0.clone() }));
+    let rule: &'static myriade_engine_lib::mobs::MobWorld<'static> =
+        Box::leak(Box::new(myriade_engine_lib::mobs::MobWorld { mob_griefing: griefing, ..level.mw.0.clone() }));
     level.mw = Mw(rule);
     *h.world.resource_mut::<Level>() = level;
     h.set_block(0, 0, 0, floor);

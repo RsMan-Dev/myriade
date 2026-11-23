@@ -7,7 +7,7 @@ use super::*;
 use crate::move_to_block::MoveToBlock;
 use crate::rules::cat_sit_on_block::{countdown, search_ticks};
 use crate::{cow::*, goals::*};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {

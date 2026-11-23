@@ -33,7 +33,7 @@ pub struct LastCheck(pub u64);
 
 /// `WorkAtComposter.useWorkstation`: the block of the job site is a composter (read in the level, not from the species).
 fn is_composter(w: &World, p: [i32; 3]) -> bool {
-    use horizon_client_lib::mobs::spawn_rules::SpawnLevel;
+    use myriade_engine_lib::mobs::spawn_rules::SpawnLevel;
     let l = w.resource::<crate::cow::Level>().mw.0;
     &*l.facts().get(l.state(p[0], p[1], p[2])).name == "minecraft:composter"
 }
@@ -57,7 +57,7 @@ fn make_bread(w: &mut World, e: Entity) {
     let left = insert(w, e, BREAD, loaves as u8);
     if left > 0 {
         let Some(at) = w.get::<Pos>(e).map(|q| q.0) else { return };
-        crate::item::drop_item(w, horizon_client_lib::items::ItemStack::new(BREAD, u32::from(left)), horizon_core::geometry::Vec3::new(at.x, at.y + 0.5, at.z), horizon_core::geometry::Vec3::new(0.0, 0.2, 0.0), 10);
+        crate::item::drop_item(w, myriade_engine_lib::items::ItemStack::new(BREAD, u32::from(left)), horizon_core::geometry::Vec3::new(at.x, at.y + 0.5, at.z), horizon_core::geometry::Vec3::new(0.0, 0.2, 0.0), 10);
     }
 }
 

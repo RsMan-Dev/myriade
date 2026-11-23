@@ -2,7 +2,7 @@
 use crate::common;
 use common::*;
 use bevy_ecs::prelude::Entity;
-use horizon_client_lib::merchant::Session;
+use myriade_engine_lib::merchant::Session;
 use horizon_ecs_proto::targeting::Who;
 use horizon_ecs_proto::behaviours::play_tag;
 use horizon_ecs_proto::behaviours::trade_session::Trading;
@@ -53,7 +53,7 @@ fn the_villager_walks_to_a_wanted_item_within_four_blocks_awake() {
     h.tick();
     // The stray walk target the brain may hold is cleared: the behaviour starts only with none.
     erase(&mut h.world, e, &WALK_TARGET);
-    let it = horizon_ecs_proto::item::drop_item(&mut h.world, horizon_client_lib::items::ItemStack::new("minecraft:wheat", 1), Vec3::new(3.0, 1.0, 0.5), Vec3::ZERO, 0);
+    let it = horizon_ecs_proto::item::drop_item(&mut h.world, myriade_engine_lib::items::ItemStack::new("minecraft:wheat", 1), Vec3::new(3.0, 1.0, 0.5), Vec3::ZERO, 0);
     let (mut walked, mut taken) = (false, false);
     for _ in 0..200 {
         // A villager with no job idles (jar: WORK needs JOB_SITE): its stroll sets walk targets that the item's behaviour (core,
@@ -136,7 +136,7 @@ enum P {
 impl P {
     fn get(self) -> u8 {
         match self {
-            P::Name(n) => horizon_client_lib::mobs::villager::profession_index(n).unwrap_or_else(|| panic!("no profession {n}")),
+            P::Name(n) => myriade_engine_lib::mobs::villager::profession_index(n).unwrap_or_else(|| panic!("no profession {n}")),
             P::Idx(i) => i as u8,
         }
     }
@@ -239,7 +239,7 @@ fn the_shown_trades_cycle_every_forty_ticks_awake() {
     let (items, enchantments, trades) = crate::common::registries();
     h.world.insert_resource(horizon_ecs_proto::behaviours::trade_offers::TradeData { trades, items, enchantments, seed: 0x5EED, sequences: Default::default() });
     let e = villager(&mut h);
-    let farmer = horizon_client_lib::mobs::villager::profession_index("farmer").unwrap();
+    let farmer = myriade_engine_lib::mobs::villager::profession_index("farmer").unwrap();
     h.world.entity_mut(e).insert(horizon_ecs_proto::behaviours::trade_offers::Merchant::new(false, farmer, 0));
     // With no experience and no job site the brain resets the profession (`ResetProfession`): the villager has some.
     h.world.get_mut::<horizon_ecs_proto::behaviours::trade_offers::Merchant>(e).unwrap().trade.xp = 1;

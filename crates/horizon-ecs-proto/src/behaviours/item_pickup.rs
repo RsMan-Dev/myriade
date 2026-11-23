@@ -87,7 +87,7 @@ mod tests {
     use crate::behaviours::Entry;
     use crate::cow::{ActiveUntil, Herd, SpeciesTable, spawn_species};
     use crate::species::Config;
-    use horizon_client_lib::items::ItemStack;
+    use myriade_engine_lib::items::ItemStack;
     use horizon_core::geometry::Vec3 as V;
 
     fn config() -> Config {

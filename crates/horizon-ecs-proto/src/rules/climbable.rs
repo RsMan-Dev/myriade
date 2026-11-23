@@ -4,7 +4,7 @@
 use crate::blocks::world_of;
 use crate::cow::{Drive, Pos};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 /// `AbstractHorse.onClimbable`, `Ghast.onClimbable`, `Phantom.onClimbable`, `HappyGhast.onClimbable`: a plain false.

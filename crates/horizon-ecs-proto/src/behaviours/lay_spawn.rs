@@ -6,8 +6,8 @@ use super::breed::Carrying;
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
-use horizon_client_lib::blocks::Fluid;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::blocks::Fluid;
+use myriade_engine_lib::mobs::MobWorld;
 use crate::rules::lay_spawn::manhattan_cells;
 
 #[derive(Clone, Copy, Debug)]

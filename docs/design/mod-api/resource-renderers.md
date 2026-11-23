@@ -151,15 +151,15 @@ integration owners, not claims that the proposed callback already exists.
 | Route | File:line | Required behavior |
 | --- | --- | --- |
 | Decode / foreign workaround | `horizon-assets/src/item_model/special.rs:82`, `:90`, `:103` | Resolve registered types; report unknown special types |
-| Resource parts and baked extents | `horizon-client/src/item_render/special.rs:51`, `:307`; `horizon-client/src/item_render.rs:748`, `:841` | Bake resource recipe and conservative bounds |
-| Shared stack preparation, hands | `horizon-client/src/game/interface/item_draw.rs:376`, `:398` | Freeze declared inputs and prepare once per resolution |
-| Inventory, cursor and other GUI icons | `horizon-client/src/game/interface/inventory_slots.rs:6`; `horizon-client/src/game/interface/item_draw.rs:455`; `horizon-client/src/item_render/gui.rs:180` | Same prepared parts, GUI clipping and lighting |
-| Dropped/ground items | `horizon-client/src/game/interface/item_draw.rs:705`, `:789`, `:793` | Copy poses reuse state on GPU and CPU paths |
-| Frames and armor-stand equipment | `horizon-client/src/game/entities/frames.rs:749`; `horizon-client/src/game/entities/armor_stands.rs:1786`, `:1847` | Fixed/head/hand contexts use same preparation |
-| Other world item consumers | `horizon-client/src/game/blocks/campfire.rs:172`; `blocks/vault.rs:250`, `blocks/shelf.rs:230`, `blocks/brush.rs:347` under the same `game/` directory | Preserve context and engine lighting |
-| Entity/effect and mod-submitted items | `horizon-client/src/game/items/potions.rs:2219`, `items/totem.rs:224`, `items/item_particles.rs:18`; `horizon-client/src/game/modding/native_block_entity_draw.rs:1237` | Share resolver, no recursive callback escape |
-| CPU special submission / GPU submission | `horizon-client/src/item_render.rs:267`, `:299`; `horizon-client/src/item_render/special.rs:466`; `horizon-client/src/game/interface/item_draw.rs:556` | Consume identical frozen draw list |
-| Reload and GPU resource ownership | `horizon-client/src/game.rs:14259`; `horizon-client-render/src/gfx/prepared_model.rs:256` | Rebuild affected item states and retain leased resources |
+| Resource parts and baked extents | `myriade-engine/src/item_render/special.rs:51`, `:307`; `myriade-engine/src/item_render.rs:748`, `:841` | Bake resource recipe and conservative bounds |
+| Shared stack preparation, hands | `myriade-engine/src/game/interface/item_draw.rs:376`, `:398` | Freeze declared inputs and prepare once per resolution |
+| Inventory, cursor and other GUI icons | `myriade-engine/src/game/interface/inventory_slots.rs:6`; `myriade-engine/src/game/interface/item_draw.rs:455`; `myriade-engine/src/item_render/gui.rs:180` | Same prepared parts, GUI clipping and lighting |
+| Dropped/ground items | `myriade-engine/src/game/interface/item_draw.rs:705`, `:789`, `:793` | Copy poses reuse state on GPU and CPU paths |
+| Frames and armor-stand equipment | `myriade-engine/src/game/entities/frames.rs:749`; `myriade-engine/src/game/entities/armor_stands.rs:1786`, `:1847` | Fixed/head/hand contexts use same preparation |
+| Other world item consumers | `myriade-engine/src/game/blocks/campfire.rs:172`; `blocks/vault.rs:250`, `blocks/shelf.rs:230`, `blocks/brush.rs:347` under the same `game/` directory | Preserve context and engine lighting |
+| Entity/effect and mod-submitted items | `myriade-engine/src/game/items/potions.rs:2219`, `items/totem.rs:224`, `items/item_particles.rs:18`; `myriade-engine/src/game/modding/native_block_entity_draw.rs:1237` | Share resolver, no recursive callback escape |
+| CPU special submission / GPU submission | `myriade-engine/src/item_render.rs:267`, `:299`; `myriade-engine/src/item_render/special.rs:466`; `myriade-engine/src/game/interface/item_draw.rs:556` | Consume identical frozen draw list |
+| Reload and GPU resource ownership | `myriade-engine/src/game.rs:14259`; `myriade-level/src/gfx/prepared_model.rs:256` | Rebuild affected item states and retain leased resources |
 
 Native and wasm need generated catalog registration, dispatch and callback exports
 in the eventual implementation; neither adapter exists for this feature today.

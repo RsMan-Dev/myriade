@@ -266,7 +266,7 @@ are reachable through `BlockEntityRef`.
 Fluid type facts are one record, `FluidTypeProperties` (`crates/horizon-mod-vocab/src/block/fluid_states.rs`), read with
 `host.fluid_states().type_properties(key)`. They are static per fluid, not per position or block, and they are
 derived today: the record describes water's and lava's families and gives every other fluid inert values
-(`crates/horizon-client/src/game/modding/native_block_states.rs`). A mod's own fluid declares a sprite and tint,
+(`crates/myriade-engine/src/game/modding/native_block_states.rs`). A mod's own fluid declares a sprite and tint,
 not its type properties, so "partial" below means the vanilla answer is readable but a mod fluid cannot set it.
 
 | Method | Verdict | Horizon | Notes |
@@ -292,7 +292,7 @@ places a custom block item, a two-part red bed and a dispenser's shulker box, an
 and refusal without consuming the stack:
 
 ```sh
-cargo test -p horizon-client --lib game::native_hooks::on_block_placed_by_tests::block_items_notify_after_setup_and_before_consumption -- --exact --ignored
+cargo test -p myriade-engine --lib game::native_hooks::on_block_placed_by_tests::block_items_notify_after_setup_and_before_consumption -- --exact --ignored
 ```
 
 ## `IMenuTypeExtension`
@@ -345,7 +345,7 @@ fixtures together (including the ice-denial regression):
 
 ```sh
 for suite in block_part_tool_tests player_destroy_tests; do
-    cargo test -p horizon-client --lib "$suite" -- --ignored
+    cargo test -p myriade-engine --lib "$suite" -- --ignored
 done
 ```
 
@@ -419,11 +419,11 @@ These are model-registration counterparts, not object-extension methods (arismok
 The namespace rule, `RenderAssets::model` resolution and `model_baking_completed` publication
 are unchanged. Forms rebake on every resource load; failed reloads leave old handles valid.
 
-CPU proof selectors in `horizon-client-render` are
+CPU proof selectors in `myriade-level` are
 `models::catalog::standalone_tests::standalone_rotated_arrow_has_literal_geometry_and_world_locked_uvs`,
 `models::catalog::standalone_tests::standalone_combined_keeps_both_cubes_and_rebakes_changed_dependencies`
 and `models::catalog::standalone_tests::standalone_missing_dependency_drops_entire_form_and_logs_registering_mod`.
-The resource-backed `horizon-client` test
+The resource-backed `myriade-engine` test
 `game::model_baking_completed_tests::standalone_forms_resolve_as_one_model_and_republish_after_resource_reload`
 exercises real Game publication, model-registry lookup, distinct full-block/slab geometry,
 missing-form refusal and stale/replacement handles. It requires `HORIZON_TEST_RESOURCES`

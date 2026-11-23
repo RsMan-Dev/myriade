@@ -1,5 +1,5 @@
 //! What the dragon tests against Horizon's `Dragon` share: the golden files (`tests/it/dragon_golden/`, written by the test-only
-//! generator of `horizon-client`, `game/mobs/dragon/golden_tests.rs`), a dragon on flat ground at the golden's place, and the
+//! generator of `myriade-engine`, `game/mobs/dragon/golden_tests.rs`), a dragon on flat ground at the golden's place, and the
 //! comparison line by line (`HORIZON_DRAGON_DUMP=<dir>` writes our side to `<dir>/<name>.txt` to diff it).
 use crate::common::*;
 use bevy_ecs::prelude::*;

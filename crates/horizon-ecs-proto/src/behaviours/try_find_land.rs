@@ -5,7 +5,7 @@
 use super::*;
 use crate::rules::lay_spawn::manhattan_cells;
 use crate::{cow::*, goals::*};
-use horizon_client_lib::blocks::Fluid;
+use myriade_engine_lib::blocks::Fluid;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {

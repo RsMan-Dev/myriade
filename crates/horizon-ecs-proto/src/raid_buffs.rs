@@ -3,7 +3,7 @@
 //! the numbers stay where the raid keeps them.
 use crate::equip_stack;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 /// The slot of the main hand in `equip_stack` (`EquipmentSlot` order).
 const MAINHAND: usize = 0;

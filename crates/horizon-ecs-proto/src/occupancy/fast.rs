@@ -5,7 +5,7 @@
 //! shape that is not a plain cube in the padded box's sections, a section the thread has not met (it is fetched, which takes the lock
 //! once), a box that is too big or not finite.
 use super::{Binding, Occupancy, Section, World};
-use horizon_client_render::collisions::SceneCollisions;
+use myriade_level::collisions::SceneCollisions;
 use horizon_core::geometry::{Aabb, Vec3};
 use std::sync::atomic::Ordering::Relaxed;
 

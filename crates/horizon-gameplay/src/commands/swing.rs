@@ -1,7 +1,7 @@
 //! `/swing`.
 use super::entity::{EntityHost, EntityRef, holder, num};
 use super::host::R;
-use horizon_client::{command::Context, scoreboard_cmd::Tracker, text::Text};
+use myriade_engine::{command::Context, scoreboard_cmd::Tracker, text::Text};
 
 /// What `/swing` needs from the game.
 pub trait SwingHost: EntityHost {

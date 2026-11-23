@@ -3,7 +3,7 @@
 //! a charge of 0.7 and an energy budget of 0.15. The energy change is `PotentialCalculator.getPotentialEnergyChange`: each charge over its
 //! distance to the spawn, summed, times the spawn's charge.
 use bevy_ecs::prelude::*;
-use horizon_client_lib::biome::SpawnCost;
+use myriade_engine_lib::biome::SpawnCost;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::cow::*;
 use horizon_ecs_proto::spawn_biome::biome_at;

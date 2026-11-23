@@ -9,7 +9,7 @@ capabilities = ["registries"]
 
 [[inject]]
 id = "listen"
-at = "horizon_client::game::block_entity_ticks::Game<'_>::tick_block_entities"
+at = "myriade_engine::game::block_entity_ticks::Game<'_>::tick_block_entities"
 kind = "head"
 with = "entry_listener"
 

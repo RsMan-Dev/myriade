@@ -1,1 +1,1 @@
-horizon-client game::native_entity_physics::tests::no_physics_entry_is_cleared_when_an_ominous_item_spawner_finishes lib daily resources
+myriade-engine game::native_entity_physics::tests::no_physics_entry_is_cleared_when_an_ominous_item_spawner_finishes lib daily resources

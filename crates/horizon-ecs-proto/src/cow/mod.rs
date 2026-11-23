@@ -17,13 +17,13 @@ use bevy_ecs::{
     schedule::{Schedule, ScheduleLabel, SingleThreadedExecutor},
 };
 #[allow(unused_imports)]
-use horizon_client_lib::mobs::{
+use myriade_engine_lib::mobs::{
     MobWorld,
     nav::Navigation,
     path::{Evaluator, Finder, Path, PathMob, PATH_TYPES},
 };
 #[allow(unused_imports)]
-use horizon_client_render::{chunk::Chunk, collisions::SceneCollisions};
+use myriade_level::{chunk::Chunk, collisions::SceneCollisions};
 #[allow(unused_imports)]
 use horizon_core::geometry::{Aabb, Vec3, trig};
 #[allow(unused_imports)]

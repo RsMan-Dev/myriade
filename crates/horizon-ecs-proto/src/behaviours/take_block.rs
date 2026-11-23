@@ -6,7 +6,7 @@
 use super::*;
 use crate::{cow::*, goals::*};
 use crate::rules::take_block::{reach_line, take_cell, take_wait};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_world::registry::BlockStateId;
 use std::{collections::BTreeMap, sync::Mutex};
 

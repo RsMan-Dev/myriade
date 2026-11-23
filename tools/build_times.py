@@ -13,7 +13,7 @@ report and a Markdown table under .local/build-times/reports/:
   before it, that ends last.
 - no-op: the same build again with nothing changed (the floor of every incremental build).
 - incremental: after a one-line change in one file of each large crate (by default horizon-world,
-  horizon-client-render, horizon-client's game.rs and horizon-items), the build that follows, and which
+  myriade-level, myriade-engine's game.rs and horizon-items), the build that follows, and which
   crates it recompiled.
 
 The change is a comment line (--edit): it cannot change behaviour, yet cargo and rustc see a changed file.
@@ -54,13 +54,13 @@ WORK = Path(".local") / "build-times"
 MARKER = ".horizon-build-times"
 PACKAGE = "horizon-game"
 PROFILES = ["dev", "fast"]
-# The files an edit goes to by default: large, often changed, and each in a different layer. horizon-client's
+# The files an edit goes to by default: large, often changed, and each in a different layer. myriade-engine's
 # game.rs belongs to the gameplay library, which the platform binary links. Any other crate in the
 # workspace gets its lib.rs; --file crate=path picks another file.
 EDIT_FILES = {
     "horizon-world": "crates/horizon-world/src/level/mod.rs",
-    "horizon-client-render": "crates/horizon-client-render/src/gfx.rs",
-    "horizon-client": "crates/horizon-client/src/game.rs",
+    "myriade-level": "crates/myriade-level/src/gfx.rs",
+    "myriade-engine": "crates/myriade-engine/src/game.rs",
     "horizon-items": "crates/horizon-items/src/items.rs",
 }
 EDIT_MODES = ["middle", "top", "append", "touch"]

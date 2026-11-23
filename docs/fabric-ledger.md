@@ -77,7 +77,7 @@ its unrelated hook families are unchanged and are not certified by this review.
 Other client-lifecycle neighbours (`client_player_clone`,
 `client_resources_reloaded` and `game_shutting_down`) are outside the chosen files
 and keep their existing metadata. Paths in the Horizon column are under
-`crates/horizon-client/src/`.
+`crates/myriade-engine/src/`.
 
 | Horizon hook | Fabric event considered / status | Evidence and porting boundary |
 |---|---|---|
@@ -108,7 +108,7 @@ adds metadata only: no dispatch, tick-time work, adapter, alias or gameplay chan
 
 Checked against the same Fabric API 26.3 revision,
 `2065040b236a0d5ac011bd6a45625dc49579b222`. Fabric line numbers below are at that
-revision; Horizon code is cited by function name, under `crates/horizon-client/src/`.
+revision; Horizon code is cited by function name, under `crates/myriade-engine/src/`.
 
 Scope: every hook in `mob_effect_events.rs`, `right_click_item.rs`,
 `use_item_on_block.rs`, `living_damage_post.rs`, `living_death.rs`, `client_chat.rs`,
@@ -165,7 +165,7 @@ Horizon cancel that answers `Pass` still skips vanilla.
 
 Checked against the same Fabric API 26.3 revision,
 `2065040b236a0d5ac011bd6a45625dc49579b222`. Fabric line numbers below are at that
-revision; Horizon code is cited by function name, under `crates/horizon-client/src/`
+revision; Horizon code is cited by function name, under `crates/myriade-engine/src/`
 unless the file says otherwise.
 
 Scope: `base.rs`'s `server_stopping`, `server_tick`, `level_tick_pre`,
@@ -182,7 +182,7 @@ ones: `server_stopping` and `server_tick` still match and keep their keys;
 | `level_tick_post` | **Gap:** `ServerTickEvents.END_LEVEL_TICK` | [Server tick API][st-api] lines 70–77 and 98–101 pass only the level; [server level mixin][server-level-mixin] lines 39–41 inject at `ServerLevel.tick` TAIL, skipped when the tick throws. Horizon calls `Game::native_level_tick_post` only after a successful pass, which matches that rule, but only for `levels_to_tick`: a level Horizon parks gets no per-level tick and therefore no event, while `docs/server-levels.md` records every vanilla level being ticked. The set of levels notified differs, so the moments are not the same. Key removed. |
 | `level_load` | **Gap:** `ServerLevelEvents.LOAD` | [Server level API][server-level-api] lines 27–36 and 51–53 declare `(MinecraftServer, ServerLevel)` "just after a level is loaded by a Minecraft server"; [server mixin][server-mixin] lines 87–93 fire it from the `Map.put` in `createLevels`, for each level the server creates at startup. Horizon's `Game::native_level_opened` (`game/world/levels.rs`) fires from `Game::finish_open_world` (`game.rs`) for the dimension the world opens in, and from `Game::enter_level` the first time any other dimension is entered; the Nether and End open when someone first travels there, not with the world. Only the opening level has a comparable moment; the count and the time for the other levels differ. The dimension ID and generated server host identify the level context, which the mapping rule permits in place of Fabric's server/level context. No key. |
 | `level_unload` | **Gap:** `ServerLevelEvents.UNLOAD` | [Server level API][server-level-api] lines 38–48 and 56–58 declare `(MinecraftServer, ServerLevel)` "before a level is unloaded by a Minecraft server", typically after the server started shutting down; [server mixin][server-mixin] lines 95–98 inject at the `ServerLevel.close()` call inside `stopServer`, before the close runs. Horizon's `Game::native_level_closed` fires after `Game::save_level` and the chunk unload hooks in `Game::close_idle_levels`, and after teardown in `Game::native_levels_closing`; it also fires when a non-Overworld level closes for being empty after 300 idle ticks, a close vanilla's `stopServer` path does not have. The before-close and after-close points differ. Fabric also explicitly permits dynamic level mods to invoke UNLOAD (API lines 41–42), so an idle close alone is not a categorical mismatch; Horizon still notifies after teardown. No key. |
-| `chunk_load` | **Gap:** `ServerChunkEvents.CHUNK_LOAD` | [Server chunk API][server-chunk-api] lines 34–47 and 96–98 declare `(ServerLevel, LevelChunk, boolean generated)`: "when a chunk is loaded into a ServerLevel", already in the level, and not for chunks that become accessible without being unloaded. [Chunk status mixin][chunk-status-mixin] lines 41–48 fire it at the TAIL of the full-status task, once per chunk as it becomes a `LevelChunk`, with `generated` false for a chunk read from the save. Horizon queues `(x, z, new)` in `Streaming::receive_generated` (`crates/horizon-client-render/src/streaming.rs`) as each chunk enters the level, and `Game::native_chunks_loaded` (`game/native_hooks/shared.rs`) drains the queue at the end of the streaming commit, from `Game::update_world` (`game.rs`) or `Game::close_idle_levels`, so all chunks of one commit are reported together after the commit. The listener also gets the dimension ID and the chunk's coordinates, not the `LevelChunk`. Firing point and argument shape differ. No key. |
+| `chunk_load` | **Gap:** `ServerChunkEvents.CHUNK_LOAD` | [Server chunk API][server-chunk-api] lines 34–47 and 96–98 declare `(ServerLevel, LevelChunk, boolean generated)`: "when a chunk is loaded into a ServerLevel", already in the level, and not for chunks that become accessible without being unloaded. [Chunk status mixin][chunk-status-mixin] lines 41–48 fire it at the TAIL of the full-status task, once per chunk as it becomes a `LevelChunk`, with `generated` false for a chunk read from the save. Horizon queues `(x, z, new)` in `Streaming::receive_generated` (`crates/myriade-level/src/streaming.rs`) as each chunk enters the level, and `Game::native_chunks_loaded` (`game/native_hooks/shared.rs`) drains the queue at the end of the streaming commit, from `Game::update_world` (`game.rs`) or `Game::close_idle_levels`, so all chunks of one commit are reported together after the commit. The listener also gets the dimension ID and the chunk's coordinates, not the `LevelChunk`. Firing point and argument shape differ. No key. |
 | `chunk_unload` | **Gap:** `ServerChunkEvents.CHUNK_UNLOAD` | [Server chunk API][server-chunk-api] lines 63–76 and 106–108 pass `(ServerLevel, LevelChunk)` while the chunk is still present in the level; [chunk map mixin][chunk-map-mixin] lines 47–50 inject at the `ChunkMap.save(chunk)` call in `scheduleUnload`, before that save runs. Horizon's `Game::native_chunks_unloaded` (`game/native_hooks/shared.rs`) fires after the save: `Game::update_world` calls `save_later` for the modified unloaded chunks before it, `Game::close_idle_levels` calls `Game::save_level` first, and `Game::native_chunk_unload`'s own comment says changes made in the hook are not saved. A Fabric listener's edits can therefore reach the save and a Horizon one's cannot. The firing point differs, and the listener gets the dimension ID and coordinates instead of the chunk. No key. |
 
 Fabric's level-tick and level listeners receive the `ServerLevel` context. Under
@@ -208,7 +208,7 @@ adapter, alias or gameplay change.
 
 Checked against the same Fabric API 26.3 revision,
 `2065040b236a0d5ac011bd6a45625dc49579b222`. Fabric line numbers below are at that
-revision; Horizon code is cited by function name, under `crates/horizon-client/src/`
+revision; Horizon code is cited by function name, under `crates/myriade-engine/src/`
 unless the file says otherwise.
 
 Scope: `base.rs`'s `player_login`, `player_load_from_file`, `player_logged_in`,
@@ -248,7 +248,7 @@ only: no dispatch, tick-time work, adapter, alias or gameplay change.
 Checked against the same Fabric API 26.3 revision,
 `2065040b236a0d5ac011bd6a45625dc49579b222`. Fabric line numbers below are at that
 revision; Horizon code is cited by function name (under
-`crates/horizon-client/src/`, or `crates/horizon-world/src/` for the loot
+`crates/myriade-engine/src/`, or `crates/horizon-world/src/` for the loot
 engine) and never by line number.
 
 Scope: `base.rs`'s `loot_table_load`, `loot_drops`, `loot_function` and
@@ -293,7 +293,7 @@ tick-time work, adapter, alias or gameplay change.
 
 Checked against the same Fabric API 26.3 revision,
 `2065040b236a0d5ac011bd6a45625dc49579b222`. Fabric line numbers below are at that
-revision; Horizon code is cited by function name, under `crates/horizon-client/src/`
+revision; Horizon code is cited by function name, under `crates/myriade-engine/src/`
 unless the file says otherwise.
 
 Scope: `item_tooltip.rs` and the seven item model and item tint hooks —
@@ -336,7 +336,7 @@ change.
 
 Checked against the same Fabric API 26.3 revision,
 `2065040b236a0d5ac011bd6a45625dc49579b222`. Fabric line numbers below are at that
-revision; Horizon code is cited by function name (under `crates/horizon-client/src/`)
+revision; Horizon code is cited by function name (under `crates/myriade-engine/src/`)
 and never by line number.
 
 Scope: `base.rs`'s `entities_load`, `entities_unload`, `entity_join_level`,
@@ -353,7 +353,7 @@ is added.
 | `entities_unload` | **Gap:** none; nearest `ServerEntityEvents.ENTITY_UNLOAD` | [Server entity events][sentity-api] lines 62–71 declare `ENTITY_UNLOAD` as a void `(Entity, ServerLevel)` notice "called before the entity is removed from the level"; lines 100–103 are its listener interface. [Server entity callbacks mixin][sentity-callbacks-mixin] lines 43–46 inject at `onTrackingEnd` HEAD, so the entity is still in the level. Horizon's `Game::native_entities_unload` is called by `Game::unload_entities` (`game/world/persist.rs`) after `Save::save_entities_later` attempted to queue the chunk's records for saving (the notice also fires if queueing fails), once per chunk with the dimension, chunk x/z and count. Aggregate vs per entity, and after the save was queued rather than before the entity leaves the level. No key. |
 | `entity_join_level` | **Gap:** `ServerEntityEvents.ALLOW_LOAD` | [Server entity events][sentity-api] lines 49–60 declare `ALLOW_LOAD` as "called right before an Entity is loaded into a ServerLevel", cancellable, with `(Entity, ServerLevel, EntitySpawnReason, boolean isLoadedFromDisk)`; any listener returning `false` wins and `true` defers to vanilla (lines 52–59, 90–98). [Entity load mixin][entity-load-mixin] lines 33–41 inject at `PersistentEntitySectionManager.addEntity` HEAD, before the entity enters the level. The veto shape matches: Horizon's `canceled` keeps the entity out and nothing else can force it in. Horizon's `Game::native_entity_join_level` is fired by `Game::native_joins_flush` (`game/modding/native_entities.rs`) after the entity was inserted, once per entity in creation order, on the next check (after the blocks, vehicles, projectiles, items and mobs, or at the tick's end) with the dimension, ID, kind, position and `loaded_from_disk`; setting `canceled` takes it back out. Fabric refuses the insert and Horizon removes after the insert and tells later; Fabric also passes the `Entity` and the spawn reason, Horizon passes an ID and a kind and has no spawn reason, and Horizon does not tell displays, markers or interactions, the entities it keeps without simulating. Firing point, coverage and arguments differ. No key. |
 | `entity_leave_level` | **Gap:** `ServerEntityEvents.ENTITY_UNLOAD` | Same Fabric event as `entities_unload`: [Server entity events][sentity-api] lines 62–71 with the listener interface at lines 100–103, fired at [server entity callbacks mixin][sentity-callbacks-mixin] lines 43–46, `onTrackingEnd` HEAD, while the entity is still in the level. Horizon's `Game::native_entity_leave_level` is called by `Game::native_entity_left` and `Game::native_leaves_flush` (`game/modding/native_entities.rs`) after the entity is gone from the level's lists, when the game next notices it (the action that removed it, or the tick), with the dimension, ID and kind, and only for entities `entity_join_level` announced. Before vs after removal, per entity vs IDs, and the coverage of unsimulated kinds differ. No key. |
-| `player_start_tracking` | **Gap:** `EntityTrackingEvents.START_TRACKING` | [Tracking events][tracking-api] lines 30–39 declare `START_TRACKING` as a void `(Entity trackedEntity, ServerPlayer player)` notice after the player started tracking; lines 51–60 are its interface, and lines 31–33 say it runs after the entity's spawn packet was sent. [Server entity mixin][tracking-mixin] lines 38–41 inject at `ServerEntity.addPairing` TAIL. Horizon's tracker pairs after the tick in `Entities::pair_after_tick` (`crates/horizon-client/src/lan/entity.rs`, the port of `ServerEntity` pairing) and queues the events, and `Game::native_player_start_tracking` tells mods from `Game::run_native_tracking` (`game/network/lan_entities.rs`), bundled per player, with the player's UUID and name and the entity's ID, UUID and kind. Delivery is queued, but `Game::lan_flush_tracking` (`game/network/lan/mod.rs`) can drain it in the same operation after pairing; a later tick is not a universal difference. IDs and names do not replace Fabric's `Entity` and `ServerPlayer` arguments. No key. |
+| `player_start_tracking` | **Gap:** `EntityTrackingEvents.START_TRACKING` | [Tracking events][tracking-api] lines 30–39 declare `START_TRACKING` as a void `(Entity trackedEntity, ServerPlayer player)` notice after the player started tracking; lines 51–60 are its interface, and lines 31–33 say it runs after the entity's spawn packet was sent. [Server entity mixin][tracking-mixin] lines 38–41 inject at `ServerEntity.addPairing` TAIL. Horizon's tracker pairs after the tick in `Entities::pair_after_tick` (`crates/myriade-engine/src/lan/entity.rs`, the port of `ServerEntity` pairing) and queues the events, and `Game::native_player_start_tracking` tells mods from `Game::run_native_tracking` (`game/network/lan_entities.rs`), bundled per player, with the player's UUID and name and the entity's ID, UUID and kind. Delivery is queued, but `Game::lan_flush_tracking` (`game/network/lan/mod.rs`) can drain it in the same operation after pairing; a later tick is not a universal difference. IDs and names do not replace Fabric's `Entity` and `ServerPlayer` arguments. No key. |
 | `player_stop_tracking` | **Gap:** `EntityTrackingEvents.STOP_TRACKING` | [Tracking events][tracking-api] lines 41–49 declare `STOP_TRACKING` as a void `(Entity, ServerPlayer)` notice "called before a player stops tracking an entity", while the entity still exists (lines 42–43); lines 62–71 are its interface. [Server entity mixin][tracking-mixin] lines 43–46 inject at `ServerEntity.removePairing` HEAD. Horizon's hook comment places its own notice at the end of `removePairing`, and the stop is queued by the same per-tick tracker pass; `Game::native_player_stop_tracking` tells mods when the queue is drained, including by `Game::lan_flush_tracking` in the same operation (a leaving player's after `native_player_logged_out`) with the same UUID/name/ID/kind fields. Before vs after the pairing and the entity and player objects vs their IDs differ. No key. |
 | `living_equipment_change` | **Gap:** `ServerEntityEvents.EQUIPMENT_CHANGE` | [Server entity events][sentity-api] lines 73–83 declare `EQUIPMENT_CHANGE` as a void `(LivingEntity, EquipmentSlot, ItemStack previous, ItemStack next)` notice called during `LivingEntity.tick()` when a slot changed or was mutated, also when the entity joins the level, decided by `ItemStack.matches`; lines 105–108 are its interface. [Equipment mixin][equipment-mixin] lines 36–38 inject at the `Map.put` in `LivingEntity.collectEquipmentChanges`. Horizon's `Game::native_living_equipment_change` is fired from `Game::native_mobs_equipment` and `Game::native_players_equipment` (`game/modding/native_mobs.rs`) and from `Game::armor_stand_location_effects` (`game/items/enchant_effects.rs`) once per changed slot, with the entity's ID and kind, the slot name and the `from`/`to` stacks. Mobs are checked after their tick; players are checked near the start of `Game::tick_guests` (`game/network/lan_actions/tick.rs`), before its per-player simulation loop. The mob and player passes run while an enabled mod subscribes to `living_equipment_change` (or still sets `living_equipment_listened`); armor stands bypass that gate. Fabric hands the `LivingEntity` itself, calls it inside each entity's own tick and has no opt-in gate; arguments and the point in the tick differ. No key. |
 | `living_equipment_listened` | **Gap:** none | Fabric has no opt-in gate for equipment listening: `ServerEntityEvents.EQUIPMENT_CHANGE` is invoked directly for every registered listener ([Server entity events][sentity-api] lines 79–83). Horizon's `collect` hook (`out = "listened"`) is asked by `Game::native_mobs_equipment` and `Game::native_players_equipment` each tick when no enabled mod subscribes to `living_equipment_change`, so the game reads every mob's and player's equipment only when some mod listens; it is no longer needed by a mod that hears the change. Horizon-only; no Fabric event covers it. No key. |
@@ -373,7 +373,7 @@ dispatch, tick-time work, adapter, alias or gameplay change.
 
 Checked against the same Fabric API 26.3 revision,
 `2065040b236a0d5ac011bd6a45625dc49579b222`. Fabric line numbers below are at that
-revision; Horizon code is cited by function name (under `crates/horizon-client/src/`
+revision; Horizon code is cited by function name (under `crates/myriade-engine/src/`
 unless the file says otherwise) and never by line number.
 
 Scope: `base.rs`'s `register_commands`, `register_client_commands`, `command`,
@@ -410,7 +410,7 @@ work, adapter, alias or gameplay change.
 
 Checked against the same Fabric API 26.3 revision,
 `2065040b236a0d5ac011bd6a45625dc49579b222`. Fabric line numbers below are at that
-revision; Horizon code is cited by function name (under `crates/horizon-client/src/`
+revision; Horizon code is cited by function name (under `crates/myriade-engine/src/`
 unless the file says otherwise) and never by line number.
 
 Scope: `base.rs`'s `use_on`, `use_item`, `right_click_block`, `left_click_block`,
@@ -452,7 +452,7 @@ dispatch, tick-time work, adapter, alias or gameplay change.
 
 Checked against the same Fabric API 26.3 revision,
 `2065040b236a0d5ac011bd6a45625dc49579b222`. Fabric line numbers below are at that
-revision; Horizon code is cited by function name (under `crates/horizon-client/src/`
+revision; Horizon code is cited by function name (under `crates/myriade-engine/src/`
 unless the file says otherwise) and never by line number.
 
 Scope: the seven `Post` hooks `screen_input_post.rs` declares, after the client
@@ -486,7 +486,7 @@ only: no dispatch, tick-time work, adapter, alias or gameplay change.
 
 Checked against the same Fabric API 26.3 revision,
 `2065040b236a0d5ac011bd6a45625dc49579b222`. Fabric line numbers below are at that
-revision; Horizon code is cited by function name (under `crates/horizon-client/src/`
+revision; Horizon code is cited by function name (under `crates/myriade-engine/src/`
 unless the file says otherwise) and never by line number.
 
 Scope: `base.rs`'s five data/resource-notice hooks (`world_saved`,
@@ -521,7 +521,7 @@ dispatch, tick-time work, adapter, alias or gameplay change.
 
 Checked against the same Fabric API 26.3 revision,
 `2065040b236a0d5ac011bd6a45625dc49579b222`. Fabric line numbers below are at that
-revision; Horizon code is cited by function name (under `crates/horizon-client/src/`
+revision; Horizon code is cited by function name (under `crates/myriade-engine/src/`
 unless the file says otherwise) and never by line number.
 
 Scope: `base.rs`'s block-change, neighbour-notify, random-tick, scheduled-tick,
@@ -1484,7 +1484,7 @@ Fabric evidence is at `2065040b236a0d5ac011bd6a45625dc49579b222` (`fabric-26.3/`
 |---|---|---|
 | `config_reloading` | **Gap:** none | Fabric API 26.3 declares no config-file event, the event index has no mod-config-file or `ModConfigEvent` entry, and Fabric ships no config system to fire one. `native_configs_poll` asks for files whose text changed on disk, at most once a second, and calls `native_config_reloading` per file with its new text; a file saved with the same text fires nothing. No Fabric event runs at that moment. No key. |
 | `config_unloading` | **Gap:** none | The event index has no config-unload or `ModConfigEvent` entry either. `native_configs_server_stop` drops the server configs and calls `native_config_unloading` per dropped file after `native_server_stopping`; client and common configs stay until the game quits. No Fabric event fires there. No key. |
-| `register_layer_definitions` | **Gap:** none; nearest `LivingEntityRenderLayerRegistrationCallback.EVENT` | That callback fires while each `EntityRendererProvider.create` result is built, only for a `LivingEntityRenderer`, and its registration helper only calls `addLayer` ([living-render-layer-api] lines 51-52; [entity-renderers-registration-mixin] lines 59-67). `register_layer_definitions` collects model-layer `(name, LayerDefinition)` pairs through `native_register_layer_definitions` into a `Vec` and registers them with `horizon_client::mobs::model_layers`, before any renderer exists. The moment, the registration stage and every argument differ; the callback offers neither the layer name nor the definition. No key. |
+| `register_layer_definitions` | **Gap:** none; nearest `LivingEntityRenderLayerRegistrationCallback.EVENT` | That callback fires while each `EntityRendererProvider.create` result is built, only for a `LivingEntityRenderer`, and its registration helper only calls `addLayer` ([living-render-layer-api] lines 51-52; [entity-renderers-registration-mixin] lines 59-67). `register_layer_definitions` collects model-layer `(name, LayerDefinition)` pairs through `native_register_layer_definitions` into a `Vec` and registers them with `myriade_engine::mobs::model_layers`, before any renderer exists. The moment, the registration stage and every argument differ; the callback offers neither the layer name nor the definition. No key. |
 | `movement_input` | **Gap:** none | The event index has no movement-input or `MovementInputUpdateEvent` entry; its `ScreenKeyboardEvents` entries concern screen key handling, not mutable movement axes. `tick_local_player` reads local `Keys`, then `mod_movement_keys` calls `native_movement_input` with mutable forward, strafe and all seven independent key booleans. Direction-key edits replace the axes; otherwise axis edits update only the changed directions. Sprint requests obey vanilla eligibility and subscribed false suppresses sprint for the tick. No Fabric event fires there or offers those mutable inputs. No key. |
 | `note_block_change` | **Gap:** none | The event index has no note-block, tuning or `NoteBlockEvent` entry. `note_block_change` calls `native_note_block_change` only on the authoritative server, with the dimension, position, instrument, old note, a mutable new note and a mutable cancel; cancel keeps the old note and prevents playback. No Fabric event covers that moment or those arguments. No key. |
 | `potential_spawns` | **Gap:** none; nearest `EntitySleepEvents.ALLOW_SETTING_SPAWN` (name only) | `ALLOW_SETTING_SPAWN` merely vetoes `ServerPlayer.setRespawnPosition` when a player starts sleeping ([sleep-api] lines 170-175; [base-block-server-player-mixin] lines 102-110), so its moment, arguments and answer are unrelated. `potential_spawns` calls `native_potential_spawns` with the dimension, category, position, a mutable spawn-entry list and a mutable cancel during the natural spawn pass, and cancel empties the list. The event index has no spawn-pass or potential-spawn entry. No key. |
@@ -1574,8 +1574,8 @@ The pinned Fabric revision is `2065040b236a0d5ac011bd6a45625dc49579b222` (`fabri
 | `screenshot` | **Gap:** none | The dossier has no Fabric candidate and no pinned event for a read-back screenshot. `save_screenshot` calls `native_screenshot` after the F2 frame was read back and before either PNG is written, with the RGBA image, mutable filename, optional message and mutable cancel. The hook names NeoForge's `ScreenshotEvent`; Fabric offers nothing at that moment. No key. |
 | `should_check_weak_power` | **Gap:** none | The dossier lists no Fabric event for the weak-power query. `adjust_should_check_weak_power` calls `native_should_check_weak_power` with dimension, pos, state id and direction, seeding a mutable `check` from vanilla's conductor answer. No Fabric per-block extension or event is at that query with those arguments. No key. |
 | `should_redstone_wire_connect_to` | **Gap:** none | The dossier lists no Fabric candidate, matching the hook's note that NeoForge adds nothing to vanilla `BlockBehaviour.shouldRedstoneWireConnectTo`. `adjust_should_redstone_wire_connect_to` passes dimension, pos, state id, an optional direction and a mutable `connected` seeded from vanilla. No Fabric event covers that query. No key. |
-| `play_sound` | **Gap:** none | No Fabric event in the pinned event index covers `SoundEngine.play`. The hook target `horizon_client_render::sound_engine::hooks::native_play_sound` dispatches with the client loop context, instance id, starting flag, original sound and mutable optional sound before the engine checks; listeners can edit the sound or set it to `None`, including during live refreshes. The similarly named host method that queues authoritative world sounds is not this hook. No key. |
-| `play_sound_source` | **Gap:** none; nearest `ClientPlayConnectionEvents.INIT`, `ClientPlayConnectionEvents.DISCONNECT` | The only candidates are the connection lifecycle events ([client-conn] lines 36 and 59; [play-addon] lines 51-55 and 95-99), which carry a `ClientPacketListener` and `Minecraft`, not a sound channel. `native_play_sound_source` (target `horizon_client_render::sound_engine::hooks`) reports a non-streamed sound after the engine set its pitch, volume, attenuation, looping and position. The dossier proves no Fabric client sound-engine event. No key. |
+| `play_sound` | **Gap:** none | No Fabric event in the pinned event index covers `SoundEngine.play`. The hook target `myriade_level::sound_engine::hooks::native_play_sound` dispatches with the client loop context, instance id, starting flag, original sound and mutable optional sound before the engine checks; listeners can edit the sound or set it to `None`, including during live refreshes. The similarly named host method that queues authoritative world sounds is not this hook. No key. |
+| `play_sound_source` | **Gap:** none; nearest `ClientPlayConnectionEvents.INIT`, `ClientPlayConnectionEvents.DISCONNECT` | The only candidates are the connection lifecycle events ([client-conn] lines 36 and 59; [play-addon] lines 51-55 and 95-99), which carry a `ClientPacketListener` and `Minecraft`, not a sound channel. `native_play_sound_source` (target `myriade_level::sound_engine::hooks`) reports a non-streamed sound after the engine set its pitch, volume, attenuation, looping and position. The dossier proves no Fabric client sound-engine event. No key. |
 | `play_streaming_source` | **Gap:** none; nearest `ClientPlayConnectionEvents.INIT`, `ClientPlayConnectionEvents.DISCONNECT` | Again the listed candidates are connection INIT/DISCONNECT ([client-conn] lines 36 and 59; [play-addon] lines 51-55 and 95-99), unrelated to a streamed sound. `native_play_streaming_source` reports music or a record on a channel id after `play_sound`'s edits, and the channel gives no control. No Fabric streaming-source or sound event is proven in the dossier. No key. |
 | `sound_engine_load` | **Gap:** none | The dossier lists no Fabric candidate for the sound engine opening its output. `native_sound_engine_load` fires at window start, after a resource reload with the new generation's loop context, and on an output-device change; nothing fires when there is no output. No Fabric event in the pinned index covers that moment. No key. |
 | `spread_players_teleport` | **Gap:** none; nearest `ServerMessageEvents.ALLOW_COMMAND_MESSAGE`, `ServerMessageEvents.COMMAND_MESSAGE` | Those fire in `PlayerList.broadcastChatMessage` to veto or hear a broadcast command message ([player-list-mixin] lines 63-72) with message, source and chat type ([smsg-api] lines 84 and 127). `cmd_spreadplayers` calls `native_spread_players_teleport` once per entity after the spread computed `to`, with dimension, network id, optional player UUID, `from` and mutable `target`/`cancel`. Moment, arguments and cancel target differ. No key. |

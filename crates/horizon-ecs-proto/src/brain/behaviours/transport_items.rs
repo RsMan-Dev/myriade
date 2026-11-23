@@ -13,10 +13,10 @@ use crate::cow::{Bounds, Pos};
 use crate::goals::{d2, main_hand, set_main_hand, Events};
 use crate::rules::transport_items::{self as rules, Half, Interaction, COOLDOWN_TICKS, MEM_TTL};
 use bevy_ecs::prelude::Component;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::copper_golem as cg;
-use horizon_client_lib::mobs::transport_items::chest_hinge_sound;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::copper_golem as cg;
+use myriade_engine_lib::mobs::transport_items::chest_hinge_sound;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::java_hash_map::JavaHashMap;
 
@@ -246,7 +246,7 @@ fn has_valid_target(w: &mut World, e: Entity, mw: &MobWorld, me: Vec3, size: Vec
 /// `valid_travelling_path`: the walk's path (the one followed, else one is searched as `create_path_to(pos, 0)` does), its end
 /// the eye's place; no path and out of reach is invalid, and a reach needs a side seen.
 fn valid_travelling_path(w: &World, e: Entity, mw: &MobWorld, me: Vec3, size: Vec3, t: &Target) -> bool {
-    use horizon_client_lib::mobs::path::{Evaluator, Finder};
+    use myriade_engine_lib::mobs::path::{Evaluator, Finder};
     let followed = w.get::<crate::cow::Nav>(e).and_then(|n| n.path.clone());
     let found = followed.or_else(|| {
         crate::behaviours::nearest_bed::path_mob(w, e).and_then(|(pm, follow)| {

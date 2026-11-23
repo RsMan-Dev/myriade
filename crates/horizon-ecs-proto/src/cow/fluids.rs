@@ -13,13 +13,13 @@ use bevy_ecs::{
     schedule::{Schedule, ScheduleLabel, SingleThreadedExecutor},
 };
 #[allow(unused_imports)]
-use horizon_client_lib::mobs::{
+use myriade_engine_lib::mobs::{
     MobWorld,
     nav::Navigation,
     path::{Evaluator, Finder, Path, PathMob, PATH_TYPES},
 };
 #[allow(unused_imports)]
-use horizon_client_render::{chunk::Chunk, collisions::SceneCollisions};
+use myriade_level::{chunk::Chunk, collisions::SceneCollisions};
 #[allow(unused_imports)]
 use horizon_core::geometry::{Aabb, Vec3, trig};
 use horizon_core::random::{LegacyRandom, RandomSource};
@@ -150,7 +150,7 @@ pub(crate) fn fluid_update(
                 flips.lock().unwrap().push((e, false));
             }
             *fs = FluidState { was_eye_in_water: fs.eye_in_water, ..Default::default() };
-            horizon_client_lib::motion::bubble_column_push_over(mw.world, mw.registry, mw.facts, mw.collision, b.0, &mut v.0, |_| {});
+            myriade_engine_lib::motion::bubble_column_push_over(mw.world, mw.registry, mw.facts, mw.collision, b.0, &mut v.0, |_| {});
             return;
         };
         let f = mw.fluids(bx, pos.0.y + fp.unwrap_or(&FluidParams::DEFAULT).eye_height);
@@ -171,7 +171,7 @@ pub(crate) fn fluid_update(
             v.0 = mw.pushed_by_currents(bx, v.0);
         }
         // `BubbleColumnBlock.entityInside`: a column of bubbles in the box lifts or drags it (no cost out of a fluid).
-        horizon_client_lib::motion::bubble_column_push_over(mw.world, mw.registry, mw.facts, mw.collision, b.0, &mut v.0, |_| {});
+        myriade_engine_lib::motion::bubble_column_push_over(mw.world, mw.registry, mw.facts, mw.collision, b.0, &mut v.0, |_| {});
         if f.in_water {
             c.fall_distance = 0.0;
         }
@@ -224,15 +224,15 @@ pub(crate) fn breathing(
         let water_ok = imm.has(BREATHES_WATER) || tag_breathes;
         let drowns = submerged && !water_ok && !holds;
         let held = submerged && holds && !water_ok;
-        let vanilla = horizon_client_lib::breathing::Breath {
+        let vanilla = myriade_engine_lib::breathing::Breath {
             can_breathe: !drowns,
             // The draw is the entity's for this tick: its id and the clock (`LivingEntity`'s `random`, not shared with the other mobs).
             consume: air_consumed(bonus.map_or(0.0, |b| b.0), LegacyRandom::new((clock.0 as i64) ^ (uid.0 as i64)).next_float()),
             refill: if drowns || held { 0 } else if own.is_some_and(|o| o.full_refill) { max } else { 4 },
         };
         let id = uid.0 as u32;
-        let breath = horizon_client_lib::breathing::breathe(mw.loop_context, id, tn.0, vanilla);
-        if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, tn.0, &mut air.0, max, breath, true) {
+        let breath = myriade_engine_lib::breathing::breathe(mw.loop_context, id, tn.0, vanilla);
+        if let Some(d) = myriade_engine_lib::breathing::drown(mw.loop_context, id, tn.0, &mut air.0, max, breath, true) {
             if let Some(damage) = d.damage {
                 queue.add(e, damage, Cause::Drown);
             }

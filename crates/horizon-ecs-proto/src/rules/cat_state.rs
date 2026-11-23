@@ -6,6 +6,6 @@ pub fn reduced(n: i32) -> i32 {
 }
 
 /// `Mob`'s `empty_above`: the block above `p` is air.
-pub fn empty_above(mw: &horizon_client_lib::mobs::MobWorld, p: [i32; 3]) -> bool {
+pub fn empty_above(mw: &myriade_engine_lib::mobs::MobWorld, p: [i32; 3]) -> bool {
     mw.block_name(p[0], p[1] + 1, p[2]) == "minecraft:air"
 }

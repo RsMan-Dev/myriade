@@ -4,7 +4,7 @@ use crate::behaviours::eat_held;
 use crate::bridge::{host::EcsWorld, view};
 use crate::cow::Pos;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 impl EcsWorld {
     /// `Mob.ate` (the wool grows back, a baby grows by a minute). The game event `eat` is the caller's (`HostOut` has none for it here).

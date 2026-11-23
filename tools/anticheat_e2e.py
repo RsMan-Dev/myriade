@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The dedicated server's anticheat (docs/anticheat.md), end to end: a real `horizon-client --dedicated`
+"""The dedicated server's anticheat (docs/anticheat.md), end to end: a real `myriade-engine --dedicated`
 and myriade-bot, legit bots beside cheating ones.
 
     python3 tools/anticheat_e2e.py --bin-dir target/fast            # every check
@@ -43,7 +43,7 @@ Checks:
 
 Each server runs in a fresh folder with fresh HORIZON_HOME and XDG folders (lab.game_env), on a free port,
 in a flat world (creative unless the check says otherwise: the bots fly). Build first:
-    cargo build --profile fast -p horizon-client --bin horizon-client
+    cargo build --profile fast -p myriade-engine --bin myriade-engine
     cargo build --profile fast -p myriade-bot
 """
 import argparse
@@ -124,7 +124,7 @@ def start(bins, folder, anticheat, out, name, **extra):
     (folder / 'eula.txt').write_text('eula=true\n')
     if anticheat is not None:
         (folder / 'server.toml').write_text(anticheat)
-    command = [bins / f'horizon-client{EXE}', '--resources', lab.RESOURCES, '--dedicated', '--nogui']
+    command = [bins / f'myriade-engine{EXE}', '--resources', lab.RESOURCES, '--dedicated', '--nogui']
     server = Server(command, folder, out / f'{name}-server.log')
     server.wait_for(DONE, 300)
     return server, port

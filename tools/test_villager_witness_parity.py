@@ -50,7 +50,7 @@ def main():
     oracle = lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaVillagerWitnessOracle.java'
     sources = [Path(__file__), oracle,
                lab.ROOT / 'crates/horizon-ecs-proto/src/behaviours/gossip.rs',
-               lab.ROOT / 'crates/horizon-client/src/game/interface/dedicated/command_ops_witness.rs']
+               lab.ROOT / 'crates/myriade-engine/src/game/interface/dedicated/command_ops_witness.rs']
     hashes = base.source_hashes(sources)
 
     def run(command, name, **kwargs):
@@ -71,7 +71,7 @@ def main():
     if list(expected) != ROWS:
         raise AssertionError('Missing/extra actual Java records')
     bins = lab.LOCAL / 'parity-target' / 'fast'
-    if not lab.binary(bins, 'horizon-client').exists():
+    if not lab.binary(bins, 'myriade-engine').exists():
         raise RuntimeError(f'no game binary in {bins}: build it with tools/parity.py first')
     with Server(bins, build / 'server', lab.RESOURCES.resolve(), {'level-seed': '42', 'view-distance': '4'}) as server, \
             Bot(timeout=600) as bot:

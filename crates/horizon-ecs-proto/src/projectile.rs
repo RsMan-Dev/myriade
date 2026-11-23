@@ -12,7 +12,7 @@ use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::DeferredWorld;
-use horizon_client_lib::arrows::{back_off, clip_block_hit};
+use myriade_engine_lib::arrows::{back_off, clip_block_hit};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use std::collections::HashMap;
@@ -703,7 +703,7 @@ fn heal_owner(w: &mut World, o: Entity, amount: f32) {
     }
 }
 /// A potion a player throws (the player is outside the ECS): its owner, its item (`ThrownItem`), a splash or a lingering flask.
-pub fn throw_potion(w: &mut World, owner: u32, at: Vec3, velocity: Vec3, stack: horizon_client_lib::items::ItemStack, lingering: bool) -> Entity {
+pub fn throw_potion(w: &mut World, owner: u32, at: Vec3, velocity: Vec3, stack: myriade_engine_lib::items::ItemStack, lingering: bool) -> Entity {
     let flight = if lingering { Flight::LINGERING_POTION } else { Flight::POTION };
     let e = launch(w, flight, at, velocity, Some(Who::Player(owner)));
     w.entity_mut(e).insert(crate::arrow_more::ThrownItem(stack));
@@ -729,9 +729,9 @@ fn boxed_in_liquid(w: &World, cells: [i32; 6]) -> bool {
     (x0..=x1).any(|x| (y0..=y1).any(|y| (z0..=z1).any(|z| crate::level::is_liquid(w, [x, y, z]))))
 }
 /// `findBlocksIn(box).filterState(isAir).noneMatched()`: every block the box touches is not air.
-fn boxed_in_blocks(mw: &horizon_client_lib::mobs::MobWorld<'static>, b: Aabb) -> bool {
+fn boxed_in_blocks(mw: &myriade_engine_lib::mobs::MobWorld<'static>, b: Aabb) -> bool {
     let (lo, hi) = (b.min_position(), b.max_position());
-    let mut cursor = horizon_client_render::world::BlockCursor::new(mw.world);
+    let mut cursor = myriade_level::world::BlockCursor::new(mw.world);
     for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
         for y in lo.y.floor() as i32..=hi.y.floor() as i32 {
             for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
@@ -744,11 +744,11 @@ fn boxed_in_blocks(mw: &horizon_client_lib::mobs::MobWorld<'static>, b: Aabb) ->
     true
 }
 /// `CollisionGetter.noCollision(null, box)` over blocks.
-fn no_block_collision(mw: &horizon_client_lib::mobs::MobWorld<'static>, b: Aabb) -> bool {
-    use horizon_client_render::collisions::SceneCollisions;
+fn no_block_collision(mw: &myriade_engine_lib::mobs::MobWorld<'static>, b: Aabb) -> bool {
+    use myriade_level::collisions::SceneCollisions;
     let (lo, hi) = (b.min_position(), b.max_position());
     let mut scene = SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
-    let mut cursor = horizon_client_render::world::BlockCursor::new(mw.world);
+    let mut cursor = myriade_level::world::BlockCursor::new(mw.world);
     for x in (lo.x.floor() as i32 - 1)..=(hi.x.floor() as i32 + 1) {
         for y in (lo.y.floor() as i32 - 1)..=(hi.y.floor() as i32 + 1) {
             for z in (lo.z.floor() as i32 - 1)..=(hi.z.floor() as i32 + 1) {

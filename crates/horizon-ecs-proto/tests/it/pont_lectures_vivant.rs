@@ -1,8 +1,8 @@
 //! The reads of a living entity's state through the host world (greffe L0, lot 42): effects, flags, attributes, pose and equipment,
 //! read back after the writes that set them.
 use crate::common::*;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_ecs_proto::attributes::set_armor_modifier;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::cow::{Body, set_on_fire};

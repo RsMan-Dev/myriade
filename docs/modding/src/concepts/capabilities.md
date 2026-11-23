@@ -143,7 +143,7 @@ storage writes/restores do not manufacture notifications; game-held vanilla cont
 retain implicit root-commit coalescing. Keep storage in the transaction journal: a handler that
 ignores it can lose an extracted item on abort. The hopper does not guard or repair that loss.
 
-The ignored `horizon-client` library tests under
+The ignored `myriade-engine` library tests under
 `game::machines::native_items::storage_attempt_tests::` exercise real ticks and Parts storage,
 including literal attempt/commit/abort/restore/mark traces, cooldowns, comparator scheduling,
 direct vanilla/saved-pot paths, writable notification callbacks and the minecart fallback. They require prepared `HORIZON_TEST_RESOURCES`

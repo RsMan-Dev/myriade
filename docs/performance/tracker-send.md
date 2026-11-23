@@ -11,7 +11,7 @@ without measuring: `HORIZON_SEND_BENCH=1` is also required.
 ## Prepare without running
 
 ```sh
-cargo test --locked --profile fast -p horizon-client-lib --lib \
+cargo test --locked --profile fast -p myriade-engine-lib --lib \
   --features tracker-send-bench --no-run
 ```
 
@@ -24,7 +24,7 @@ for both paths; `HORIZON_SERIAL_TICK=all` must be unset.
 
 ```sh
 HORIZON_WORKER_THREADS=4 HORIZON_SEND_BENCH=1 \
-  cargo test --locked --profile fast -p horizon-client-lib --lib \
+  cargo test --locked --profile fast -p myriade-engine-lib --lib \
   --features tracker-send-bench \
   lan::entity::send_bench::tracker_send_benchmark \
   -- --ignored --exact --nocapture --test-threads=1

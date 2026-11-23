@@ -141,7 +141,7 @@ use bevy_ecs::prelude::*;
 /// The feet of a point stand in water (`Entity.isInWater` read from the fluid of the block).
 fn water_at(w: &World, p: horizon_core::geometry::Vec3) -> bool {
     let mw = w.resource::<crate::cow::Level>().mw.0;
-    mw.facts.get(mw.world.block(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32)).fluid == horizon_client_lib::blocks::Fluid::Water
+    mw.facts.get(mw.world.block(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32)).fluid == myriade_engine_lib::blocks::Fluid::Water
 }
 /// `drowned:ok_target` (`Drowned.okTarget`): at night, or when the target is in water.
 fn drowned_ok_target(w: &World, e: Entity) -> bool {

@@ -177,7 +177,7 @@ fn ride_with(w: &mut World, mount: Entity, p: &'static Params, at: Vec3, special
     let rider = spawn(w, p.rider, at, r.next_long())?;
     guard(w, rider, p);
     if crate::equip_stack::get(w, rider, HEAD).is_none() {
-        crate::equip_stack::set(w, rider, HEAD, Some(horizon_client_lib::items::ItemStack::new(p.helmet, 1)));
+        crate::equip_stack::set(w, rider, HEAD, Some(myriade_engine_lib::items::ItemStack::new(p.helmet, 1)));
     }
     for slot in [MAINHAND, HEAD] {
         enchant(w, rider, slot, special, r);

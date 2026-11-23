@@ -527,7 +527,7 @@ PROBE_SOURCE = re.compile(r"/examples/probe/(?:(support)/)?(\w+)\.rs$")
 # Each crate's probe example (crates/<crate>/examples/probe) and its target name. Until 2026-10-24 they were all
 # `probe`, and Cargo copies every crate's examples into one <profile>/examples/: a harness could run the binary
 # another harness had just copied there.
-PROBE_TARGETS = {"horizon-client": "client_probe", "horizon-protocol": "protocol_probe", "horizon-world": "world_probe"}
+PROBE_TARGETS = {"myriade-engine": "client_probe", "horizon-protocol": "protocol_probe", "horizon-world": "world_probe"}
 OLD_PROBE_SOURCE = re.compile(r"crates/([\w-]+)/examples/probe[/.]")
 
 

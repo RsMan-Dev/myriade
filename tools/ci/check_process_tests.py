@@ -40,8 +40,8 @@ COMMAND = re.compile(r"\bCommand\b")
 # Kept unblanked by rust_tests.functions(keep=...), so `#[cfg(target_os = "windows")]` is seen.
 WINDOWS = frozenset({"windows"})
 WINDOWS_ONLY = re.compile(r"#\s*\[\s*cfg\s*\(\s*(?:windows|target_os\s*=\s*\"windows\")\s*\)\s*\]")
-# The crates/horizon-client tree also builds horizon-client-lib (its [lib] path reaches into it).
-SHARED = {"crates/horizon-client": ("horizon-client", "horizon-client-lib")}
+# The crates/myriade-engine tree also builds myriade-engine-lib (its [lib] path reaches into it).
+SHARED = {"crates/myriade-engine": ("myriade-engine", "myriade-engine-lib")}
 
 
 def spawn_names(path=SPAWNS):

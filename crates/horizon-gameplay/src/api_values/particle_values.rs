@@ -1,6 +1,6 @@
 //! Particle keys cross the game boundary through the load-resolved provider table.
 use super::{TryIntoApi, TryIntoEngine};
-use horizon_client::particles::{ParticleOptions as EngineOptions, ParticleType};
+use myriade_engine::particles::{ParticleOptions as EngineOptions, ParticleType};
 use mod_api::{__private::ParticleKind, ParticleOptions as ApiOptions};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

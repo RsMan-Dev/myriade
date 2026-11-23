@@ -2,8 +2,8 @@
 //! and the draws answer, and nothing is written on a creature that uses nothing.
 use crate::common::*;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::cow::{Burning, Health};
 use horizon_ecs_proto::host_out_using::UsingEvent;
@@ -14,13 +14,13 @@ fn setup() -> HostSetup {
 }
 
 /// The using events the channel carries since the last step.
-fn events(h: &mut EcsWorld, mw: &horizon_client_lib::mobs::MobWorld<'_>) -> Vec<UsingEvent> {
+fn events(h: &mut EcsWorld, mw: &myriade_engine_lib::mobs::MobWorld<'_>) -> Vec<UsingEvent> {
     use horizon_ecs_proto::host_out::HostEvent;
     h.step(mw).into_iter().filter_map(|ev| if let HostEvent::Using(u) = ev { Some(u) } else { None }).collect()
 }
 
 /// Two cows in a fresh world; the first is the one under test.
-fn fixture() -> (EcsWorld, Entity, Entity, &'static horizon_client_lib::mobs::MobWorld<'static>) {
+fn fixture() -> (EcsWorld, Entity, Entity, &'static myriade_engine_lib::mobs::MobWorld<'static>) {
     have_data();
     let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
     let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");

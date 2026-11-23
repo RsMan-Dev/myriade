@@ -133,7 +133,7 @@ fn crumb(w: &mut World, e: Entity) {
 
 /// The meal: the host runs the consume effects with a random seeded from the creature's own (the host's `LegacyRandom` is not the
 /// ECS generator), then answers with `finish_held_use`.
-fn ask(w: &mut World, e: Entity, stack: horizon_client_lib::items::ItemStack) {
+fn ask(w: &mut World, e: Entity, stack: myriade_engine_lib::items::ItemStack) {
     let (hi, lo) = with_rng(w, e, |r| (r.next_u32(), r.next_u32()));
     let seed = (i64::from(hi) << 32) | i64::from(lo);
     let silent = w.get::<Silent>(e).is_some();
@@ -142,7 +142,7 @@ fn ask(w: &mut World, e: Entity, stack: horizon_client_lib::items::ItemStack) {
 
 /// The host's answer: the meal is done. One of the stack is eaten, or the use remainder replaces it; the clock restarts.
 /// False (nothing changed) when the mouth no longer holds `stack` or the creature is gone.
-pub fn finish(w: &mut World, e: Entity, stack: &horizon_client_lib::items::ItemStack, remainder: Option<horizon_client_lib::items::ItemStack>) -> bool {
+pub fn finish(w: &mut World, e: Entity, stack: &myriade_engine_lib::items::ItemStack, remainder: Option<myriade_engine_lib::items::ItemStack>) -> bool {
     if !still_holds(w, e, stack) {
         return false;
     }
@@ -158,6 +158,6 @@ pub fn finish(w: &mut World, e: Entity, stack: &horizon_client_lib::items::ItemS
 }
 
 /// The creature lives and its mouth still holds the stack of the meal.
-pub fn still_holds(w: &World, e: Entity, stack: &horizon_client_lib::items::ItemStack) -> bool {
+pub fn still_holds(w: &World, e: Entity, stack: &myriade_engine_lib::items::ItemStack) -> bool {
     w.get::<Pos>(e).is_some() && !crate::tear_down::is_dead(w, e) && main_hand(w, e) == Some(stack)
 }

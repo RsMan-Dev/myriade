@@ -49,7 +49,7 @@ pub fn set_variant(w: &mut World, e: Entity, v: u8) {
 
 /// `f` with the place of `at` as the draws read it, built once for the spawn: the biome `Spawner` holds, its tags, the structures of
 /// the host (`StructureHost`: a piece holding the position) and the moon of the clock's day (`DimensionType.moonPhase`).
-pub fn with_place<T>(w: &mut World, mw: &horizon_client_lib::mobs::MobWorld<'_>, at: [f64; 3], f: impl FnOnce(&mut World, &crate::rules::variant::Place) -> T) -> T {
+pub fn with_place<T>(w: &mut World, mw: &myriade_engine_lib::mobs::MobWorld<'_>, at: [f64; 3], f: impl FnOnce(&mut World, &crate::rules::variant::Place) -> T) -> T {
     let pos = [at[0].floor() as i32, at[1].floor() as i32, at[2].floor() as i32];
     let zoom = w.get_resource::<crate::spawning::Spawner>().map_or_else(|| crate::spawn_biome::zoom_of(mw), |s| s.zoom);
     let biome = &mw.biomes.get(crate::spawn_biome::biome_at(mw, zoom, pos[0], pos[1], pos[2])).name;
@@ -57,7 +57,7 @@ pub fn with_place<T>(w: &mut World, mw: &horizon_client_lib::mobs::MobWorld<'_>,
     let host = w.get_resource::<crate::spawn_structures::StructureHost>().cloned();
     let inside = |id: &str| host.as_ref().is_some_and(|h| h.has_piece_at(pos, id));
     let day = w.get_resource::<crate::cow::Clock>().map_or(0, |c| c.game_now()).div_euclid(24_000);
-    let moon = horizon_client_lib::mobs::spawning::MOON_BRIGHTNESS[day.rem_euclid(8) as usize];
+    let moon = myriade_engine_lib::mobs::spawning::MOON_BRIGHTNESS[day.rem_euclid(8) as usize];
     f(w, &crate::rules::variant::Place { biome, biome_has: &has, in_structure: &inside, moon })
 }
 

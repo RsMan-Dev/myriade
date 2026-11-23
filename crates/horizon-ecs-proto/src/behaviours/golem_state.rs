@@ -1,6 +1,6 @@
 //! The copper golem's animation state (CopperGolem.COPPER_GOLEM_STATE), read by the entity-data sync. Data only; absent = idle.
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::copper_golem as cg;
+use myriade_engine_lib::mobs::copper_golem as cg;
 
 /// The current animation; removed when it returns to idle (rare state, sparse).
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]

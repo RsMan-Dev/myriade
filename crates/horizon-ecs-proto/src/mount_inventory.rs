@@ -5,7 +5,7 @@
 use crate::behaviours::forget_target::LlamaStrength;
 use crate::goals::Slot;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 /// The slots of a chest, `columns * 3` of them (`None` empty). Only a mount that carries a chest has it.
 #[derive(Component, Clone, Debug, Default)]

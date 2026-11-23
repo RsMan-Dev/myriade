@@ -8,5 +8,5 @@ unset RUSTFLAGS CARGO_ENCODED_RUSTFLAGS
 echo "$(rustc --version)"
 echo "dev: profile fast, incremental, lto off, codegen-units 16"
 cargo build --locked --profile fast -p horizon-game -p horizon-prepare
-echo "built binary: horizon-client"
+echo "built binary: myriade-engine"
 echo "built preparer: horizon-prepare"

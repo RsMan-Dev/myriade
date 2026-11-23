@@ -16,7 +16,7 @@ use crate::inside::IgnoresTriggers;
 use crate::item::Item;
 use crate::orb::Orb;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_world::registry::BlockStateId;
 

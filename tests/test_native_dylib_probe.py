@@ -55,18 +55,18 @@ class WindowsAllocatorTests(unittest.TestCase):
 
     def test_game_without_allocator_and_imports_from_std_pass(self):
         rows = self.verdict({
-            "horizon-client.exe": ([], {"std.dll": [ALLOC]}),
-            "horizon_client.dll": ([BACKTRACE], {"std.dll": [ALLOC]}),
+            "myriade-engine.exe": ([], {"std.dll": [ALLOC]}),
+            "myriade_engine.dll": ([BACKTRACE], {"std.dll": [ALLOC]}),
             "std.dll": ([ALLOC], {}),
         })
-        self.assertEqual(rows["horizon_client.dll"]["exports"], [])
+        self.assertEqual(rows["myriade_engine.dll"]["exports"], [])
 
     def test_second_exporter_refused(self):
         with self.assertRaisesRegex(ValueError, "one image exporting"):
-            self.verdict({"horizon-client.exe": ([], {"std.dll": [ALLOC]}),
-                          "horizon_client.dll": ([ALLOC], {}), "std.dll": ([ALLOC], {})})
+            self.verdict({"myriade-engine.exe": ([], {"std.dll": [ALLOC]}),
+                          "myriade_engine.dll": ([ALLOC], {}), "std.dll": ([ALLOC], {})})
 
     def test_import_from_a_non_exporter_refused(self):
         with self.assertRaisesRegex(ValueError, "other than std.dll"):
-            self.verdict({"horizon-client.exe": ([], {"horizon_client.dll": [ALLOC]}),
-                          "horizon_client.dll": ([], {}), "std.dll": ([ALLOC], {})})
+            self.verdict({"myriade-engine.exe": ([], {"myriade_engine.dll": [ALLOC]}),
+                          "myriade_engine.dll": ([], {}), "std.dll": ([ALLOC], {})})

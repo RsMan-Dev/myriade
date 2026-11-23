@@ -10,7 +10,7 @@ pub enum BlockEntitySnapshotError {
 
 #[doc(hidden)]
 pub fn apply_block_entity_snapshot(
-    entity: &mut horizon_client::containers::ModBlockEntity,
+    entity: &mut myriade_engine::containers::ModBlockEntity,
     snapshot: &mod_api::ModBlockEntity,
     before: mod_api::item::containers::ModRevision,
     items: &Items,
@@ -38,7 +38,7 @@ pub fn apply_block_entity_snapshot(
 // Validation runs after all listeners return; dispatch does not retain per-mod provenance.
 // Bound diagnostics even when mods register many entity types.
 pub fn finish_block_entity_writeback<T>(
-    entity: &mut horizon_client::containers::ModBlockEntity,
+    entity: &mut myriade_engine::containers::ModBlockEntity,
     snapshot: &mod_api::ModBlockEntity,
     before: mod_api::item::containers::ModRevision,
     items: &Items,

@@ -13,13 +13,13 @@ use bevy_ecs::{
     schedule::{Schedule, ScheduleLabel, SingleThreadedExecutor},
 };
 #[allow(unused_imports)]
-use horizon_client_lib::mobs::{
+use myriade_engine_lib::mobs::{
     MobWorld,
     nav::Navigation,
     path::{Evaluator, Finder, Path, PathMob, PATH_TYPES},
 };
 #[allow(unused_imports)]
-use horizon_client_render::{chunk::Chunk, collisions::SceneCollisions};
+use myriade_level::{chunk::Chunk, collisions::SceneCollisions};
 #[allow(unused_imports)]
 use horizon_core::geometry::{Aabb, Vec3, trig};
 #[allow(unused_imports)]
@@ -57,7 +57,7 @@ unsafe impl Sync for Mw {}
 /// The leaked `World` of the blocks, for the one system that changes them (`block_changes`, which runs alone in the
 /// chain: no other system holds a reference then).
 #[derive(Clone, Copy)]
-pub struct Blocks(pub *mut horizon_client_render::world::World);
+pub struct Blocks(pub *mut myriade_level::world::World);
 
 // SAFETY: one system at a time dereferences it (`block_changes`, alone in the chain), and the pointer comes from the host, which outlives the Level.
 unsafe impl Send for Blocks {}
@@ -83,12 +83,12 @@ impl Level {
 }
 
 /// A walled stone slab of `half` blocks each way from the origin, on the prepared vanilla data.
-pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<horizon_client_lib::mobs::MobType>) {
+pub fn build_level(half: i32, patches: bool) -> (Level, Species, Arc<myriade_engine_lib::mobs::MobType>) {
     build_level_with(half, level_builder(half, patches))
 }
 
-fn level_builder(half: i32, patches: bool) -> impl FnOnce(&mut horizon_client_render::world::World, &horizon_world::registry::BlockRegistry) {
-    move |blocks: &mut horizon_client_render::world::World, registry: &horizon_world::registry::BlockRegistry| {
+fn level_builder(half: i32, patches: bool) -> impl FnOnce(&mut myriade_level::world::World, &horizon_world::registry::BlockRegistry) {
+    move |blocks: &mut myriade_level::world::World, registry: &horizon_world::registry::BlockRegistry| {
         let stone = registry.default_state("minecraft:stone").unwrap();
         let chunks = (half + 15) / 16 + 1;
         for cx in -chunks..chunks {
@@ -109,7 +109,7 @@ fn level_builder(half: i32, patches: bool) -> impl FnOnce(&mut horizon_client_re
         }
         if patches {
             // 3 x 3 hazards every 48 blocks: lava, a pond, powder snow (in the floor), fire and cactus (on it).
-            let put = |blocks: &mut horizon_client_render::world::World, name: &str, x0: i32, z0: i32, y: i32| {
+            let put = |blocks: &mut myriade_level::world::World, name: &str, x0: i32, z0: i32, y: i32| {
                 let state = registry.default_state(name).unwrap();
                 for x in x0..x0 + 3 {
                     for z in z0..z0 + 3 {
@@ -138,7 +138,7 @@ fn level_builder(half: i32, patches: bool) -> impl FnOnce(&mut horizon_client_re
 }
 
 /// `build_level` over a world of the caller's making (`build` fills the blocks).
-pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render::world::World, &horizon_world::registry::BlockRegistry)) -> (Level, Species, Arc<horizon_client_lib::mobs::MobType>) {
+pub fn build_level_with(half: i32, build: impl FnOnce(&mut myriade_level::world::World, &horizon_world::registry::BlockRegistry)) -> (Level, Species, Arc<myriade_engine_lib::mobs::MobType>) {
     let level = build_level_neutral_with(half, build);
     let chosen = process_species_name();
     let species = *TABLE.get().expect("a level was built").iter().find(|s| s.name == chosen).expect("a known species");
@@ -150,9 +150,9 @@ pub fn build_level_with(half: i32, build: impl FnOnce(&mut horizon_client_render
 
 /// `build_level_with` that does not read the species of the process (`HORIZON_SPECIES`): the world and the table of every species, the same
 /// for every identifier. A test built on it depends on the identifier only if it asks for `species()` or the skips.
-pub fn build_level_neutral_with(half: i32, build: impl FnOnce(&mut horizon_client_render::world::World, &horizon_world::registry::BlockRegistry)) -> Level {
+pub fn build_level_neutral_with(half: i32, build: impl FnOnce(&mut myriade_level::world::World, &horizon_world::registry::BlockRegistry)) -> Level {
     let (mw, types, blocks_ptr) =
-        horizon_client_lib::mobs::world::leaked_test_world_mut(true, build).expect("HORIZON_TEST_RESOURCES");
+        myriade_engine_lib::mobs::world::leaked_test_world_mut(true, build).expect("HORIZON_TEST_RESOURCES");
     // The table of every species, the items and the tags: the same for the whole process, made once (the first level builds them).
     let table = TABLE.get_or_init(|| {
         let table = species_rows(types);
@@ -177,7 +177,7 @@ pub fn build_level_neutral(half: i32, patches: bool) -> Level {
 
 /// The level of a host world (`bridge/host.rs`): the mob world it is given (read only, lent for one call), no blocks of its own
 /// (`blocks` is null: `block_changes` reports the change as a `HostEvent::SetBlock`), a spatial index of `half` blocks each way.
-pub(crate) fn host_level(mw: &'static MobWorld<'static>, types: &'static horizon_client_lib::mobs::MobTypes, half: i32) -> Level {
+pub(crate) fn host_level(mw: &'static MobWorld<'static>, types: &'static myriade_engine_lib::mobs::MobTypes, half: i32) -> Level {
     // The species' rows need the mob types: a mob world does not carry them. `type_tags::install` is not run here (it needs the
     // resources' folder); a process whose first level is a host's keeps no tags.
     let _ = TYPES.set(types);
@@ -329,7 +329,7 @@ pub(crate) fn block_changes(
     if !lit.is_empty() {
         // SAFETY: as above (`lit` is empty on the host's level).
         unsafe {
-            horizon_client_lib::mobs::world::relight_test_world(&mut *level.blocks.0, &lit);
+            myriade_engine_lib::mobs::world::relight_test_world(&mut *level.blocks.0, &lit);
         }
     }
 }

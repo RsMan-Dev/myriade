@@ -1,6 +1,6 @@
 //! Lot 16a: the rules of the old Mob's supplied-path navigation (nav.rs) that the ECS keeps in `nav_supplied::follow`.
 use crate::common::*;
-use horizon_client_lib::mobs::path::{Evaluator, Path, PathNode, PathType};
+use myriade_engine_lib::mobs::path::{Evaluator, Path, PathNode, PathType};
 use horizon_ecs_proto::{
     bridge::host::HostSetup,
     cow::{BlockChanges, Following, Health, NeedsPath, Nav, Pos, Recompute, Stroll, surface_search},

@@ -1,4 +1,4 @@
-//! The real dedicated server (`horizon-client --dedicated`) against a protocol bot that walks through
+//! The real dedicated server (`myriade-engine --dedicated`) against a protocol bot that walks through
 //! freshly generated terrain. Needs the prepared resources; skipped without them.
 use horizon_protocol::{
     PROTOCOL_VERSION,
@@ -28,7 +28,7 @@ impl Drop for Server {
 
 fn resources() -> Option<PathBuf> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../.local/horizon-client")
+        .join("../../.local/myriade-engine")
         .join(horizon_core::VANILLA_VERSION);
     root.join("items.json").exists().then_some(root)
 }
@@ -112,7 +112,7 @@ fn a_dedicated_server_keeps_ticking_while_a_player_walks() {
     )
     .unwrap();
     std::fs::write(game.join("eula.txt"), "eula=true\n").unwrap();
-    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_horizon-client"));
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_myriade-engine"));
     command
         .args(["--resources".as_ref(), resources.as_os_str()])
         .args(["--dedicated", "--nogui"])

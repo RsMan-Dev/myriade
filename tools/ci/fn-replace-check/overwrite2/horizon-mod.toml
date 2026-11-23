@@ -14,7 +14,7 @@ mixins = "MIXINS"
 
 [[native.mixin]]
 id = "overwrite"
-target = "horizon_client::game::commands::misc::millis"
+target = "myriade_engine::game::commands::misc::millis"
 kind = "OVERWRITE"
 helper = "src/mixins/overwrite.rs"
 bindings = [{ name = "nanos", ty = "u64", value = "nanos" }]

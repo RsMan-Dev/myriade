@@ -1,6 +1,6 @@
 //! Item stacks in NBT (`ItemStack.CODEC`): id, count and components, alone or in
 //! slot lists.
-use horizon_client_core::nbt_value::{number, string, text};
+use myriade_data::nbt_value::{number, string, text};
 use horizon_core::nbt::Tag;
 use std::sync::Arc;
 

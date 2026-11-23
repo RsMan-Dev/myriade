@@ -15,7 +15,7 @@ it are on [Bridges](4-bridges.md#example).
 ```toml
 [[native.module]]
 id = "runtime"
-file = "crates/horizon-client/src/game/world/autosave.rs"
+file = "crates/myriade-engine/src/game/world/autosave.rs"
 name = "fnr_runtime"
 source = "src/runtime.rs"
 ```
@@ -39,7 +39,7 @@ helpers call `pub`. The module may call your mod's crate; your mod's crate canno
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `id` | yes | The row's name, unique in the mod. |
-| `file` | yes | The game source file whose module is mirrored, relative to the repository root: `crates/horizon-client/src/…`. |
+| `file` | yes | The game source file whose module is mirrored, relative to the repository root: `crates/myriade-engine/src/…`. |
 | `name` | yes | The module's Rust name. Pick one the destination module does not use, with a prefix of your own, such as `fnr_`. |
 | `source` | yes | Your file under `src/` with the module's items. |
 | `visibility` | no | The module's visibility: `"pub(crate)"` (the default, enough for your helpers) or `"pub"`. |
@@ -54,7 +54,7 @@ The `horizon-mod.toml:` errors come when the manifest is read; the coded ones co
 
 | Message | Fix |
 | --- | --- |
-| ``E_MIXIN_MODULE_DESTINATION: <mod>:<row>: <file> is not a file of the game crate (`horizon_client`); …`` | Name a file under `crates/horizon-client/src/`. |
+| ``E_MIXIN_MODULE_DESTINATION: <mod>:<row>: <file> is not a file of the game crate (`myriade_engine`); …`` | Name a file under `crates/myriade-engine/src/`. |
 | `E_MIXIN_MODULE_SOURCE: <mod>:<row>: <parse error>` | Fix the Rust error shown in `source`. |
 | `horizon-mod.toml: module file must be a plain path` | Write `file` as a relative path without `..`. |
 | `horizon-mod.toml: module name must be an identifier` | Use a Rust identifier. |

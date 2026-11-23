@@ -11,7 +11,7 @@
 
 myriade-bot stand in for the clients (`--brand`). Each server runs in a fresh folder with fresh HORIZON_HOME
 and XDG folders (lab.game_env), on a free port. Build first:
-    cargo build --profile fast -p horizon-game --bin horizon-client
+    cargo build --profile fast -p horizon-game --bin myriade-engine
     cargo build --profile fast -p myriade-bot
 """
 import argparse
@@ -59,7 +59,7 @@ def server(bins, folder, out, name, extra):
     props = dict(PROPERTIES, **extra, **{'server-port': str(port)})
     (folder / 'server.properties').write_text(''.join(f'{k}={v}\n' for k, v in props.items()))
     (folder / 'eula.txt').write_text('eula=true\n')
-    command = [bins / f'horizon-client{EXE}', '--resources', lab.RESOURCES, '--dedicated', '--nogui']
+    command = [bins / f'myriade-engine{EXE}', '--resources', lab.RESOURCES, '--dedicated', '--nogui']
     s = Server(command, folder, out / f'{name}.log')
     s.wait_for(DONE, 300)
     return s, port

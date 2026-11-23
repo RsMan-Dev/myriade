@@ -4,7 +4,7 @@ use crate::behaviours::food_inventory::{self as inv, Stock};
 use crate::nbt::{accept, owner, Field};
 use bevy_ecs::prelude::*;
 use crate::cow::Level;
-use horizon_client_lib::items::Items;
+use myriade_engine_lib::items::Items;
 use horizon_core::nbt::{Compound, Tag};
 use std::borrow::Cow;
 

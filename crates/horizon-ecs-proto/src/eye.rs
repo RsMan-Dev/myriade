@@ -7,7 +7,7 @@ use crate::item::drop_item;
 use crate::rules::eye::update_delta;
 use crate::cow_helpers::with_level_random;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use horizon_core::random::RandomSource;
 

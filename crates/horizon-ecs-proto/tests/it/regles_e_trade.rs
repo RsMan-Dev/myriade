@@ -20,7 +20,7 @@ fn a_shown_trade_has_no_drop_chance_and_clearing_it_restores_the_default() {
     let sp = *table.iter().find(|s| s.name == "minecraft:villager").unwrap();
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 1);
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
-    let farmer = horizon_client_lib::mobs::villager::profession_index("farmer").unwrap();
+    let farmer = myriade_engine_lib::mobs::villager::profession_index("farmer").unwrap();
     h.world.entity_mut(e).insert(Merchant::new(false, farmer, 0));
     h.world.get_mut::<Merchant>(e).unwrap().trade.xp = 1;
     ensure_offers(&mut h.world, e);

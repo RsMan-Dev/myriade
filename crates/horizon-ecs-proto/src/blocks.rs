@@ -3,7 +3,7 @@
 //! (`StateChanges`, applied by `block_changes` with the same light, hazard, path and wake-up effects as a named block).
 use crate::cow::{Level, StateChanges};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_world::registry::BlockStateId;
 
 /// The state of the block at `p` (its id).

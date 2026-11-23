@@ -1,7 +1,7 @@
 //! `VillageSiege`: at midnight one night in ten, 20 zombies spawn two ticks
 //! apart near a village 32 blocks from a player standing in it.
 use crate::custom_spawner::{CustomSpawnerLevel, section, sections_to_village};
-use horizon_client::mobs::{Species, raider, spawn_rules};
+use myriade_engine::mobs::{Species, raider, spawn_rules};
 use horizon_core::{geometry::Vec3, random::RandomSource};
 use std::collections::HashSet;
 

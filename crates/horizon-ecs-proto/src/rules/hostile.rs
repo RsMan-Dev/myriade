@@ -1,5 +1,5 @@
 //! The numbers of a hostile monster: its melee reach, cooldowns and repath, its health after a hit, and its chance to burn in daylight.
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 /// The damage of a monster's blow: its own, or 1 when it has none.

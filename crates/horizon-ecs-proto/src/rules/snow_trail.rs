@@ -1,4 +1,4 @@
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 /// The four corners of the box (±`corner` on x and z) at the feet row `y`, as cells, in the Mob's order.
 pub fn corner_cells(x: f64, z: f64, y: i32, corner: f64) -> [[i32; 3]; 4] {

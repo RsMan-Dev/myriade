@@ -52,7 +52,7 @@ had no use in code and is removed in phase 0. `horizon-protocol` uses `attachmen
 file.
 
 **Content and render (phase 5): engine-owned render slots.** The render geometry moves into the engine, and the
-render places move onto the engine-owned slot table; mod-render keeps the adapters. `horizon-client-render` has five mod dependencies
+render places move onto the engine-owned slot table; mod-render keeps the adapters. `myriade-level` has five mod dependencies
 (`-mod-api`, `-mod-api-macros`, `-mod-package`, `-mod-render`, `-mod-runtime`).
 
 **Hooks (phase 6): not built.** The hook bodies under `game/native_hooks/` and most of `game/modding/` are `impl Game`

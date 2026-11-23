@@ -45,7 +45,7 @@ pub fn feet(w: &World, e: Entity) -> [i32; 3] {
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
 }
 /// The level's world (the blocks, their tags and properties).
-pub fn level(w: &World) -> &horizon_client_lib::mobs::MobWorld {
+pub fn level(w: &World) -> &myriade_engine_lib::mobs::MobWorld {
     w.resource::<Level>().mw.0
 }
 

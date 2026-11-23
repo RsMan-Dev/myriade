@@ -19,7 +19,7 @@ console` attaches through a pipe, runs two commands and shows what they log.
 
 Everything runs in a fresh temporary folder with fresh HORIZON_HOME and XDG folders and no audio. Logs go
 to --out. Build first:
-    cargo build --profile fast -p horizon-game -p horizon-client-lib --bins -p myriade-bot -p horizon-server
+    cargo build --profile fast -p horizon-game -p myriade-engine-lib --bins -p myriade-bot -p horizon-server
 """
 import argparse
 import http.client
@@ -353,7 +353,7 @@ generate-structures = false
 spawn-protection = 0
 
 [engine]
-path = {json.dumps(str(bins / f'horizon-client{EXE}'))}
+path = {json.dumps(str(bins / f'myriade-engine{EXE}'))}
 resources = {json.dumps(str(lab.RESOURCES.resolve()))}
 restart_on_crash = false
 

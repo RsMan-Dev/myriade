@@ -68,7 +68,7 @@ the file you share.
 
 The game reads content once, at start-up: after you edit a file, build again, copy the new `.hmod` and restart.
 
-If you run a Horizon game you built yourself, `cargo horizon-mod run --game <path to horizon-client>` builds the
+If you run a Horizon game you built yourself, `cargo horizon-mod run --game <path to myriade-engine>` builds the
 mod and starts that game with it always on.
 
 ## 5. Check it before you publish

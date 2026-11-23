@@ -3,7 +3,7 @@
 //! SetPlayerIdleTimeoutCommand, BanListCommands, WhitelistCommand): commands of a
 //! dedicated server, run on its lists by an operator in game.
 use super::host::{CommandHost, R};
-use horizon_client::{
+use myriade_engine::{
     command::{Arg, Context},
     server::user_lists::NameAndId,
     text::Text,

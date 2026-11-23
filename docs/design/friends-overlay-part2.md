@@ -112,10 +112,10 @@ decompilation.
 
 ## Implementation structure and size gates
 
-Prefer small, cohesive files under `crates/horizon-client/src/friends_overlay/`:
+Prefer small, cohesive files under `crates/myriade-engine/src/friends_overlay/`:
 `mod.rs`, `model.rs`, `layout.rs`, `shell.rs`, `add.rs`, `entries.rs`, `requests.rs`,
 `links.rs`, `focus.rs` and `faces.rs`. These are proposed responsibility boundaries, not a
-requirement to create every file. Keep social data in `horizon-client-render/src/social.rs`;
+requirement to create every file. Keep social data in `myriade-level/src/social.rs`;
 use a sibling toast module for account notifications rather than embedding it in screen state.
 
 The split checklist names explicit backend/notification/face steps and **eight UI work
@@ -140,8 +140,8 @@ keys into `horizon-friends`. No new machine translations or "reviewed" language 
 ## Validation and evidence
 
 Use the current manifests to choose test targets. On the inspected main,
-`horizon-client/src/lib.rs` declares gameplay and `main.rs` is a thin executable. Therefore
-`cargo test -p horizon-client --bin horizon-client ...` matching zero tests does not validate
+`myriade-engine/src/lib.rs` declares gameplay and `main.rs` is a thin executable. Therefore
+`cargo test -p myriade-engine --bin myriade-engine ...` matching zero tests does not validate
 pause routing. Verify a nonzero match count for the actual library/module filter.
 
 For each implementation PR:

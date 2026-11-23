@@ -182,7 +182,7 @@ A native mod's code is in the game's binary. What can be made fast:
 ### Measured
 
 On the desktop (i7-13700KF, `-j 8`, Linux, `rustc` 1.99, the launcher's `profile.fast`, incremental), building
-`horizon-client` as the launcher does, on 2026-11-05 while other builds kept the machine at a load of about 30 to 40
+`myriade-engine` as the launcher does, on 2026-11-05 while other builds kept the machine at a load of about 30 to 40
 (an idle machine is faster; the ratios are the point):
 
 | Build | Time |

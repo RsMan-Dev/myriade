@@ -1,7 +1,7 @@
 //! `ThrownTrident` (arrow flight with 0.99 water inertia, the reversed bounce off a hit, sticking,
 //! Loyalty's return to the owner) and the pure rules around it: the Breeze deflection and the segment test.
-use horizon_client::arrows::{Pickup, back_off};
-use horizon_client::{items::ItemStack, projectiles::ProjectileWorld};
+use myriade_engine::arrows::{Pickup, back_off};
+use myriade_engine::{items::ItemStack, projectiles::ProjectileWorld};
 use horizon_core::{
     geometry::{Aabb, Vec3},
     random::{EntityRandom, RandomSource},
@@ -10,8 +10,8 @@ use horizon_core::{
 pub struct ThrownTrident {
     /// Entity-owned registration metadata; content clones are detached.
     pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
-    /// When it joined its list (`horizon_client::join_seq`); set by the list.
-    pub join: horizon_client::join_seq::JoinSeq,
+    /// When it joined its list (`myriade_engine::join_seq`); set by the list.
+    pub join: myriade_engine::join_seq::JoinSeq,
     /// The entity id a server tracks it by (0 until it is tracked).
     pub id: u32,
     pub stack: ItemStack,
@@ -71,7 +71,7 @@ pub struct ThrownTrident {
 impl ThrownTrident {
     /// A trident loaded from its NBT (`AbstractArrow.readAdditionalSaveData`).
     pub fn from_nbt(
-        n: horizon_client::entity_nbt::TridentNbt,
+        n: myriade_engine::entity_nbt::TridentNbt,
         tag: &horizon_core::nbt::Tag,
         registry: &horizon_world::registry::BlockRegistry,
     ) -> Self {
@@ -83,7 +83,7 @@ impl ThrownTrident {
     /// `/data` keeps its runtime identity, random and tick count.
     pub fn load_nbt(
         &mut self,
-        n: horizon_client::entity_nbt::TridentNbt,
+        n: myriade_engine::entity_nbt::TridentNbt,
         tag: &horizon_core::nbt::Tag,
         registry: &horizon_world::registry::BlockRegistry,
     ) {
@@ -91,7 +91,7 @@ impl ThrownTrident {
         // unreadable reads as null.
         self.last_state = tag
             .get("inBlockState")
-            .and_then(|s| horizon_client::entity_nbt::state_from_nbt(registry, s));
+            .and_then(|s| myriade_engine::entity_nbt::state_from_nbt(registry, s));
         self.position = n.position;
         self.previous = n.position;
         self.yaw = n.yaw;
@@ -122,8 +122,8 @@ impl ThrownTrident {
         registry: &horizon_world::registry::BlockRegistry,
         raw: Option<&horizon_core::nbt::Tag>,
     ) -> horizon_core::nbt::Tag {
-        let mut tag = horizon_client::entity_nbt::trident_to_nbt(
-            &horizon_client::entity_nbt::TridentSave {
+        let mut tag = myriade_engine::entity_nbt::trident_to_nbt(
+            &myriade_engine::entity_nbt::TridentSave {
                 position: self.position,
                 motion: self.velocity,
                 yaw: self.yaw,
@@ -153,7 +153,7 @@ impl ThrownTrident {
             if let Some(state) = self.last_state {
                 map.insert(
                     "inBlockState".into(),
-                    horizon_client::entity_nbt::state_to_nbt(registry, state),
+                    myriade_engine::entity_nbt::state_to_nbt(registry, state),
                 );
             }
         }
@@ -188,12 +188,12 @@ impl ThrownTrident {
             on_ground: false,
             fire_ticks: 0,
             fall_distance: 0.0,
-            sound_event: horizon_client::entity_nbt::TRIDENT_HIT_GROUND.to_owned(),
+            sound_event: myriade_engine::entity_nbt::TRIDENT_HIT_GROUND.to_owned(),
             was_touching_water: false,
             age: 0,
             owner: 0,
             guest: None,
-            random: horizon_client::projectiles::unique_random(position),
+            random: myriade_engine::projectiles::unique_random(position),
             deflected_by: None,
             first_tick: true,
             canceled_impact_inside: false,
@@ -264,11 +264,11 @@ impl ThrownTrident {
             atan2_degrees(m.x, m.z)
         };
         let x_rot = atan2_degrees(m.y, m.horizontal_distance());
-        self.pitch = horizon_client::arrows::lerp_rotation(self.pitch, x_rot);
-        self.yaw = horizon_client::arrows::lerp_rotation(self.yaw, y_rot);
+        self.pitch = myriade_engine::arrows::lerp_rotation(self.pitch, x_rot);
+        self.yaw = myriade_engine::arrows::lerp_rotation(self.yaw, y_rot);
     }
     /// `AbstractArrow.shouldFall`: stuck, and nothing solid within 0.06 of it.
-    pub fn should_fall(&self, scene: &horizon_client::arrows::ArrowScene<'_, '_>) -> bool {
+    pub fn should_fall(&self, scene: &myriade_engine::arrows::ArrowScene<'_, '_>) -> bool {
         let at = self.position;
         self.in_ground
             && scene.no_block_collision(Aabb::new(at, at).inflate(Vec3::new(0.06, 0.06, 0.06)))
@@ -405,14 +405,14 @@ pub fn segment_box(from: Vec3, d: Vec3, b: Aabb) -> Option<f64> {
     }
     (t0 <= t1).then_some(t0)
 }
-horizon_client::impl_joined!(ThrownTrident);
+myriade_engine::impl_joined!(ThrownTrident);
 horizon_mod_runtime::impl_attachment_lifetime!(ThrownTrident);
-impl horizon_client::entity_rules::EntityRules for ThrownTrident {}
+impl myriade_engine::entity_rules::EntityRules for ThrownTrident {}
 
 #[cfg(test)]
 mod tests {
     use super::{ThrownTrident, breeze_deflect};
-    use horizon_client::{mobs::Who, projectiles::ProjectileWorld};
+    use myriade_engine::{mobs::Who, projectiles::ProjectileWorld};
     use horizon_core::geometry::{Aabb, Vec3};
 
     struct Air;
@@ -451,7 +451,7 @@ mod tests {
     /// up never counts.
     #[test]
     fn a_stuck_trident_is_discarded_when_life_reaches_1200() {
-        use horizon_client::arrows::Pickup;
+        use myriade_engine::arrows::Pickup;
         let mut t = ThrownTrident::remote(1, Vec3::ZERO, 0.0, 0.0);
         t.life = 1198;
         assert!(!t.tick_despawn());
@@ -522,7 +522,7 @@ mod tests {
         assert_eq!(t.hit_ground_sound(), "minecraft:item.trident.hit_ground");
         assert_eq!(saved(&t), sound("minecraft:entity.arrow.hit"));
         let tag = t.to_nbt([0; 4], &registry, None);
-        let n = horizon_client::entity_nbt::trident_from_nbt(&tag).unwrap();
+        let n = myriade_engine::entity_nbt::trident_from_nbt(&tag).unwrap();
         let mut back = ThrownTrident::from_nbt(n, &tag, &registry);
         assert_eq!(back.hit_ground_sound(), "minecraft:entity.arrow.hit");
         // readAdditionalSaveData: no SoundEvent, or no identifier, is the default.
@@ -531,7 +531,7 @@ mod tests {
             Tag::compound([pos.clone()]),
             Tag::compound([pos, ("SoundEvent", Tag::String("Not An Id".into()))]),
         ] {
-            let n = horizon_client::entity_nbt::trident_from_nbt(&tag).unwrap();
+            let n = myriade_engine::entity_nbt::trident_from_nbt(&tag).unwrap();
             assert_eq!(n.sound_event, "minecraft:item.trident.hit_ground");
         }
     }
@@ -548,14 +548,14 @@ mod tests {
             ("life", Tag::Short(-1)),
             ("shake", Tag::Byte(-1)),
         ]);
-        let loaded = horizon_client::entity_nbt::trident_from_nbt(&tag).unwrap();
+        let loaded = myriade_engine::entity_nbt::trident_from_nbt(&tag).unwrap();
         assert_eq!((loaded.life, loaded.shake), (-1, 255));
         // `Entity.load` reads `Fire` with `getShortOr` as well: 40000 is -25536.
         let burning = Tag::compound([
             ("Pos", Tag::List(vec![Tag::Double(0); 3])),
             ("Fire", Tag::Int(40000)),
         ]);
-        let fire = horizon_client::entity_nbt::trident_from_nbt(&burning)
+        let fire = myriade_engine::entity_nbt::trident_from_nbt(&burning)
             .unwrap()
             .fire_ticks;
         assert_eq!(fire, -25536);
@@ -585,7 +585,7 @@ mod tests {
             tag.get("inBlockState"),
             Some(&Tag::String("minecraft:stone".into()))
         );
-        let loaded = horizon_client::entity_nbt::trident_from_nbt(&tag).unwrap();
+        let loaded = myriade_engine::entity_nbt::trident_from_nbt(&tag).unwrap();
         let back = ThrownTrident::from_nbt(loaded, &tag, &registry);
         assert_eq!(back.last_state, t.last_state);
     }
@@ -606,7 +606,7 @@ mod tests {
             ("Pos", Tag::List(vec![Tag::Double(0); 3])),
             ("fall_distance", Tag::Double(5.0_f64.to_bits())),
         ]);
-        let loaded = horizon_client::entity_nbt::trident_from_nbt(&tag).unwrap();
+        let loaded = myriade_engine::entity_nbt::trident_from_nbt(&tag).unwrap();
         let back = ThrownTrident::from_nbt(loaded, &tag, &registry);
         assert_eq!(fall(&back.to_nbt([1; 4], &registry, None)), Some(5.0));
     }
@@ -766,7 +766,7 @@ mod tests {
         trident.velocity = Vec3::new(1.0, -2.0, 3.0);
         let mut random = trident.random.clone();
         let expected =
-            horizon_client::projectiles::start_falling_velocity(trident.velocity, &mut random);
+            myriade_engine::projectiles::start_falling_velocity(trident.velocity, &mut random);
 
         trident.move_by_piston(Vec3::new(0.5, 0.0, 0.0));
         assert!(trident.piston_release_bounds().is_some());

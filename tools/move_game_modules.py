@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 
-GAME = Path('crates/horizon-client/src/game')
+GAME = Path('crates/myriade-engine/src/game')
 DECL = re.compile(r'^(#\[cfg\(test\)\]\n)?(pub(?:\(crate\))? )?mod (\w+);\n\n?', re.M)
 INCLUDE = 'include!(concat!(env!("OUT_DIR"), "/game_modules.rs"));\n'
 SUPPORT = {'agent_navigation': 'agent', 'mod_inventory_tests': 'mods'}
@@ -69,7 +69,7 @@ def rewrite(text, path, moves):
             new = os.path.relpath(target, Path(moves.get(path, path)).parent)
             return f'"{new}"'
         text = re.sub(r'"([^"\n]+\.rs)"', relative, text)
-    short = {old.removeprefix('crates/horizon-client/src/'): new.removeprefix('crates/horizon-client/src/')
+    short = {old.removeprefix('crates/myriade-engine/src/'): new.removeprefix('crates/myriade-engine/src/')
              for old, new in moves.items()}
     # Synthetic module-walker fixtures describe their own layout, not the real tree.
     if '/horizon-mod-api-gen/' not in path:
@@ -78,19 +78,19 @@ def rewrite(text, path, moves):
             def glob(match):
                 name = match[2]
                 if name.startswith('crates/'):
-                    prefix = 'crates/horizon-client/src/'
+                    prefix = 'crates/myriade-engine/src/'
                 else:
                     prefix = ''
                 target = short[name.removeprefix(prefix)]
                 parts = target.split('/')
                 parts[1] = '*'
                 return f'next({match[1]}.glob({(prefix + "/".join(parts))!r}))'
-            text = re.sub(r'(\b\w+)\s*/\s*[\'"]((?:crates/horizon-client/src/)?(?:' + pattern + r'))[\'"]', glob, text)
+            text = re.sub(r'(\b\w+)\s*/\s*[\'"]((?:crates/myriade-engine/src/)?(?:' + pattern + r'))[\'"]', glob, text)
         text = re.sub(pattern, lambda m: short[m[0]], text)
     # The only real-tree read in this module; the other literals are synthetic fixtures.
     if path.endswith('/points.rs'):
-        text = text.replace('read_to_string(root.join("crates/horizon-client/src/game/remote.rs"))',
-                            'read_to_string(root.join("' + moves['crates/horizon-client/src/game/remote.rs'] + '"))')
+        text = text.replace('read_to_string(root.join("crates/myriade-engine/src/game/remote.rs"))',
+                            'read_to_string(root.join("' + moves['crates/myriade-engine/src/game/remote.rs'] + '"))')
     return text
 
 

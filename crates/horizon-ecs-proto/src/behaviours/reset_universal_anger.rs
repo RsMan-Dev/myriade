@@ -77,7 +77,7 @@ mod tests {
     use crate::cow::{species, spawn_species, DamageQueue, Herd, Mw, Species};
     use crate::species::Config;
     use crate::targeting::{Target, Who};
-    use horizon_client_lib::mobs::MobWorld;
+    use myriade_engine_lib::mobs::MobWorld;
 
     static ENTRIES: [Entry; 2] = [Entry::new(&MODULE, 4, &Params::DEFAULT), Entry::new(&neutral_anger::MODULE, 255, &neutral_anger::Params::DEFAULT)];
 

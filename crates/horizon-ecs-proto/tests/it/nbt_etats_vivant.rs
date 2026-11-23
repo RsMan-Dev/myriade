@@ -1,7 +1,7 @@
 //! The saved states of a living creature (lot 86): each one round-trips through the NBT with the keys of vanilla, a creature without state
 //! writes none of them, a refused tag changes nothing, and `noActionTime` is read on the creature's own clock. Needs the vanilla data:
 //! the tests return early without it, as the other NBT tests do.
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use horizon_ecs_proto::{
     absorption::Absorption,

@@ -48,7 +48,7 @@ def main():
                lab.ROOT / 'tools/test_rust_parity.py', lab.ROOT / 'tools/test_model_baking_parity.py',
                lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaStackMiningOracle.java',
                lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/ParityData.java',
-               lab.ROOT / 'crates/horizon-client/examples/probe/stack_mining_probe.rs',
+               lab.ROOT / 'crates/myriade-engine/examples/probe/stack_mining_probe.rs',
                lab.ROOT / 'crates/horizon-items/src/items.rs', lab.ROOT / 'crates/horizon-items/src/item_data.rs',
                lab.ROOT / 'crates/horizon-items/src/item_nbt.rs', lab.ROOT / 'Cargo.toml', lab.ROOT / 'Cargo.lock']
     tested = base.source_hashes(sources)
@@ -58,7 +58,7 @@ def main():
     input_hash = lab.digest(inputs, 'sha256')
     classes, dependencies, _ = harness.compile_oracle(build, 'VanillaStackMiningOracle', jars, baking.client_libraries(), lock['minecraft']['java_major'])
     harness.java_run(build, classes, dependencies, 'VanillaStackMiningOracle', [inputs, build / 'vanilla.txt'], 'java')
-    harness.run_logged(['cargo', 'build', '--locked', '-p', 'horizon-client-lib', '--example', 'client_probe'], build, 'rust-build', env=dict(os.environ, CARGO_BUILD_JOBS='2'))
+    harness.run_logged(['cargo', 'build', '--locked', '-p', 'myriade-engine-lib', '--example', 'client_probe'], build, 'rust-build', env=dict(os.environ, CARGO_BUILD_JOBS='2'))
     metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--locked', '--no-deps', '--format-version', '1'], cwd=lab.ROOT))
     binary = Path(metadata['target_directory']) / 'debug/examples' / ('client_probe.exe' if os.name == 'nt' else 'client_probe')
     resources = Path(os.environ.get('HORIZON_TEST_RESOURCES', lab.RESOURCES))

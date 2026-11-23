@@ -6,7 +6,7 @@ use super::*;
 use crate::move_to_block::MoveToBlock;
 use crate::{blocks::resolve, cow::*, goals::*};
 use crate::rules::lay_egg::{halved_up, near_anchor};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]

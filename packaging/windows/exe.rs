@@ -1,5 +1,5 @@
 //! Executables' stack and link arguments, shared by the build scripts of the game's executables
-//! (`crates/horizon-client/build.rs`, `crates/horizon-game/build.rs`, which include it with
+//! (`crates/myriade-engine/build.rs`, `crates/horizon-game/build.rs`, which include it with
 //! `#[path]`). The dedicated server has no icon or manifest resource.
 
 #[path = "../executable_link.rs"]

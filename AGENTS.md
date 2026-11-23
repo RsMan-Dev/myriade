@@ -43,12 +43,12 @@ Feature → files → harness for the most-changed areas: [docs/architecture.md]
   issue is taken, and so is one labelled `in progress` (claimed on Discord): pick another. `/unclaim` when you stop;
   a claim with no open PR linking it is released after 5 days. The issues free to claim, without reading threads:
   `gh issue list --search 'is:open no:assignee -label:"in progress" -label:tracker -label:proposal -label:"not claimable" -linked:pr'`
-- **Server text is English.** The server's own messages are keys in `crates/horizon-client/assets/horizon/lang/en_us.json`,
+- **Server text is English.** The server's own messages are keys in `crates/myriade-engine/assets/horizon/lang/en_us.json`,
   sent as `translate` components; each client translates them ([docs/translations.md](docs/translations.md)).
 
 ## Don't lose time
 
-Where agent time went, measured on sessions and CI in November 2026: reading code, compiling `horizon-client`,
+Where agent time went, measured on sessions and CI in November 2026: reading code, compiling `myriade-engine`,
 waiting in loops, and work someone else had already done. Tests were a small part.
 
 - **Check nobody else is on it.** One in three pull requests closed unmerged was a duplicate. Before you write
@@ -58,7 +58,7 @@ waiting in loops, and work someone else had already done. Tests were a small par
   `python3 tools/port_ledger.py where Class.method`. Read the function you change and its callers, not whole
   files.
 - **Compile cheaply while you work.** `cargo check -p <crate>` after an edit. Clippy, fmt and tests run once, at
-  the end, through `pr_ready.py`. `cargo clippy -p horizon-client` and `cargo build -p horizon-client` are the
+  the end, through `pr_ready.py`. `cargo clippy -p myriade-engine` and `cargo build -p myriade-engine` are the
   slowest commands here: never after every edit, and build the game only when you need to run it.
 - **Don't wait in loops.** Start a long command in the background and carry on, or wait for it once. No
   `sleep` or `until grep` polling of builds, harnesses or CI.
@@ -78,15 +78,15 @@ Game workspace (root `Cargo.toml`).
 
 | Crate | Owns |
 |---|---|
-| `horizon-client` | Gameplay library (`src/lib.rs`: `game.rs` + `game/`, `entry.rs`) and thin executable (`src/main.rs`). Also the dedicated server (`--dedicated`). Re-exports `horizon-client-lib` for existing mod paths. |
-| `horizon-items` | Blocks and items below gameplay: `blocks.rs` (block facts), `items.rs`, `item_data.rs` (components), `enchant.rs`, `cooldowns.rs`, `bundle.rs`, `item_nbt.rs`. Re-exported as `horizon_client::items`... |
-| `horizon-command` | Command parsing (Brigadier): the vanilla tree, argument types, selectors, suggestions, the tree's network form. Re-exported as `horizon_client::command` |
-| `horizon-client-core` | The client lib's bottom layer: `text.rs`, `lang.rs`, `snbt.rs`, `nbt_path.rs`, `component.rs`, `scoreboard.rs`, `bossbar.rs`, `gamerules.rs`, `block_entity_nbt.rs`, registry/particle/sound tables. Re-exported under the old paths (`horizon_client::text`...) |
+| `myriade-engine` | Gameplay library (`src/lib.rs`: `game.rs` + `game/`, `entry.rs`) and thin executable (`src/main.rs`). Also the dedicated server (`--dedicated`). Re-exports `myriade-engine-lib` for existing mod paths. |
+| `horizon-items` | Blocks and items below gameplay: `blocks.rs` (block facts), `items.rs`, `item_data.rs` (components), `enchant.rs`, `cooldowns.rs`, `bundle.rs`, `item_nbt.rs`. Re-exported as `myriade_engine::items`... |
+| `horizon-command` | Command parsing (Brigadier): the vanilla tree, argument types, selectors, suggestions, the tree's network form. Re-exported as `myriade_engine::command` |
+| `myriade-data` | The client lib's bottom layer: `text.rs`, `lang.rs`, `snbt.rs`, `nbt_path.rs`, `component.rs`, `scoreboard.rs`, `bossbar.rs`, `gamerules.rs`, `block_entity_nbt.rs`, registry/particle/sound tables. Re-exported under the old paths (`myriade_engine::text`...) |
 | `horizon-world` | Vanilla world data with no gameplay loop: NBT, regions, chunks, `datafix/`, `worldgen/`, `level/` (server-side block behaviour, ticks, redstone), entity physics, items, effects, food, damage |
 | `horizon-core` | Simulation primitives: Java `Random`s, `jmath` (HotSpot-exact `Math`), positions, noise, density, paletted storage, `version.rs` (the pinned version) |
 | `horizon-protocol` | Network protocol 777: codecs, framing, encryption, `packets/{handshake,status,login,configuration,play}.rs`, `entity_data.rs` |
 | `horizon-assets` | Resource decoding: block-state and item models, baking, atlases |
-| `horizon-prepare` | Builds `.local/horizon-client/26.3` from the player's own Minecraft install (runs the Java exporters) |
+| `horizon-prepare` | Builds `.local/myriade-engine/26.3` from the player's own Minecraft install (runs the Java exporters) |
 | `horizon-server` | `horizon-server`: `server.toml`, CLI, supervisor of the headless game ([docs/hosting.md](docs/hosting.md)) |
 | `horizon-server-files` | `server.properties`, eula, ops/whitelist/bans, usercache |
 | `horizon-anticheat` | The dedicated server's anticheat, off by default: `[anticheat]` settings, violation levels, the checks' rules; the hub runs them (`lan/anticheat.rs`) ([docs/anticheat.md](docs/anticheat.md)) |
@@ -123,8 +123,8 @@ reads `README.md`, `docs/api/`, `roadmap/roadmap.json` and `crates/horizon-theme
 ```sh
 python3 tools/pr_ready.py                  # the self-check: fmt, clippy -D warnings, touched crates' tests; paste its block in the PR
 python3 tools/pr_ready.py --harnesses      # also the affected harnesses (by default only when you change a harness, oracle, probe or the runner, as in CI)
-cargo test -p horizon-client -p horizon-client-lib --lib --bins --tests   # skips the examples (pr_ready does this); `--doc` separately
-cargo test -p horizon-client-lib --lib mod_content::tests:: -- --ignored   # the slow content-root tests, #[ignore]d; pr_ready runs them when mod content, assets, blocks or items change
+cargo test -p myriade-engine -p myriade-engine-lib --lib --bins --tests   # skips the examples (pr_ready does this); `--doc` separately
+cargo test -p myriade-engine-lib --lib mod_content::tests:: -- --ignored   # the slow content-root tests, #[ignore]d; pr_ready runs them when mod content, assets, blocks or items change
 cargo build --profile fast -p horizon-game          # optimized, quick to link
 python3 tools/parity.py --changed origin/main       # the harnesses your branch can affect (CI's parity job)
 python3 tools/parity.py --changed-files paths.txt --list   # which harnesses cover these files, without running them
@@ -134,21 +134,21 @@ python3 tools/parity.py mob_ai sculk       # named harnesses
 - To compile and test on hosted runners instead of this PC, start a try run on your pushed branch:
   `gh workflow run checks --ref <branch>`, `-f windows=true` for a Windows x64 build to download
   ([docs/ci-runners.md](docs/ci-runners.md#try-runs)).
-- Harnesses and the game need the vanilla data in `.local/` (`minecraft/`, `horizon-client/26.3`, `datagen/`,
+- Harnesses and the game need the vanilla data in `.local/` (`minecraft/`, `myriade-engine/26.3`, `datagen/`,
   `tools/`): see [docs/parity-workflow.md](docs/parity-workflow.md). Without it, pr_ready lists the
   harnesses for CI.
 - A harness = `tools/test_<name>_parity.py` + a Java oracle (`mods/horizon/src/test/java/dev/horizonlab/parity/Vanilla*Oracle.java`)
-  + a Rust probe: `crates/<crate>/examples/<name>_{probe,fixture}.rs` (mostly horizon-world and horizon-client),
+  + a Rust probe: `crates/<crate>/examples/<name>_{probe,fixture}.rs` (mostly horizon-world and myriade-engine),
   or the game binary with a fixture env var (`game/interface/dispense_fixture.rs`, `game/blocks/sculk_fixture.rs`,
   `game/network/net_harness.rs`), or a command run on a dedicated server through `Server.op` (`tools/server_lab.py`).
   Copy a nearby harness for a new one.
 - Probes build into `.local/parity-target/`; harnesses find binaries via `lab.cargo_target()`, never `target/`.
 - Harness selection uses Cargo dep-info and reachable-code narrowing (`tools/parity_reach.py`).
-  `horizon-client-lib` builds the control tool and client probes without gameplay; their dep-info
+  `myriade-engine-lib` builds the control tool and client probes without gameplay; their dep-info
   excludes `game.rs` and `game/`, so gameplay edits do not rebuild or select those probes.
-  Source paths remain in `crates/horizon-client/`. Measure actual harness selection on refreshed
+  Source paths remain in `crates/myriade-engine/`. Measure actual harness selection on refreshed
   records with `tools/parity.py --changed-files paths.txt --list`; historical counts are not a guarantee.
-- Rust integration tests: `crates/horizon-client/tests/` (`lan_bot.rs`, `generation_saves.rs`, `streaming_meshes.rs`).
+- Rust integration tests: `crates/myriade-engine/tests/` (`lan_bot.rs`, `generation_saves.rs`, `streaming_meshes.rs`).
 
 ## Vanilla reference
 
@@ -165,11 +165,11 @@ python3 tools/parity.py mob_ai sculk       # named harnesses
   random draws must happen in vanilla's order. Performance work may break that order where no player can rely
   on it; the pull request says so ([CONTRIBUTING.md](CONTRIBUTING.md#when-it-doesnt-have-to-be-11)).
 
-## horizon-client: where things live
+## myriade-engine: where things live
 
-`L:` = lib (`crates/horizon-client/src/`, or `crates/horizon-client-render/src/` for the modules that crate holds, under
-the same `horizon_client::<module>` paths), `G:` = gameplay (`crates/horizon-client/src/game/`), also in the lib in normal builds.
-Gameplay keeps its `horizon_client::<module>` imports through a self-crate alias. The executable
+`L:` = lib (`crates/myriade-engine/src/`, or `crates/myriade-level/src/` for the modules that crate holds, under
+the same `myriade_engine::<module>` paths), `G:` = gameplay (`crates/myriade-engine/src/game/`), also in the lib in normal builds.
+Gameplay keeps its `myriade_engine::<module>` imports through a self-crate alias. The executable
 contains only the allocator, mod API marker and a call to `entry::main`. For unit tests, the lib
 excludes `entry` and `game`, and the executable test target owns `game` so its process-wide test
 state stays separate from the library tests. This compiles gameplay twice for executable tests.
@@ -183,9 +183,9 @@ state stays separate from the library tests. This compiles gameplay twice for ex
 | Other entities | L: `entities.rs`, `projectiles.rs`, `arrows.rs`; G: `items/item_entities.rs` (dropped items, experience orbs), `boats.rs`, `entities/minecarts.rs`, `mobs/mounts.rs`, `entities/armor_stands.rs`, `entities/paintings.rs`, `frames.rs`, `entities/fireworks.rs`, `entities/tnt.rs`, `entities/explosion.rs` |
 | Player actions | game.rs (`fn tick_mining`, `fn break_block`); G: `items/use_hand.rs` (`fn use_hand`), `items/item_actions.rs` (`fn use_item`), `entities/melee.rs` (`fn attack`), `items/hand.rs`, `items/combat.rs`, `items/consume.rs`, `items/using_item.rs` (an item in use, tick by tick), `items/potions.rs`, `items/shield.rs`, `items/crossbow.rs`, `items/trident.rs`, `items/fishing.rs`; L: `motion.rs` + `motion/` (movement), `collisions.rs`; crate `horizon-items`: `items.rs`, `item_data.rs`, `enchant.rs`, `blocks.rs` |
 | Inventory and containers | L: `menu.rs` (`AbstractContainerMenu.clicked`), `container_screen.rs`, `containers.rs`, `creative.rs`, `crafting.rs`, `recipe_book*.rs`, `stations.rs`, `merchant.rs`; G: `interface/menu_clicks.rs` (`fn menu_ops`, `fn click_inventory`), `blocks/stations.rs`, `items/trading.rs`, `items/recipe_book.rs`, `machines.rs`, `interface/inventory_input.rs` (keys and clicks over a container), `interface/inventory_slots.rs` (slot layout and drawing) |
-| Commands | parse: crate `horizon-command` (`args.rs`, `selector.rs`, `tree_*.rs`, `vanilla.rs`); run: G: `commands.rs` (dispatch) + `commands/*.rs` (`admin`, `execute`, `items`, `players`, `world_cmds`...); L: `scoreboard_cmd.rs`, `data_cmd.rs`; `horizon-client-core`: `nbt_path.rs`, `scoreboard.rs`; G: `administration/functions.rs`, `administration/command_blocks.rs` |
+| Commands | parse: crate `horizon-command` (`args.rs`, `selector.rs`, `tree_*.rs`, `vanilla.rs`); run: G: `commands.rs` (dispatch) + `commands/*.rs` (`admin`, `execute`, `items`, `players`, `world_cmds`...); L: `scoreboard_cmd.rs`, `data_cmd.rs`; `myriade-data`: `nbt_path.rs`, `scoreboard.rs`; G: `administration/functions.rs`, `administration/command_blocks.rs` |
 | Dedicated server | G: `dedicated.rs`, `dedicated/status.rs`; crates `horizon-server-files`, `horizon-server`, `horizon-anticheat` (L: `lan/anticheat.rs`) |
-| Save and load | L: `save.rs` (level.dat, regions, playerdata), `entity_nbt.rs`, `options_file.rs`; `horizon-client-core/src/block_entity_nbt.rs`; G: `world/saving.rs`, `world/persist.rs` (entities), `world/world_session.rs` (opening and closing a world); `crates/horizon-world/src/{region.rs,nbt.rs,datafix/}` |
+| Save and load | L: `save.rs` (level.dat, regions, playerdata), `entity_nbt.rs`, `options_file.rs`; `myriade-data/src/block_entity_nbt.rs`; G: `world/saving.rs`, `world/persist.rs` (entities), `world/world_session.rs` (opening and closing a world); `crates/horizon-world/src/{region.rs,nbt.rs,datafix/}` |
 | Mods | crate `horizon-mods`; G: `runtime/hot_paths/mods.rs`; L: `mod_content.rs`, `mod_list.rs` |
 
 ## How `Game` is organised
@@ -193,7 +193,7 @@ state stays separate from the library tests. This compiles gameplay twice for ex
 - `struct Game` (game.rs) holds everything. Its methods are spread over many files: game.rs keeps
   the core (tick, render, input, inventory, world open/close) and each `game/<feature>.rs` adds an
   `impl Game<'_>` block for one feature, with its own state types. Fields stay private to the gameplay module and its descendants. Gameplay tests run in the gameplay library, separate from reusable-library tests.
-- Find a feature's code: `grep -rn "fn tick_<thing>\|fn <verb>_<thing>" crates/horizon-client/src/game*`;
+- Find a feature's code: `grep -rn "fn tick_<thing>\|fn <verb>_<thing>" crates/myriade-engine/src/game*`;
   the file is usually `game/<thing>s.rs`. Who calls it: grep the name in game.rs's `fn tick` / `fn tick_world`.
 - Fields that say which mode runs: `remote` (this window is a client of a server: multiplayer, LAN guest, or
   single player on its server thread), `lan` (`LanHost`: this world is open to the network), `integrated`

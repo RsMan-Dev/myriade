@@ -11,7 +11,7 @@ use crate::species::boats::index;
 use crate::zone;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 use std::collections::HashSet;
 

@@ -1,6 +1,6 @@
 //! `GiveGiftToHero.getLootTableToThrow` (`mobs/villager.rs:480-495`): the pack's table of `neoforge:raid_hero_gifts` wins, else the vanilla
 //! name of the profession. The expected values are the Mob's own map reader (`NeoForgeMobMaps::hero_gift`, what its `gift_table` calls).
-use horizon_client_lib::neoforge_mob_maps::NeoForgeMobMaps;
+use myriade_engine_lib::neoforge_mob_maps::NeoForgeMobMaps;
 use horizon_ecs_proto::species::villager::gift_name;
 use std::collections::BTreeMap;
 

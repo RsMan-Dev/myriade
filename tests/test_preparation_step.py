@@ -119,7 +119,7 @@ class PreparationStepTests(unittest.TestCase):
             again = subprocess.run(["bash", "tools/ci/vanilla-data.sh"], cwd=root, env=env,
                                    capture_output=True, text=True)
             self.assertEqual(again.returncode, 23, again.stderr)
-            self.assertIn('cache_state=missing-horizon-client', again.stdout)
+            self.assertIn('cache_state=missing-myriade-engine', again.stdout)
             self.assertNotIn('SECRET', again.stdout + again.stderr)
             self.assertTrue((root / 'source/minecraft/26.3/prepared.json').exists())
 
@@ -133,14 +133,14 @@ class PreparationStepTests(unittest.TestCase):
             (root / "research-lock.json").write_text('{"version": "26.3"}\n')
             (root / "source/minecraft/26.3").mkdir(parents=True)
             (root / "source/minecraft/26.3/prepared.json").write_text('{}')
-            (root / "source/horizon-client/26.3").mkdir(parents=True)
+            (root / "source/myriade-engine/26.3").mkdir(parents=True)
             (root / "bin").mkdir()
             cargo = root / "bin/cargo"
             cargo.write_text('#!/bin/sh\nexit 0\n')
             cargo.chmod(0o755)
             (root / "target/release").mkdir(parents=True)
             prepare = root / "target/release/horizon-prepare"
-            prepare.write_text('#!/bin/sh\nmkdir -p .local/horizon-client/26.3\necho one > .local/horizon-client/26.3/a\n'
+            prepare.write_text('#!/bin/sh\nmkdir -p .local/myriade-engine/26.3\necho one > .local/myriade-engine/26.3/a\n'
                                'echo "prepared" >> "$PREPARED_RUNS"\n')
             prepare.chmod(0o755)
             env = dict(os.environ, HORIZON_PERSISTENT_CACHE="true", HORIZON_PREPARED_CACHE=str(root / "cache"),
@@ -158,19 +158,19 @@ class PreparationStepTests(unittest.TestCase):
             run()
             self.assertEqual((root / "runs").read_text().count("prepared"), 1)
             # The job reads its own copy, never the kept tree.
-            self.assertEqual((root / ".local/horizon-client").resolve(), (root / "cache/job/horizon-client").resolve())
-            (root / ".local/horizon-client/26.3/written-by-a-test").write_text("x")
-            self.assertFalse((kept / "horizon-client/26.3/written-by-a-test").exists())
+            self.assertEqual((root / ".local/myriade-engine").resolve(), (root / "cache/job/myriade-engine").resolve())
+            (root / ".local/myriade-engine/26.3/written-by-a-test").write_text("x")
+            self.assertFalse((kept / "myriade-engine/26.3/written-by-a-test").exists())
             self.assertIn("fresh", run())
             self.assertEqual((root / "runs").read_text().count("prepared"), 1)
-            self.assertFalse((root / ".local/horizon-client/26.3/written-by-a-test").exists())
+            self.assertFalse((root / ".local/myriade-engine/26.3/written-by-a-test").exists())
             # A kept tree changed behind the script's back (or kept from before manifests) is prepared again.
-            (kept / "horizon-client/26.3/extra").write_text("x")
+            (kept / "myriade-engine/26.3/extra").write_text("x")
             again = run()
             self.assertIn("does not match its manifest", again)
             self.assertIn("files added 1, removed 0, changed 0", again)
             self.assertEqual((root / "runs").read_text().count("prepared"), 2)
-            self.assertFalse((kept / "horizon-client/26.3/extra").exists())
+            self.assertFalse((kept / "myriade-engine/26.3/extra").exists())
             (kept / ".manifest").unlink()
             (kept / ".manifest-files").unlink()
             self.assertIn("expected none", run())

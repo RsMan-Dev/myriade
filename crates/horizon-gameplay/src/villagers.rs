@@ -2,7 +2,7 @@
 //! reputation, sharing food and wares, picking up dropped items, making
 //! babies, calling iron golems and the prices they ask.
 use crate::{item_areas::ItemAreas, mob_level::MobLevel, villager_level::VillagerLevel};
-use horizon_client::{
+use myriade_engine::{
     gossip::{self, GossipType},
     items::{ItemStack, Items},
     mobs::{Species, spawning, villager, villager_brain},
@@ -376,7 +376,7 @@ pub fn villager_reputation_tick<L: VillagerLevel + ?Sized>(l: &mut L) {
     for i in 0..l.mobs().len() {
         let m = &l.mobs()[i];
         if m.species() != Species::Villager
-            || m.ai.last_hurt_by != Some(horizon_client::mobs::Who::Player)
+            || m.ai.last_hurt_by != Some(myriade_engine::mobs::Who::Player)
         {
             continue;
         }

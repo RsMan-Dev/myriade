@@ -15,7 +15,7 @@ use crate::tame::Owner;
 use crate::targeting::Who;
 use crate::type_tags;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// A player's standing box (`Player`'s 0.6 by 1.8), for the dismount search of a player rider.

@@ -2,7 +2,7 @@
 
 ## cap-std / cap-fs-ext
 
-`horizon-client` directly uses `cap-std` and `cap-fs-ext` 3.4.6 from
+`myriade-engine` directly uses `cap-std` and `cap-fs-ext` 3.4.6 from
 [the cap-std project](https://github.com/bytecodealliance/cap-std) for confined mod file access.
 Copyrights are retained by their contributors. Both crates offer Apache-2.0 WITH LLVM-exception,
 Apache-2.0 or MIT; the MIT option is reproduced here:
@@ -56,7 +56,7 @@ license.
   (GPL-2.0 with the Classpath Exception), and `aarch64::{sin, cos}` from HotSpot's `macroAssembler_aarch64_trig.cpp`
   (GPL-2.0); copyright Oracle and/or its affiliates, and Cavium for that file. The `fdlibm` and `aarch64` functions
   were added on 13 October 2026 (`558d140fca`, first released in `v2026.10.13`). `round_f32` was added on 14 October
-  2026 as `java_round` in `crates/horizon-client/src/mipmap.rs` (`95db0fce9d`) and moved into `jmath.rs` on 3
+  2026 as `java_round` in `crates/myriade-engine/src/mipmap.rs` (`95db0fce9d`) and moved into `jmath.rs` on 3
   November ([#7770](https://github.com/horizon-rust/horizon/pull/7770)). All of them were replaced in
   [#11944](https://github.com/horizon-rust/horizon/pull/11944) by code written without OpenJDK's sources, from Sun's
   fdlibm C sources, the Java SE API documentation and a description of the behaviour, and checked against a JVM
@@ -71,7 +71,7 @@ license.
 
 ## Catnip / Ponder
 
-`crates/horizon-client-render/src/fluid_render.rs` translates the still-fluid face tiling and
+`crates/myriade-level/src/fluid_render.rs` translates the still-fluid face tiling and
 UV rules of Catnip's `FluidRenderHelper` from Ponder 1.0.82 for Minecraft 1.21.1
 (`net.createmod.ponder:ponder-neoforge:1.0.82+mc1.21.1`). Copyright (c) 2022 The Create Team,
 licensed under MIT (`LICENSE_Ponder` in that artifact); the full license heads the Rust file.
@@ -125,7 +125,7 @@ trademark, used only on the button that opens Horizon's Discord server.
 
 ## AMD FidelityFX SDK (FSR 3.1 frame generation)
 
-`crates/horizon-client-render/src/gfx/frame_gen/optical_flow.wgsl` and `interpolation.wgsl` are
+`crates/myriade-level/src/gfx/frame_gen/optical_flow.wgsl` and `interpolation.wgsl` are
 ports to WGSL of the optical flow and frame interpolation shaders of the
 [AMD FidelityFX SDK](https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK) 1.1.4
 (`sdk/include/FidelityFX/gpu/{opticalflow,frameinterpolation}`, at commit
@@ -164,7 +164,7 @@ and its logo are trademarks of the Microsoft group of companies; Horizon is not 
 
 ## CIT Resewn
 
-`crates/horizon-optifine/src/cit.rs` and `crates/horizon-client-render/src/cit.rs` follow the
+`crates/horizon-optifine/src/cit.rs` and `crates/myriade-level/src/cit.rs` follow the
 condition semantics of [CIT Resewn Continuation](https://github.com/EthanVisagie/CIT-Resewn-Continuation-1.21.11)
 (at `b792f9a`), a continuation of [CIT Resewn](https://github.com/SHsuperCM/CITResewn) by SHsuperCM: the
 1.21 component paths, enchantment levels, percent damage, text matching and rule ordering. It is
@@ -213,7 +213,7 @@ licensed under the MIT license:
 
 ## BlueMap
 
-`crates/horizon-client-render/src/bluemap.rs` reads the lowres tiles of a server's
+`crates/myriade-level/src/bluemap.rs` reads the lowres tiles of a server's
 [BlueMap](https://github.com/BlueMap-Minecraft/BlueMap) web map. It follows three of BlueMap's files:
 `core/src/main/java/de/bluecolored/bluemap/core/map/lowres/LowresLayer.java` (`saveTile`) for the
 tiles' pixel layout, `common/webapp/src/js/util/Utils.js` (`pathFromCoords`) for their paths, and
@@ -245,8 +245,8 @@ BlueMap is licensed under the MIT license:
 
 ## JOML
 
-`crates/horizon-client-render/src/camera.rs` (`joml::Mat4::rotation`, `invert_orthonormal`) and
-`crates/horizon-client-render/src/gfx/pack_uniforms.rs` (`invert_generic`, `invert_affine`, the
+`crates/myriade-level/src/camera.rs` (`joml::Mat4::rotation`, `invert_orthonormal`) and
+`crates/myriade-level/src/gfx/pack_uniforms.rs` (`invert_generic`, `invert_affine`, the
 formulas of `pack_projection` and `shadow_ortho`) adapt the float arithmetic of
 `Matrix4f.rotation(Quaternionfc)`, `invertOrthonormal`, `invertGenericNonThis`, `invertAffine`,
 `setPerspective` and `setOrtho` from
@@ -349,32 +349,32 @@ is preserved.
 
 ## Starling
 
-`crates/horizon-client-render/src/touch/layout.rs` and `crates/horizon-client-render/src/touch/aim.rs`
+`crates/myriade-level/src/touch/layout.rs` and `crates/myriade-level/src/touch/aim.rs`
 are adapted from the touch layout and touch helpers of
 [Starling](https://github.com/starling-client/starling), an Android port of Horizon, at commit
 [150a414b09a1](https://github.com/starling-client/starling/tree/150a414b09a18c900489d9462a7fc035dae744b7)
 (`android` branch), written mostly by Vasysik. Starling is licensed under the same MIT license as
 Horizon (Copyright (c) 2026 Ludovic Marie and the Horizon contributors).
 
-`crates/horizon-client-render/src/keypad.rs` is adapted from Starling's keypad profile
-(`crates/horizon-client-render/src/keypad.rs`) at the same commit.
+`crates/myriade-level/src/keypad.rs` is adapted from Starling's keypad profile
+(`crates/myriade-level/src/keypad.rs`) at the same commit.
 
-`crates/horizon-client-render/src/android_gamepad.rs` is adapted from Starling's controller decoder
-(`crates/horizon-client-render/src/android_gamepad.rs`) and the input-mode part of its
+`crates/myriade-level/src/android_gamepad.rs` is adapted from Starling's controller decoder
+(`crates/myriade-level/src/android_gamepad.rs`) and the input-mode part of its
 `android_runtime.rs`, at the same commit.
 
-`crates/horizon-client-render/src/touch.rs` and `touch/tests/` are adapted from the touch input
-state of Starling's `crates/horizon-client-render/src/touch.rs` at the same commit.
+`crates/myriade-level/src/touch.rs` and `touch/tests/` are adapted from the touch input
+state of Starling's `crates/myriade-level/src/touch.rs` at the same commit.
 
-`crates/horizon-client-render/src/touch/draw.rs` is adapted from the touch control drawing in
-Starling's `crates/horizon-client-render/src/touch.rs` at the same commit.
+`crates/myriade-level/src/touch/draw.rs` is adapted from the touch control drawing in
+Starling's `crates/myriade-level/src/touch.rs` at the same commit.
 
-`crates/horizon-client-render/src/android_runtime.rs` and `android_runtime/tests/` are adapted from the
-input part of Starling's `crates/horizon-client-render/src/android_runtime.rs` at the same commit.
+`crates/myriade-level/src/android_runtime.rs` and `android_runtime/tests/` are adapted from the
+input part of Starling's `crates/myriade-level/src/android_runtime.rs` at the same commit.
 
 ## PCG3D hash
 
-`hash3` in `crates/horizon-client-render/src/hdr.wgsl`, the noise HDR10 output's dither is made from, is the
+`hash3` in `crates/myriade-level/src/hdr.wgsl`, the noise HDR10 output's dither is made from, is the
 `pcg3d` hash of Mark Jarzynski and Marc Olano ("Hash Functions for GPU Rendering", Journal of Computer Graphics
 Techniques 9(3), 2020), from <https://github.com/markjarzynski/PCG3D>. Copyright 2020 Mark Jarzynski & Marc Olano,
 licensed under MIT:

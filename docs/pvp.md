@@ -16,5 +16,5 @@ Melee hits follow 1.8.9's `EntityPlayer.attackTargetEntityWithCurrentItem`:
   resistance is a chance to take none instead of a cut; the sprint and Knockback push is added on top (0.1 up)
   instead of halving the motion first.
 
-Code: `crates/horizon-client/src/legacy_combat.rs` (the formulas, with their 1.8.9 sources),
+Code: `crates/myriade-engine/src/legacy_combat.rs` (the formulas, with their 1.8.9 sources),
 `game/world/legacy_rules.rs`.

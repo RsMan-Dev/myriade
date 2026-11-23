@@ -12,10 +12,10 @@ class ItemAttackBoundary(unittest.TestCase):
         compiler = shutil.which("rustc")
         if compiler is None:
             self.skipTest("requires Rust to execute the production boundary fixture")
-        source = (ROOT / 'crates/horizon-client/src/game/native_hooks/item_attack.rs').read_text()
+        source = (ROOT / 'crates/myriade-engine/src/game/native_hooks/item_attack.rs').read_text()
         methods = source[source.index('    pub(in crate::game) fn native_left_click_entity_event'):]
         methods = methods.replace('pub(in crate::game)', 'pub')
-        remote = (ROOT / 'crates/horizon-client/src/game/network/swing_packet.rs').read_text()
+        remote = (ROOT / 'crates/myriade-engine/src/game/network/swing_packet.rs').read_text()
         start = remote.index('        if ')
         packet = remote[start:remote.rfind('    }')].replace('horizon_protocol::packets::play::Serverbound', 'S').replace('horizon_protocol::packets::Empty', 'Empty')
         fixture = r'''

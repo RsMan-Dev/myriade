@@ -6,12 +6,12 @@ use crate::behaviours::homing_projectile::Homing;
 use crate::bridge::ids;
 use crate::cow::{Pos, Vel, Yaw};
 use crate::nbt_fields::common::Pitch;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use crate::projectile::{self, Flight, Flying, Projectile};
 use crate::shulker_bullet;
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{Aabb, Vec3};
 
 impl EcsWorld {

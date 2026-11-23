@@ -13,7 +13,7 @@ use crate::seat;
 use crate::species::boats::entity_id;
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use horizon_core::random::LegacyRandom;
 

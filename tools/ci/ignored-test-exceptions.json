@@ -16,274 +16,274 @@
     "rationale": "Existing explicit manual runner subprocess in tools/ci/ignored-tests/manual-cargo-horizon-mod.txt: fixture writer subprocess only. Not selected by daily shards."
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::block_entity_part_state_tests::native_and_compiled_wasm_part_state_count_ticks",
-    "path": "crates/horizon-client/src/game/modding/block_entity_part_state_tests.rs",
+    "path": "crates/myriade-engine/src/game/modding/block_entity_part_state_tests.rs",
     "reason": "needs prepared resources and compiled HORIZON_WASM_FIXTURE/HORIZON_WASM_STD",
     "rationale": "Existing separately supplied input HORIZON_WASM_FIXTURE in tools/ci/ignored-tests/rollup-82-resources.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs prepared resources and compiled HORIZON_WASM_FIXTURE/HORIZON_WASM_STD"
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::block_entity_tick_items_bench_tests::unscoped_item_entity_reads",
-    "path": "crates/horizon-client/src/game/modding/block_entity_tick_items_bench_tests.rs",
+    "path": "crates/myriade-engine/src/game/modding/block_entity_tick_items_bench_tests.rs",
     "reason": "measurement; needs prepared resources in HORIZON_TEST_RESOURCES",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: measurement; needs prepared resources in HORIZON_TEST_RESOURCES. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::block_entity_tick_reply_tests::native_and_compiled_wasm_tick_reply_matrix",
-    "path": "crates/horizon-client/src/game/modding/block_entity_tick_reply_tests.rs",
+    "path": "crates/myriade-engine/src/game/modding/block_entity_tick_reply_tests.rs",
     "reason": "needs prepared resources and compiled HORIZON_WASM_FIXTURE/HORIZON_WASM_STD",
     "rationale": "Separately supplied input HORIZON_WASM_FIXTURE in tools/ci/ignored-tests/wasm-fixture.txt; ordinary prepared resources do not contain it. Build the fixture and matching HORIZON_WASM_STD locally, then invoke the one-process runner explicitly. No adopted workflow supplies them."
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::end::cooldown_tests::gateway_counters_match_actual_vanilla_methods",
-    "path": "crates/horizon-client/src/game/world/end/gateway_cooldown_tests.rs",
+    "path": "crates/myriade-engine/src/game/world/end/gateway_cooldown_tests.rs",
     "reason": "needs explicit HORIZON_TEST_RESOURCES and HORIZON_PORTAL_REFERENCE",
     "rationale": "Existing separately supplied input HORIZON_PORTAL_REFERENCE in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs explicit HORIZON_TEST_RESOURCES and HORIZON_PORTAL_REFERENCE"
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::explosion::tests::explosion_items_parity_fixture",
-    "path": "crates/horizon-client/src/game/entities/explosion.rs",
+    "path": "crates/myriade-engine/src/game/entities/explosion.rs",
     "reason": "requires prepared resources; tools/test_explosion_items_parity.py",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/issue-2177.txt; #2177 supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::functions::typed_state_range_read_tests::loaded_pack_direction_ranges_keep_full_and_filtered_domains",
-    "path": "crates/horizon-client/src/game/administration/functions/typed_state_range_tests.rs",
+    "path": "crates/myriade-engine/src/game/administration/functions/typed_state_range_tests.rs",
     "reason": "needs prepared resources, actual pack and scratch homes/cwd",
     "rationale": "Existing separately supplied input HORIZON_TYPED_RANGE_PACK in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs prepared resources, actual pack and scratch homes/cwd"
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::functions::typed_state_range_read_tests::loaded_pack_state_ranges_match_typed_controls",
-    "path": "crates/horizon-client/src/game/administration/functions/typed_state_range_tests.rs",
+    "path": "crates/myriade-engine/src/game/administration/functions/typed_state_range_tests.rs",
     "reason": "needs prepared resources, actual pack and scratch homes/cwd",
     "rationale": "Existing separately supplied input HORIZON_TYPED_RANGE_PACK in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs prepared resources, actual pack and scratch homes/cwd"
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::levels::tests::an_old_chunk_saves_the_heights_its_new_neighbour_calculated",
-    "path": "crates/horizon-client/src/game/world/levels.rs",
+    "path": "crates/myriade-engine/src/game/world/levels.rs",
     "reason": "needs HORIZON_TEST_RESOURCES, a scratch HORIZON_HOME and the constructed H077_OLD_WORLD",
     "rationale": "Existing separately supplied input H077_OLD_WORLD in tools/ci/ignored-tests/old-world.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs HORIZON_TEST_RESOURCES, a scratch HORIZON_HOME and the constructed H077_OLD_WORLD"
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::levels::tests::features_write_a_full_neighbour_only_through_its_sections",
-    "path": "crates/horizon-client/src/game/world/levels.rs",
+    "path": "crates/myriade-engine/src/game/world/levels.rs",
     "reason": "needs HORIZON_TEST_RESOURCES, a scratch HORIZON_HOME and the constructed H077_OLD_WORLD",
     "rationale": "Existing separately supplied input H077_OLD_WORLD in tools/ci/ignored-tests/old-world.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs HORIZON_TEST_RESOURCES, a scratch HORIZON_HOME and the constructed H077_OLD_WORLD"
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::levels::tests::the_overworld_cache_holds_the_edge_chunks_calculated_heights",
-    "path": "crates/horizon-client/src/game/world/levels.rs",
+    "path": "crates/myriade-engine/src/game/world/levels.rs",
     "reason": "needs HORIZON_TEST_RESOURCES, a scratch HORIZON_HOME and the constructed H077_OLD_WORLD",
     "rationale": "Existing separately supplied input H077_OLD_WORLD in tools/ci/ignored-tests/old-world.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs HORIZON_TEST_RESOURCES, a scratch HORIZON_HOME and the constructed H077_OLD_WORLD"
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::maps::save_tests::saved_map_codec_fixture",
-    "path": "crates/horizon-client/src/game/blocks/maps/save_tests.rs",
+    "path": "crates/myriade-engine/src/game/blocks/maps/save_tests.rs",
     "reason": "run through tools/test_map_saved_data_parity.py",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_map_saved_data_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::native_block_entity_item_tests::timing_container_moves_beside_saved_data",
-    "path": "crates/horizon-client/src/game/modding/native_block_entity_item_tests.rs",
+    "path": "crates/myriade-engine/src/game/modding/native_block_entity_item_tests.rs",
     "reason": "needs prepared resources in HORIZON_TEST_RESOURCES; runs in an isolated scratch process",
     "rationale": "Opt-in wall-clock measurement, not a daily correctness check: returns without measuring unless HORIZON_JOURNAL_TIMING is set. Run by hand with HORIZON_JOURNAL_TIMING=1 and HORIZON_TEST_RESOURCES, using --ignored --exact --nocapture on its full test path; with_mod_parts runs the measurement in an isolated child process. All assertions remain in the test."
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::native_block_entity_item_tests::timing_storage_against_items_across_barrel_cells",
-    "path": "crates/horizon-client/src/game/modding/native_block_entity_item_tests.rs",
+    "path": "crates/myriade-engine/src/game/modding/native_block_entity_item_tests.rs",
     "reason": "needs prepared resources in HORIZON_TEST_RESOURCES; runs in an isolated scratch process",
     "rationale": "Opt-in wall-clock measurement, not a daily correctness check: returns without measuring unless HORIZON_STORAGE_TIMING is set. Run by hand with HORIZON_STORAGE_TIMING=1 and HORIZON_TEST_RESOURCES, using --ignored --exact --nocapture on its full test path; with_mod_parts runs the measurement in an isolated child process. All assertions remain in the test."
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::native_hooks::math::tests::compiled_wasm_math_profile_import_matches_actual_game_host",
-    "path": "crates/horizon-client/src/game/native_hooks/math/tests.rs",
+    "path": "crates/myriade-engine/src/game/native_hooks/math/tests.rs",
     "reason": "needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD built from this tree",
     "rationale": "Existing separately supplied input HORIZON_WASM_FIXTURE in tools/ci/ignored-tests/wasm-fixture.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD built from this tree"
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::native_hooks::runtime_environment::tests::native_and_wasm_process_environment_in_registration_and_game_hosts",
-    "path": "crates/horizon-client/src/game/native_hooks/runtime_environment/tests.rs",
+    "path": "crates/myriade-engine/src/game/native_hooks/runtime_environment/tests.rs",
     "reason": "requires prepared HORIZON_TEST_RESOURCES and rebuilt HORIZON_WASM_FIXTURE/HORIZON_WASM_STD",
     "rationale": "Existing separately supplied input HORIZON_WASM_FIXTURE in tools/ci/ignored-tests/wasm-fixture.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. requires prepared HORIZON_TEST_RESOURCES and rebuilt HORIZON_WASM_FIXTURE/HORIZON_WASM_STD"
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::native_live_holder_tests::thousand_live_block_entity_ticks",
-    "path": "crates/horizon-client/src/game/modding/native_live_holder_tests.rs",
+    "path": "crates/myriade-engine/src/game/modding/native_live_holder_tests.rs",
     "reason": "measurement; needs HORIZON_TEST_RESOURCES and HORIZON_LIVE_BENCH=none|trivial|write",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/issue-2177.txt; #2177 supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::native_recipes::tests::craft_cost",
-    "path": "crates/horizon-client/src/game/modding/native_recipes.rs",
+    "path": "crates/myriade-engine/src/game/modding/native_recipes.rs",
     "reason": "a benchmark: run it in release with HORIZON_TEST_RESOURCES",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: a benchmark: run it in release with HORIZON_TEST_RESOURCES. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::native_server::wasm_selector_tests::wasm_server_tick_messages_reach_dedicated_game",
-    "path": "crates/horizon-client/src/game/modding/native_server/wasm_selector_tests.rs",
+    "path": "crates/myriade-engine/src/game/modding/native_server/wasm_selector_tests.rs",
     "reason": "needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD built from this tree",
     "rationale": "Existing separately supplied input HORIZON_WASM_FIXTURE in tools/ci/ignored-tests/wasm-fixture.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD built from this tree"
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::potions::arrow_contents::actual_arrow_contents_match_pinned_methods",
-    "path": "crates/horizon-client/src/game/items/potions.rs",
+    "path": "crates/myriade-engine/src/game/items/potions.rs",
     "reason": "explicit HORIZON_TEST_RESOURCES and isolated potion oracle input/output",
     "rationale": "Existing separately supplied input HORIZON_POTION_INPUT in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. explicit HORIZON_TEST_RESOURCES and isolated potion oracle input/output"
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::registration_capability_coverage_wasm_tests::compiled_guest_reads_game_coverage_during_registration",
-    "path": "crates/horizon-client/src/game/modding/registration_capability_coverage_wasm_tests.rs",
+    "path": "crates/myriade-engine/src/game/modding/registration_capability_coverage_wasm_tests.rs",
     "reason": "requires prepared HORIZON_TEST_RESOURCES and rebuilt HORIZON_WASM_FIXTURE/HORIZON_WASM_STD",
     "rationale": "Existing separately supplied input HORIZON_WASM_FIXTURE in tools/ci/ignored-tests/wasm-fixture.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. requires prepared HORIZON_TEST_RESOURCES and rebuilt HORIZON_WASM_FIXTURE/HORIZON_WASM_STD"
   },
   {
-    "package": "horizon-client",
+    "package": "myriade-engine",
     "target": "lib",
     "test": "game::stats::stat_award_tests::wasm_real_break_and_jump_rewrite_awards",
-    "path": "crates/horizon-client/src/game/interface/tests/stat_award_tests.rs",
+    "path": "crates/myriade-engine/src/game/interface/tests/stat_award_tests.rs",
     "reason": "needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD; build with horizon-mod-wasm/listener-fixture",
     "rationale": "Existing separately supplied input HORIZON_WASM_FIXTURE in tools/ci/ignored-tests/stat-award-wasm.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs HORIZON_TEST_RESOURCES, HORIZON_WASM_FIXTURE and HORIZON_WASM_STD; build with horizon-mod-wasm/listener-fixture"
   },
   {
-    "package": "horizon-client-core",
+    "package": "myriade-data",
     "target": "lib",
     "test": "lang::tests::every_lang_file_of_a_pack_reads",
-    "path": "crates/horizon-client-core/src/lang.rs",
+    "path": "crates/myriade-data/src/lang.rs",
     "reason": "needs a downloaded pack in HORIZON_LANG_PACK_DIR",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-horizon-client-core.txt: needs a downloaded pack in HORIZON_LANG_PACK_DIR. Not selected by daily shards."
+    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-myriade-data.txt: needs a downloaded pack in HORIZON_LANG_PACK_DIR. Not selected by daily shards."
   },
   {
-    "package": "horizon-client-lib",
+    "package": "myriade-engine-lib",
     "target": "lib",
     "test": "entities::entity_collision_tests::obstacle_grid_beats_scanning_every_box_for_a_big_farm",
-    "path": "crates/horizon-client/src/entities.rs",
+    "path": "crates/myriade-engine/src/entities.rs",
     "reason": "timing",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: timing. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
   {
-    "package": "horizon-client-lib",
+    "package": "myriade-engine-lib",
     "target": "lib",
     "test": "entity_nbt::equipment_tests::write_fixtures",
-    "path": "crates/horizon-client/src/entity_nbt/equipment_tests.rs",
+    "path": "crates/myriade-engine/src/entity_nbt/equipment_tests.rs",
     "reason": "writes the fixtures; run with HORIZON_WRITE_FIXTURES=1 on the codec to record",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; HORIZON_WRITE_FIXTURES supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "horizon-client-lib",
+    "package": "myriade-engine-lib",
     "target": "lib",
     "test": "lan::entity::send_bench::tracker_send_benchmark",
-    "path": "crates/horizon-client/src/lan/entity/send_bench.rs",
+    "path": "crates/myriade-engine/src/lan/entity/send_bench.rs",
     "reason": "performance measurement; requires HORIZON_SEND_BENCH=1 on an idle machine",
     "rationale": "Existing separately supplied input HORIZON_SEND_BENCH in tools/ci/ignored-tests/sync-38-resources.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. performance measurement; requires HORIZON_SEND_BENCH=1 on an idle machine"
   },
   {
-    "package": "horizon-client-lib",
+    "package": "myriade-engine-lib",
     "target": "lib",
     "test": "mobs::villager_brain::poi_classification_tests::vanilla_bed_poi_states",
-    "path": "crates/horizon-client/src/mobs/villager_brain.rs",
+    "path": "crates/myriade-engine/src/mobs/villager_brain.rs",
     "reason": "requires the vanilla bed POI oracle output",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_bed_poi_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "horizon-client-lib",
+    "package": "myriade-engine-lib",
     "target": "lib",
     "test": "raw_payloads::wasm_tests::compiled_guest_observes_physical_provider_pressure",
-    "path": "crates/horizon-client/src/raw_payloads/wasm_tests.rs",
+    "path": "crates/myriade-engine/src/raw_payloads/wasm_tests.rs",
     "reason": "requires compiled HORIZON_WASM_FIXTURE and HORIZON_WASM_STD",
     "rationale": "Existing separately supplied input HORIZON_WASM_FIXTURE in tools/ci/ignored-tests/wasm-fixture.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. requires compiled HORIZON_WASM_FIXTURE and HORIZON_WASM_STD"
   },
   {
-    "package": "horizon-client-lib",
+    "package": "myriade-engine-lib",
     "target": "lib",
     "test": "save::compression_bench::benches::bench_chunk_compression_speedup",
-    "path": "crates/horizon-client/src/save/compression_bench.rs",
+    "path": "crates/myriade-engine/src/save/compression_bench.rs",
     "reason": "a measurement, not a check",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: a measurement, not a check. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
   {
-    "package": "horizon-client-lib",
+    "package": "myriade-engine-lib",
     "target": "lib",
     "test": "save::far_census::far_floating_cells_per_level",
-    "path": "crates/horizon-client/src/save.rs",
+    "path": "crates/myriade-engine/src/save.rs",
     "reason": "requires prepared data and a save (see the module docs)",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; HORIZON_FAR_SAVE supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "horizon-client-lib",
+    "package": "myriade-engine-lib",
     "target": "lib",
     "test": "save::loot_tests::opened_loot_parity_fixture",
-    "path": "crates/horizon-client/src/save/loot_tests.rs",
+    "path": "crates/myriade-engine/src/save/loot_tests.rs",
     "reason": "run by tools/test_opened_loot_parity.py",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_opened_loot_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
   {
-    "package": "horizon-client-render",
+    "package": "myriade-level",
     "target": "lib",
     "test": "light::tests::benchmark_light_chunk",
-    "path": "crates/horizon-client-render/src/light.rs",
+    "path": "crates/myriade-level/src/light.rs",
     "reason": "benchmark",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: benchmark. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
   {
-    "package": "horizon-client-render",
+    "package": "myriade-level",
     "target": "lib",
     "test": "light::tests::benchmark_worker_light_results",
-    "path": "crates/horizon-client-render/src/light.rs",
+    "path": "crates/myriade-level/src/light.rs",
     "reason": "microbenchmark; run with --ignored --nocapture",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: microbenchmark; run with --ignored --nocapture. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
   {
-    "package": "horizon-client-render",
+    "package": "myriade-level",
     "target": "lib",
     "test": "streaming::forced_cover::tests::forced_cover_cost",
-    "path": "crates/horizon-client-render/src/streaming/forced_cover.rs",
+    "path": "crates/myriade-level/src/streaming/forced_cover.rs",
     "reason": "timings; run with --release --ignored --nocapture",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: timings; run with --release --ignored --nocapture. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },
   {
-    "package": "horizon-client-render",
+    "package": "myriade-level",
     "target": "lib",
     "test": "streaming::tests::generation_scan_benchmark",
-    "path": "crates/horizon-client-render/src/streaming.rs",
+    "path": "crates/myriade-level/src/streaming.rs",
     "reason": "reproducible actual generation scheduler benchmark; run with --ignored --nocapture",
     "rationale": "Opt-in measurement, not an ordinary daily correctness check: reproducible actual generation scheduler benchmark; run with --ignored --nocapture. Run by hand on an idle machine with the optimized profile and its explicitly requested inputs; all assertions remain in the test."
   },

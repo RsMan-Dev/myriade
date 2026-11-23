@@ -12,7 +12,7 @@ pack's bytes are never fetched, only its offer is compared with server.propertie
 - optional, accepted then loaded: the player stays in game.
 
   python3 tools/server_pack_e2e.py                                   # vanilla's server
-  python3 tools/server_pack_e2e.py --horizon-server target/release/horizon-client
+  python3 tools/server_pack_e2e.py --horizon-server target/release/myriade-engine
 
 Every server here runs in fresh scratch homes (lab.game_env). Needs .local (the vanilla jars and prepared resources).
 """
@@ -162,7 +162,7 @@ def run_side(label, command, bot_binary, work, configs_by_name, out):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--bot', type=Path, help='the myriade-bot binary (default: the one under lab.cargo_target())')
-    parser.add_argument('--horizon-server', help='a horizon-client binary to run as the dedicated server')
+    parser.add_argument('--horizon-server', help='a myriade-engine binary to run as the dedicated server')
     parser.add_argument('--out', default=str(lab.LOCAL / 'server-pack-e2e'))
     args = parser.parse_args()
     out = Path(args.out)
@@ -171,7 +171,7 @@ def main():
     lock, jars, libraries = base.verify_artifacts()
     deps = os.pathsep.join(map(str, [jars['server'], *libraries]))
     vanilla = ['java', '-Xmx2g', '-cp', deps, 'net.minecraft.server.Main', 'nogui']
-    resources = lab.LOCAL / 'horizon-client' / lab.VERSION
+    resources = lab.LOCAL / 'myriade-engine' / lab.VERSION
     work = Path(tempfile.mkdtemp(prefix='server-packs-'))
     os.environ.update(lab.game_env())
     try:

@@ -1,6 +1,6 @@
 # Benchmark report format (version 1)
 
-Every benchmark Horizon writes uses this one JSON format: `horizon-client --benchmark`, the launcher's own
+Every benchmark Horizon writes uses this one JSON format: `myriade-engine --benchmark`, the launcher's own
 measurements, and `tools/perf_bench.py` (which also writes it for vanilla and vanilla with mods). The same
 file is the local log a player can attach to an issue by hand; nothing uploads it. The types, the statistics and the hardware
 detection are in `crates/horizon-bench`; nothing else builds a report by hand.
@@ -16,7 +16,7 @@ kilobytes whatever the frame rate. Measured numbers are rounded to 3 decimals.
   "version": 1,
   "kind": "game",
   "created": "2026-10-15T14:03:27Z",
-  "app": { "name": "horizon-client", "version": "0.21.0", "commit": "e96e1571" },
+  "app": { "name": "myriade-engine", "version": "0.21.0", "commit": "e96e1571" },
   "hardware": {
     "os": "macos", "os_version": "27.0", "arch": "aarch64",
     "cpu": "Apple M4 Pro", "cpu_threads": 14, "cpu_cores": 14, "ram_mb": 65536, "storage": "nvme", "form": "desktop",
@@ -53,7 +53,7 @@ one (histogram edges included) makes it 2.
 
 **`created`.** When the run ended, UTC, `YYYY-MM-DDTHH:MM:SSZ`.
 
-**`app`.** What was measured: `name` (`horizon-client`, `horizon-launcher`, `minecraft`), `version`,
+**`app`.** What was measured: `name` (`myriade-engine`, `horizon-launcher`, `minecraft`), `version`,
 optionally `commit` (Horizon builds) and `mods` (`[{ "name", "version" }]`, vanilla with mods).
 
 **`hardware`.** `os` (`macos`, `linux`, `windows`), `os_version`, `arch`, `cpu` (brand string; on Windows

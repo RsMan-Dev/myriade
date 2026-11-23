@@ -88,7 +88,7 @@ pub fn release(w: &mut World, e: Entity) {
 }
 
 /// The totem of `e` as (slot, stack): the main hand first, else the off hand.
-fn held_totem(w: &World, e: Entity) -> Option<(usize, horizon_client_lib::items::ItemStack)> {
+fn held_totem(w: &World, e: Entity) -> Option<(usize, myriade_engine_lib::items::ItemStack)> {
     [MAIN, OFF].into_iter().find_map(|s| equip_stack::get(w, e, s).filter(|st| &*st.item == TOTEM).map(|st| (s, st)))
 }
 

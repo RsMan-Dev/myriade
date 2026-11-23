@@ -10,7 +10,7 @@ use crate::leash::{Holder, Leash, Leashable, attach_from_save};
 use crate::player_uuids;
 use crate::rules::leash::center_of;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::{geometry::Vec3, nbt::{Compound, JavaString, Tag}};
 
 /// A lead read from a save, not yet tied.

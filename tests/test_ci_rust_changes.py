@@ -24,7 +24,7 @@ class RustChangesTests(unittest.TestCase):
             "tools/parity.py", "tools/test_tick_parity.py", "tests/test_ci_runners.py", "docs/setup.md",
         ]))
         for path in [
-            "crates/horizon-client/src/game.rs", "xtask/src/main.rs", "Cargo.lock",
+            "crates/myriade-engine/src/game.rs", "xtask/src/main.rs", "Cargo.lock",
             ".cargo/config.toml", ".github/workflows/ci.yml", "tools/ci/rust_changes.py",
             "tools/release_train.py", "tools/ci/sign_release.sh", "tools/native-hook-fragments/a.json",
             "tools/parity_hosts.json", "mods/horizon/src/x.py",
@@ -45,8 +45,8 @@ class RustChangesTests(unittest.TestCase):
                      "docs/setup.md"]:
             with self.subTest(path=path):
                 self.assertFalse(needs_server_build([path]))
-        for path in ["crates/horizon-client/src/game.rs", "crates/horizon-client-render/src/hud.rs",
-                     "crates/horizon-client-core/src/lang.rs", "crates/horizon-world/Cargo.toml", "Cargo.lock",
+        for path in ["crates/myriade-engine/src/game.rs", "crates/myriade-level/src/hud.rs",
+                     "crates/myriade-data/src/lang.rs", "crates/horizon-world/Cargo.toml", "Cargo.lock",
                      "Cargo.toml", ".cargo/config.toml", ".github/workflows/ci.yml", "tools/ci/rust_changes.py"]:
             with self.subTest(path=path):
                 self.assertTrue(needs_server_build(["docs/setup.md", path]))
@@ -83,7 +83,7 @@ class RustChangesTests(unittest.TestCase):
             "tools/README.md", "tests/fixtures/example.md", ".github/pull_request_template.md",
             "docs/modding/src/introduction.md", "roadmap/journal/example.md",
             "README.md", "ROADMAP.md", "docs/README.md",
-            "crates/horizon-client/src/game.rs", "packaging/server/start.sh", "research-lock.json",
+            "crates/myriade-engine/src/game.rs", "packaging/server/start.sh", "research-lock.json",
             "unknown-file",
         ]:
             with self.subTest(path=path):
@@ -224,7 +224,7 @@ class EmbeddedFileTests(unittest.TestCase):
 
 class ModPointSelectionTests(unittest.TestCase):
     def test_the_game_the_generator_and_the_check_select_it(self):
-        for path in ["crates/horizon-client/src/game/tick.rs", "crates/horizon-client/src/game.rs",
+        for path in ["crates/myriade-engine/src/game/tick.rs", "crates/myriade-engine/src/game.rs",
                      "crates/horizon-mod-api-gen/src/points.rs", "crates/horizon-mod-api-macros/src/lib.rs",
                      "tools/check_mod_points_unchanged.py", "crates/horizon-world/Cargo.toml", "Cargo.lock",
                      UNKNOWN_CHANGE, ".github/workflows/ci.yml", "tools/ci/surface_report.py",

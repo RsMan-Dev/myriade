@@ -114,7 +114,7 @@ fn run(q: Query<(Entity, &Walker, Has<Following>, Has<NeedsPath>), With<Hopping>
 }
 /// `Heightmap` position of the column (the first block that stops a walk, plus one).
 fn ground(w: &World, x: i32, z: i32) -> [i32; 3] {
-    horizon_client_lib::mobs::raider::heightmap_pos(blocks::world_of(w), x, z)
+    myriade_engine_lib::mobs::raider::heightmap_pos(blocks::world_of(w), x, z)
 }
 /// The patrol companions within 16 blocks that are not in a raid.
 fn companions(w: &World, e: Entity, own: Vec3) -> Vec<Entity> {

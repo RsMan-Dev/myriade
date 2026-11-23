@@ -194,7 +194,7 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(poi_changes.after(block_changes).before(crate::targeting::sight_eval));
 }
 /// The block at `p` as a point of interest, if it is one.
-fn classify(mw: &horizon_client_lib::mobs::MobWorld<'static>, p: [i32; 3]) -> Option<PoiType> {
+fn classify(mw: &myriade_engine_lib::mobs::MobWorld<'static>, p: [i32; 3]) -> Option<PoiType> {
     saved_poi(mw.registry.state(mw.world.block(p[0], p[1], p[2]))?)
 }
 /// The world of the bench indexed once: every block of the slab and the first blocks above it.

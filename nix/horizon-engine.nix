@@ -1,4 +1,4 @@
-# The server build of the game (`horizon-game --no-default-features`, its `horizon-client` binary): the
+# The server build of the game (`horizon-game --no-default-features`, its `myriade-engine` binary): the
 # dedicated server, run headless by horizon-server as `horizon-engine` (docs/hosting.md).
 {
   lib,
@@ -15,7 +15,7 @@ rustPlatform.buildRustPackage {
 
   cargoBuildFlags = [
     "--package=horizon-game"
-    "--bin=horizon-client"
+    "--bin=myriade-engine"
   ];
   buildNoDefaultFeatures = true;
 
@@ -25,7 +25,7 @@ rustPlatform.buildRustPackage {
   doCheck = false;
 
   postInstall = ''
-    mv $out/bin/horizon-client $out/bin/horizon-engine
+    mv $out/bin/myriade-engine $out/bin/horizon-engine
   '';
 
   meta = {

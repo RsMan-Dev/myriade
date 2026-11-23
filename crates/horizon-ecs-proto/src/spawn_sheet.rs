@@ -3,7 +3,7 @@
 //! entity for it. Applied by `EcsWorld::spawn_prepared`, then finalized by `finalize_prepared`. Nothing here names a species.
 use crate::attr_mod::Modifier;
 use crate::spawn_finalize::Group;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 /// One attribute edit, in the order it was made.
 #[derive(Clone, Debug, PartialEq)]
@@ -61,7 +61,7 @@ mod tests {
     fn a_sheet_with_passenger_attachments_gives_the_seats_of_the_birth() {
         let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
         let setup = HostSetup { seed: 1, dimension: "minecraft:overworld", simulation_radius: 0 };
-        let (mw, types, _) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
+        let (mw, types, _) = myriade_engine_lib::mobs::world::leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
         let mut h = EcsWorld::new(&setup, mw, types, &tags);
         let e = h.world_mut().spawn_empty().id();
         let sheet = SpawnSheet { passenger_attachments: vec![[0.0, 1.0, 0.5], [0.0, 1.0, -0.5]], ..Default::default() };

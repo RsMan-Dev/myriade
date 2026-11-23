@@ -18,7 +18,7 @@ except ImportError:
     import lab
     import test_rust_parity as base
 
-RUST_SOURCES = sorted((lab.ROOT / "crates/horizon-client/src").rglob("*.rs"))
+RUST_SOURCES = sorted((lab.ROOT / "crates/myriade-engine/src").rglob("*.rs"))
 
 
 def child_env(scratch, resources=None):
@@ -37,7 +37,7 @@ def child_env(scratch, resources=None):
 def compile_tests(build, scratch):
     """Keep build artifacts and expose compiler diagnostics in the CI harness log."""
     command = ["cargo", "test", "--locked", "--manifest-path", str(lab.ROOT / "Cargo.toml"),
-               "-p", "horizon-client", "--lib", "--no-run", "--message-format=json"]
+               "-p", "myriade-engine", "--lib", "--no-run", "--message-format=json"]
     with (build / "compile.jsonl").open("w", encoding="utf-8") as output, \
             (build / "compile.log").open("w", encoding="utf-8") as errors:
         result = subprocess.run(command, cwd=lab.ROOT, env=child_env(scratch),
@@ -67,8 +67,8 @@ def main(rust_filters=("portal_blast_sulfur_cube_", "portal_arrival_effects_"), 
     report.unlink(missing_ok=True)
     oracle = lab.ROOT / "mods/horizon/src/test/java/dev/horizonlab/parity/VanillaSulfurPortalBlastOracle.java"
     sources = [Path(__file__), oracle, lab.ROOT / "tools/lab.py", lab.ROOT / "tools/test_rust_parity.py",
-               lab.ROOT / "Cargo.toml", lab.ROOT / "Cargo.lock", lab.ROOT / "crates/horizon-client/Cargo.toml",
-               lab.ROOT / "crates/horizon-client/src/lib.rs",
+               lab.ROOT / "Cargo.toml", lab.ROOT / "Cargo.lock", lab.ROOT / "crates/myriade-engine/Cargo.toml",
+               lab.ROOT / "crates/myriade-engine/src/lib.rs",
                *[lab.ROOT / path for path in RUST_SOURCES]]
     hashes = base.source_hashes(sources)
     classes = build / "classes"
@@ -96,7 +96,7 @@ def main(rust_filters=("portal_blast_sulfur_cube_", "portal_arrival_effects_"), 
         except ValueError:
             continue
         if row.get("reason") == "compiler-artifact" and row.get("executable") \
-                and row.get("target", {}).get("name") == "horizon_client" \
+                and row.get("target", {}).get("name") == "myriade_engine" \
                 and row.get("profile", {}).get("test"):
             artifacts.append(Path(row["executable"]))
     if len(artifacts) != 1:

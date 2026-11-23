@@ -6,7 +6,7 @@
 use super::*;
 use crate::{brain, cow::*, goals::*, hostile::strike, mount::Riding, spots::{self, Pick}, targeting::{info, Target, Who}};
 use crate::rules::spear_use as rules;
-use horizon_client_lib::spear::{hits_in_reach, Kinetic, REACH};
+use myriade_engine_lib::spear::{hits_in_reach, Kinetic, REACH};
 use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]

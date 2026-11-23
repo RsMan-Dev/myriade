@@ -8,7 +8,7 @@ fn with_component(stack: ItemStack, component: Value) -> ItemStack {
     let mut stack = stack;
     stack.data_mut().other.push((
         "minecraft:blocks_attacks".into(),
-        horizon_client_core::scoreboard::json_to_tag(&component),
+        myriade_data::scoreboard::json_to_tag(&component),
     ));
     stack
 }

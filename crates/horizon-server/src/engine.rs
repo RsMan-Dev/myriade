@@ -1,4 +1,4 @@
-//! The engine: the game itself, run headless (`horizon-client --dedicated`, crates/horizon-client
+//! The engine: the game itself, run headless (`myriade-engine --dedicated`, crates/myriade-engine
 //! game/interface/dedicated/mod.rs). It reads the vanilla files the supervisor writes, takes console commands on stdin and
 //! logs on stdout.
 
@@ -375,7 +375,7 @@ mod tests {
         let thp = |low_memory| {
             let dir = std::env::temp_dir();
             let command = command(
-                Path::new("horizon-client"),
+                Path::new("myriade-engine"),
                 &dir,
                 &dir,
                 low_memory,
@@ -398,7 +398,7 @@ mod tests {
         let switch = |parallel_tick| {
             let dir = std::env::temp_dir();
             let command = command(
-                Path::new("horizon-client"),
+                Path::new("myriade-engine"),
                 &dir,
                 &dir,
                 false,
@@ -421,7 +421,7 @@ mod tests {
         let env = |entities: Entities, name: &str| {
             let dir = std::env::temp_dir();
             let command = command(
-                Path::new("horizon-client"),
+                Path::new("myriade-engine"),
                 &dir,
                 &dir,
                 false,
@@ -475,7 +475,7 @@ mod tests {
         let args = |transfers: Option<&str>| {
             let dir = std::env::temp_dir();
             let command = command(
-                Path::new("horizon-client"),
+                Path::new("myriade-engine"),
                 &dir,
                 &dir,
                 false,
@@ -578,15 +578,15 @@ mod tests {
 
     #[test]
     fn a_missing_library_says_what_to_install() {
-        let program = Path::new("/opt/horizon/horizon-client");
+        let program = Path::new("/opt/horizon/myriade-engine");
         let text = start_failure(
             program,
             Some(127),
-            "/opt/horizon/horizon-client: error while loading shared libraries: libasound.so.2: cannot open \
+            "/opt/horizon/myriade-engine: error while loading shared libraries: libasound.so.2: cannot open \
              shared object file: No such file or directory\n",
         );
         assert!(text.starts_with(
-            "the game (/opt/horizon/horizon-client) can't start (exit status 127): /opt/horizon/horizon-client: \
+            "the game (/opt/horizon/myriade-engine) can't start (exit status 127): /opt/horizon/myriade-engine: \
              error while loading shared libraries: libasound.so.2"
         ));
         assert!(text.contains("sudo apt install libasound2 libudev1"));
@@ -601,7 +601,7 @@ mod tests {
         let other = start_failure(program, Some(1), "something else\n");
         assert_eq!(
             other,
-            "the game (/opt/horizon/horizon-client) can't start (exit status 1): something else"
+            "the game (/opt/horizon/myriade-engine) can't start (exit status 1): something else"
         );
     }
 
@@ -702,7 +702,7 @@ mod tests {
         std::fs::create_dir_all(data.join("run-leases")).unwrap();
         let install = data.join("server-runtime/releases/v1");
         std::fs::create_dir_all(&install).unwrap();
-        std::fs::create_dir_all(data.join("server-runtime/game-files/horizon-client/26.3"))
+        std::fs::create_dir_all(data.join("server-runtime/game-files/myriade-engine/26.3"))
             .unwrap();
         let server = data.join("servers/survival");
         std::fs::create_dir_all(&server).unwrap();
@@ -715,9 +715,9 @@ mod tests {
             std::env::temp_dir().join(format!("horizon-engine-lease-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let (install, server, _data) = managed(&root);
-        let program = install.join("horizon-client.exe");
+        let program = install.join("myriade-engine.exe");
         std::fs::write(&program, "game").unwrap();
-        let resources = root.join("data/server-runtime/game-files/horizon-client/26.3");
+        let resources = root.join("data/server-runtime/game-files/myriade-engine/26.3");
         let command = horizon_server_launch::command(&program, &resources, &server, false).unwrap();
         // An update switches `current` to a release nobody prepared: the start prepares it.
         let claims = lease(&program, &command, &server).unwrap();
@@ -737,7 +737,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         let install = root.join("releases/v1");
         std::fs::create_dir_all(&install).unwrap();
-        let program = install.join("horizon-client.exe");
+        let program = install.join("myriade-engine.exe");
         std::fs::write(&program, "game").unwrap();
         let server = root.join("server");
         std::fs::create_dir_all(&server).unwrap();
@@ -760,7 +760,7 @@ mod tests {
         std::fs::create_dir_all(data.join("run-leases")).unwrap();
         let install = data.join("versions/26.3");
         std::fs::create_dir_all(&install).unwrap();
-        let program = install.join("horizon-client.exe");
+        let program = install.join("myriade-engine.exe");
         std::fs::write(&program, "game").unwrap();
         let server = data.join("servers/survival");
         std::fs::create_dir_all(&server).unwrap();

@@ -9,7 +9,7 @@ use crate::mount::Riding;
 use crate::rules::spear_use as rules;
 use crate::spots::Pick;
 use crate::targeting::{info, Who};
-use horizon_client_lib::spear::Kinetic;
+use myriade_engine_lib::spear::Kinetic;
 use horizon_core::geometry::Vec3;
 use super::spear_approach::{able_to_attack, CHARGING, RETREAT};
 

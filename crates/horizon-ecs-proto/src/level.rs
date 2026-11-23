@@ -6,7 +6,7 @@ use crate::cow::{Bounds, Contact, Level, Pos, Vel};
 use crate::goals::mob_griefing;
 use crate::rules::level::{full_face_of, JUMP_POWER};
 use bevy_ecs::prelude::*;
-use horizon_client_render::collisions::projectile_can_stand_on;
+use myriade_level::collisions::projectile_can_stand_on;
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::position::BlockPos;
 

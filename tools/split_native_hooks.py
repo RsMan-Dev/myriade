@@ -15,7 +15,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-DIRECTORY = Path("crates/horizon-client/src/game/native_hooks")
+DIRECTORY = Path("crates/myriade-engine/src/game/native_hooks")
 CATALOG = Path("crates/horizon-mod-vocab/src/hooks")
 
 
@@ -174,8 +174,8 @@ def main():
 
 
 def retarget(source, areas):
-    source = re.sub(r"horizon_client::game::native_hooks::(Game(?:Level)?|HitLevel)(<'_>)?::(native_\w+)",
-                    lambda m: f"horizon_client::game::native_hooks::{areas[m[3]]}::{m[1]}{m[2] or ''}::{m[3]}", source)
+    source = re.sub(r"myriade_engine::game::native_hooks::(Game(?:Level)?|HitLevel)(<'_>)?::(native_\w+)",
+                    lambda m: f"myriade_engine::game::native_hooks::{areas[m[3]]}::{m[1]}{m[2] or ''}::{m[3]}", source)
     return source.replace("in `native_hooks.rs`", "in `native_hooks/<area>.rs`")
 
 

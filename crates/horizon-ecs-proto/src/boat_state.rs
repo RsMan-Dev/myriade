@@ -6,7 +6,7 @@ use crate::cow::{Pos, TypeName, Vel, Yaw};
 use crate::nbt::{self, accept, owner, Field};
 use crate::species::boats::{entity_id, species, WOODS};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::{geometry::Vec3, nbt::{Compound, JavaString, Tag}};
 use horizon_items::item_nbt::{decode_items, encode_items};
 use std::borrow::Cow;

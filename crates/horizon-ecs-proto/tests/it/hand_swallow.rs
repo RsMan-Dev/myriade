@@ -2,7 +2,7 @@
 //! first out); a baby takes no block. Scene as in sulfur_cube_vs_mob (`HORIZON_SPECIES`, vanilla data).
 use crate::common;
 use common::*;
-use horizon_client_lib::mobs::sulfur_cube::archetype_of;
+use myriade_engine_lib::mobs::sulfur_cube::archetype_of;
 use horizon_ecs_proto::behaviours::swallow_hold::Held;
 use horizon_ecs_proto::behaviours::Interaction;
 use horizon_ecs_proto::cow::*;

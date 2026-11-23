@@ -1,7 +1,7 @@
 //! The leads through the bridge: the holder saved as an entity's uuid or a knot's coordinates, a read lead tied once its holder appears,
 //! the snapping reach, the uuid index, and the creature and vehicle markers of a view.
 use crate::common::*;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_core::{geometry::Vec3, nbt::Tag};
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::bridge::view::view;

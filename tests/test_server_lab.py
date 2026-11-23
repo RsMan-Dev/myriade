@@ -103,7 +103,7 @@ class ServerStateReads(unittest.TestCase):
             server = relaunchable(folder, control, FakeProcess())
             self.assertEqual(server.restart(), {'stopping': True})
             popen.assert_called_once()
-            self.assertEqual(popen.call_args.args[0], ['horizon-client', '--dedicated'])
+            self.assertEqual(popen.call_args.args[0], ['myriade-engine', '--dedicated'])
             self.assertEqual(control.asked, ['restart', 'server-status'])
             server.log.close()
 
@@ -145,7 +145,7 @@ def relaunchable(folder, control, process):
     """A Server whose launch and endpoint are fakes, its folder a scratch one."""
     server = server_lab.Server.__new__(server_lab.Server)
     server.folder = Path(folder)
-    server.argv = ['horizon-client', '--dedicated']
+    server.argv = ['myriade-engine', '--dedicated']
     server.endpoint = FakeEndpoint()
     server.ready_seconds = 5
     server.control = control

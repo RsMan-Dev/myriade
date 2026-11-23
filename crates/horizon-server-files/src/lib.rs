@@ -2,7 +2,7 @@
 //! net.minecraft.server.dedicated and net.minecraft.server.players:
 //! server.properties, eula.txt, the four user lists, usercache.json and
 //! looking players up by name. The game's dedicated server
-//! (`horizon-client --dedicated`) reads them, and `horizon-server` manages
+//! (`myriade-engine --dedicated`) reads them, and `horizon-server` manages
 //! them; this crate needs neither a window nor the game.
 pub mod biome_regions;
 pub mod chat_guard;

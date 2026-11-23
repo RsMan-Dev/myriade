@@ -1,7 +1,7 @@
 //! Firework rocket state (`FireworkRocketEntity`): the fields, loading from and saving to NBT, the
 //! 1.15 horizontal acceleration and 0.04 lift of one move, and the item's default flight. Launching,
-//! blasts and the client explosion stay in `horizon-client`.
-use horizon_client::{
+//! blasts and the client explosion stay in `myriade-engine`.
+use myriade_engine::{
     collisions::SceneCollisions, entity_nbt::RocketNbt, items::ItemStack, mobs::Who,
     particles::FireworkExplosion,
 };
@@ -12,8 +12,8 @@ pub struct Rocket {
     pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
-    /// When it joined its list (`horizon_client::join_seq`); set by the list.
-    pub join: horizon_client::join_seq::JoinSeq,
+    /// When it joined its list (`myriade_engine::join_seq`); set by the list.
+    pub join: myriade_engine::join_seq::JoinSeq,
     /// Its entity id: from the entity counter on the server, the server's on
     /// a client.
     pub id: u32,
@@ -86,7 +86,7 @@ impl Rocket {
             attached_to: None,
             angled: false,
             item,
-            random: horizon_client::projectiles::unique_random(position),
+            random: myriade_engine::projectiles::unique_random(position),
             on_ground: false,
             // The server posts the shot.
             has_been_shot: true,
@@ -110,8 +110,8 @@ impl Rocket {
         player: Option<[i32; 4]>,
         raw: Option<&horizon_core::nbt::Tag>,
     ) -> horizon_core::nbt::Tag {
-        horizon_client::entity_nbt::firework_rocket_to_nbt(
-            &horizon_client::entity_nbt::RocketSave {
+        myriade_engine::entity_nbt::firework_rocket_to_nbt(
+            &myriade_engine::entity_nbt::RocketSave {
                 rotation: self.rotation,
                 position: self.position,
                 motion: self.velocity,
@@ -158,7 +158,7 @@ impl Rocket {
             attached_to: None,
             angled: r.angled,
             item,
-            random: horizon_client::projectiles::unique_random(r.position),
+            random: myriade_engine::projectiles::unique_random(r.position),
             on_ground: r.on_ground,
             has_been_shot: r.has_been_shot,
             silent: r.silent,
@@ -218,8 +218,8 @@ impl Rocket {
         let horizontal = (v.x * v.x + v.z * v.z).sqrt();
         let atan2 = horizon_core::geometry::trig::atan2_degrees;
         self.rotation = [
-            horizon_client::arrows::lerp_rotation(old[0], atan2(v.x, v.z)),
-            horizon_client::arrows::lerp_rotation(old[1], atan2(v.y, horizontal)),
+            myriade_engine::arrows::lerp_rotation(old[0], atan2(v.x, v.z)),
+            myriade_engine::arrows::lerp_rotation(old[1], atan2(v.y, horizontal)),
         ];
     }
     /// The move of a rocket attached to no entity: sped up and rising, or an
@@ -268,7 +268,7 @@ impl Rocket {
             self.stuck = Vec3::ZERO;
         }
         let from = self.position;
-        let mut gate = horizon_client::move_gate::armed(
+        let mut gate = myriade_engine::move_gate::armed(
             context,
             self.id,
             "minecraft:firework_rocket",
@@ -277,7 +277,7 @@ impl Rocket {
         );
         let wanted = gate.delta();
         let Ok(moved) =
-            horizon_client::move_gate::scene_resolve(&mut gate, scene, bounds, wanted, 0.0, false)
+            myriade_engine::move_gate::scene_resolve(&mut gate, scene, bounds, wanted, 0.0, false)
         else {
             return None;
         };
@@ -309,6 +309,6 @@ pub fn fireworks_of(stack: &ItemStack) -> (u8, Vec<FireworkExplosion>) {
         .and_then(|d| d.fireworks.clone())
         .unwrap_or((1, Vec::new()))
 }
-horizon_client::impl_joined!(Rocket);
+myriade_engine::impl_joined!(Rocket);
 horizon_mod_runtime::impl_attachment_lifetime!(Rocket);
-impl horizon_client::entity_rules::EntityRules for Rocket {}
+impl myriade_engine::entity_rules::EntityRules for Rocket {}

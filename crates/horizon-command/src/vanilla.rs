@@ -5,7 +5,7 @@ use super::{
     Dispatcher,
     args::{ArgType, Resource, integer},
 };
-use horizon_client_core::gamerules::{MINECART_IMPROVEMENTS, RuleRegistry, Value, rule_registry};
+use myriade_data::gamerules::{MINECART_IMPROVEMENTS, RuleRegistry, Value, rule_registry};
 
 /// Permission levels (Commands.LEVEL_*).
 pub const ALL: u8 = 0;

@@ -28,7 +28,7 @@ Define API-owned snapshots for incoming and previous full instances, effect keys
 
 ## Route owners to migrate
 
-Paths below are relative to `crates/horizon-client/src/`; line numbers identify inspected current owners, not promised APIs. All rows enter the same coordinator; no producer gets its own Added dispatch.
+Paths below are relative to `crates/myriade-engine/src/`; line numbers identify inspected current owners, not promised APIs. All rows enter the same coordinator; no producer gets its own Added dispatch.
 
 | Route | Verified owner |
 | --- | --- |

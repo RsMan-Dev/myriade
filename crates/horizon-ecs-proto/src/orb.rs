@@ -9,7 +9,7 @@ use crate::host_out_items::{ItemEvent, ItemEvents};
 use crate::item::{ExpiryPolicy, Expiring};
 use crate::rules::orb::{attraction, check_wait, expire_tick, is_scan_tick, merged_age_base, same_merge_group, throw_velocity, LIFE, REACH};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::entities::ExperienceOrb;
+use myriade_engine_lib::entities::ExperienceOrb;
 use horizon_core::geometry::{Aabb, Vec3};
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};

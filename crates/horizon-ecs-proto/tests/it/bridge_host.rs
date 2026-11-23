@@ -3,7 +3,7 @@
 use crate::common::*;
 use bevy_ecs::prelude::*;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup, PlayerFact, Select};
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_ecs_proto::cow::{BlockChanges, Pos};
 use horizon_ecs_proto::goals::Player;
 use horizon_ecs_proto::host_out::HostEvent;

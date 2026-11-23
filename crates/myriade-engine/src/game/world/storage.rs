@@ -1,0 +1,528 @@
+//! Shulker boxes (`ShulkerBoxBlockEntity`: 27 slots that refuse other boxes,
+//! kept in the dropped item's `container` component) and ender chests (the
+//! player's `PlayerEnderChestContainer`, saved as `EnderItems`).
+use super::Game;
+use myriade_engine::{
+    containers::{BlockEntity, ChestHalf, is_chest_block},
+    items::ItemStack,
+    text::Text,
+};
+use horizon_core::random::RandomSource;
+
+pub(super) fn is_shulker_box(name: &str) -> bool {
+    name.ends_with("shulker_box")
+}
+impl Game<'_> {
+    /// `ServerPlayerGameMode.useItemOn` for a spectator: the block's menu
+    /// (`BlockState.getMenuProvider`) opens, and nothing else happens. The
+    /// lid, its sound and the `container_open` game event come from
+    /// `ContainerOpenersCounter`, which spectators never join
+    /// (`ChestBlockEntity.startOpen`); the stat, the piglins' anger and the
+    /// shulker box's room check are `useWithoutItem`'s, which is not called.
+    /// Only the block containers whose clicks the server takes back from a
+    /// spectator (`handleContainerClick`) open here: storage, the furnaces,
+    /// the brewing stand and the crafter.
+    pub(super) fn spectator_open_menu(&mut self, pos: [i32; 3]) {
+        if self.fake_blocks(mod_api::FakeEffect::Menu) {
+            return;
+        }
+        let key = (pos[0], pos[1], pos[2]);
+        let name = self
+            .res
+            .facts()
+            .get(self.world.block(pos[0], pos[1], pos[2]))
+            .name
+            .clone();
+        let container = is_shulker_box(&name)
+            || matches!(
+                name.trim_start_matches("minecraft:"),
+                "chest"
+                    | "trapped_chest"
+                    | "barrel"
+                    | "hopper"
+                    | "dispenser"
+                    | "dropper"
+                    | "furnace"
+                    | "blast_furnace"
+                    | "smoker"
+                    | "brewing_stand"
+                    | "crafter"
+            );
+        // ChestBlock.getMenuProvider: none while either half is blocked.
+        if !container || self.chest_menu_blocked(key, &name) {
+            return;
+        }
+        // BaseContainerBlockEntity.canOpen: a spectator opens no container that still
+        // has a loot table to unpack (it clears while it rolls, on first open).
+        // ServerPlayer.openMenu sends the refused spectator a red action bar.
+        if self
+            .world
+            .chunks
+            .get(&(key.0 >> 4, key.2 >> 4))
+            .and_then(|c| c.saved.as_ref())
+            .is_some_and(|s| s.pending_loot.contains_key(&key))
+        {
+            self.send_overlay_message(
+                Text::translate("container.spectatorCantOpen", &[])
+                    .with_color(myriade_engine::text::RED),
+            );
+            return;
+        }
+        let Some(entity) = BlockEntity::for_block(&name) else {
+            return;
+        };
+        self.world.block_entities.get_or_insert_with(key, || entity);
+        self.container = Some(key);
+        self.open_container_slots = Some((key, self.open_container_size()));
+        self.right = false;
+    }
+    /// `BaseContainerBlockEntity.createMenu` (and `ChestBlock`'s provider for
+    /// a double chest, which asks both halves' `canOpen`): a `lock` the opener
+    /// cannot unlock refuses the menu with `sendChestLockedNotifications` -
+    /// the action bar names the container and one chest-locked sound plays.
+    /// True when the open is refused.
+    pub(super) fn refuse_locked_container(&mut self, key: (i32, i32, i32), name: &str) -> bool {
+        // A carrier transfer fence holds this cell: its block entity's
+        // container does not open while the operation runs.
+        if self.world.carrier_fences.locks_cell(&[key.0, key.1, key.2]) {
+            return true;
+        }
+        let Some(default_key) = myriade_engine::containers::default_name_key(name) else {
+            return false;
+        };
+        // `LockCode.canUnlock` reads `Player.getMainHandItem`, whichever
+        // hand the click came from.
+        let hand = self.stack_in(self.selected).cloned();
+        let spectator = self.spectator();
+        // The halves in `DoubleBlockCombiner` order: the right half first.
+        let halves = match self.chest_partner(key) {
+            Some((other, true)) => [Some(key), Some(other)],
+            Some((other, false)) => [Some(other), Some(key)],
+            None => [Some(key), None],
+        };
+        if !halves
+            .iter()
+            .flatten()
+            .any(|&half| self.container_locked_for(half, spectator, hand.as_ref()))
+        {
+            return false;
+        }
+        // The display name of the provider the player tried to open: a double
+        // chest is named by its right half, else its left, else
+        // `container.chestDouble`; any other container by its custom name or
+        // its own default key.
+        let title = match (halves[0], halves[1]) {
+            (Some(first), Some(second)) => myriade_engine::containers::double_chest_name(
+                self.block_name_plain(first).as_deref(),
+                self.block_name_plain(second).as_deref(),
+            ),
+            (Some(one), None) => myriade_engine::containers::display_name(
+                self.block_name_plain(one).as_deref(),
+                default_key,
+            ),
+            _ => myriade_engine::containers::display_name(None, default_key),
+        };
+        let title = myriade_engine::component::name_text(&title);
+        self.send_overlay_message(Text::translate("container.isLocked", &[title]));
+        // `Level.playSound(null, pos, SoundEvents.CHEST_LOCKED, BLOCKS, 1, 1)`:
+        // the block's centre, or between the halves of a double chest.
+        let at = match (halves[0], halves[1]) {
+            (Some(first), Some(second)) => [
+                f64::from(first.0 + second.0) / 2.0 + 0.5,
+                f64::from(first.1) + 0.5,
+                f64::from(first.2 + second.2) / 2.0 + 0.5,
+            ],
+            (Some(one), None) => [
+                f64::from(one.0) + 0.5,
+                f64::from(one.1) + 0.5,
+                f64::from(one.2) + 0.5,
+            ],
+            _ => [0.0; 3],
+        };
+        self.audio
+            .play("minecraft:block.chest.locked", Some(at), 1.0, 1.0);
+        true
+    }
+    /// ShulkerBoxSlot.mayPlace: no shulker box inside a shulker box.
+    pub(super) fn refuses(&self, slot: usize, stack: &ItemStack) -> bool {
+        (300..400).contains(&slot)
+            && is_shulker_box(&stack.item)
+            && self.container.is_some_and(|k| {
+                is_shulker_box(&self.res.facts().get(self.world.block(k.0, k.1, k.2)).name)
+            })
+    }
+    /// Opening an ender chest shows the player's ender inventory in its place.
+    pub(super) fn open_ender_chest(&mut self, key: (i32, i32, i32)) {
+        self.world
+            .block_entities
+            .insert(key, BlockEntity::Chest(self.ender_items.clone()));
+        self.container = Some(key);
+        self.ender_open = Some(key);
+    }
+    /// The block above `key` is a redstone conductor.
+    fn conductor_above(&self, key: (i32, i32, i32)) -> bool {
+        let above = self.world.block(key.0, key.1 + 1, key.2);
+        self.res.behaviours().facts(above).flags
+            & horizon_world::level::data::state_flags::CONDUCTOR
+            != 0
+    }
+    /// `ChestBlock.isChestBlockedAt`: a redstone conductor above the chest or
+    /// a cat sitting on it.
+    fn chest_blocked_at(&self, key: (i32, i32, i32)) -> bool {
+        self.conductor_above(key) || super::machines::ecs_cat_sitting_above(&self.ecs, key)
+    }
+    /// `ChestBlock.getMenuProvider` (`combine(.., false)`) and
+    /// `EnderChestBlock.useWithoutItem`: a blocked chest, or a double chest
+    /// with either half blocked, opens no menu.
+    pub(super) fn chest_menu_blocked(&self, key: (i32, i32, i32), name: &str) -> bool {
+        match name {
+            n if is_chest_block(n) => {
+                self.chest_blocked_at(key)
+                    || self
+                        .chest_partner(key)
+                        .is_some_and(|(other, _)| self.chest_blocked_at(other))
+            }
+            // The ender chest only looks at the block above (no cat check).
+            "minecraft:ender_chest" => self.conductor_above(key),
+            _ => false,
+        }
+    }
+    /// Closing it copies the items back and keeps the block entity, as vanilla's
+    /// `EnderChestBlockEntity` persists across open/close (`close_ender_chest`
+    /// must not remove it, or `/data get block` loses it after a use).
+    pub(super) fn close_ender_chest(&mut self) {
+        let Some(key) = self.ender_open.take() else {
+            return;
+        };
+        // The items go back to the player: an `EnderChestBlockEntity` holds none, so
+        // nothing of theirs stays in the chunk or in `/data get block`.
+        if let Some(BlockEntity::Chest(items)) = self.world.block_entities.get_mut(&key) {
+            self.ender_items = std::mem::replace(items, vec![None; 27]);
+        }
+    }
+}
+
+// ---- chest menus: double chests, titles and shift-click ----
+
+/// A chest block state's half: its block, `type` and `facing`.
+fn chest_half(state: &horizon_world::chunk::BlockState) -> Option<ChestHalf<'_>> {
+    Some(ChestHalf {
+        block: &state.name,
+        kind: state.properties.get("type")?,
+        facing: state.properties.get("facing")?,
+    })
+}
+fn facing_step(facing: &str) -> (i32, i32) {
+    match facing {
+        "north" => (0, -1),
+        "south" => (0, 1),
+        "west" => (-1, 0),
+        _ => (1, 0),
+    }
+}
+
+/// `ChestBlock.getConnectedBlockPos` for a chest whose `type` is not single:
+/// where its other half belongs, whatever stands there now.
+pub(super) fn chest_connected_pos(
+    state: &horizon_world::chunk::BlockState,
+    pos: [i32; 3],
+) -> Option<[i32; 3]> {
+    if !is_chest_block(&state.name) {
+        return None;
+    }
+    let (dx, dz) = chest_half(state)?.connected_step()?;
+    Some([pos[0] + dx, pos[1], pos[2] + dz])
+}
+
+impl Game<'_> {
+    /// The other half of the open double chest and whether the open one is
+    /// the right half (`ChestBlock.getConnectedDirection`).
+    pub(super) fn chest_partner(&self, key: (i32, i32, i32)) -> Option<((i32, i32, i32), bool)> {
+        let registry = self.pack.assets.registry;
+        let state = registry.state(self.world.block(key.0, key.1, key.2))?;
+        if !is_chest_block(&state.name) {
+            return None;
+        }
+        let own = chest_half(state)?;
+        let (dx, dz) = own.connected_step()?;
+        let other = (key.0 + dx, key.1, key.2 + dz);
+        let other_state = registry.state(self.world.block(other.0, other.1, other.2))?;
+        let paired = own.pairs_with(&chest_half(other_state)?)
+            && matches!(
+                self.world.block_entities.get(&other),
+                Some(BlockEntity::Chest(items)) if items.len() == 27
+            );
+        paired.then_some((other, own.kind == "right"))
+    }
+    /// The open or close sound of a container block (`ChestBlockEntity.playSound`,
+    /// `BarrelBlockEntity.playSound`, `ShulkerBoxBlockEntity.startOpen`): volume
+    /// 0.5 and pitch 0.9 to 1.0. A double chest sounds once from the middle of
+    /// both halves, a barrel from the face it opens on.
+    pub(super) fn container_sound(&mut self, sound: &str, key: (i32, i32, i32), name: &str) {
+        let mut at = [
+            f64::from(key.0) + 0.5,
+            f64::from(key.1) + 0.5,
+            f64::from(key.2) + 0.5,
+        ];
+        if let Some((other, _)) = self.chest_partner(key) {
+            at[0] = f64::from(key.0 + other.0) / 2.0 + 0.5;
+            at[2] = f64::from(key.2 + other.2) / 2.0 + 0.5;
+        } else if name == "minecraft:barrel"
+            && let Some(state) = self
+                .pack
+                .assets
+                .registry
+                .state(self.world.block(key.0, key.1, key.2))
+            && let Some(facing) = state.properties.get("facing")
+        {
+            let (dx, dy, dz) = match facing.as_str() {
+                "up" => (0.0, 0.5, 0.0),
+                "down" => (0.0, -0.5, 0.0),
+                f => {
+                    let (x, z) = facing_step(f);
+                    (f64::from(x) / 2.0, 0.0, f64::from(z) / 2.0)
+                }
+            };
+            at = [at[0] + dx, at[1] + dy, at[2] + dz];
+        }
+        let pitch = self.world.random.next_float() * 0.1 + 0.9;
+        // A server's `playSound(null, …)`: every player around, the opener too.
+        // `Audio::play` captures the sound while the world is open to the
+        // network and `lan_broadcast_effects` sends that tick to every guest,
+        // so nothing is queued separately (a second queue played it twice).
+        self.audio.play(sound, Some(at), 0.5, pitch);
+    }
+    /// The open or close sound of the container block at `key`, if it has one.
+    /// Callers play it only when the opener count crosses zero
+    /// (`ContainerOpenersCounter.onOpen` / `onClose`).
+    pub(super) fn container_edge_sound(&mut self, key: (i32, i32, i32), open: bool) {
+        let name = self
+            .res
+            .facts()
+            .get(self.world.block(key.0, key.1, key.2))
+            .name
+            .clone();
+        let sound = if is_shulker_box(&name) {
+            if open {
+                "minecraft:block.shulker_box.open"
+            } else {
+                "minecraft:block.shulker_box.close"
+            }
+        } else if &*name == "minecraft:ender_chest" {
+            if open {
+                "minecraft:block.ender_chest.open"
+            } else {
+                "minecraft:block.ender_chest.close"
+            }
+        } else if name.contains("chest") {
+            myriade_engine::mobs::transport_items::chest_hinge_sound(&name, open)
+        } else if &*name == "minecraft:barrel" {
+            if open {
+                "minecraft:block.barrel.open"
+            } else {
+                "minecraft:block.barrel.close"
+            }
+        } else {
+            return;
+        };
+        self.container_sound(sound, key, &name);
+    }
+    /// The other half of a double chest at `key`, for neighbour updates.
+    pub(super) fn chest_other_half(&self, key: (i32, i32, i32)) -> Option<(i32, i32, i32)> {
+        self.chest_partner(key).map(|p| p.0)
+    }
+    /// The block entities of the open container in menu order, with their
+    /// sizes: a double chest is its right half then its left half.
+    pub(super) fn container_parts(&self) -> Vec<((i32, i32, i32), usize)> {
+        let Some(key) = self.container else {
+            return Vec::new();
+        };
+        let Some(entity) = self.world.block_entities.get(&key) else {
+            return Vec::new();
+        };
+        let own = (key, entity.slots().len());
+        match self.chest_partner(key) {
+            Some((other, true)) => vec![own, (other, 27)],
+            Some((other, false)) => vec![(other, 27), own],
+            None => vec![own],
+        }
+    }
+    /// `Container.stillValidBlockEntity`: the open block container closes once
+    /// the player's eyes are out of reach of any of its blocks (a 4-block buffer).
+    pub(super) fn tick_container_reach(&mut self) {
+        // A server's menu ends when the server closes it.
+        let Some(eye) = self.eye_position() else {
+            return;
+        };
+        if self
+            .container
+            .is_none_or(|k| k.1 == super::minecarts::CART_KEY_Y)
+        {
+            return;
+        }
+        // `Container.stillValidBlockEntity`: the menu holds a block entity per
+        // part, and a part that went away (`getBlockEntity(pos) != this`) ends
+        // it. A double chest whose other half broke would otherwise show a
+        // shorter container.
+        if self.open_container_slots.is_some_and(|(open, slots)| {
+            self.container == Some(open) && self.open_container_size() < slots
+        }) {
+            self.close_container();
+            return;
+        }
+        let range = self.reach() + 4.0;
+        let near = self.container_parts().iter().all(|&((x, y, z), _)| {
+            myriade_engine::lan::guest::within_block_range(eye, range, [x, y, z])
+        });
+        if !near {
+            self.close_container();
+        }
+    }
+    /// `CraftingMenu.stillValid`: the open crafting table closes once its
+    /// block is no longer a crafting table or the player's eyes are out of
+    /// reach (a 4-block buffer).
+    pub(super) fn tick_craft_table(&mut self) {
+        // A server's menu ends when the server closes it.
+        if self.craft_size != 3 {
+            return;
+        }
+        let (Some(pos), Some(eye)) = (self.craft_table, self.eye_position()) else {
+            return;
+        };
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        let table = &*self.res.facts().get(state).name == "minecraft:crafting_table";
+        let range = self.reach() + 4.0;
+        if !(table && myriade_engine::lan::guest::within_block_range(eye, range, pos)) {
+            self.close_container();
+        }
+    }
+    /// The number of slots of the open container.
+    pub(super) fn open_container_size(&self) -> usize {
+        self.container_parts().iter().map(|p| p.1).sum()
+    }
+    /// Container slot `n` (menu slot `300 + n`).
+    pub(super) fn container_slot_mut(&mut self, mut n: usize) -> &mut Option<ItemStack> {
+        let mut target = None;
+        for (pos, size) in self.container_parts() {
+            if n < size {
+                target = Some((pos, n));
+                break;
+            }
+            n -= size;
+        }
+        match target.and_then(|(pos, i)| {
+            self.world
+                .block_entities
+                .get_mut(&pos)
+                .and_then(|e| e.slots_mut().get_mut(i))
+        }) {
+            Some(slot) => slot,
+            None => &mut self.scratch_slot,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn double_chest_halves_connect_around_the_facing() {
+        let half = |kind, facing| ChestHalf {
+            block: "minecraft:chest",
+            kind,
+            facing,
+        };
+        // A left half facing north connects east, a right half west.
+        assert_eq!(half("left", "north").connected_step(), Some((1, 0)));
+        assert_eq!(half("right", "north").connected_step(), Some((-1, 0)));
+        assert_eq!(half("left", "south").connected_step(), Some((-1, 0)));
+        assert_eq!(half("right", "east").connected_step(), Some((0, -1)));
+        assert_eq!(half("single", "east").connected_step(), None);
+    }
+    #[test]
+    fn copper_chests_join_like_chests() {
+        let half = |block, kind| ChestHalf {
+            block,
+            kind,
+            facing: "north",
+        };
+        for block in [
+            "minecraft:chest",
+            "minecraft:trapped_chest",
+            "minecraft:copper_chest",
+            "minecraft:waxed_weathered_copper_chest",
+        ] {
+            assert!(is_chest_block(block));
+            assert!(half(block, "left").pairs_with(&half(block, "right")));
+        }
+        // ChestBlock.combine needs the same block on both halves.
+        let copper = half("minecraft:copper_chest", "left");
+        assert!(!copper.pairs_with(&half("minecraft:exposed_copper_chest", "right")));
+        assert!(!is_chest_block("minecraft:ender_chest"));
+    }
+    #[test]
+    fn shulker_boxes_are_recognised_by_name() {
+        assert!(is_shulker_box("minecraft:red_shulker_box"));
+        assert!(is_shulker_box("minecraft:shulker_box"));
+        assert!(!is_shulker_box("minecraft:chest"));
+    }
+}
+
+#[cfg(test)]
+mod reach_tests {
+    use super::super::game_tests::tests::server_game;
+    use myriade_engine::containers::BlockEntity;
+    use horizon_core::geometry::Vec3;
+
+    /// `Container.stillValidBlockEntity` for a double chest (`CompoundContainer`
+    /// asks both halves): breaking the half the player did not click ends the
+    /// six-row menu instead of leaving a three-row one.
+    #[test]
+    #[ignore = "daily"]
+    fn breaking_the_other_half_closes_the_open_double_chest() {
+        let mut resources = None;
+        let mut game = server_game(&mut resources);
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+        crate::game::native_guest_turn_tests::with_acting_guest_on(
+            &mut game,
+            Vec3::new(8.5, 64.0, 8.5),
+            |game| {
+        let registry = game.pack.assets.registry;
+        let half = |kind: &str| {
+            let mut state = registry
+                .state(registry.default_state("minecraft:chest").unwrap())
+                .unwrap()
+                .clone();
+            state.properties.insert("type".into(), kind.into());
+            state.properties.insert("facing".into(), "north".into());
+            registry.id(&state).unwrap()
+        };
+        let left = (8, 64, 8);
+        let right = (9, 64, 8);
+        game.world
+            .set(left.0, left.1, left.2, half("left"))
+            .unwrap();
+        game.world
+            .set(right.0, right.1, right.2, half("right"))
+            .unwrap();
+        for key in [left, right] {
+            game.world
+                .block_entities
+                .insert(key, BlockEntity::Chest(vec![None; 27]));
+        }
+        game.open_block_effect_menu([8, 64, 8]);
+        assert_eq!(game.container, Some(left), "the double chest opened");
+
+        game.destroy_block_dropping([9, 64, 8])
+            .expect("the other half breaks");
+        game.tick_container_reach();
+        assert_eq!(
+            game.container, None,
+            "the open double chest kept a menu after its other half broke"
+        );
+            },
+        );
+    }
+}
+

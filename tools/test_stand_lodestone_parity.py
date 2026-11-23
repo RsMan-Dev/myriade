@@ -33,11 +33,11 @@ def main():
     run(argparse.Namespace(work_dir=base/'java',reference_only=True,reference_dir=None,binary=None))
     binary=args.binary
     if not binary:
-        subprocess.run(['cargo','build','--profile','fast','-p','horizon-game','--bin','horizon-client'],
+        subprocess.run(['cargo','build','--profile','fast','-p','horizon-game','--bin','myriade-engine'],
                        cwd=runner.lab.ROOT,check=True)
         metadata=json.loads(subprocess.check_output(['cargo','metadata','--no-deps','--format-version','1'],
                                                     cwd=runner.lab.ROOT,text=True))
-        binary=Path(metadata['target_directory'])/'fast'/('horizon-client.exe' if os.name=='nt' else 'horizon-client')
+        binary=Path(metadata['target_directory'])/'fast'/('myriade-engine.exe' if os.name=='nt' else 'myriade-engine')
     return run(argparse.Namespace(work_dir=base/'native',reference_only=False,reference_dir=base/'java',binary=binary))
 
 

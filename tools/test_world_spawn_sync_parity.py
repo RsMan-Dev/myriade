@@ -39,14 +39,14 @@ def main():
     lock, jars, libraries = base.verify_artifacts()
     source = lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaWorldSpawnPacketOracle.java'
     sources = [Path(__file__), source, lab.ROOT / 'Cargo.lock',
-               lab.ROOT / 'crates/horizon-client/src/game/administration/commands/mod.rs',
-               lab.ROOT / 'crates/horizon-client/src/game/network/lan_actions/mod.rs',
-               lab.ROOT / 'crates/horizon-client/src/game/network/lan_actions/packets.rs',
-               lab.ROOT / 'crates/horizon-client/src/game/network/lan_actions/respawn.rs',
-               lab.ROOT / 'crates/horizon-client/src/game/network/lan_actions/shared.rs',
-               lab.ROOT / 'crates/horizon-client/src/lan/hub.rs',
-               lab.ROOT / 'crates/horizon-client/src/game/network/lan/mod.rs',
-               lab.ROOT / 'crates/horizon-client/src/game/world/server_travel.rs']
+               lab.ROOT / 'crates/myriade-engine/src/game/administration/commands/mod.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game/network/lan_actions/mod.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game/network/lan_actions/packets.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game/network/lan_actions/respawn.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game/network/lan_actions/shared.rs',
+               lab.ROOT / 'crates/myriade-engine/src/lan/hub.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game/network/lan/mod.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game/world/server_travel.rs']
     hashes = base.source_hashes(sources)
     lab.write_json(build / 'input.json', dict(sources_sha256=hashes))
 
@@ -73,7 +73,7 @@ def main():
                       'java', cwd=scratch, env=env)
         rows = [r for r in vanilla.read_text(encoding='utf-8').splitlines() if r.startswith('world-spawn\t')]
         assert len(rows) == 7 and len(set(rows)) == 7, 'vanilla oracle did not emit all seven cases'
-        compiled = run(['cargo', 'test', '--locked', '-p', 'horizon-client', '--lib', '--no-run',
+        compiled = run(['cargo', 'test', '--locked', '-p', 'myriade-engine', '--lib', '--no-run',
                         '--message-format=json'], 'compile', cwd=lab.ROOT, env=env)
         binaries = []
         for line in compiled.read_text(encoding='utf-8').splitlines():
@@ -81,7 +81,7 @@ def main():
                 continue
             row = json.loads(line)
             if (row.get('reason') == 'compiler-artifact' and row.get('executable')
-                    and row.get('target', {}).get('name') == 'horizon_client'
+                    and row.get('target', {}).get('name') == 'myriade_engine'
                     and row.get('profile', {}).get('test')):
                 binaries.append(Path(row['executable']))
         assert len(binaries) == 1, 'expected one actual Game test binary'

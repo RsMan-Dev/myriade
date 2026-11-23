@@ -9,7 +9,7 @@
 
 From the files the branch changes since its merge base with --base (committed or not) it decides what to run:
 rustfmt, and clippy with warnings denied exactly as CI's verify job runs it (the whole workspace with the game's code
-mods, plus the server build when horizon-client is affected); the tests of the touched crates, with the features
+mods, plus the server build when myriade-engine is affected); the tests of the touched crates, with the features
 CI's workspace-wide run gives them; crates/horizon-theme/tokens.css against horizon-theme; Cargo.lock changing
 only with a Cargo.toml; the Python tests (always, as in CI) and the public-tree check; and the vanilla harnesses the
 changes can affect, picked as CI's parity job picks them (tools/parity.py --changed). As in CI (parity-scope in
@@ -102,14 +102,14 @@ def touched_crates(paths, packages):
         if is_doc(path):
             continue
         if path.startswith(MOD_API_INPUTS):
-            crates.update({"horizon-client", "horizon-client-render", "horizon-mod-api-gen"})
+            crates.update({"myriade-engine", "myriade-level", "horizon-mod-api-gen"})
             continue
-        if "horizon-client-lib" in packages and path.startswith("crates/horizon-client/"):
-            relative = path.removeprefix("crates/horizon-client/")
+        if "myriade-engine-lib" in packages and path.startswith("crates/myriade-engine/"):
+            relative = path.removeprefix("crates/myriade-engine/")
             gameplay = relative in {"Cargo.toml", "build.rs", "windows-segment-heap.manifest",
                                     "src/lib.rs", "src/main.rs", "src/entry.rs", "src/game.rs"} \
                 or relative.startswith(("src/game/", "tests/it/"))
-            crates.add("horizon-client" if gameplay else "horizon-client-lib")
+            crates.add("myriade-engine" if gameplay else "myriade-engine-lib")
             continue
         owners = [name for name, directory in packages.items() if path.startswith(directory.rstrip("/") + "/")]
         if owners:
@@ -162,7 +162,7 @@ def suggested_label(paths, exporter_paths=frozenset()):
 # harness, an oracle, a probe or the runner. parity-main runs the others on main, a batch of merges at a time.
 PARITY_SCOPE = re.compile(
     r"^(tools/test_[a-z0-9_]+_parity\.py|tools/(parity[a-z_]*|lab)\.py|tools/parity_hosts\.json|mods/horizon/src/test/"
-    r"|crates/[^/]+/examples/|crates/horizon-client/src/game/[a-z_]*(fixture|harness)\.rs"
+    r"|crates/[^/]+/examples/|crates/myriade-engine/src/game/[a-z_]*(fixture|harness)\.rs"
     r"|\.github/workflows/parity[a-z-]*\.yml)")
 
 
@@ -486,7 +486,7 @@ def parity_summary(output):
 
 # CI's lint (.github/workflows/ci.yml verify): collect warnings across the whole graph before rejecting them.
 CI_CLIPPY = "python3 tools/ci/check_warnings.py cargo clippy --keep-going --workspace --all-targets --locked"
-CI_CLIPPY_SERVER = "python3 tools/ci/check_warnings.py cargo clippy --keep-going -p horizon-client -p horizon-game --all-targets --locked --no-default-features"
+CI_CLIPPY_SERVER = "python3 tools/ci/check_warnings.py cargo clippy --keep-going -p myriade-engine -p horizon-game --all-targets --locked --no-default-features"
 
 
 # CI installs the current stable each run (rustup toolchain install stable), and Rust ships one every six weeks
@@ -537,11 +537,11 @@ def mod_features(crates):
     return " --features horizon-mod-package/index" if crates is not None and "horizon-mod-package" in crates else ""
 
 
-# What horizon-client's full content-root tests load (mod_content_tests.rs). They take minutes on prepared data, so
+# What myriade-engine's full content-root tests load (mod_content_tests.rs). They take minutes on prepared data, so
 # they are #[ignore]d and run here only when one of these changes.
-CONTENT_ROOT = ("crates/horizon-client/src/mod_content", "crates/horizon-client-render/src/assets.rs", "crates/horizon-items/",
+CONTENT_ROOT = ("crates/myriade-engine/src/mod_content", "crates/myriade-level/src/assets.rs", "crates/horizon-items/",
                 "crates/horizon-mod-package/", "crates/horizon-assets/")
-CONTENT_ROOT_TESTS = "cargo test --locked -p horizon-client-lib --lib mod_content::tests:: -- --ignored"
+CONTENT_ROOT_TESTS = "cargo test --locked -p myriade-engine-lib --lib mod_content::tests:: -- --ignored"
 
 # holder::tests spawns target/<profile>/examples/holder_actor beside its test binary.
 # --tests does not build that executable; use the same explicit prerequisite as CI.
@@ -562,7 +562,7 @@ def plan(args, base, changed, crates_of, libraries, dependencies):
     # the touched crates and their dependents did (14-32 s against 14-17 s on the Mac mini, 2026-10-26).
     clippy_crates = dependent_crates(crates, dependencies)
     clippy = CI_CLIPPY
-    if clippy_crates is None or "horizon-client" in clippy_crates:
+    if clippy_crates is None or "myriade-engine" in clippy_crates:
         clippy = f'status=0\n{CI_CLIPPY} || status=$?\n{CI_CLIPPY_SERVER} || status=$?\nexit "$status"'
     test_skip = None if crates is None or crates else "no crate touched"
     doc_crates = sorted(libraries if crates is None else libraries.intersection(crates))
@@ -615,7 +615,7 @@ def plan(args, base, changed, crates_of, libraries, dependencies):
         ])
     harness = Step("Parity", summary=parity_summary)
     affected = affected_here(changed)
-    local_data = (ROOT / ".local" / "minecraft").exists() and (ROOT / ".local" / "horizon-client").exists()
+    local_data = (ROOT / ".local" / "minecraft").exists() and (ROOT / ".local" / "myriade-engine").exists()
     in_scope = args.harnesses or runs_parity(changed)
     if not args.quick and not in_scope:
         # What CI does with this pull request: nothing here, parity-main on main.
@@ -885,11 +885,11 @@ def block(args, base, merge_base, changed, counts, steps, label, elapsed, revisi
     content = next((step for step in steps if step.name == "content root tests"), None)
     resource_override = os.environ.get("HORIZON_TEST_RESOURCES")
     resource_roots = [Path(resource_override)] if resource_override is not None else [
-        ROOT / ".local/horizon-client/26.3", ROOT.parent.parent / ".local/horizon-client/26.3"]
+        ROOT / ".local/myriade-engine/26.3", ROOT.parent.parent / ".local/myriade-engine/26.3"]
     if args.host == "local" and not any((root / "gameplay-facts.json").is_file() for root in resource_roots):
         data_tests = "data-backed tests not run: no prepared data here"
     elif content and content.status in {"pass", "fail"}:
-        data_tests = f"data-backed tests: horizon-client-lib mod_content::tests:: (--ignored): {content.detail or content.status}"
+        data_tests = f"data-backed tests: myriade-engine-lib mod_content::tests:: (--ignored): {content.detail or content.status}"
     else:
         data_tests = "data-backed tests not run: content root untouched"
     lines.append(f"| Data-backed cargo tests | {data_tests} |")

@@ -32,12 +32,12 @@ class TestCompileLockTests(unittest.TestCase):
             env = dict(os.environ, RUNNER_TEMP=directory, CHILD_PID=str(pid_file),
                        HORIZON_TEST_RUSTC_WRAPPER="")
             try:
-                first = subprocess.run([WRAPPER, compiler, '--crate-name', 'horizon_client_lib',
+                first = subprocess.run([WRAPPER, compiler, '--crate-name', 'myriade_engine_lib',
                                         '--test', '--spawn-child'], env=env, timeout=5)
                 self.assertEqual(first.returncode, 7)
                 child_pid = int(pid_file.read_text())
                 os.kill(child_pid, 0)  # Descendant is still alive when the second call runs.
-                second = subprocess.run([WRAPPER, compiler, '--crate-name', 'horizon_client',
+                second = subprocess.run([WRAPPER, compiler, '--crate-name', 'myriade_engine',
                                          '--test'], env=env, timeout=5)
                 self.assertEqual(second.returncode, 7)
                 os.kill(child_pid, 0)
@@ -57,9 +57,9 @@ class TestCompileLockTests(unittest.TestCase):
                                 "sys.exit(7)\n")
             compiler.chmod(0o755)
             response = root / "arguments with spaces"
-            response.write_text('--crate-name\nhorizon_client_lib\n--cfg\nfeature="with spaces"\n--test')
+            response.write_text('--crate-name\nmyriade_engine_lib\n--cfg\nfeature="with spaces"\n--test')
             env = dict(os.environ, RUNNER_TEMP=directory, HORIZON_TEST_RUSTC_WRAPPER="")
-            for args in (["@" + str(response)], ["--crate-name=horizon_client", "--test"]):
+            for args in (["@" + str(response)], ["--crate-name=myriade_engine", "--test"]):
                 with self.subTest(args=args), (root / "horizon-lib-test-compile.lock").open("w") as lock:
                     fcntl.flock(lock, fcntl.LOCK_EX)
                     process = subprocess.Popen([WRAPPER, compiler, *args], env=env,
@@ -91,21 +91,21 @@ class TestCompileLockTests(unittest.TestCase):
             cache.chmod(0o755)
             env = dict(os.environ, RUNNER_TEMP=directory,
                        HORIZON_TEST_RUSTC_WRAPPER=str(cache))
-            args = ["--crate-name", "horizon_client_lib", "--test", "--hold"]
+            args = ["--crate-name", "myriade_engine_lib", "--test", "--hold"]
             first = subprocess.Popen([WRAPPER, compiler, *args], env=env,
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
             second = None
             try:
                 self.assertTrue(select.select([first.stdout], [], [], 5)[0])
                 self.assertEqual(json.loads(first.stdout.readline()), args)
-                second_args = ["--test", "--crate-name", "horizon_client", "--cfg", 'feature="with spaces"']
+                second_args = ["--test", "--crate-name", "myriade_engine", "--cfg", 'feature="with spaces"']
                 second = subprocess.Popen([WRAPPER, compiler, *second_args], env=env,
                                           stdout=subprocess.PIPE, text=True)
                 self.assertFalse(select.select([second.stdout], [], [], 0.2)[0],
                                  "second large test started before first released its lock")
                 for other_args in (["--crate-name", "unrelated", "--test"],
-                                   ["--crate-name", "horizon_client"],
-                                   ["--crate-name", "horizon_client_lib_extra", "--test"]):
+                                   ["--crate-name", "myriade_engine"],
+                                   ["--crate-name", "myriade_engine_lib_extra", "--test"]):
                     result = subprocess.run([WRAPPER, compiler, *other_args], env=env,
                                             capture_output=True, text=True, timeout=5)
                     self.assertEqual(result.returncode, 7)

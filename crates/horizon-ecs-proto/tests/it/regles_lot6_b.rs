@@ -5,12 +5,12 @@
 use crate::common::*;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::{Aabb, ShapeOp, VoxelShape, Vec3};
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_ecs_proto::behaviours::neutral_anger::{anger_at, is_angry};
 use horizon_ecs_proto::age_lock::AgeLocked;
 use horizon_ecs_proto::behaviours::bed::{lie_down, Sleeping};
 use horizon_ecs_proto::behaviours::trade_session::Trading;
-use horizon_client_lib::merchant::Session;
+use myriade_engine_lib::merchant::Session;
 use horizon_ecs_proto::host_out::HostEvent;
 use horizon_ecs_proto::behaviours::Interaction;
 use horizon_ecs_proto::brain::{erase as brain_erase, set as brain_set, set_activity, MemValue};

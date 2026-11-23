@@ -48,10 +48,10 @@ def main():
     parser.add_argument('--test-binary', type=Path, help='already built gameplay test executable')
     args = parser.parse_args()
     source_paths = [lab.ROOT / path for path in (
-        'crates/horizon-client/src/entities.rs',
-        'crates/horizon-client/src/game/entities/explosion.rs',
-        'crates/horizon-client/src/game.rs',
-        'crates/horizon-client/src/game/modding/native_entity_refs.rs',
+        'crates/myriade-engine/src/entities.rs',
+        'crates/myriade-engine/src/game/entities/explosion.rs',
+        'crates/myriade-engine/src/game.rs',
+        'crates/myriade-engine/src/game/modding/native_entity_refs.rs',
         'mods/horizon/src/test/java/dev/horizonlab/parity/ParityData.java',
         'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaVehicleContainerOracle.java',
         'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaExplosionItemsOracle.java',
@@ -86,7 +86,7 @@ def main():
         if binary is None:
             # Build from the workspace, then execute from scratch so Game cannot
             # read or write the checkout's options, caches or worlds.
-            run(['cargo', 'test', '-p', 'horizon-client', '--lib', '--no-run',
+            run(['cargo', 'test', '-p', 'myriade-engine', '--lib', '--no-run',
                  '--message-format=json'], 'compile-rust')
             for line in (work / 'compile-rust.log').read_text(encoding='utf-8').splitlines():
                 try:
@@ -95,7 +95,7 @@ def main():
                     continue
                 if (message.get('reason') == 'compiler-artifact' and message.get('executable')
                         and message.get('profile', {}).get('test')
-                        and message.get('target', {}).get('name') == 'horizon_client'
+                        and message.get('target', {}).get('name') == 'myriade_engine'
                         and message.get('target', {}).get('kind') == ['lib']):
                     binary = Path(message['executable'])
             if binary is None:

@@ -11,14 +11,14 @@ from unittest import mock
 from tools import parity, parity_plan
 
 WORLD = ["example", "world_probe", "release", ["-p", "horizon-world"], True]
-CLIENT = ["example", "client_probe", "fast", ["-p", "horizon-client-lib"], True]
-GAME = ["bins", "", "fast", ["-p", "horizon-game", "-p", "horizon-client-lib"], False]
+CLIENT = ["example", "client_probe", "fast", ["-p", "myriade-engine-lib"], True]
+GAME = ["bins", "", "fast", ["-p", "horizon-game", "-p", "myriade-engine-lib"], False]
 
 
 class ProbeGroupTests(unittest.TestCase):
     def test_a_harness_joins_the_group_of_its_costliest_build(self):
         self.assertEqual(parity_plan.probe_group([WORLD, CLIENT, GAME]), "game")
-        self.assertEqual(parity_plan.probe_group([["bin", "horizon-client", "fast", ["-p", "horizon-game"], False]]),
+        self.assertEqual(parity_plan.probe_group([["bin", "myriade-engine", "fast", ["-p", "horizon-game"], False]]),
                          "game")
         self.assertEqual(parity_plan.probe_group([WORLD, CLIENT]), "client")
         self.assertEqual(parity_plan.probe_group([WORLD]), "world")

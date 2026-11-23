@@ -9,7 +9,7 @@ use super::*;
 use crate::rules::turtle_go_home::{chance_wait, home_aim, walk_goes_on};
 use crate::spots::{Pick, pick_for};
 use crate::{cow::*, goals::*};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use std::f64::consts::{FRAC_PI_2, PI};
 
 #[derive(Clone, Copy, Debug)]

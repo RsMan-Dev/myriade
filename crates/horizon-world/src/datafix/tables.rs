@@ -115,7 +115,7 @@ struct Raw {
 static ROOT: OnceLock<PathBuf> = OnceLock::new();
 
 /// Read the tables from the prepared resources at `root` (the game's `--resources`). Without
-/// it, `HORIZON_RESOURCES`, then the checkout's `.local/horizon-client/<version>` (tests and
+/// it, `HORIZON_RESOURCES`, then the checkout's `.local/myriade-engine/<version>` (tests and
 /// probes). Only the first call counts, and only before the tables are first read.
 pub fn set_resources(root: &Path) {
     let _ = ROOT.set(root.to_path_buf());
@@ -127,7 +127,7 @@ fn path() -> PathBuf {
         .or_else(|| std::env::var_os("HORIZON_RESOURCES").map(PathBuf::from))
         .unwrap_or_else(|| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../.local/horizon-client")
+                .join("../../.local/myriade-engine")
                 .join(horizon_core::version::VANILLA_VERSION)
         })
         .join(FILE)

@@ -13,13 +13,13 @@ use bevy_ecs::{
     schedule::{Schedule, ScheduleLabel, SingleThreadedExecutor},
 };
 #[allow(unused_imports)]
-use horizon_client_lib::mobs::{
+use myriade_engine_lib::mobs::{
     MobWorld,
     nav::Navigation,
     path::{Evaluator, Finder, Path, PathMob, PATH_TYPES},
 };
 #[allow(unused_imports)]
-use horizon_client_render::{chunk::Chunk, collisions::SceneCollisions};
+use myriade_level::{chunk::Chunk, collisions::SceneCollisions};
 #[allow(unused_imports)]
 use horizon_core::geometry::{Aabb, Vec3, trig};
 #[allow(unused_imports)]
@@ -67,7 +67,7 @@ pub(crate) fn strafe_drive(level: &Level, pos: &Pos, yaw: &Yaw, body: &Body, d: 
         Some((b, ok, at)) if b == (x, y, z) && now < at + 10 => ok,
         _ => {
             crate::pathsearch::adjacent_reset();
-            let ok = crate::pathsearch::path_type_static(level.mw.0, x, y, z) == horizon_client_lib::mobs::path::PathType::Walkable;
+            let ok = crate::pathsearch::path_type_static(level.mw.0, x, y, z) == myriade_engine_lib::mobs::path::PathType::Walkable;
             *walkable = Some(((x, y, z), ok, now));
             ok
         }
@@ -180,7 +180,7 @@ pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Conta
         c.stuck = 0;
     }
     let p = pos.0;
-    let subject = body.lava_walker.then(|| horizon_client_render::collisions::PowderSnowSubject { lava_walker: true, ..Default::default() });
+    let subject = body.lava_walker.then(|| myriade_level::collisions::PowderSnowSubject { lava_walker: true, ..Default::default() });
     let scene = SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject };
     // `Entity.collide`: the world border's walls stop a mob too; the occupancy cache has no walls, so a level with a border takes the kernel.
     let border = level.mw.0.border.map(|b| (b, [p.x, p.z]));

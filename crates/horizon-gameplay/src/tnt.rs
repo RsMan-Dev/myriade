@@ -1,8 +1,8 @@
 //! Primed TNT (`PrimedTnt`): 80-tick fuse, gravity and drag, and the move and
 //! effect rules of one tick. The `Game` side (priming, explosion, rendering)
-//! stays in `horizon-client`.
-use horizon_client::entity_rules::EntityRules;
-use horizon_client::{Result, collisions::SceneCollisions, mobs::Who};
+//! stays in `myriade-engine`.
+use myriade_engine::entity_rules::EntityRules;
+use myriade_engine::{Result, collisions::SceneCollisions, mobs::Who};
 use horizon_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
@@ -14,8 +14,8 @@ pub struct PrimedTnt {
     pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
-    /// When it joined its list (`horizon_client::join_seq`); set by the list.
-    pub join: horizon_client::join_seq::JoinSeq,
+    /// When it joined its list (`myriade_engine::join_seq`); set by the list.
+    pub join: myriade_engine::join_seq::JoinSeq,
     /// The entity id a server tracks it by (0 until it is tracked).
     pub id: u32,
     pub position: Vec3,
@@ -50,7 +50,7 @@ impl PrimedTnt {
     ) -> horizon_core::nbt::Tag {
         self.block_state.map_or_else(
             || horizon_core::nbt::Tag::String("minecraft:tnt".into()),
-            |state| horizon_client::entity_nbt::state_to_nbt(registry, state),
+            |state| myriade_engine::entity_nbt::state_to_nbt(registry, state),
         )
     }
 
@@ -78,8 +78,8 @@ impl PrimedTnt {
     }
     /// PowderSnowBlock.getCollisionShape: a top that holds it once it has
     /// fallen more than 2.5 blocks, read with [`Self::collision_context`].
-    pub fn powder_snow_subject(&self) -> horizon_client::collisions::PowderSnowSubject<'static> {
-        horizon_client::collisions::PowderSnowSubject {
+    pub fn powder_snow_subject(&self) -> myriade_engine::collisions::PowderSnowSubject<'static> {
+        myriade_engine::collisions::PowderSnowSubject {
             fall_distance: self.fall_distance,
             ..Default::default()
         }
@@ -117,9 +117,9 @@ impl PrimedTnt {
     /// is at the top of, which send their surface particles.
     pub fn apply_effects_from_blocks(
         &mut self,
-        world: &horizon_client::world::World,
-        assets: &horizon_client::assets::Assets,
-        facts: &horizon_client::blocks::BlockFacts,
+        world: &myriade_engine::world::World,
+        assets: &myriade_engine::assets::Assets,
+        facts: &myriade_engine::blocks::BlockFacts,
         collision: &horizon_world::block_collision::BlockCollisionRegistry<'_>,
         from: Vec3,
         original: Option<Vec3>,
@@ -132,14 +132,14 @@ impl PrimedTnt {
                 self.position.z.floor() as i32,
             );
             if &*facts.get(under).name == "minecraft:slime_block"
-                && let Some(scale) = horizon_client::entities::slime_step_on_scale(self.velocity.y)
+                && let Some(scale) = myriade_engine::entities::slime_step_on_scale(self.velocity.y)
             {
                 self.velocity.x *= scale;
                 self.velocity.z *= scale;
             }
         }
         let mut tops = Vec::new();
-        let stuck = horizon_client::falling_block::apply_effects_from_blocks(
+        let stuck = myriade_engine::falling_block::apply_effects_from_blocks(
             from,
             self.position,
             original,
@@ -147,18 +147,18 @@ impl PrimedTnt {
             &mut self.fall_distance,
             &mut Vec::new(),
             |p| match &*facts.get(world.block(p.x, p.y, p.z)).name {
-                "minecraft:powder_snow" => horizon_client::falling_block::Inside::PowderSnow,
-                "minecraft:cobweb" => horizon_client::falling_block::Inside::Cobweb,
-                _ => horizon_client::falling_block::Inside::Nothing,
+                "minecraft:powder_snow" => myriade_engine::falling_block::Inside::PowderSnow,
+                "minecraft:cobweb" => myriade_engine::falling_block::Inside::Cobweb,
+                _ => myriade_engine::falling_block::Inside::Nothing,
             },
         );
         if let Some(multiplier) = stuck {
             self.stuck = multiplier;
         }
         // `Entity::push_by_bubble_column_over`, whose body is this call: that
-        // trait stays in horizon-client.
+        // trait stays in myriade-engine.
         let bounds = self.bounds();
-        if horizon_client::motion::bubble_column_push_over(
+        if myriade_engine::motion::bubble_column_push_over(
             world,
             assets.registry,
             facts,
@@ -173,11 +173,11 @@ impl PrimedTnt {
     }
     pub fn tick(
         &mut self,
-        world: &horizon_client::world::World,
+        world: &myriade_engine::world::World,
         collision: &horizon_world::block_collision::BlockCollisionRegistry<'_>,
-        assets: &horizon_client::assets::Assets,
-        facts: &horizon_client::blocks::BlockFacts,
-        fluids: &horizon_client::motion::FluidResources,
+        assets: &myriade_engine::assets::Assets,
+        facts: &myriade_engine::blocks::BlockFacts,
+        fluids: &myriade_engine::motion::FluidResources,
         context: &horizon_world::native_load_context::LoopContext,
         border: Option<&horizon_core::geometry::border::BorderGeometry>,
         blocks: Option<&horizon_world::movement_properties::BoundMovementProperties>,
@@ -201,11 +201,11 @@ impl PrimedTnt {
     #[allow(clippy::too_many_arguments)]
     pub fn tick_among(
         &mut self,
-        world: &horizon_client::world::World,
+        world: &myriade_engine::world::World,
         collision: &horizon_world::block_collision::BlockCollisionRegistry<'_>,
-        assets: &horizon_client::assets::Assets,
-        facts: &horizon_client::blocks::BlockFacts,
-        fluids: &horizon_client::motion::FluidResources,
+        assets: &myriade_engine::assets::Assets,
+        facts: &myriade_engine::blocks::BlockFacts,
+        fluids: &myriade_engine::motion::FluidResources,
         context: &horizon_world::native_load_context::LoopContext,
         border: Option<&horizon_core::geometry::border::BorderGeometry>,
         blocks: Option<&horizon_world::movement_properties::BoundMovementProperties>,
@@ -217,7 +217,7 @@ impl PrimedTnt {
         // The TNT's Entity.move goes through the move gate (arismoko/horizon#2414), armed
         // before the stuck multiplier of the move itself; PR 1a records the
         // movement unchanged.
-        let mut gate = horizon_client::move_gate::armed(
+        let mut gate = myriade_engine::move_gate::armed(
             context,
             self.id,
             "minecraft:tnt",
@@ -236,12 +236,12 @@ impl PrimedTnt {
         // Entity.collide: the world border's walls and the entities that
         // `canBeCollidedWith` it (a boat, a shulker) stop it too.
         let border = border.map(|b| (b, [self.position.x, self.position.z]));
-        let mut collisions = horizon_client::collisions::EntityCollisions {
+        let mut collisions = myriade_engine::collisions::EntityCollisions {
             blocks: scene,
             entities,
             border,
         };
-        let moved = horizon_client::move_gate::entities_resolve_with_context(
+        let moved = myriade_engine::move_gate::entities_resolve_with_context(
             &mut gate,
             &mut collisions,
             self.bounds(),
@@ -252,7 +252,7 @@ impl PrimedTnt {
         )
         .unwrap_or(Vec3::ZERO);
         let from = self.position;
-        let recorded = horizon_client::entities::move_applies(wanted, moved);
+        let recorded = myriade_engine::entities::move_applies(wanted, moved);
         if recorded {
             self.position = Vec3::new(
                 self.position.x + moved.x,
@@ -276,7 +276,7 @@ impl PrimedTnt {
                 self.position.z.floor() as i32,
             );
             // Restitution reads the velocity, at rest after a stuck move.
-            self.velocity.y = horizon_client::entities::vertical_collision_velocity(
+            self.velocity.y = myriade_engine::entities::vertical_collision_velocity(
                 self.velocity.y,
                 moved.y,
                 0.04,
@@ -287,7 +287,7 @@ impl PrimedTnt {
         // Entity.move's last step: soul sand and honey slow the TNT's
         // horizontal speed. `blocks` is None only for the isolated unit tests.
         if let Some(blocks) = blocks {
-            let factor = horizon_client::motion::block_speed_factor_at(
+            let factor = myriade_engine::motion::block_speed_factor_at(
                 world,
                 blocks,
                 context,
@@ -305,7 +305,7 @@ impl PrimedTnt {
             recorded.then_some(wanted),
         );
         // Entity.scale(getAirDrag()): 0.98F, widened before it scales motion.
-        self.velocity = horizon_client::entity_rules::scale_air_drag(self.velocity);
+        self.velocity = myriade_engine::entity_rules::scale_air_drag(self.velocity);
         if self.on_ground {
             self.velocity = Vec3::new(
                 self.velocity.x * 0.7,
@@ -318,13 +318,13 @@ impl PrimedTnt {
             // PrimedTnt updates immersion after moving and decrementing its
             // fuse; water forgets the fall.
             // `Entity::push_by_fluid` for primed TNT (pushed by fluid, eye at
-            // `eyeHeight(0.15F)`); that trait stays in horizon-client.
+            // `eyeHeight(0.15F)`); that trait stays in myriade-engine.
             let (bounds, at, eye) = (
                 self.bounds(),
                 self.position,
                 self.position.y + f64::from(0.15_f32),
             );
-            let (water, _, _) = horizon_client::entities::update_entity_fluids(
+            let (water, _, _) = myriade_engine::entities::update_entity_fluids(
                 bounds,
                 at,
                 eye,
@@ -341,7 +341,7 @@ impl PrimedTnt {
         Ok((tops, landed))
     }
 }
-horizon_client::impl_joined!(PrimedTnt);
+myriade_engine::impl_joined!(PrimedTnt);
 horizon_mod_runtime::impl_attachment_lifetime!(PrimedTnt);
 impl EntityRules for PrimedTnt {
     fn is_no_gravity(&self) -> bool {

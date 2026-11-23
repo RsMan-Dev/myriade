@@ -1,6 +1,6 @@
 //! `Level.tickBlockEntities` helpers: the ticker name a sample is attributed to and the
 //! block-ticking test of a level.
-use horizon_client::{containers::BlockEntity, fast_hash::FxHashSet, ticket_levels::Levels};
+use myriade_engine::{containers::BlockEntity, fast_hash::FxHashSet, ticket_levels::Levels};
 
 /// Shared decision for a borrowed position read and an owned tick-phase snapshot.
 pub fn block_ticking_at(levels: &Levels, pending: &FxHashSet<(i32, i32)>, x: i32, z: i32) -> bool {

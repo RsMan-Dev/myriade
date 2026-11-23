@@ -1,6 +1,6 @@
 //! Effect modifiers show in `attribute_instances` with the jar's ids, and a variant's armour base survives an attribute write.
 use crate::common::*;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_ecs_proto::attr_mod::Operation;
 use horizon_ecs_proto::behaviours::variant::set_variant;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};

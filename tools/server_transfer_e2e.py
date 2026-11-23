@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A whole hand-over between two Horizon dedicated servers, over their real control sockets (#7484).
 
-Two engines (`horizon-client --dedicated`) run with `[transfer]` on (`--transfers`) and Velocity forwarding
+Two engines (`myriade-engine --dedicated`) run with `[transfer]` on (`--transfers`) and Velocity forwarding
 (`forwarding.secret`), as docs/server.md requires. This harness is the proxy: a small relay per engine answers
 the engine's `velocity:player_info` request with a signed payload (docs/velocity-forwarding.md), then copies
 bytes both ways, and the control requests are sent on each engine's control socket. The player is a
@@ -37,7 +37,7 @@ itself once the player is out, without writing its file again, and C's file hold
 The engines run in a fresh folder with fresh HORIZON_HOME and XDG folders (lab.game_env), on free ports, with no
 window. Every request, reply (records shortened) and check goes to --out/steps.json, with both servers' logs.
 Build first:
-    cargo build --profile fast -p horizon-game --bin horizon-client
+    cargo build --profile fast -p horizon-game --bin myriade-engine
     cargo build --profile fast -p myriade-bot
 """
 import argparse

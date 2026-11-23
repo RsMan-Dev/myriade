@@ -1,7 +1,7 @@
 //! Repository tasks, run with `cargo run -p xtask -- TASK`.
 //!
 //! `package-server ENGINE OUTDIR` (also `package`): a server folder (docs/server.md): the server build of
-//! the game (`cargo build --release -p horizon-game --no-default-features --bin horizon-client`) as
+//! the game (`cargo build --release -p horizon-game --no-default-features --bin myriade-engine`) as
 //! horizon-engine, with horizon-prepare and horizon-server from beside it, the exporters horizon-prepare
 //! compiles and the sources of the release folders. It holds none of Minecraft's files.
 //! First build the shared wasm standard library beside the programs with
@@ -401,11 +401,11 @@ mod tests {
         for checkout in [&one, &two] {
             fs::create_dir_all(checkout.join("xtask")).unwrap();
             fs::write(checkout.join("xtask/Cargo.toml"), "").unwrap();
-            fs::create_dir_all(checkout.join("crates/horizon-client/src")).unwrap();
+            fs::create_dir_all(checkout.join("crates/myriade-engine/src")).unwrap();
         }
         assert_eq!(checkout_above(&one), Some(one.clone()));
         assert_eq!(
-            checkout_above(&two.join("crates/horizon-client/src")),
+            checkout_above(&two.join("crates/myriade-engine/src")),
             Some(two.clone())
         );
         assert_eq!(checkout_above(&base), None);
@@ -456,13 +456,13 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
         let bin = base.join("bin");
         fs::create_dir_all(&bin).unwrap();
-        for name in ["horizon-client", "horizon-prepare", "horizon-server"] {
+        for name in ["myriade-engine", "horizon-prepare", "horizon-server"] {
             fs::write(bin.join(name), b"").unwrap();
         }
         let out = base.join("out");
         fs::create_dir_all(&out).unwrap();
         fs::write(out.join("kept"), b"").unwrap();
-        let error = package_server(&bin.join("horizon-client"), &out).unwrap_err();
+        let error = package_server(&bin.join("myriade-engine"), &out).unwrap_err();
         assert!(error.contains("horizon-wasm-std.wasm"), "{error}");
         assert!(
             out.join("kept").is_file(),

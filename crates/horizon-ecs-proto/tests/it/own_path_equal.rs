@@ -1,7 +1,7 @@
 //! `pathsearch::Finder` (the prototype's own search) against Horizon's `Finder`, node for node, on eight scenes: flat, obstacles,
 //! slope and cliffs, water, doors and fences, hazards, an unreachable target, and a target beyond the range.
 use crate::common::*;
-use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
+use myriade_engine_lib::mobs::path::{Evaluator, Finder, PathMob};
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{cow::build_level_with, cow::species_table, kernel_lab::Rng};
 use std::sync::Arc;
@@ -29,7 +29,7 @@ fn own_search_is_node_for_node_the_finder() {
         let stone = st("minecraft:stone");
         for cx in -4..(SCENES * CELL / 16 + 4) {
             for cz in -4..4 {
-                blocks.chunks.insert((cx, cz), Arc::new(horizon_client_render::chunk::Chunk::empty(cx, cz)));
+                blocks.chunks.insert((cx, cz), Arc::new(myriade_level::chunk::Chunk::empty(cx, cz)));
             }
         }
         let mut r = Rng(0xABCD_EF01_2345_6789);
@@ -43,7 +43,7 @@ fn own_search_is_node_for_node_the_finder() {
                     }
                 }
             }
-            let put = |blocks: &mut horizon_client_render::world::World, name: &str, x: i32, y: i32, z: i32| {
+            let put = |blocks: &mut myriade_level::world::World, name: &str, x: i32, y: i32, z: i32| {
                 blocks.set(x, y, z, registry.default_state(name).unwrap()).unwrap();
             };
             match s {
@@ -192,11 +192,11 @@ fn own_search_follows_block_changes() {
     if !have_data() {
         return;
     }
-    let (mw, _, world) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, |blocks, registry| {
+    let (mw, _, world) = myriade_engine_lib::mobs::world::leaked_test_world_mut(true, |blocks, registry| {
         let stone = registry.default_state("minecraft:stone").unwrap();
         for cx in -4..4 {
             for cz in -4..4 {
-                blocks.chunks.insert((cx, cz), Arc::new(horizon_client_render::chunk::Chunk::empty(cx, cz)));
+                blocks.chunks.insert((cx, cz), Arc::new(myriade_level::chunk::Chunk::empty(cx, cz)));
             }
         }
         for x in -20..20 {

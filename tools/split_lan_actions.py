@@ -28,8 +28,8 @@ INCLUDE = 'include!(concat!(env!("OUT_DIR"), "/lan_action_modules.rs"));\n'
 
 
 def source_path(base=None):
-    for path in ("crates/horizon-client/src/game/network/lan_actions.rs",
-                 "crates/horizon-client/src/game/lan_actions.rs"):
+    for path in ("crates/myriade-engine/src/game/network/lan_actions.rs",
+                 "crates/myriade-engine/src/game/lan_actions.rs"):
         if (run("git", "ls-tree", base, "--", path).strip() if base
                 else (ROOT / path).is_file()):
             return Path(path)

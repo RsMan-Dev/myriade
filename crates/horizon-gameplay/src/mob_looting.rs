@@ -5,7 +5,7 @@
 //! else keep their own loops (`pandas.rs`, `piglins.rs`, `villagers.rs`,
 //! `allays.rs`, `sulfur_cubes.rs`).
 use crate::{item_areas::ItemAreas, mob_level::MobLevel};
-use horizon_client::{
+use myriade_engine::{
     items::{ItemStack, Items},
     mobs::{
         Species,

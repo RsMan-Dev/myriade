@@ -6,7 +6,7 @@ EntitySelector.findPlayers and EntityArgument's player targets: names, UUIDs, `@
 rotation, and into another level by `execute in`, the console's own level or the destination's), `effect give` and
 `effect clear`, and `kill`.
 
-A vanilla dedicated server and Horizon's (`horizon-client --dedicated --nogui`) each serve a copy of one flat world
+A vanilla dedicated server and Horizon's (`myriade-engine --dedicated --nogui`) each serve a copy of one flat world
 vanilla generated first, with Alice and Bob as operators in creative. LocatorBarClient joins them both (players made
 of vanilla's protocol code) and records, step by step, the system chat each receives and what the server changes
 about it: game mode events, teleports, inventory slots, effects, its death (with the death message), the other
@@ -169,14 +169,14 @@ def main():
     subprocess.run(['javac', '--release', str(lock['minecraft']['java_major']), '-proc:none', '-nowarn', '-sourcepath',
                     lab.ROOT / 'mods/horizon/src/test/java', '-cp', dependencies, '-d', classes, oracle],
                    cwd=lab.ROOT, check=True, capture_output=True)
-    subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'horizon-client'], cwd=lab.ROOT,
+    subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'myriade-engine'], cwd=lab.ROOT,
                    check=True, capture_output=True)
     import json
     metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'],
                                                   cwd=lab.ROOT, text=True))
-    binary = Path(metadata['target_directory']) / 'fast' / ('horizon-client.exe' if os.name == 'nt' else 'horizon-client')
+    binary = Path(metadata['target_directory']) / 'fast' / ('myriade-engine.exe' if os.name == 'nt' else 'myriade-engine')
     vanilla_server = ['java', '-Xmx2g', '-Duser.timezone=UTC', '-cp', dependencies, 'net.minecraft.server.Main', 'nogui']
-    horizon_server = [binary, '--resources', lab.LOCAL / 'horizon-client/26.3', '--dedicated', '--nogui']
+    horizon_server = [binary, '--resources', lab.LOCAL / 'myriade-engine/26.3', '--dedicated', '--nogui']
     client = ['java', '-Xmx1g', '-cp', str(classes) + os.pathsep + dependencies, 'dev.horizonlab.parity.LocatorBarClient']
 
     world = generate_world(vanilla_server, build)

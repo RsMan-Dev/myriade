@@ -11,7 +11,7 @@ use crate::cow::now_of;
 use crate::goals::with_rng;
 use crate::rules::bonemeal::{self as rules, CYCLE_EVERY};
 use bevy_ecs::prelude::Component;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_world::registry::BlockStateId;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {

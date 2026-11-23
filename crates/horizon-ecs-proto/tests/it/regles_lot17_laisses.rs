@@ -2,7 +2,7 @@
 //! creature, the spin's friction, the knot's place on its post, the quad lead's points and pull, the boat's offsets, and the gates of
 //! `canBeLeashed` (an aggravated nautilus). Vanilla 26.3 values (`Leashable`, `LeashFenceKnotEntity`, `AbstractBoat`, `Nautilus`).
 use crate::common::*;
-use horizon_client_lib::mobs::sulfur_cube::{Archetype, ARCHETYPES};
+use myriade_engine_lib::mobs::sulfur_cube::{Archetype, ARCHETYPES};
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::behaviours::neutral_anger::Angry;
 use horizon_ecs_proto::behaviours::swallow_hold::Held;

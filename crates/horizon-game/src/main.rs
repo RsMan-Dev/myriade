@@ -1,4 +1,4 @@
-//! Horizon: dedicated server for Minecraft Java Edition 26.3 (`horizon-client --dedicated`).
+//! Horizon: dedicated server for Minecraft Java Edition 26.3 (`myriade-engine --dedicated`).
 #![forbid(unsafe_code)]
 
 /// Identifies this executable as the game. `main` reads it so the linker keeps it; it carries

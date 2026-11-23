@@ -10,8 +10,8 @@
 //! (`merge_with_neighbours`), run on copies of the stacks within reach.
 use crate::cow::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::entities::{merge_with_neighbours, ItemCells, ItemEntity};
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::entities::{merge_with_neighbours, ItemCells, ItemEntity};
+use myriade_engine_lib::items::ItemStack;
 use crate::rules::item::{check_wait, expire_at, fits_stack, max_stack, merge_due, pickup_ready, throw_velocity};
 use horizon_core::geometry::{Aabb, Vec3};
 use crate::host_out_items::{ItemEvent, ItemEvents};
@@ -319,7 +319,7 @@ pub fn check_due(world: &mut World, e: Entity, token: u32) {
 }
 /// The stacks within reach that could merge with `e` (`ItemEntity.areMergable`'s test of the stacks: the same item and components, the same
 /// player it is kept for, both below their size and fitting one stack); the pickup delays and the ages are the merge's own.
-fn partners(world: &World, e: Entity, mw: &horizon_client_lib::mobs::MobWorld<'static>) -> Vec<Entity> {
+fn partners(world: &World, e: Entity, mw: &myriade_engine_lib::mobs::MobWorld<'static>) -> Vec<Entity> {
     let (Some(p), Some(me)) = (world.get::<Pos>(e), world.get::<Item>(e)) else { return Vec::new() };
     let area = box_at(p.0).inflate(Vec3::new(0.5, 0.0, 0.5));
     let max = max_stack(mw, &me.stack);
@@ -377,7 +377,7 @@ fn item_moved(world: &mut World) {
     }
 }
 /// `ItemEntity.mergeWithNeighbours` for `e`: the real rule (Horizon's), on copies of the stacks within reach.
-fn merge(world: &mut World, e: Entity, mw: &horizon_client_lib::mobs::MobWorld<'static>) {
+fn merge(world: &mut World, e: Entity, mw: &myriade_engine_lib::mobs::MobWorld<'static>) {
     let near = partners(world, e, mw);
     if near.is_empty() {
         return;
@@ -464,8 +464,8 @@ pub fn hurt_event(w: &mut World, e: Entity, by: Option<crate::targeting::Who>) {
 pub fn spill_destroyed(w: &mut World, e: Entity) {
     let (Some(item), Some(at)) = (w.get::<Item>(e), w.get::<Pos>(e).map(|p| p.0)) else { return };
     let mut stack = item.stack.clone();
-    let mut spilled = horizon_client_lib::bundle::destroyed(&mut stack);
-    spilled.extend(horizon_client_lib::item_data::destroyed_container(&mut stack));
+    let mut spilled = myriade_engine_lib::bundle::destroyed(&mut stack);
+    spilled.extend(myriade_engine_lib::item_data::destroyed_container(&mut stack));
     if spilled.is_empty() {
         return;
     }

@@ -220,7 +220,7 @@ pub fn folder_hooks(directory: &Path) -> Result<String, String> {
 }
 /// The hand-written sources, in deterministic order; `fire.rs` includes generated dispatch.
 pub fn native_hook_files(root: &Path) -> Result<Vec<PathBuf>, String> {
-    let dir = root.join("crates/horizon-client/src/game/native_hooks");
+    let dir = root.join("crates/myriade-engine/src/game/native_hooks");
     let mut paths = fs::read_dir(&dir)
         .map_err(|e| e.to_string())?
         .map(|entry| entry.map(|entry| entry.path()).map_err(|e| e.to_string()))
@@ -291,7 +291,7 @@ pub fn lan_action_modules(directory: &Path, modules: Vec<String>) -> Result<Stri
 }
 /// Hand-written host modules; the generator appends its real generated forwarders separately.
 pub fn host_modules(root: &Path) -> Result<String, String> {
-    let directory = root.join("crates/horizon-client/src/game/host");
+    let directory = root.join("crates/myriade-engine/src/game/host");
     let mut modules = String::new();
     for stem in ["draw", "services"] {
         let path =

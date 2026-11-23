@@ -38,7 +38,7 @@ cargo horizon-mod check target/horizon-mod/my_mod.hmod   # the registry's checks
   `data/`, optional `icon.png` and, for code, the root Cargo project. It validates content with the same
   checks as the game; without `--wasm`, it does not compile code. Native code requires both `Cargo.toml` and `[native]`; inconsistent
   declarations and a manifest without capability `registries` are refused.
-- `run` builds, then starts `horizon-client` (on `PATH`, or `--game PATH`, or `HORIZON_CLIENT`) with
+- `run` builds, then starts `myriade-engine` (on `PATH`, or `--game PATH`, or `HORIZON_CLIENT`) with
   `--dev-mod target/horizon-mod/<id>.hmod`, always on. Arguments after `--` go to the game. The game reads content once
   at start, so rebuild and run again after an edit.
 - `check <file>` runs what the registry runs: the file's size and SHA-256, its manifest and content, and a signature
@@ -828,7 +828,7 @@ The namespace collision fence applies. `minecraft`, `c` and
 the other's): the game keeps the first in load order and leaves the other's content out, with "mods A and B both use
 the namespace N; turn one of them off" in the log. Paths use vanilla's resource characters, at most 65,536 files, 16
 MiB each and 512 MiB in all. A mod whose content is refused is left out, with the reason in the log. The game reads
-this content into its block and item tables (`horizon_client::mod_content`, [modpacks.md](https://github.com/horizon-rust/horizon/blob/main/docs/modpacks.md)). A tag entry
+this content into its block and item tables (`myriade_engine::mod_content`, [modpacks.md](https://github.com/horizon-rust/horizon/blob/main/docs/modpacks.md)). A tag entry
 naming an id nobody registers (a block a port left out, another mod's item) is dropped, so the rest of the tag
 loads; vanilla would drop the whole tag.
 
@@ -974,7 +974,7 @@ file and attribute. A client plays these from the biome data the server sends. I
 three ambient sound fields together make the one `ambient_sounds` value, and a value out of range refuses the mods at
 startup.
 
-**When they apply.** Modifiers are applied while the world's worldgen data is loaded, before any chunk is generated: the content build writes the modified biomes into the content root, and when a world opens, `horizon_client::vanillagen::biome_modifiers_over_packs` applies them again over the world's data packs (`shared_data_with` for the generator, `packed_biomes` for the game's biome table), so a pack that replaces a vanilla biome keeps the mods' changes and a pack's own biome a tag selects gets them. Modifiers a mod declares in code (`Registrar::declare_biome_modifier`) register before any world opens and are read at the same moment. The generator's data is loaded once per bundle and set of packs and shared by the world's dimensions, so a modifier never applies halfway through a world. The dedicated server is the same game run headless (`horizon-client --dedicated`, [server.md](https://github.com/horizon-rust/horizon/blob/main/docs/server.md)), so it takes this path too; `horizon-server` only supervises it.
+**When they apply.** Modifiers are applied while the world's worldgen data is loaded, before any chunk is generated: the content build writes the modified biomes into the content root, and when a world opens, `myriade_engine::vanillagen::biome_modifiers_over_packs` applies them again over the world's data packs (`shared_data_with` for the generator, `packed_biomes` for the game's biome table), so a pack that replaces a vanilla biome keeps the mods' changes and a pack's own biome a tag selects gets them. Modifiers a mod declares in code (`Registrar::declare_biome_modifier`) register before any world opens and are read at the same moment. The generator's data is loaded once per bundle and set of packs and shared by the world's dimensions, so a modifier never applies halfway through a world. The dedicated server is the same game run headless (`myriade-engine --dedicated`, [server.md](https://github.com/horizon-rust/horizon/blob/main/docs/server.md)), so it takes this path too; `horizon-server` only supervises it.
 
 A biome holder set can also use Horizon's own `horizon:climate` type, alone or nested in those boolean sets; it is not
 a NeoForge format. It filters each biome's base `temperature` and `downfall` (the names in

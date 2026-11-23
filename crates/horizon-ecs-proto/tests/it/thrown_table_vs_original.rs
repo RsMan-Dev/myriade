@@ -1,9 +1,9 @@
-//! The table of the thrown objects of `ProjectileKind` (`horizon-client`'s `projectiles.rs`) against the `Flight` constants of the ECS: each
+//! The table of the thrown objects of `ProjectileKind` (`myriade-engine`'s `projectiles.rs`) against the `Flight` constants of the ECS: each
 //! entry of the original has a constant with the same gravity, air drag, box size. The gravity is the jar's `getDefaultGravity` (private in
 //! the original, so transcribed here); the size is its `size()`, read directly. A content mod's thrown type (`ThrownType`) is a copy of the
 //! snowball with its own damage: the ECS has no constant for it, so each one fails the test by its id.
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::projectiles::{register_thrown_types, thrown_types, ProjectileKind};
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::projectiles::{register_thrown_types, thrown_types, ProjectileKind};
 use horizon_ecs_proto::projectile::{Damage, Flight};
 use horizon_ecs_proto::projectile_more::{ENDER_PEARL, EGG, EXPERIENCE_BOTTLE};
 

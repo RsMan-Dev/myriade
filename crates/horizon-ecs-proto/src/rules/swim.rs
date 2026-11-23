@@ -1,5 +1,5 @@
 //! Calculs de la nage : vitesse visée et son lissage, arrivée et blocage, sortie de l'eau, mouvement de la méduse, du gardien et de la tortue.
-use horizon_client_lib::mobs::path::Path;
+use myriade_engine_lib::mobs::path::Path;
 use horizon_core::geometry::{trig, Vec3};
 
 pub const PI: f32 = std::f32::consts::PI;

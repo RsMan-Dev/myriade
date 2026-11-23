@@ -52,7 +52,7 @@ python tools/paper_parity.py run --engine "$env:CARGO_TARGET_DIR/release/paper-t
 ```
 
 Set `CARGO_TARGET_DIR` before staging: the script installs the trace fixture beside
-the engine there. The default resources are `.local/horizon-client/26.3`;
+the engine there. The default resources are `.local/myriade-engine/26.3`;
 use `--resources /absolute/path` to override. `run` with defaults works on main
 and automatically runs all scenarios after the extension merges.
 There, `--scenario hotbar` selects one scenario and `--startup-timeout 2400`

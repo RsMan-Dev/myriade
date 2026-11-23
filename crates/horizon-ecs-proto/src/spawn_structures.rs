@@ -4,7 +4,7 @@
 use crate::cow::{species_table, SpeciesTable};
 use crate::spawning::{resolve, Category, Entry};
 use bevy_ecs::prelude::Resource;
-use horizon_client_lib::mobs::spawn_place::{fortress_enemies, StructureAt, StructureSpawns};
+use myriade_engine_lib::mobs::spawn_place::{fortress_enemies, StructureAt, StructureSpawns};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;

@@ -2,7 +2,7 @@
 //! whole (`Piglin.dropCustomDeathLoot`: `removeAllItems`), and the slots they leave are empty. Nothing here names a species.
 use crate::rules::{no_interact, params, Rule};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 /// The slots of a carried inventory (`None` empty).
 #[derive(Component, Clone, Debug, Default)]

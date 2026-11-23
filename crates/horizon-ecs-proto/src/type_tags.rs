@@ -44,7 +44,7 @@ pub struct TypeTags {
 /// Loads every entity type tag of `root` (members flattened by the loader) against `species`, replacing the memberships of the names
 /// already known. The species table's ids are what the memberships hold.
 pub fn install(root: &std::path::Path, species: &[Species]) {
-    let raw = horizon_client_lib::items::load_tags(root, "entity_type", &horizon_world::loot::PackOverlay::NONE).expect("entity_type tags");
+    let raw = myriade_engine_lib::items::load_tags(root, "entity_type", &horizon_world::loot::PackOverlay::NONE).expect("entity_type tags");
     let mut names: Vec<&String> = raw.keys().collect();
     names.sort();
     let mut members = MEMBERS.write().unwrap();

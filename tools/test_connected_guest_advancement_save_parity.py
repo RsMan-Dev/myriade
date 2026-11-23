@@ -149,7 +149,7 @@ def main():
     p.add_argument('--work-dir', type=Path, help='where both runs write (default: a new temporary folder)')
     p.add_argument('--reference-only', action='store_true', help='run the vanilla side only')
     p.add_argument('--reference-dir', type=Path, help="reuse a --reference-only run's folder instead of running vanilla")
-    p.add_argument('--binary', type=Path, help='the horizon-client to run (default: built with --profile fast)')
+    p.add_argument('--binary', type=Path, help='the myriade-engine to run (default: built with --profile fast)')
     a = p.parse_args()
     work = a.work_dir or Path(tempfile.mkdtemp(prefix='connected-guest-advancement-save-'))
     work.mkdir(parents=True, exist_ok=True)

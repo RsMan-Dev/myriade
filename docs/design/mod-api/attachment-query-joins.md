@@ -10,13 +10,13 @@ Verified current owners (repository-relative paths):
 
 | Route | Owner and consequence |
 | --- | --- |
-| Single-type capture and write validation | `crates/horizon-client/src/game/modding/attachment_index/mod.rs:31` and `:43`: select `self.dim`, lock its index and call `snapshot_named`; writes validate only that current index today. Cross-dimension routing must replace that limitation for explicitly scoped rows. |
+| Single-type capture and write validation | `crates/myriade-engine/src/game/modding/attachment_index/mod.rs:31` and `:43`: select `self.dim`, lock its index and call `snapshot_named`; writes validate only that current index today. Cross-dimension routing must replace that limitation for explicitly scoped rows. |
 | Capture callee | `crates/horizon-mod-runtime/src/attachments/index.rs:241`: hash lookup and Arc clone, no holder scan; `:257` validates residency with an owner hash lookup. |
 | Borrowed traversal | `crates/horizon-mod-runtime/src/attachments/query.rs:96`: read each captured entry through `read_validated`; decoding can allocate and fail. No default insertion. |
 | Decode callee | `crates/horizon-mod-runtime/src/attachments.rs:497`: query read/cache path, distinct from canonical writes. Decode cost depends on codec and bytes, not constant time. |
 | Residency installation and retirement | `crates/horizon-mod-runtime/src/attachments/resident.rs:26` and `:42`; index `:193` registers, `:344` unregisters, visiting that owner's keys. |
-| Saved entities, dimensions, players | `crates/horizon-client/src/game/modding/attachment_index/mod.rs:55`, `:80`, and `players.rs:7`: bind at lifecycle boundaries, never during query reads. |
-| Journaling and nesting | `crates/horizon-client/src/game/runtime/transactions.rs:191`, `:237`, `:302`: open, merge/rollback and capture attachment maps. This is a holder-map journal, not a need for simultaneous mutable entry references. |
+| Saved entities, dimensions, players | `crates/myriade-engine/src/game/modding/attachment_index/mod.rs:55`, `:80`, and `players.rs:7`: bind at lifecycle boundaries, never during query reads. |
+| Journaling and nesting | `crates/myriade-engine/src/game/runtime/transactions.rs:191`, `:237`, `:302`: open, merge/rollback and capture attachment maps. This is a holder-map journal, not a need for simultaneous mutable entry references. |
 | Native/wasm boundary | `crates/horizon-mod-vocab/src/entity/attachment_query.rs:63` and `:80`: existing manual API-owned Wire token/batch conversion; evidence of the current route only, not a serialization pattern to extend. New crossing types must derive Wire. |
 
 These owners establish existing mechanics, not implementation of the contracts below. Before code, audit every arismoko/horizon#1606 residency producer, lifted-pass exit, world close, transfer, chunk unload and save gate against the same publication boundary; the exact arismoko/horizon#1606 owner integration remains a prerequisite.

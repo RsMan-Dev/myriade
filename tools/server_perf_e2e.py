@@ -65,7 +65,7 @@ def check(bins, scratch, out):
     props = dict(PROPERTIES, **{'server-port': str(port)})
     (folder / 'server.properties').write_text(''.join(f'{k}={v}\n' for k, v in props.items()))
     (folder / 'eula.txt').write_text('eula=true\n')
-    command = [bins / f'horizon-client{EXE}', '--resources', lab.RESOURCES, '--dedicated', '--nogui']
+    command = [bins / f'myriade-engine{EXE}', '--resources', lab.RESOURCES, '--dedicated', '--nogui']
     server = Server(command, folder, out / 'server.log')
     bots = None
     try:

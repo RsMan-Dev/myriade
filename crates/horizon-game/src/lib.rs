@@ -1,4 +1,4 @@
-//! The dedicated server as the platform runs it, for the `horizon-client` executable to start
+//! The dedicated server as the platform runs it, for the `myriade-engine` executable to start
 //! (docs/layers.md, "How a Horizon crate plugs in"). The executable registers the platform's
 //! hooks (`horizon_platform::hooks`) and then calls [`main`].
 //!
@@ -37,7 +37,7 @@ pub const GAME_IDENTITY: [u8; horizon_mod_package::game_identity::MARK.len()] =
 pub fn main() {
     horizon_guest_stack::prepare_main();
     exit_if_compile_child();
-    let startup = horizon_client::entry::prepare();
+    let startup = myriade_engine::entry::prepare();
     std::hint::black_box(&horizon_mod_package::holder::CAPABILITY);
     loading::main_with(Vec::new(), &[], &[], startup);
 }

@@ -9,7 +9,7 @@ use crate::projectile::launch;
 use crate::rules::ominous_spawner::{about_to_spawn_delay, drop_delay, particle_count, particle_wait, shoot_down};
 use crate::spawn_spawner::SpawnerRng;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 /// The level event of the spawn (`spawnItem`), and the game event that follows it.
 const SPAWN_EVENT: i32 = 3021;

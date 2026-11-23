@@ -8,7 +8,7 @@
 use crate::cow::*;
 use bevy_ecs::prelude::*;
 use crate::rules::hit_recoil::launch;
-use horizon_client_lib::mobs::sulfur_cube::Archetype;
+use myriade_engine_lib::mobs::sulfur_cube::Archetype;
 use horizon_core::geometry::Vec3;
 
 /// The blow reached a holding cube: its velocity takes the recoil. `direction` is from the attacker to the cube (x, z).

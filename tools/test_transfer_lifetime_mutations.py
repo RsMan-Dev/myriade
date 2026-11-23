@@ -17,13 +17,13 @@ def terminate(signum, _frame):
 signal.signal(signal.SIGTERM, terminate)
 if not os.environ.get('HORIZON_TEST_RESOURCES'):
     raise SystemExit('Set HORIZON_TEST_RESOURCES')
-join = Path('crates/horizon-client/src/join_seq.rs')
-travel = Path('crates/horizon-client/src/game/world/server_travel.rs')
-levels = Path('crates/horizon-client/src/game/world/levels.rs')
+join = Path('crates/myriade-engine/src/join_seq.rs')
+travel = Path('crates/myriade-engine/src/game/world/server_travel.rs')
+levels = Path('crates/myriade-engine/src/game/world/levels.rs')
 originals = {p: p.read_text() for p in (join, travel, levels)}
 logs = Path('target/transfer-lifetime-proof')
 logs.mkdir(parents=True, exist_ok=True)
-command = ['cargo', 'test', '-p', 'horizon-client', '--lib', '--no-default-features']
+command = ['cargo', 'test', '-p', 'myriade-engine', '--lib', '--no-default-features']
 removal = 'transfer_removal_retires_before_returning_the_vehicle'
 arrival = 'transfer_arrival_rebinds_only_bound_owners_with_the_same_id'
 cases = [
@@ -33,7 +33,7 @@ cases = [
     ('wrong-destination-index', levels, 'self.attachment_indexes.entry(self.dim)',
      'self.attachment_indexes.entry(source)', arrival),
     ('keep-source-join', travel,
-     'v.set_join_seq(horizon_client::join_seq::JoinSeq::UNJOINED);', ';', arrival),
+     'v.set_join_seq(myriade_engine::join_seq::JoinSeq::UNJOINED);', ';', arrival),
 ]
 for name, family in [('b', 'boats'), ('c', 'carts'), ('m', 'mobs')]:
     line = f'self.rebind_transferred_entity(source, id, &mut {name});'

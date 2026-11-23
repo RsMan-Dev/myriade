@@ -1213,7 +1213,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "horizon-client"
+name = "myriade-engine"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
@@ -1228,9 +1228,9 @@ dependencies = [
  "horizon-assets",
  "horizon-bench",
  "horizon-chat-filter",
- "horizon-client-core",
- "horizon-client-lib",
- "horizon-client-render",
+ "myriade-data",
+ "myriade-engine-lib",
+ "myriade-level",
  "horizon-command",
  "horizon-core",
  "horizon-ecs-proto",
@@ -1258,7 +1258,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "horizon-client-core"
+name = "myriade-data"
 version = "0.1.0"
 dependencies = [
  "horizon-assets",
@@ -1268,7 +1268,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "horizon-client-lib"
+name = "myriade-engine-lib"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
@@ -1281,8 +1281,8 @@ dependencies = [
  "horizon-anticheat",
  "horizon-assets",
  "horizon-bench",
- "horizon-client-core",
- "horizon-client-render",
+ "myriade-data",
+ "myriade-level",
  "horizon-command",
  "horizon-core",
  "horizon-game-discovery",
@@ -1310,14 +1310,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "horizon-client-render"
+name = "myriade-level"
 version = "0.1.0"
 dependencies = [
  "base64",
  "chrono",
  "flate2",
  "horizon-assets",
- "horizon-client-core",
+ "myriade-data",
  "horizon-command",
  "horizon-core",
  "horizon-guest-stack",
@@ -1342,7 +1342,7 @@ dependencies = [
 name = "horizon-command"
 version = "0.1.0"
 dependencies = [
- "horizon-client-core",
+ "myriade-data",
  "horizon-core",
  "horizon-items",
  "horizon-protocol",
@@ -1366,8 +1366,8 @@ dependencies = [
  "bevy_ecs",
  "bevy_tasks",
  "bevy_utils",
- "horizon-client-lib",
- "horizon-client-render",
+ "myriade-engine-lib",
+ "myriade-level",
  "horizon-core",
  "horizon-items",
  "horizon-protocol",
@@ -1379,7 +1379,7 @@ dependencies = [
 name = "horizon-game"
 version = "0.1.0"
 dependencies = [
- "horizon-client",
+ "myriade-engine",
  "horizon-core",
  "horizon-guest-stack",
  "horizon-protocol",
@@ -1405,8 +1405,8 @@ name = "horizon-gameplay"
 version = "0.1.0"
 dependencies = [
  "horizon-assets",
- "horizon-client-core",
- "horizon-client-lib",
+ "myriade-data",
+ "myriade-engine-lib",
  "horizon-command",
  "horizon-core",
  "horizon-items",
@@ -1432,7 +1432,7 @@ version = "0.1.0"
 name = "horizon-items"
 version = "0.1.0"
 dependencies = [
- "horizon-client-core",
+ "myriade-data",
  "horizon-core",
  "horizon-world",
  "log",

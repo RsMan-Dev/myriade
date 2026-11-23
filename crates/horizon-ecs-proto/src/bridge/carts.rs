@@ -5,7 +5,7 @@ use crate::cart_state::{self, Cart, name_of};
 use crate::minecart::Kind;
 use crate::zone;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 impl EcsWorld {
     /// A cart of the genre named `kind` at `at`, facing `yaw`, armed and indexed for the tracker; None when `kind` names no genre.

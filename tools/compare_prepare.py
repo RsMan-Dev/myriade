@@ -146,7 +146,7 @@ def main():
     port = [n for n in names if n not in identical and n not in noise]
     # Only lab.py fetches the decompiler; preparing does not need it.
     port = [n for n in port if not (n.startswith('tools/vineflower-') and n not in rust)]
-    manifest = 'horizon-client/' + json.loads((folders['rust'] / 'research-lock.json').read_text())[
+    manifest = 'myriade-engine/' + json.loads((folders['rust'] / 'research-lock.json').read_text())[
         'minecraft']['version'] + '/horizon-resources.json'
     noisy = {n.rsplit('/', 1)[-1] for n in noise if n.startswith(manifest.rsplit('/', 1)[0] + '/')}
     manifests = {n: json.loads((folders[n] / '.local' / manifest).read_text()) for n in folders}
@@ -194,7 +194,7 @@ def main():
     if manifest in port and not manifest_differences:
         port.remove(manifest)
     # Each preparer over the other's output: nothing to export again, no resource changes.
-    resources = 'horizon-client/'
+    resources = 'myriade-engine/'
     before = {'python-2': second, 'rust': rust}
     times['rust over python'] = run('rust over python', [str(binary), '--root', str(folders['python-2']), *game],
                                     folders['python-2'], work / 'rust-over-python.log')

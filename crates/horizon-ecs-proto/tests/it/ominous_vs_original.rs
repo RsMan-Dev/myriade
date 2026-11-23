@@ -4,7 +4,7 @@
 //! written out. `HORIZON_TEST_RESOURCES` set.
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::cow::{Clock, Herd};
 use horizon_ecs_proto::ominous_spawner::{spawn, OminousSpawner};

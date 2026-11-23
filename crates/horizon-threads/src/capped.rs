@@ -106,7 +106,7 @@ impl<A> Capped<A> {
     }
 }
 
-/// The game's allocator, over mimalloc (`#[global_allocator]` in `horizon-client`'s library).
+/// The game's allocator, over mimalloc (`#[global_allocator]` in `myriade-engine`'s library).
 pub type Allocator = Capped<mimalloc::MiMalloc>;
 /// A const instance, so the game can name it in a `static`.
 pub const ALLOCATOR: Allocator = Capped(mimalloc::MiMalloc);

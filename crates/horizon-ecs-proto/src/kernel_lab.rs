@@ -1,7 +1,7 @@
 //! Worlds and call lists for the block-collision kernel alone (suivi/ecs-noyau-collisions.md): the cases of a
 //! cow, and a varied random world with random calls for the equality test of the optimised kernel.
-use horizon_client_lib::mobs::MobWorld;
-use horizon_client_render::{chunk::Chunk, collisions::SceneCollisions};
+use myriade_engine_lib::mobs::MobWorld;
+use myriade_level::{chunk::Chunk, collisions::SceneCollisions};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_world::registry::{BlockRegistry, BlockStateId};
 use std::sync::Arc;
@@ -62,11 +62,11 @@ fn varied_states(registry: &BlockRegistry) -> Vec<Vec<BlockStateId>> {
     by_name
 }
 
-pub fn leaked(build: impl FnOnce(&mut horizon_client_render::world::World, &BlockRegistry)) -> &'static MobWorld<'static> {
-    horizon_client_lib::mobs::world::leaked_test_world(true, build).expect("HORIZON_TEST_RESOURCES").0
+pub fn leaked(build: impl FnOnce(&mut myriade_level::world::World, &BlockRegistry)) -> &'static MobWorld<'static> {
+    myriade_engine_lib::mobs::world::leaked_test_world(true, build).expect("HORIZON_TEST_RESOURCES").0
 }
 
-fn insert_chunks(w: &mut horizon_client_render::world::World, c0: i32, c1: i32) {
+fn insert_chunks(w: &mut myriade_level::world::World, c0: i32, c1: i32) {
     for cx in c0..c1 {
         for cz in c0..c1 {
             w.chunks.insert((cx, cz), Arc::new(Chunk::empty(cx, cz)));
@@ -76,8 +76,8 @@ fn insert_chunks(w: &mut horizon_client_render::world::World, c0: i32, c1: i32) 
 
 /// Bench world: a stone floor at y = 0 over x, z in [-48, 48), a wall x = 20 (y 1..=3) and, for x in [24, 44),
 /// z in [-20, 20), a field of random non-cubic blocks at y = 1 (and some at y = 2).
-pub fn bench_world_mut() -> (&'static MobWorld<'static>, *mut horizon_client_render::world::World) {
-    let (w, _, p) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
+pub fn bench_world_mut() -> (&'static MobWorld<'static>, *mut myriade_level::world::World) {
+    let (w, _, p) = myriade_engine_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
         insert_chunks(w, -3, 3);
         let stone = registry.default_state("minecraft:stone").unwrap();
         let states = varied_states(registry);
@@ -319,8 +319,8 @@ pub fn random_calls(seed: u64, n: usize) -> Vec<Call> {
 
 /// A world of plain cubes over x, z in [-14, 14) (y 0 to 6, regions of several densities), with, when `tricky` is set, a
 /// few percent of non-cubic blocks; and the pointer that lets a test change blocks between calls (`occupancy.rs`).
-pub fn cube_world(seed: u64, tricky: bool) -> (&'static MobWorld<'static>, *mut horizon_client_render::world::World) {
-    let (w, _, p) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
+pub fn cube_world(seed: u64, tricky: bool) -> (&'static MobWorld<'static>, *mut myriade_level::world::World) {
+    let (w, _, p) = myriade_engine_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
         insert_chunks(w, -2, 2);
         let cubes: Vec<BlockStateId> = ["stone", "dirt", "cobblestone", "oak_planks", "glass", "ice", "sand", "gravel"]
             .iter()
@@ -365,7 +365,7 @@ pub fn cube_world(seed: u64, tricky: bool) -> (&'static MobWorld<'static>, *mut 
 ///
 /// # Safety
 /// No call of the kernel may run at the same time.
-pub unsafe fn change_block(world: &MobWorld<'_>, ptr: *mut horizon_client_render::world::World, x: i32, y: i32, z: i32, state: BlockStateId) {
+pub unsafe fn change_block(world: &MobWorld<'_>, ptr: *mut myriade_level::world::World, x: i32, y: i32, z: i32, state: BlockStateId) {
     unsafe {
         let _ = (*ptr).set(x, y, z, state);
     }
@@ -374,7 +374,7 @@ pub unsafe fn change_block(world: &MobWorld<'_>, ptr: *mut horizon_client_render
 
 /// [`run`] and [`run_reference`] for a body that walks on lava (`subject`: the kernel's contextual liquid shapes apply).
 pub fn run_lava_walker(world: &MobWorld<'_>, c: &Call, reference: bool) -> Result<Vec3, String> {
-    let subject = Some(horizon_client_render::collisions::PowderSnowSubject { lava_walker: true, ..Default::default() });
+    let subject = Some(myriade_level::collisions::PowderSnowSubject { lava_walker: true, ..Default::default() });
     let scene = SceneCollisions { world: world.world, binding: world.collision, subject };
     if reference {
         scene.resolve_in_border_with_reference(c.bounds, c.movement, c.step, c.on_ground, None, &[]).map_err(|e| e.to_string())
@@ -392,7 +392,7 @@ pub enum Mode {
 }
 
 /// [`run`] for a body with the given subject (the entity whose context the kernel's contextual shapes read).
-pub fn run_as(world: &MobWorld<'_>, c: &Call, subject: Option<horizon_client_render::collisions::PowderSnowSubject<'_>>, mode: Mode) -> Result<Vec3, String> {
+pub fn run_as(world: &MobWorld<'_>, c: &Call, subject: Option<myriade_level::collisions::PowderSnowSubject<'_>>, mode: Mode) -> Result<Vec3, String> {
     let scene = SceneCollisions { world: world.world, binding: world.collision, subject };
     match mode {
         Mode::Masks => occupancy_of(world).resolve(scene, c.bounds, c.movement, c.step, c.on_ground),
@@ -404,8 +404,8 @@ pub fn run_as(world: &MobWorld<'_>, c: &Call, subject: Option<horizon_client_ren
 
 /// The subjects the contextual shapes tell apart: none (a position), a living entity with nothing special, one that fell,
 /// one in leather boots, a walkable type (a fox, a rabbit), a falling block, a lava walker.
-pub fn subjects() -> Vec<Option<horizon_client_render::collisions::PowderSnowSubject<'static>>> {
-    use horizon_client_render::collisions::PowderSnowSubject as S;
+pub fn subjects() -> Vec<Option<myriade_level::collisions::PowderSnowSubject<'static>>> {
+    use myriade_level::collisions::PowderSnowSubject as S;
     vec![
         None,
         Some(S::default()),
@@ -432,13 +432,13 @@ fn states_named(registry: &BlockRegistry, names: &[&str]) -> Vec<Vec<BlockStateI
 /// A dense small world (x, z in [-14, 14), y in [0, 6)) of stone, fixed shapes (slabs, stairs, fences, walls, snow, beds...) and
 /// hard blocks (`only`: that one name, every column of the layer y = 1 holds one; None: all of `HARD`), with the lids of the
 /// shulker boxes and the pistons in motion the world keeps for them. The pointer lets a test change blocks.
-pub fn hard_world(seed: u64, only: Option<&str>) -> (&'static MobWorld<'static>, *mut horizon_client_render::world::World) {
+pub fn hard_world(seed: u64, only: Option<&str>) -> (&'static MobWorld<'static>, *mut myriade_level::world::World) {
     hard_world_sized(seed, only, 14)
 }
 
 /// [`hard_world`] over x, z in [-half, half) (half at most 32).
-pub fn hard_world_sized(seed: u64, only: Option<&str>, half: i32) -> (&'static MobWorld<'static>, *mut horizon_client_render::world::World) {
-    let (w, _, p) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
+pub fn hard_world_sized(seed: u64, only: Option<&str>, half: i32) -> (&'static MobWorld<'static>, *mut myriade_level::world::World) {
+    let (w, _, p) = myriade_engine_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
         insert_chunks(w, -2, 2);
         let stone = registry.default_state("minecraft:stone").unwrap();
         let fixed = states_named(registry, FIXED);
@@ -468,7 +468,7 @@ pub fn hard_world_sized(seed: u64, only: Option<&str>, half: i32) -> (&'static M
                     w.set(x, y, z, s).unwrap();
                     let name = registry.state(s).unwrap().name.as_str();
                     if name.ends_with("shulker_box") {
-                        use horizon_client_render::block_entity_anim::{Shulker, ShulkerStatus};
+                        use myriade_level::block_entity_anim::{Shulker, ShulkerStatus};
                         let progress = [0.0f32, 0.25, 0.5, 0.75, 1.0][r.below(5)];
                         if r.below(4) != 0 {
                             w.shulkers.insert([x, y, z], Shulker { open_count: 1, status: ShulkerStatus::Opening, progress, progress_old: progress * 0.5 });
@@ -488,8 +488,8 @@ pub fn hard_world_sized(seed: u64, only: Option<&str>, half: i32) -> (&'static M
 }
 
 /// A stone floor at y = 0 and, above it at y = 1, a floor of open shulker boxes (lids at full progress) over x, z in [-14, 14); air above.
-pub fn shulker_floor_world() -> (&'static MobWorld<'static>, *mut horizon_client_render::world::World) {
-    let (w, _, p) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
+pub fn shulker_floor_world() -> (&'static MobWorld<'static>, *mut myriade_level::world::World) {
+    let (w, _, p) = myriade_engine_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
         insert_chunks(w, -2, 2);
         let stone = registry.default_state("minecraft:stone").unwrap();
         let shulker = registry.default_state("minecraft:shulker_box").unwrap();
@@ -497,7 +497,7 @@ pub fn shulker_floor_world() -> (&'static MobWorld<'static>, *mut horizon_client
             for z in -14..14 {
                 w.set(x, 0, z, stone).unwrap();
                 w.set(x, 1, z, shulker).unwrap();
-                use horizon_client_render::block_entity_anim::{Shulker, ShulkerStatus};
+                use myriade_level::block_entity_anim::{Shulker, ShulkerStatus};
                 w.shulkers.insert([x, 1, z], Shulker { open_count: 1, status: ShulkerStatus::Opening, progress: 1.0, progress_old: 1.0 });
             }
         }
@@ -510,7 +510,7 @@ pub fn shulker_floor_world() -> (&'static MobWorld<'static>, *mut horizon_client
 /// cell (fences, walls, pistons' heads), fixed shapes and hard blocks, so that boxes near a seam read cells of the neighbouring sections. Returns the
 /// world and the calls (boxes standing on the floor at y = 16, or inside the features).
 pub fn seam_world(seed: u64) -> (&'static MobWorld<'static>, Vec<Call>) {
-    let (w, _, _) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
+    let (w, _, _) = myriade_engine_lib::mobs::world::leaked_test_world_mut(true, |w, registry| {
         insert_chunks(w, -2, 2);
         let stone = registry.default_state("minecraft:stone").unwrap();
         let pool = states_named(registry, &["oak_fence", "cobblestone_wall", "piston_head", "oak_slab", "oak_stairs", "scaffolding", "bamboo", "snow", "iron_bars", "oak_fence_gate", "moving_piston"]);

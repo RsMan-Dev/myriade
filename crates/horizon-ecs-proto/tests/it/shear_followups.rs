@@ -49,7 +49,7 @@ fn the_kept_stew_effect_is_saved_and_restored() {
 fn creative_keeps_the_bucket_in_hand() {
     let Some((mut h, e)) = spawn("minecraft:cow", 33) else { return };
     let bucket = hold(&mut h, "minecraft:bucket");
-    let stack = horizon_client_lib::items::ItemStack::new("minecraft:bucket", 1);
+    let stack = myriade_engine_lib::items::ItemStack::new("minecraft:bucket", 1);
     h.world.insert_resource(UsedStack { stack, creative: true });
     assert!(interact(&mut h.world, e, &Interaction { player: 1, item: bucket }));
     assert_eq!(h.world.resource::<Online>().get(1).unwrap().main, bucket, "the bucket stays in creative");
@@ -71,7 +71,7 @@ fn a_golem_is_sheared_by_the_rule_with_no_player() {
 #[test]
 fn a_sulfur_cube_drops_its_block_at_the_top_of_its_body() {
     let Some((mut h, e)) = spawn("minecraft:sulfur_cube", 35) else { return };
-    let arch = horizon_client_lib::mobs::sulfur_cube::archetype_of("minecraft:magma_block").expect("an archetype");
+    let arch = myriade_engine_lib::mobs::sulfur_cube::archetype_of("minecraft:magma_block").expect("an archetype");
     horizon_ecs_proto::behaviours::swallow_hold::hold(&mut h.world, e, "minecraft:magma_block".into(), arch);
     let shears = hold(&mut h, "minecraft:shears");
     assert!(interact(&mut h.world, e, &Interaction { player: 1, item: shears }));

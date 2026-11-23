@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The locator bar on a dedicated server, against vanilla's, seen by vanilla clients.
 
-A vanilla dedicated server and Horizon's (`horizon-client --dedicated --nogui`) each serve a copy of one flat
+A vanilla dedicated server and Horizon's (`myriade-engine --dedicated --nogui`) each serve a copy of one flat
 world vanilla generated first (players appear at its spawn), with the same server.properties (offline,
 creative, view distance 4) and two operators. LocatorBarClient, two
 players made of vanilla's protocol code (any byte vanilla would not read is an error), joins Alice and then
@@ -331,14 +331,14 @@ def sides(name, binary=None):
                     lab.ROOT / 'mods/horizon/src/test/java', '-cp', dependencies, '-d', classes, oracle],
                    cwd=lab.ROOT, check=True, capture_output=True)
     if binary is None:
-        subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'horizon-client'], cwd=lab.ROOT,
+        subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'myriade-engine'], cwd=lab.ROOT,
                        check=True, capture_output=True)
         import json
         metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'],
                                                       cwd=lab.ROOT, text=True))
-        binary = Path(metadata['target_directory']) / 'fast' / ('horizon-client.exe' if os.name == 'nt' else 'horizon-client')
+        binary = Path(metadata['target_directory']) / 'fast' / ('myriade-engine.exe' if os.name == 'nt' else 'myriade-engine')
     vanilla_server = ['java', '-Xmx2g', '-Duser.timezone=UTC', '-cp', dependencies, 'net.minecraft.server.Main', 'nogui']
-    horizon_server = [binary, '--resources', lab.LOCAL / 'horizon-client/26.3', '--dedicated', '--nogui']
+    horizon_server = [binary, '--resources', lab.LOCAL / 'myriade-engine/26.3', '--dedicated', '--nogui']
     client = ['java', '-Xmx1g', '-cp', str(classes) + os.pathsep + dependencies, 'dev.horizonlab.parity.LocatorBarClient']
     return lock, build, vanilla_server, horizon_server, client
 

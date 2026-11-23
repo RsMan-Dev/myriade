@@ -236,7 +236,7 @@ pub struct Config {
 /// riding something), rechecked every `villager_lobotomize_check_interval` ticks. The game reads it from the
 /// same file (game/dedicated.rs, `load_entities`).
 /// `[entities]`: `dab = true` runs a mob's AI less often the farther it is from the nearest player (Pufferfish's
-/// dynamic activation of brain; crates/horizon-client/src/mobs/dab.rs). Off by default: it is not vanilla's
+/// dynamic activation of brain; crates/myriade-engine/src/mobs/dab.rs). Off by default: it is not vanilla's
 /// behaviour. A mob farther than `dab_start_distance` blocks runs its AI every
 /// `clamp(distance² >> dab_activation_dist_mod, 1, dab_max_tick_freq)` ticks. `max_collisions = N` limits how many
 /// other mobs one mob pushes in a tick (pushes it receives count too); 0 is vanilla's behaviour, no cap.
@@ -255,7 +255,7 @@ impl Default for Entities {
     fn default() -> Self {
         Self {
             villager_lobotomize: false,
-            // Must match `mobs::villager::lobotomy::DEFAULT_INTERVAL` in horizon-client (this crate cannot depend on it).
+            // Must match `mobs::villager::lobotomy::DEFAULT_INTERVAL` in myriade-engine (this crate cannot depend on it).
             villager_lobotomize_check_interval: 100,
             dab: false,
             dab_start_distance: 12,

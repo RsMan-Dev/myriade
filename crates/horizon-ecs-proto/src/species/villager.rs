@@ -160,16 +160,16 @@ static CORE: &[BEntry] = &[
 /// The profession of a farmer, in configuration: the crops it harvests (full grown: the `age` of the crop at its largest) and what it leaves
 /// (it carries no seeds: the crop is broken; a villager with seeds would replant it at age 0).
 const CROPS: &[(&str, i32)] = &[("minecraft:wheat", 7), ("minecraft:carrots", 7), ("minecraft:potatoes", 7), ("minecraft:beetroots", 3)];
-fn crop_leaves(mw: &'static horizon_client_lib::mobs::MobWorld<'static>, _: [i32; 3]) -> Option<horizon_world::registry::BlockStateId> {
+fn crop_leaves(mw: &'static myriade_engine_lib::mobs::MobWorld<'static>, _: [i32; 3]) -> Option<horizon_world::registry::BlockStateId> {
     crate::blocks::resolve(mw, "minecraft:air", &[])
 }
 // lot V4 : `UseBonemeal.validPos` (a crop below its max age) et la pousse de la poudre (2 à 5 ages, tirés par le module).
 const AGE_NAMES: [&str; 8] = ["0", "1", "2", "3", "4", "5", "6", "7"];
-fn crop_growable(mw: &'static horizon_client_lib::mobs::MobWorld<'static>, p: [i32; 3]) -> bool {
+fn crop_growable(mw: &'static myriade_engine_lib::mobs::MobWorld<'static>, p: [i32; 3]) -> bool {
     let name = mw.block_name(p[0], p[1], p[2]);
     CROPS.iter().any(|&(n, max)| n == name && crate::blocks::int_property(mw, p, "age").is_some_and(|a| a < max))
 }
-fn crop_grow(mw: &'static horizon_client_lib::mobs::MobWorld<'static>, p: [i32; 3], ages: i32) -> Option<horizon_world::registry::BlockStateId> {
+fn crop_grow(mw: &'static myriade_engine_lib::mobs::MobWorld<'static>, p: [i32; 3], ages: i32) -> Option<horizon_world::registry::BlockStateId> {
     let name = mw.block_name(p[0], p[1], p[2]);
     let age = crate::blocks::int_property(mw, p, "age")?;
     let max = CROPS.iter().find(|&&(n, _)| n == name)?.1;
@@ -189,7 +189,7 @@ pub fn gift_table(w: &World, e: Entity) -> String {
 }
 /// `GiveGiftToHero.getLootTableToThrow` for an adult, from the profession's id (`minecraft:farmer`): the pack's table when the maps give one
 /// (`neoforge:raid_hero_gifts`), else the vanilla name of the profession (`none` and `nitwit` are `unemployed`).
-pub fn gift_name(maps: Option<&horizon_client_lib::neoforge_mob_maps::NeoForgeMobMaps>, full: &str) -> String {
+pub fn gift_name(maps: Option<&myriade_engine_lib::neoforge_mob_maps::NeoForgeMobMaps>, full: &str) -> String {
     if let Some(table) = maps.and_then(|m| m.hero_gift(full)) {
         return table;
     }

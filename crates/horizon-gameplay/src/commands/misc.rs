@@ -1,6 +1,6 @@
 //! `/stopwatch` and `/tick`.
 use super::host::{CommandHost, R};
-use horizon_client::{
+use myriade_engine::{
     clock::{FixedStep, SprintReport},
     command::{Arg, Context},
     stopwatches::Stopwatches,

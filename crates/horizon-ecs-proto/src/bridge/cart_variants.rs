@@ -4,7 +4,7 @@ use crate::bridge::host::EcsWorld;
 use crate::cart_variants::{self, HitResult, UseResult};
 use crate::targeting::Who;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 impl EcsWorld {
     /// A blow on the cart `e` (`attacker` gives the credit, `creative` breaks it with no drop): wounded, or broken with or without its drop.

@@ -4,9 +4,9 @@
 use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_ecs_proto::item::drop_item;
-use horizon_client_lib::mobs::villager;
+use myriade_engine_lib::mobs::villager;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{
     behaviours::{bed::NEAREST_BED, golem_recent::GOLEM_RECENT, nearby_babies::NEARBY_BABIES, nearest_bed::{self, BedCache}, summon_defender::{self, LastSlept}, trade_offers::Merchant, Cap},

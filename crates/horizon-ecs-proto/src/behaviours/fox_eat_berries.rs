@@ -7,8 +7,8 @@ use super::fox_state::{self as fs, SITTING, SLEEPING};
 use super::*;
 use crate::blocks::set_state;
 use crate::{cow::*, goals::*, move_to_block::MoveToBlock};
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 use crate::rules::fox_eat_berries::{ask_ticks, pick_count, search_delay};
 

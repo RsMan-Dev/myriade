@@ -2,7 +2,7 @@
 //! size of a baby and the no-action count. The readers are those of lots 40 and 41, named as their cahiers name them.
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::despawn::Despawn;

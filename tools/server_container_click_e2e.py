@@ -11,7 +11,7 @@ threw it.
 
 myriade-bot stand in for the client (`--click`). The server runs in a fresh folder with fresh HORIZON_HOME
 and XDG folders (lab.game_env), on a free port. Build first:
-    cargo build --profile fast -p horizon-game --bin horizon-client
+    cargo build --profile fast -p horizon-game --bin myriade-engine
     cargo build --profile fast -p myriade-bot
 """
 import argparse

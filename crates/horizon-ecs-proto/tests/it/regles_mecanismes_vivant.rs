@@ -22,7 +22,7 @@ macro_rules! walk {
     }};
 }
 
-fn stone_host() -> (&'static horizon_client_lib::mobs::MobWorld<'static>, horizon_ecs_proto::bridge::host::EcsWorld) {
+fn stone_host() -> (&'static myriade_engine_lib::mobs::MobWorld<'static>, horizon_ecs_proto::bridge::host::EcsWorld) {
     awake_host_on_stone(&HostSetup { seed: 7, dimension: "overworld", simulation_radius: 4 })
 }
 

@@ -379,7 +379,7 @@ impl BlocksAttacks {
             .data()
             .and_then(|d| d.other("minecraft:blocks_attacks"))
         {
-            let json = horizon_client_core::scoreboard::tag_to_json(own);
+            let json = myriade_data::scoreboard::tag_to_json(own);
             return Self::parse(&json).map(std::borrow::Cow::Owned);
         }
         item?
@@ -486,7 +486,7 @@ pub struct Items {
     /// Shared Block.getItem snapshot, including blocks sharing another block's item.
     pub block_items: Arc<HashMap<String, String>>,
     /// Registry snapshot used to validate ingredient component payloads.
-    pub component_registry: Arc<horizon_client_core::registries::Registries>,
+    pub component_registry: Arc<myriade_data::registries::Registries>,
     /// Loaded component prototypes for concrete ingredient predicates.
     pub component_defaults: Arc<HashMap<String, horizon_core::nbt::Compound>>,
     /// Default `minecraft:mob_visibility` by item id, with the `equippable`
@@ -883,7 +883,7 @@ impl Items {
         root: &Path,
         overlay: &PackOverlay,
         defaults: &ItemDefaults,
-        damage: horizon_client_core::registries::RegistryIds,
+        damage: myriade_data::registries::RegistryIds,
     ) -> Result<Self> {
         let mut items = Self::load_with(root, &HashMap::new(), overlay, defaults)?;
         items.block_items = Arc::new(ingredient_defaults::block_items(root)?);
@@ -1048,7 +1048,7 @@ impl Items {
                         .map(|(name, value)| {
                             (
                                 name.clone(),
-                                horizon_client_core::scoreboard::json_to_tag(value),
+                                myriade_data::scoreboard::json_to_tag(value),
                             )
                         })
                         .collect(),
@@ -1197,7 +1197,7 @@ impl Items {
     pub fn instrument(&self, stack: &ItemStack) -> Option<Instrument> {
         if let Some(tag) = inline_instrument(stack) {
             return Some(parse_instrument(
-                &horizon_client_core::scoreboard::tag_to_json(tag),
+                &myriade_data::scoreboard::tag_to_json(tag),
             ));
         }
         self.instruments.get(&instrument_id(stack)?).cloned()
@@ -2638,7 +2638,7 @@ fn apply_components(stack: &mut ItemStack, patch: &Value) {
         } else {
             saved.insert(
                 id.as_str().into(),
-                horizon_client_core::scoreboard::json_to_tag(value),
+                myriade_data::scoreboard::json_to_tag(value),
             );
         }
     }
@@ -2978,7 +2978,7 @@ mod bucket_use_tests {
 #[cfg(test)]
 pub(crate) fn prepared_items() -> Option<Items> {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../.local/horizon-client/26.3");
+        .join("../../.local/myriade-engine/26.3");
     if !root.join("items.json").exists() {
         return None;
     }
@@ -3934,7 +3934,7 @@ mod tests {
         assert_eq!(stack.count, 7);
         assert_eq!(
             stack.data().and_then(|d| d.other("minecraft:custom_data")),
-            Some(&horizon_client_core::scoreboard::json_to_tag(
+            Some(&myriade_data::scoreboard::json_to_tag(
                 &json!({"machine": "furnace"})
             ))
         );
@@ -4409,7 +4409,7 @@ mod tests {
                 {"type":"minecraft:set_name"}]}]}]});
         let drops = ctx(&items, None, &props, "").evaluate(&table, &mut LegacyRandom::new(1));
         let saved = crate::item_data::encode_components(&drops[0]).expect("components");
-        let saved = horizon_client_core::scoreboard::tag_to_json(&saved);
+        let saved = myriade_data::scoreboard::tag_to_json(&saved);
         assert_eq!(saved["minecraft:custom_name"], "Lucky");
         assert_eq!(saved["minecraft:item_name"]["text"], "Potion of 1-Up");
         let effect = &saved["minecraft:potion_contents"]["custom_effects"][0];

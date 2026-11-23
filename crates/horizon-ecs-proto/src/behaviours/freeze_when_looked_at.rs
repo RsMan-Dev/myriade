@@ -7,7 +7,7 @@ use super::*;
 use crate::hostile::PlayerState;
 use crate::targeting::{Eye, Target, Who};
 use crate::{cow::*, goals::*};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 use crate::rules::freeze_when_looked_at::{beyond_range, in_cone};
 

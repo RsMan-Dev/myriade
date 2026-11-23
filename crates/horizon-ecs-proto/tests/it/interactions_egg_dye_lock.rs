@@ -34,7 +34,7 @@ fn egg_on_its_own_species_makes_a_named_baby() {
     let Some(parent) = spawn(&mut h, "minecraft:sheep") else { return };
     let egg = items::item_id("minecraft:sheep_spawn_egg");
     hold(&mut h, egg);
-    let mut stack = horizon_client_lib::items::ItemStack::new("minecraft:sheep_spawn_egg", 1);
+    let mut stack = myriade_engine_lib::items::ItemStack::new("minecraft:sheep_spawn_egg", 1);
     stack.data_mut().custom_name = Some(Tag::String("Blade".into()));
     h.world.insert_resource(UsedStack { stack, creative: false });
     assert!(interact(&mut h.world, parent, &Interaction { player: 1, item: egg }));
@@ -87,7 +87,7 @@ fn golden_dandelion_locks_and_unlocks_a_baby() {
 
 #[test]
 fn wolf_armor_is_placed_with_its_damage() {
-    use horizon_client_lib::mobs::world::leaked_test_world_mut;
+    use myriade_engine_lib::mobs::world::leaked_test_world_mut;
     use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup, PlayerFact};
     have_data();
     let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
@@ -97,7 +97,7 @@ fn wolf_armor_is_placed_with_its_damage() {
     h.world_mut().entity_mut(wolf).insert(Owner(Some(Who::Player(1))));
     let armor = items::item_id("minecraft:wolf_armor");
     h.set_player(Player { id: 1, x: 0.5, y: 1.0, z: 2.5, main: armor, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None });
-    let mut stack = horizon_client_lib::items::ItemStack::new("minecraft:wolf_armor", 1);
+    let mut stack = myriade_engine_lib::items::ItemStack::new("minecraft:wolf_armor", 1);
     stack.damage = 10;
     assert!(h.interact_with(mw, wolf, 1, 0, stack, false));
     assert_eq!(horizon_ecs_proto::equip_stack::get(h.world(), wolf, 6).map(|s| s.damage), Some(10), "the armor keeps its wear");

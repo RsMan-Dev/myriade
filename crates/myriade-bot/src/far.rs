@@ -1,5 +1,5 @@
 //! `--far D`: a bot asks the server for its far terrain (`horizon:lod`,
-//! crates/horizon-client/src/lod_net.rs) as a Horizon client with LOD Distance
+//! crates/myriade-engine/src/lod_net.rs) as a Horizon client with LOD Distance
 //! D does: the tiles of a far-terrain plan around where it stands, nearest
 //! first, within the server's limits (8 waiting, 64 a second). It makes one
 //! pass of the plan and says how long it took; `--far-dump DIR` keeps every

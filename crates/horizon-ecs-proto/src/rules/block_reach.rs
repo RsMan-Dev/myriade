@@ -1,6 +1,6 @@
 //! Block reach of a villager's block behaviours: the block a body stands in, the 3x3x3 around it, the centre of a block, and
 //! the sky test above it (`villager_brain.rs:2497-2529`, `no_blocks_above`).
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 /// The block the position is in.

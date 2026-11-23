@@ -1,6 +1,6 @@
 //! The host's writes on the AI of a creature: the path, the move control's wish, the look, the restriction, the sleep, the age, the
 //! pause, the aggression and the no-action count. Each one writes a component the world has, or a marker in sparse storage.
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use crate::behaviours::{bed::Sleeping, breed::{BreedData, Params}, follow_parent, hurt_by, item_pickup::Pickup, move_towards_restriction::Restriction};
 use crate::bridge::{host::EcsWorld, view};
 use crate::cow::{GrowAt, MoveTo, Nav, Pos, Sizes};

@@ -25,12 +25,12 @@ def main():
     report = build / 'report.json'
     report.unlink(missing_ok=True)
     resources = Path(os.environ.get('HORIZON_TEST_RESOURCES',
-        lab.LOCAL / 'horizon-client' / lock['minecraft']['version'])).resolve()
+        lab.LOCAL / 'myriade-engine' / lock['minecraft']['version'])).resolve()
     if not (resources / 'movement-properties.nbt').is_file():
         raise RuntimeError('Prepared resources required: set HORIZON_TEST_RESOURCES')
     sources = [Path(__file__).resolve(),
         lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaSourceSilenceOracle.java',
-        *[lab.ROOT / 'crates/horizon-client/src' / p for p in (
+        *[lab.ROOT / 'crates/myriade-engine/src' / p for p in (
             'game.rs', 'mobs.rs', 'mobs/hostile.rs', 'mobs/wither.rs', 'mobs/sulfur_cube.rs',
             'game/entities/explosion.rs', 'game/entities/tnt.rs', 'game/items/potions.rs', 'game/world/persist.rs',
             'game/mobs/creatures/mod.rs', 'game/mobs/wither.rs', 'game/mobs/dragon.rs', 'game/entities/minecarts.rs')]]
@@ -44,7 +44,7 @@ def main():
             CARGO_BUILD_JOBS=os.environ.get('CARGO_BUILD_JOBS', '2'),
             RUST_TEST_THREADS='2')
         # The limit covers the build, and other harnesses' builds holding the shared target directory's lock.
-        h.run_logged(['cargo', 'test', '--locked', '-p', 'horizon-client', '--lib',
+        h.run_logged(['cargo', 'test', '--locked', '-p', 'myriade-engine', '--lib',
             'game::tnt::tests::silent_', '--', '--ignored', '--nocapture'], build, 'rust',
             timeout=3600, env=env)
         rust = build / 'rust.txt'

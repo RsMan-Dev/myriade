@@ -1,7 +1,7 @@
 //! The entities a command names, as the game hands them out: an opaque [`EntityRef`] and what
 //! the commands over entities need from the game.
 use super::host::{CommandHost, R};
-use horizon_client::{command::Context, scoreboard_cmd::Holder, text::Text};
+use myriade_engine::{command::Context, scoreboard_cmd::Holder, text::Text};
 
 /// One entity a selector found. The game decides what the two numbers mean; a command only
 /// passes them back to the game.

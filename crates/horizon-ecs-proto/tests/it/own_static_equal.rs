@@ -3,7 +3,7 @@
 //! Horizon's `Finder`.
 #![cfg(feature = "probes")]
 use crate::common::*;
-use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
+use myriade_engine_lib::mobs::path::{Evaluator, Finder, PathMob};
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{cow::build_level_with, cow::species_table, kernel_lab::Rng};
 use std::sync::Arc;
@@ -21,7 +21,7 @@ fn level_with(density: f64) -> horizon_ecs_proto::cow::Level {
     build_level_with(0, |blocks, registry| {
         for cx in -4..8 {
             for cz in -4..4 {
-                blocks.chunks.insert((cx, cz), Arc::new(horizon_client_render::chunk::Chunk::empty(cx, cz)));
+                blocks.chunks.insert((cx, cz), Arc::new(myriade_level::chunk::Chunk::empty(cx, cz)));
             }
         }
         let stone = registry.default_state("minecraft:stone").unwrap();
@@ -378,7 +378,7 @@ fn water_fluid_states_by_path_type() {
     let mut water = 0;
     for i in 0..n.get() as u32 {
         let id = horizon_world::registry::BlockStateId(i);
-        if mw.facts.get(id).fluid == horizon_client_lib::blocks::Fluid::Water {
+        if mw.facts.get(id).fluid == myriade_engine_lib::blocks::Fluid::Water {
             water += 1;
             *by_type.entry(format!("{:?}", mw.data.path_type(id))).or_default() += 1;
         }
@@ -387,7 +387,7 @@ fn water_fluid_states_by_path_type() {
     assert!(water > 0);
     for i in 0..n.get() as u32 {
         let id = horizon_world::registry::BlockStateId(i);
-        if mw.facts.get(id).fluid == horizon_client_lib::blocks::Fluid::Water {
+        if mw.facts.get(id).fluid == myriade_engine_lib::blocks::Fluid::Water {
             assert!(horizon_ecs_proto::pathsearch::may_hold_water(mw.data.path_type(id)), "state {i} holds water with path type {:?}", mw.data.path_type(id));
         }
     }

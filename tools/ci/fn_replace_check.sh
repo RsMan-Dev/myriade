@@ -10,7 +10,7 @@
 # signature) of this checkout's HEAD: the launcher reads its SDK from there (HORIZON_SDK_BASE), checking the signature
 # as it does a release's. A CI dry run signs its candidate SDK with a throwaway key and passes the public key in
 # HORIZON_SDK_TRUSTED_KEY, which only a launcher built with debug_assertions trusts (horizon_release_sign::sdk_keys_for);
-# a published release needs no key. With RESOURCES (a prepared `horizon-client/26.3` folder), the server starts, takes `/tick` commands
+# a published release needs no key. With RESOURCES (a prepared `myriade-engine/26.3` folder), the server starts, takes `/tick` commands
 # and stops; every mixin helper prints a line starting `fnr:`.
 echo "fn_replace_check: le lanceur (native-build) n'existe plus ; à rebrancher sur l'outil de construction des mods natifs du serveur" >&2
 exit 1
@@ -46,15 +46,15 @@ find "$source" -type l -delete
 printf '%s' "$revision" > "$source/.horizon-revision"
 
 base=$data/versions/ci
-mkdir -p "$base/.local/horizon-client/26.3"
+mkdir -p "$base/.local/myriade-engine/26.3"
 touch "$base/.installed"
-echo '{}' > "$base/.local/horizon-client/26.3/horizon-resources.json"
+echo '{}' > "$base/.local/myriade-engine/26.3/horizon-resources.json"
 version=$data/versions/native-ci
 mkdir -p "$version"
 touch "$version/.installed"
 # On Windows the launcher picks the build target from the installed game's PE machine; any x64
 # executable stands in for it, and the launcher itself is one.
-case $launcher in *.exe) cp "$launcher" "$version/horizon-client.exe" ;; esac
+case $launcher in *.exe) cp "$launcher" "$version/myriade-engine.exe" ;; esac
 printf '{"base": "ci", "horizon": "%s", "target": "%s"}\n' "$revision" "$side" > "$version/native-mods.json"
 
 mods=$scratch/mods/fnr
@@ -101,12 +101,12 @@ test -z "${built:-}" || exit "$built"
 # The launcher's plan for this build, an instance's or a server folder's export alike: the prebuilt game.
 grep -F 'Prebuilt game: only the mods compile' "$scratch/native-build.err"
 if [ "$side" = client ]; then
-  binary=$(find "$data/versions" -type f \( -name horizon-client -o -name horizon-client.exe \) ! -path "$version/*" | head -1)
+  binary=$(find "$data/versions" -type f \( -name myriade-engine -o -name myriade-engine.exe \) ! -path "$version/*" | head -1)
   test -n "$binary"
   cp -a "$(dirname "$binary")" "$scratch/engine"
   case "$binary" in
-    *.exe) cp "$scratch/engine/horizon-client.exe" "$scratch/engine/horizon-engine.exe" ;;
-    *) cp "$scratch/engine/horizon-client" "$scratch/engine/horizon-engine" ;;
+    *.exe) cp "$scratch/engine/myriade-engine.exe" "$scratch/engine/horizon-engine.exe" ;;
+    *) cp "$scratch/engine/myriade-engine" "$scratch/engine/horizon-engine" ;;
   esac
 fi
 echo "native build: $(python3 -c "print(round($(date +%s.%N) - $started, 1))") s"
@@ -120,7 +120,7 @@ PYMARK
 if [ "$side" = server ]; then
   # The server folder's export: the launcher says where the engine is, and installs no instance build.
   grep -F "Built the server engine: $scratch/engine/horizon-engine" "$scratch/native-build.out"
-  test -z "$(find "$data/versions" -type f -name 'horizon-client*' ! -path "$version/*")"
+  test -z "$(find "$data/versions" -type f -name 'myriade-engine*' ! -path "$version/*")"
 fi
 log=$data/native/build.log
 # Where the build's time went: each command's time and the whole prebuilt compile.
@@ -164,7 +164,7 @@ if [ "${FNR_ROUTE:-}" = prebuilt-api ]; then
   grep -qaF "$marker" "$played" || { echo "$played does not carry the holder marker $marker"; exit 1; }
   echo "holder marker $marker found in $played"
 fi
-test ! -d "$data/native/stage/crates/horizon-client" || { echo "the game was staged for a source build"; exit 1; }
+test ! -d "$data/native/stage/crates/myriade-engine" || { echo "the game was staged for a source build"; exit 1; }
 test "$(sha256sum "$(game_library)" | cut -d' ' -f1)" = "$game_hash"
 
 if [ -n "$resources" ]; then

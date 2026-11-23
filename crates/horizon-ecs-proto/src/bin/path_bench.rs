@@ -1,6 +1,6 @@
 //! `path-bench CASE ITERS` (CASE: stroll | chase | wall), `HORIZON_TEST_RESOURCES` (and `HORIZON_SPECIES`): the real
 //! `Finder` alone, from the walker of a species, over a slab: instructions per search, and what it found.
-use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
+use myriade_engine_lib::mobs::path::{Evaluator, Finder, PathMob};
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{
     cow::{build_level, species_table},
@@ -39,7 +39,7 @@ fn main() {
         for _ in 0..200 { for &(x, _, z) in &cells { acc = acc.wrapping_add(mw.world.chunks.get(&(x >> 4, z >> 4)).is_some() as u64); } }
         let per_map = (c.read() - c0) / (200 * 4096);
         println!("chunk.block (memoized chunk) {per_chunk}, chunks.get only {per_map}");
-        let mut m: horizon_client_lib::fast_hash::FxHashMap<(i32, i32, i32), u32> = Default::default();
+        let mut m: myriade_engine_lib::fast_hash::FxHashMap<(i32, i32, i32), u32> = Default::default();
         for (i, &k) in cells.iter().take(64).enumerate() { m.insert(k, i as u32); }
         let c0 = c.read();
         for _ in 0..200 { for &k in &cells { acc = acc.wrapping_add(*m.get(&k).unwrap_or(&0) as u64); } }

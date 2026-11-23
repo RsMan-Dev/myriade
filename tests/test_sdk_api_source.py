@@ -242,7 +242,7 @@ class CollectTests(unittest.TestCase):
                                       self.messages("c", "pub struct Hook;\n")), "E_TARGET_DEPENDENT")
 
     def test_a_file_read_outside_the_crate_is_refused(self):
-        outside = self.messages("a", "", reads=("crates/api/src/lib.rs", "crates/horizon-client/src/game.rs"))
+        outside = self.messages("a", "", reads=("crates/api/src/lib.rs", "crates/myriade-engine/src/game.rs"))
         self.assertEqual(self.refusal(outside), "E_SOURCE_OUTSIDE_CRATE")
 
     def test_a_folder_or_other_file_in_the_build_scripts_output_is_refused(self):

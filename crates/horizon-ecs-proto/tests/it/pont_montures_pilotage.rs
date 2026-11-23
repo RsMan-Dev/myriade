@@ -2,8 +2,8 @@
 //! steered, the nautilus gives its rider the breath on a deadline and plays its "dash ready" sound. Written, not run.
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_ecs_proto::behaviours::harness_worn::Harness;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::cow::Pos;

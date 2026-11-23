@@ -38,12 +38,12 @@ def main():
     classes.mkdir(exist_ok=True)
     sources = lab.ROOT / "mods/horizon/src/test/java/dev/horizonlab/parity"
     tested_paths = [Path(__file__), sources / "ParityData.java", sources / "VanillaBrewingFuelOracle.java",
-                    lab.ROOT / "crates/horizon-client-render/examples/brewing_fuel_probe.rs",
-                    lab.ROOT / "crates/horizon-client-render/src/brewing.rs",
-                    lab.ROOT / "crates/horizon-client-render/src/providers.rs",
+                    lab.ROOT / "crates/myriade-level/examples/brewing_fuel_probe.rs",
+                    lab.ROOT / "crates/myriade-level/src/brewing.rs",
+                    lab.ROOT / "crates/myriade-level/src/providers.rs",
                     lab.ROOT / "crates/horizon-items/src/items.rs",
-                    lab.ROOT / "crates/horizon-client/src/menu.rs",
-                    lab.ROOT / "crates/horizon-client/src/game/blocks/machines/mod.rs",
+                    lab.ROOT / "crates/myriade-engine/src/menu.rs",
+                    lab.ROOT / "crates/myriade-engine/src/game/blocks/machines/mod.rs",
                     lab.ROOT / "crates/horizon-items/src/item_data.rs", lab.ROOT / "Cargo.lock"]
     tested_sources = base.source_hashes(tested_paths)
     tested_fixtures = base.source_hashes([inputs])
@@ -56,7 +56,7 @@ def main():
     run(["javac", "--release", lock["minecraft"]["java_major"], "-proc:none", "-cp",
          str(jars["server"]) + os.pathsep + dependency_path, "-d", classes,
          sources / "ParityData.java", sources / "VanillaBrewingFuelOracle.java"], "compile-java")
-    run(["cargo", "build", "--profile", args.profile, "-p", "horizon-client-render",
+    run(["cargo", "build", "--profile", args.profile, "-p", "myriade-level",
          "--example", "brewing_fuel_probe"], "compile-rust")
     target = lab.cargo_target() / ("debug" if args.profile == "dev" else "release")
     binary = target / "examples" / ("brewing_fuel_probe.exe" if os.name == "nt" else "brewing_fuel_probe")

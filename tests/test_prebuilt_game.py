@@ -27,7 +27,7 @@ def write_build_data(root: Path, identity: dict | None = None, commit: str = COM
         (root / name).write_text(json.dumps({"schema": 1, "build": {"commit": commit}}))
     so, exe = prebuilt_game.dylib_suffix(), ".exe" if sys.platform == "win32" else ""
     lib = prebuilt_game.dylib_prefix()
-    members = {"runtime": [f"bin/horizon-client{exe}",
+    members = {"runtime": [f"bin/myriade-engine{exe}",
                            f"deps/{lib}horizon_game{so}", f"deps/{lib}horizon_mod_wasm{so}",
                            *[f"deps/{lib}{crate}{so}" for crate in ("mod_api", "mod_vocab", "mod_points")]],
                "api": [prebuilt_game.NATIVE_MODS_TEMPLATE, "deps/libmod_api-1.rmeta", "deps/libmod_points-1.rmeta"]}
@@ -238,10 +238,10 @@ class RegistryPatchTests(unittest.TestCase):
 
 
 class SdkAssetTests(unittest.TestCase):
-    RUNTIME = ["deps/libhorizon_game.so", "deps/libhorizon_mod_wasm.so", "bin/horizon-client",
+    RUNTIME = ["deps/libhorizon_game.so", "deps/libhorizon_mod_wasm.so", "bin/myriade-engine",
                "deps/libmod_api.so", "deps/libmod_vocab.so", "deps/libmod_points.so"]
     API = ["deps/libmod_api-1.rmeta", "deps/libmod_points-1.rmeta", "host/libserde_derive.so"]
-    ENGINE = ["deps/libhorizon_client-1.rmeta", "native/libwindows.a"]
+    ENGINE = ["deps/libmyriade_engine-1.rmeta", "native/libwindows.a"]
 
     def out(self, root: Path, mtime: int) -> Path:
         out = root / "prebuilt"
@@ -376,8 +376,8 @@ class SdkAssetTests(unittest.TestCase):
         copied["macros"] = ["host/libmacros-1.so"]
         copied["horizon-game"] = ["deps/libhorizon_game.so"]
         copied["horizon-mod-wasm"] = ["deps/libhorizon_mod_wasm.so"]
-        sliced = prebuilt_game.slices(metadata, copied, ["bin/horizon-client"])
-        self.assertEqual(sliced["runtime"], sorted([prebuilt_game.IDENTITY, "bin/horizon-client",
+        sliced = prebuilt_game.slices(metadata, copied, ["bin/myriade-engine"])
+        self.assertEqual(sliced["runtime"], sorted([prebuilt_game.IDENTITY, "bin/myriade-engine",
                                                     "deps/libhorizon_game.so", "deps/libhorizon_mod_wasm.so"]))
         self.assertEqual(sliced["api"], sorted([
             "deps/libhorizon-mod-api-1.rmeta", "deps/libhorizon-mod-points-1.rmeta", "deps/libvocab-1.rmeta",
@@ -386,7 +386,7 @@ class SdkAssetTests(unittest.TestCase):
         # Each slice unpacks to its own folder, so a game library inside the API closure is refused.
         nodes[1]["deps"].append({"pkg": "horizon-mod-wasm", "dep_kinds": [{"kind": None}]})
         with self.assertRaisesRegex(SystemExit, "horizon-mod-wasm"):
-            prebuilt_game.slices(metadata, copied, ["bin/horizon-client"])
+            prebuilt_game.slices(metadata, copied, ["bin/myriade-engine"])
 
     def test_gather_takes_every_legs_archives_once_and_one_build_data_that_all_copies_match(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(sys, "platform", "linux"):
@@ -584,7 +584,7 @@ class ExecutableLinkPolicyTests(unittest.TestCase):
                 externs.extend(["--extern", f"{name}={library}"])
             binary = root / ("producer.exe" if sys.platform == "win32" else "producer")
             subprocess.run([compiler, "--edition=2024",
-                            str(prebuilt_game.ROOT / "crates/horizon-client/build.rs"),
+                            str(prebuilt_game.ROOT / "crates/myriade-engine/build.rs"),
                             *externs, "-o", str(binary)], check=True)
             for target_os, env, expected in [("windows", "msvc", ["/STACK:142606336"]),
                                       ("windows", "gnu", ["-Wl,--stack,142606336"]),
@@ -593,8 +593,8 @@ class ExecutableLinkPolicyTests(unittest.TestCase):
                     output = root / "output"
                     output.write_text(subprocess.check_output([str(binary)], text=True, env={
                         **os.environ,
-                        "CARGO_MANIFEST_DIR": str(prebuilt_game.ROOT / "crates/horizon-client"),
-                        "OUT_DIR": str(root), "CARGO_PKG_NAME": "horizon-client",
+                        "CARGO_MANIFEST_DIR": str(prebuilt_game.ROOT / "crates/myriade-engine"),
+                        "OUT_DIR": str(root), "CARGO_PKG_NAME": "myriade-engine",
                         "CARGO_CFG_TARGET_OS": target_os, "CARGO_CFG_TARGET_ENV": env,
                     }))
                     identity = {"link_args": prebuilt_game.executable_link_args(output)}
@@ -616,7 +616,7 @@ class PrebuiltContentsTests(unittest.TestCase):
             "cache/host/release/deps/libshared-target.rmeta",
             "cache/host/release/deps/libshared-second-version.rmeta",
             "cache/host/release/deps/libshared-target.rlib",
-            "cache/host/release/deps/libhorizon_client.so",
+            "cache/host/release/deps/libmyriade_engine.so",
         )
         output, macros = root / "sdk/deps", root / "sdk/host"
         output.mkdir(parents=True)
@@ -630,18 +630,18 @@ class PrebuiltContentsTests(unittest.TestCase):
             artifact("cache/host/release/deps/libshared-target.rmeta", "lib"),
             artifact("cache/host/release/deps/libshared-second-version.rmeta", "lib"),
             artifact("cache/host/release/deps/libshared-target.rlib", "lib"),
-            artifact("cache/host/release/deps/libhorizon_client.so", "dylib"),
+            artifact("cache/host/release/deps/libmyriade_engine.so", "dylib"),
             {"reason": "build-finished", "success": True},
         ], output, macros, root / "cache/host")
         self.assertEqual({path.name for path in output.iterdir()}, {
-            "libshared-target.rmeta", "libshared-second-version.rmeta", "libhorizon_client.so",
+            "libshared-target.rmeta", "libshared-second-version.rmeta", "libmyriade_engine.so",
         })
         self.assertEqual({path.name for path in macros.iterdir()}, {"libderive.so"})
         # Each copied file is recorded under its package, as the slices read them.
         self.assertEqual(copied, {"libderive.so": ["host/libderive.so"],
                                   "libshared-target.rmeta": ["deps/libshared-target.rmeta"],
                                   "libshared-second-version.rmeta": ["deps/libshared-second-version.rmeta"],
-                                  "libhorizon_client.so": ["deps/libhorizon_client.so"]})
+                                  "libmyriade_engine.so": ["deps/libmyriade_engine.so"]})
         # Multiple legitimate target versions remain available to rustc's transitive lookup.
         # Only explicit extern/facade lookup must reject ambiguous names.
         with self.assertRaises(ValueError):
@@ -671,30 +671,30 @@ class PrebuiltContentsTests(unittest.TestCase):
             ]}
 
         metadata = {
-            "packages": [package("horizon-game", "dylib"), package("horizon-client"),
+            "packages": [package("horizon-game", "dylib"), package("myriade-engine"),
                          package("horizon-mod-wasm", "rlib"), package("point_shape"), package("horizon_core"),
                          package("build_tool"), package("derive", "proc-macro"), package("macro_helper")],
             "resolve": {"nodes": [
-                node("horizon-game", ("horizon-client", None), ("horizon-mod-wasm", None),
+                node("horizon-game", ("myriade-engine", None), ("horizon-mod-wasm", None),
                      ("build_tool", "build")), node("horizon-mod-wasm"),
-                node("horizon-client", ("point_shape", None), ("horizon_core", None), ("derive", None)),
+                node("myriade-engine", ("point_shape", None), ("horizon_core", None), ("derive", None)),
                 node("point_shape"), node("horizon_core"), node("build_tool"),
                 node("derive", ("macro_helper", None)), node("macro_helper"),
             ]},
         }
         runtime = prebuilt_game.runtime_crates(metadata, "horizon-game")
-        self.assertEqual(runtime, {"horizon_game", "horizon_mod_wasm", "horizon_client", "point_shape", "horizon_core"})
+        self.assertEqual(runtime, {"horizon_game", "horizon_mod_wasm", "myriade_engine", "point_shape", "horizon_core"})
         deps = self.folder("libpoint_shape-host.rmeta", "libpoint_shape-target.rmeta",
                            "libhorizon_core-one.rmeta", "libbuild_tool-one.rmeta", "libmacro_helper-one.rmeta",
-                           "libhorizon_game.so", "libhorizon_mod_wasm-one.rmeta", "libhorizon_client-one.rmeta")
+                           "libhorizon_game.so", "libhorizon_mod_wasm-one.rmeta", "libmyriade_engine-one.rmeta")
         eligible = prebuilt_game.facade_crates(deps, runtime)
-        self.assertEqual(eligible, ["horizon_client", "horizon_core", "horizon_game", "horizon_mod_wasm"])
+        self.assertEqual(eligible, ["myriade_engine", "horizon_core", "horizon_game", "horizon_mod_wasm"])
 
     def test_native_link_inventory_uses_package_identity_not_a_same_named_host_variant(self):
         def package(package_id, version, library=None):
             return {"id": package_id, "name": "native-sys" if library else "horizon-game",
                     "version": version, "links": library,
-                    "targets": [{"name": "native_sys" if library else "horizon_client", "kind": ["lib"]}]}
+                    "targets": [{"name": "native_sys" if library else "myriade_engine", "kind": ["lib"]}]}
         metadata = {
             "packages": [package("game", "1.0.0"), package("target", "1.0.0", "native"),
                          package("host", "2.0.0", "native")],
@@ -726,7 +726,7 @@ class PrebuiltContentsTests(unittest.TestCase):
             prebuilt_game.extern_args(root, "horizon_mod_package")
 
     def test_host_macros_pass_but_host_dependency_metadata_is_refused(self):
-        root = self.folder("deps/libhorizon_client.so", "deps/libhorizon_mod_wasm.so", "deps/libhorizon_game.so",
+        root = self.folder("deps/libmyriade_engine.so", "deps/libhorizon_mod_wasm.so", "deps/libhorizon_game.so",
                            "host/libderive.so", "host/derive.dll", "host/libderive.dylib")
         write_build_data(root)
         prebuilt_game.check(root)
@@ -742,9 +742,9 @@ class PrebuiltContentsTests(unittest.TestCase):
 
     def test_compiler_outputs_pass(self):
         root = self.folder(
-            "horizon-prebuilt.json", "Cargo.lock", "native_main.rs.template", "deps/libhorizon_client.so", "deps/libmod_api-1.rmeta",
+            "horizon-prebuilt.json", "Cargo.lock", "native_main.rs.template", "deps/libmyriade_engine.so", "deps/libmod_api-1.rmeta",
             "native/libwindows.0.52.0.a",
-            "deps/libserde_derive-2.so", "deps/libhorizon_client.dll.a", "deps/libhorizon_mod_wasm.so",
+            "deps/libserde_derive-2.so", "deps/libmyriade_engine.dll.a", "deps/libhorizon_mod_wasm.so",
             "deps/horizon_mod_wasm.dll", "deps/libhorizon_mod_wasm.dylib", "deps/libhorizon_game.so",
         )
         write_build_data(root)
@@ -767,7 +767,7 @@ class PrebuiltContentsTests(unittest.TestCase):
     def test_anything_else_is_refused(self):
         for stray in ("assets/minecraft/lang/en_us.json", "deps/Cargo.lock", "deps/client.jar", "deps/libmod_api-3.rlib", "native/libfoo.so", "deps/internals.json", "notes.txt"):
             with self.subTest(stray), self.assertRaises(SystemExit):
-                prebuilt_game.check(self.folder("deps/libhorizon_client.so", "deps/libhorizon_mod_wasm.so", stray))
+                prebuilt_game.check(self.folder("deps/libmyriade_engine.so", "deps/libhorizon_mod_wasm.so", stray))
 
     def test_a_folder_without_either_runtime_is_refused(self):
         for present, missing in (("horizon_game", "horizon-mod-wasm"), ("horizon_mod_wasm", "horizon-game")):
@@ -775,13 +775,13 @@ class PrebuiltContentsTests(unittest.TestCase):
                 prebuilt_game.check(self.folder(f"deps/lib{present}.so"))
 
     def test_host_carries_engine_code_with_engine_metadata_for_mods(self):
-        root = self.folder("deps/libhorizon_game.so", "deps/libhorizon_mod_wasm.so", "deps/libhorizon_client-123.rmeta")
+        root = self.folder("deps/libhorizon_game.so", "deps/libhorizon_mod_wasm.so", "deps/libmyriade_engine-123.rmeta")
         write_build_data(root)
         prebuilt_game.check(root)
 
     def test_engine_and_wasm_without_host_are_refused(self):
         with self.assertRaisesRegex(SystemExit, "horizon-game"):
-            prebuilt_game.check(self.folder("deps/libhorizon_client.so", "deps/libhorizon_mod_wasm.so"))
+            prebuilt_game.check(self.folder("deps/libmyriade_engine.so", "deps/libhorizon_mod_wasm.so"))
 
     def dll(self, root: Path, name: str, count: int, pe64: bool = True) -> None:
         # One PE section: RVA 0x1000 maps to raw offset 0x200, holding the export directory.
@@ -799,20 +799,20 @@ class PrebuiltContentsTests(unittest.TestCase):
         (root / "deps" / name).write_bytes(data)
 
     def test_exports_reports_every_dll(self):
-        root = self.folder("deps/libhorizon_client.so")
-        self.dll(root, "horizon_client.dll", 45000)
+        root = self.folder("deps/libmyriade_engine.so")
+        self.dll(root, "myriade_engine.dll", 45000)
         self.dll(root, "horizon_mod_wasm.dll", 12000)
         self.dll(root, "serde_derive.dll", 1, pe64=False)
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             prebuilt_game.exports(root)
-        for name, count in (("horizon_client", 45000), ("horizon_mod_wasm", 12000), ("serde_derive", 1)):
+        for name, count in (("myriade_engine", 45000), ("horizon_mod_wasm", 12000), ("serde_derive", 1)):
             self.assertIn(f"{name}.dll: {count} exported names", output.getvalue())
 
     def test_exports_warns_past_80_percent_without_failing(self):
-        for large in ("horizon_client", "horizon_mod_wasm"):
-            root = self.folder("deps/libhorizon_client.so")
-            for name in ("horizon_client", "horizon_mod_wasm"):
+        for large in ("myriade_engine", "horizon_mod_wasm"):
+            root = self.folder("deps/libmyriade_engine.so")
+            for name in ("myriade_engine", "horizon_mod_wasm"):
                 self.dll(root, f"{name}.dll", 52429 if name == large else 52428)
             output = io.StringIO()
             with self.subTest(large), contextlib.redirect_stdout(output):
@@ -823,21 +823,21 @@ class PrebuiltContentsTests(unittest.TestCase):
             self.assertEqual(output.getvalue().count("exported names (Windows' limit"), 2)
 
     def test_exports_fails_past_90_percent_after_reporting_every_dll(self):
-        root = self.folder("deps/libhorizon_client.so")
-        self.dll(root, "horizon_client.dll", 58982)
+        root = self.folder("deps/libmyriade_engine.so")
+        self.dll(root, "myriade_engine.dll", 58982)
         self.dll(root, "horizon_mod_wasm.dll", 58981)
         self.dll(root, "mod_api.dll", 171)
         output = io.StringIO()
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as failed:
             prebuilt_game.exports(root)
-        self.assertIn("horizon_client.dll (58,982)", str(failed.exception.code))
+        self.assertIn("myriade_engine.dll (58,982)", str(failed.exception.code))
         self.assertNotIn("horizon_mod_wasm", str(failed.exception.code))
         self.assertEqual(output.getvalue().count("exported names (Windows' limit"), 3)
 
     def test_exports_is_silent_without_dlls(self):
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
-            prebuilt_game.exports(self.folder("deps/libhorizon_client.so", "deps/libhorizon_mod_wasm.so"))
+            prebuilt_game.exports(self.folder("deps/libmyriade_engine.so", "deps/libhorizon_mod_wasm.so"))
         self.assertEqual(output.getvalue(), "")
 
 

@@ -1,4 +1,4 @@
-//! The raids' view in the ECS. The state of a raid (waves, boss bar, victory, defeat, heroes) lives at the host (`horizon_client_lib::raid`);
+//! The raids' view in the ECS. The state of a raid (waves, boss bar, victory, defeat, heroes) lives at the host (`myriade_engine_lib::raid`);
 //! this world keeps only what the goals read: per raid its centre and whether it is active, over, lost (`RaidView`, written by the host
 //! through `set_view`, which wakes the raiders when the phase changes), the difficulty, and the components `Raider`, `Patrol`,
 //! `Celebrating`, `Aggressive`. A raider's death is told to the host (`HostEvent::RaiderDied`).

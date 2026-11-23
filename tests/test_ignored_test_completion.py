@@ -37,8 +37,8 @@ class IgnoredTests(unittest.TestCase):
         self.assertIn("cargo exit 0", log)
 
     def test_a_target_whose_source_is_in_another_package_folder_completes(self):
-        # horizon-client-lib's `[[test]]` targets point at ../horizon-client/tests/, as the daily-rows leg runs them.
-        output = ("     Running ../horizon-client/tests/lan_bot.rs (target/debug/deps/lan_bot-0123)\nrunning 1 test\n"
+        # myriade-engine-lib's `[[test]]` targets point at ../myriade-engine/tests/, as the daily-rows leg runs them.
+        output = ("     Running ../myriade-engine/tests/lan_bot.rs (target/debug/deps/lan_bot-0123)\nrunning 1 test\n"
                   "test synced ... ok\n" + summary(passed=1))
         result, _ = self.run_output(output)
         self.assertEqual(result, {"synced": True})
@@ -83,14 +83,14 @@ class IgnoredTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text())["incomplete"], [{"shard": "example"}])
 
     def test_a_test_process_killed_for_memory_reports_signal_memory_time_and_what_still_ran(self):
-        # The shape of the first daily's horizon-client#1of2 (run 43499359519): the library's test process killed by
+        # The shape of the first daily's myriade-engine#1of2 (run 43499359519): the library's test process killed by
         # the out-of-memory killer with one test past 60 s; the later targets finished; cargo exits 101.
         stuck = "game::native_datafix_tests::a_mods_host_upgrades_old_data_and_refuses_by_name"
-        output = ("     Running unittests src/lib.rs (target/debug/deps/horizon_client-0123)\nrunning 3 tests\n"
+        output = ("     Running unittests src/lib.rs (target/debug/deps/myriade_engine-0123)\nrunning 3 tests\n"
                   "test game::a ... ok\ntest game::b ... ok\n"
                   f"test {stuck} has been running for over 60 seconds\n"
                   "error: test failed, to rerun pass `--lib`\n\nCaused by:\n  process didn't exit successfully: "
-                  "`/w/target/debug/deps/horizon_client-0123 --include-ignored --exact` (signal: 9, SIGKILL: kill)\n"
+                  "`/w/target/debug/deps/myriade_engine-0123 --include-ignored --exact` (signal: 9, SIGKILL: kill)\n"
                   + target(1, "test other::c ... ok\n", summary(passed=1)))
         gib = 32 * 1024 ** 3
         with tempfile.TemporaryDirectory() as cgroup:
@@ -106,7 +106,7 @@ class IgnoredTests(unittest.TestCase):
             with patch.object(ignored_tests, "CGROUP", Path(cgroup)), \
                     patch.object(ignored_tests.subprocess, "run", side_effect=execute), \
                     contextlib.redirect_stdout(io.StringIO()):
-                self.assertIsNone(ignored_tests.run("horizon-client", []))
+                self.assertIsNone(ignored_tests.run("myriade-engine", []))
         why = dict(ignored_tests._stopped)
         self.assertGreaterEqual(why.pop("wall_seconds"), 0)
         self.assertEqual(why, {
@@ -145,7 +145,7 @@ class IgnoredTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text())["incomplete"], [])
 
     def test_client_lib_halves_run_serially_and_preserve_failure_policy(self):
-        package = "horizon-client-lib"
+        package = "myriade-engine-lib"
         names = [f"suite::case_{n}" for n in range(20)]
         seen = []
 
@@ -226,8 +226,8 @@ class IgnoredTests(unittest.TestCase):
         with patch.object(ignored_tests, "known_failures", return_value={}), \
                 patch.object(ignored_tests, "daily_rows", return_value=[]), \
                 patch.object(ignored_tests, "run", return_value={}) as execute:
-            self.assertEqual(ignored_tests.main(["horizon-client-lib#2of3"]), 0)
-        self.assertEqual(execute.call_args.args, ("horizon-client-lib", [], 2, 3))
+            self.assertEqual(ignored_tests.main(["myriade-engine-lib#2of3"]), 0)
+        self.assertEqual(execute.call_args.args, ("myriade-engine-lib", [], 2, 3))
 
     def daily_main(self, shards, rows, run):
         report = Path(tempfile.mkdtemp()) / "report.json"
@@ -404,7 +404,7 @@ def leg_names(count=2):
 class Legs(unittest.TestCase):
     def test_worldgen_shard_optimizes_listing_and_execution_without_changing_parent(self):
         output = target(1, "test suite::a ... ok\n", summary(passed=1))
-        for package, optimization in [("horizon-client-lib", "3"), ("example", "0")]:
+        for package, optimization in [("myriade-engine-lib", "3"), ("example", "0")]:
             with self.subTest(package=package), patch.dict(os.environ, CARGO_PROFILE_TEST_OPT_LEVEL="0"):
                 calls = []
 
@@ -421,10 +421,10 @@ class Legs(unittest.TestCase):
                 self.assertEqual(os.environ["CARGO_PROFILE_TEST_OPT_LEVEL"], "0")
 
     def test_shard_names(self):
-        self.assertEqual(ignored_tests.parse_shard("horizon-client#2of3"), ("horizon-client", 2, 3))
-        self.assertEqual(ignored_tests.parse_shard("horizon-client-lib"), ("horizon-client-lib", None, None))
+        self.assertEqual(ignored_tests.parse_shard("myriade-engine#2of3"), ("myriade-engine", 2, 3))
+        self.assertEqual(ignored_tests.parse_shard("myriade-engine-lib"), ("myriade-engine-lib", None, None))
         with self.assertRaises(SystemExit):
-            ignored_tests.parse_shard("horizon-client#3of2")
+            ignored_tests.parse_shard("myriade-engine#3of2")
 
     def test_every_test_is_in_exactly_one_leg(self):
         for index in range(500):

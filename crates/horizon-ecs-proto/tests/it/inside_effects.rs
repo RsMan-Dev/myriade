@@ -180,7 +180,7 @@ fn a_fire_resistant_stack_survives_lava_and_an_ordinary_one_does_not() {
         return;
     }
     let mut h = Herd::with_slab_awake(8, true, false);
-    let stone = || horizon_client_lib::items::ItemStack::new("minecraft:stone", 1);
+    let stone = || myriade_engine_lib::items::ItemStack::new("minecraft:stone", 1);
     let resistant = horizon_ecs_proto::item::drop_item(&mut h.world, stone(), Vec3::new(0.5, 4.0, 0.5), Vec3::ZERO, 0);
     let ordinary = horizon_ecs_proto::item::drop_item(&mut h.world, stone(), Vec3::new(2.5, 4.0, 0.5), Vec3::ZERO, 0);
     horizon_ecs_proto::item::set_resists(&mut h.world, resistant, 1);
@@ -203,7 +203,7 @@ fn a_blast_resistant_stack_survives_an_explosion() {
         return;
     }
     let mut h = Herd::with_slab_awake(8, true, false);
-    let stone = || horizon_client_lib::items::ItemStack::new("minecraft:stone", 1);
+    let stone = || myriade_engine_lib::items::ItemStack::new("minecraft:stone", 1);
     let resistant = horizon_ecs_proto::item::drop_item(&mut h.world, stone(), Vec3::new(0.5, 4.0, 0.5), Vec3::ZERO, 0);
     let ordinary = horizon_ecs_proto::item::drop_item(&mut h.world, stone(), Vec3::new(1.5, 4.0, 0.5), Vec3::ZERO, 0);
     horizon_ecs_proto::item::set_resists(&mut h.world, resistant, 2);
@@ -222,9 +222,9 @@ fn a_loot_stack_the_table_makes_fire_resistant_survives_lava() {
         return;
     }
     let mut h = Herd::with_slab_awake(8, true, false);
-    let stone = || horizon_client_lib::items::ItemStack::new("minecraft:stone", 1);
+    let stone = || myriade_engine_lib::items::ItemStack::new("minecraft:stone", 1);
     let ordinary = horizon_ecs_proto::item::drop_item(&mut h.world, stone(), Vec3::new(2.5, 4.0, 0.5), Vec3::ZERO, 0);
-    h.world.insert_resource(horizon_ecs_proto::item::ItemResists(Box::new(|_: &horizon_client_lib::items::ItemStack| 1u8)));
+    h.world.insert_resource(horizon_ecs_proto::item::ItemResists(Box::new(|_: &myriade_engine_lib::items::ItemStack| 1u8)));
     let mut rng = horizon_core::random::LegacyRandom::new(1);
     let resistant = horizon_ecs_proto::item::spawn_at_location(&mut h.world, stone(), Vec3::new(0.5, 4.0, 0.5), &mut rng);
     for e in [resistant, ordinary] {

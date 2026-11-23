@@ -105,7 +105,7 @@ git push origin --delete try/<name>                           # when done
   on 2026-11-19, the tree check of the whole history the slowest part. The Windows job took 48: 28 for the game, 4 for
   the folder, 15 for the launcher's tests.
 - **Windows x64** (`-f windows=true`, `windows-x64`, on `windows-latest` as the release build): the game built as
-  `game-build.yml` builds it, uploaded as the artifact `horizon-windows-x64` (kept 3 days): `horizon-client.exe`,
+  `game-build.yml` builds it, uploaded as the artifact `horizon-windows-x64` (kept 3 days): `myriade-engine.exe`,
   `horizon-prepare.exe`, `horizon-server.exe`, `horizon-wasm-std.wasm` and DXC. No exporters (they
   are compiled from Minecraft's jars on the Mac mini), so point it at resources an installed Horizon already prepared
   (`--resources`). Then the launcher's tests. It builds from scratch, with no Rust cache read or saved. The repository

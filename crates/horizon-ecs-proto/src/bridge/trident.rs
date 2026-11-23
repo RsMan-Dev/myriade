@@ -7,8 +7,8 @@ use crate::targeting::Who;
 use crate::trident::{self, BlowBonus, HitBonus, Pickup, Trident};
 use crate::trident_hit;
 use bevy_ecs::{entity::Entity, world::World};
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 /// A trident thrown from `at` with `velocity`, owned by `owner`, with its Loyalty level, its pickup mode and its Channeling.

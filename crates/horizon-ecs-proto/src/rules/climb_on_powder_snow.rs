@@ -1,5 +1,5 @@
 //! Calculations of the climb on powder snow: the block of the feet, and the test of the block above them.
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 /// The block the animal stands in: the floor of its position.

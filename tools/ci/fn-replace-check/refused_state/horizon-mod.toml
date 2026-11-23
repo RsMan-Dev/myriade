@@ -14,11 +14,11 @@ mixins = "MIXINS"
 
 [[native.state]]
 id = "count"
-owner = "horizon_client::game::Game"
+owner = "myriade_engine::game::Game"
 field = "count"
 type = "u32"
 
 [[native.bridge]]
 id = "clock"
-owner = "horizon_client::game::Game"
+owner = "myriade_engine::game::Game"
 field = "clock"

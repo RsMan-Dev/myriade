@@ -5,7 +5,7 @@ use crate::cow::Vel;
 use crate::falling_block::{self, FallSettings, FallingBlock};
 use crate::falling_land;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Compound;
 use horizon_world::registry::BlockStateId;

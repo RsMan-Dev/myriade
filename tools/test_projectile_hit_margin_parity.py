@@ -5,7 +5,7 @@
 `computeMargin`: `max(0, min(0.3, (tickCount - 2) / 20))`, nothing for its first two ticks and 0.3 from its eighth.
 A wind charge that passes 0.2 beside a mob on its second tick flies on; one that passes as close on its eighth hits.
 
-A vanilla dedicated server and Horizon's (`horizon-client --dedicated --nogui`) each load a copy of one flat world
+A vanilla dedicated server and Horizon's (`myriade-engine --dedicated --nogui`) each load a copy of one flat world
 vanilla generated first. Ticking is frozen; two NoAI zombies stand in two lanes, and a wind charge (no owner, no
 acceleration) flies along each lane one block a tick, 0.2 blocks beside its zombie's box: the first reaches it on its
 second tick, the second on its eighth. After every step each charge's exact Pos and Motion (or its absence) are read with

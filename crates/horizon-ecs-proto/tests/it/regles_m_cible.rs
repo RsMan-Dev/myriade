@@ -1,5 +1,5 @@
 use crate::common::*;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::brain::behaviours::start_attacking::{resolve_target, TargetAnswer, TargetAsked};
 use horizon_ecs_proto::targeting::{Target, Who};

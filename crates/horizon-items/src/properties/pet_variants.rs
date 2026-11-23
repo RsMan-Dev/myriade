@@ -1,6 +1,6 @@
 //! Persistent registry holders used by animal item components.
 use super::resolvable::identifier;
-use horizon_client_core::registries::Registries;
+use myriade_data::registries::Registries;
 use horizon_core::nbt::Tag;
 
 /// `DataComponents`: these codecs use registry references, never inline records.

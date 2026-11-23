@@ -37,7 +37,7 @@ def main():
     rows = json.loads(reference.read_text())
     if len(rows) != 36 or sum(r["snapped"] for r in rows) != 7:
         raise SystemExit("vanilla fixture must cover 36 leash cases and seven snapped leads")
-    subprocess.run(["cargo", "build", "--profile", "fast", "-p", "horizon-client", "--bin", "horizon-client"],
+    subprocess.run(["cargo", "build", "--profile", "fast", "-p", "myriade-engine", "--bin", "myriade-engine"],
                    cwd=lab.ROOT, check=True)
     bins = Path(lab.cargo_target()) / "fast"
     with Server(bins, work / "server", lab.RESOURCES.resolve(), {"level-seed": "42", "view-distance": "4"}) as server, \

@@ -11,9 +11,9 @@ from tools import interaction_lab
 class CargoExampleTests(unittest.TestCase):
     def test_client_probe_uses_the_reusable_library_package(self):
         with mock.patch.object(interaction_lab.subprocess, 'run') as run:
-            interaction_lab.cargo_example('horizon-client', 'menu_fixture', Path('cases.txt'), profile='fast')
+            interaction_lab.cargo_example('myriade-engine', 'menu_fixture', Path('cases.txt'), profile='fast')
         run.assert_called_once_with(
-            ['cargo', 'run', '-q', '-j3', '--profile', 'fast', '-p', 'horizon-client-lib',
+            ['cargo', 'run', '-q', '-j3', '--profile', 'fast', '-p', 'myriade-engine-lib',
              '--example', 'client_probe', '--', 'menu_fixture', 'cases.txt'],
             check=True, cwd=interaction_lab.lab.ROOT)
 

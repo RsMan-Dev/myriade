@@ -1,7 +1,7 @@
 //! `DistanceMaps` (`behaviours/hostiles_near.rs`) installed from the pack's `neoforge:acceptable_villager_distances`: the same values the
 //! Mob reads with `NeoForgeMobMaps::villager_distance`, and no entry for a species the pack does not name.
 use bevy_ecs::prelude::*;
-use horizon_client_lib::neoforge_mob_maps::NeoForgeMobMaps;
+use myriade_engine_lib::neoforge_mob_maps::NeoForgeMobMaps;
 use horizon_ecs_proto::behaviours::hostiles_near::DistanceMaps;
 use horizon_ecs_proto::goals::insert_mob_maps;
 use std::collections::BTreeMap;

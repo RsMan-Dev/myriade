@@ -1,5 +1,5 @@
 //! The conversion boundary between mod API records and engine values: the traits and the
-//! conversions that need no running game. horizon-client keeps the ones that name `Game` or its types.
+//! conversions that need no running game. myriade-engine keeps the ones that name `Game` or its types.
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use horizon_items::items::{ItemStack as EngineStack, Items};
 use mod_api::item::item_stack::{ItemStack as ApiStack, StackWriteError};
@@ -184,7 +184,7 @@ impl<C: ?Sized, T: TryIntoEngine<C>> TryIntoEngine<C> for [T] {
             .collect()
     }
 }
-impl TryIntoApi for (horizon_client::text::Text, u32) {
+impl TryIntoApi for (myriade_engine::text::Text, u32) {
     type Api = (mod_api::Text, u32);
     type Error = mod_api::text::TextFormError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -192,7 +192,7 @@ impl TryIntoApi for (horizon_client::text::Text, u32) {
     }
 }
 impl<C: ?Sized> TryIntoEngine<C> for (mod_api::Text, u32) {
-    type Engine = (horizon_client::text::Text, u32);
+    type Engine = (myriade_engine::text::Text, u32);
     type Error = mod_api::text::TextFormError;
     fn try_into_engine(&self, context: &C) -> Result<Self::Engine, Self::Error> {
         Ok((self.0.try_into_engine(context)?, self.1))
@@ -207,7 +207,7 @@ impl<A: TryIntoApi, B: TryIntoApi<Error = A::Error>> TryIntoApi for (A, B) {
     }
 }
 impl<C: ?Sized> TryIntoEngine<C> for (mod_api::Text, mod_api::Text) {
-    type Engine = (horizon_client::text::Text, horizon_client::text::Text);
+    type Engine = (myriade_engine::text::Text, myriade_engine::text::Text);
     type Error = mod_api::text::TextFormError;
     fn try_into_engine(&self, context: &C) -> Result<Self::Engine, Self::Error> {
         Ok((
@@ -239,7 +239,7 @@ impl TryIntoEngine for mod_api::ItemDisplayContext {
     }
 }
 
-impl TryIntoApi for horizon_client::merchant::ItemCost {
+impl TryIntoApi for myriade_engine::merchant::ItemCost {
     type Api = mod_api::ItemCost;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -247,7 +247,7 @@ impl TryIntoApi for horizon_client::merchant::ItemCost {
     }
 }
 impl TryIntoEngine for mod_api::ItemCost {
-    type Engine = horizon_client::merchant::ItemCost;
+    type Engine = myriade_engine::merchant::ItemCost;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
         Ok(Self::Engine {
@@ -255,7 +255,7 @@ impl TryIntoEngine for mod_api::ItemCost {
         })
     }
 }
-impl TryIntoApi for horizon_client::merchant::MerchantOffer {
+impl TryIntoApi for myriade_engine::merchant::MerchantOffer {
     type Api = mod_api::MerchantOffer;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -275,7 +275,7 @@ impl TryIntoApi for horizon_client::merchant::MerchantOffer {
     }
 }
 impl TryIntoEngine for mod_api::MerchantOffer {
-    type Engine = horizon_client::merchant::MerchantOffer;
+    type Engine = myriade_engine::merchant::MerchantOffer;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
         Ok(Self::Engine {
@@ -325,7 +325,7 @@ impl TryIntoApi for horizon_assets::item_model::StackView {
         let components = Tag::compound(self.patch.iter().map(|(name, value)| match value {
             Some(value) => (
                 horizon_core::nbt::JavaString::from(name.as_str()),
-                horizon_client_core::scoreboard::json_to_tag(value),
+                myriade_data::scoreboard::json_to_tag(value),
             ),
             None => (
                 horizon_core::nbt::JavaString::from(format!("!{name}").as_str()),
@@ -383,7 +383,7 @@ fn encode_stack(
     Ok(stack)
 }
 
-impl TryIntoApi for horizon_client::crafting::RecipeRule {
+impl TryIntoApi for myriade_engine::crafting::RecipeRule {
     type Api = mod_api::RecipeRule;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -535,7 +535,7 @@ impl TryIntoApi for horizon_client::crafting::RecipeRule {
     }
 }
 
-impl TryIntoApi for horizon_client::crafting::RecipeTemplate {
+impl TryIntoApi for myriade_engine::crafting::RecipeTemplate {
     type Api = mod_api::RecipeTemplate;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -546,7 +546,7 @@ impl TryIntoApi for horizon_client::crafting::RecipeTemplate {
         ))
     }
 }
-impl TryIntoApi for horizon_client::crafting::RecipeTrimPattern {
+impl TryIntoApi for myriade_engine::crafting::RecipeTrimPattern {
     type Api = mod_api::RecipeTrimPattern;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -564,7 +564,7 @@ impl TryIntoApi for horizon_client::crafting::RecipeTrimPattern {
         })
     }
 }
-impl TryIntoApi for horizon_client::crafting::FireworkShapeIngredient {
+impl TryIntoApi for myriade_engine::crafting::FireworkShapeIngredient {
     type Api = mod_api::FireworkShapeIngredient;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -574,7 +574,7 @@ impl TryIntoApi for horizon_client::crafting::FireworkShapeIngredient {
         ))
     }
 }
-impl TryIntoApi for horizon_client::crafting::RecipeSnapshot {
+impl TryIntoApi for myriade_engine::crafting::RecipeSnapshot {
     type Api = mod_api::Recipe;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -590,7 +590,7 @@ impl TryIntoApi for horizon_client::crafting::RecipeSnapshot {
     }
 }
 
-impl TryIntoApi for horizon_client::stations::AnvilResult {
+impl TryIntoApi for myriade_engine::stations::AnvilResult {
     type Api = mod_api::item::stations::AnvilResult;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -603,10 +603,10 @@ impl TryIntoApi for horizon_client::stations::AnvilResult {
     }
 }
 impl TryIntoEngine for mod_api::item::stations::AnvilResult {
-    type Engine = horizon_client::stations::AnvilResult;
+    type Engine = myriade_engine::stations::AnvilResult;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(horizon_client::stations::AnvilResult {
+        Ok(myriade_engine::stations::AnvilResult {
             result: self.result.try_into_engine(items)?,
             cost: self.cost,
             repair_item_count_cost: self.repair_item_count_cost,
@@ -614,7 +614,7 @@ impl TryIntoEngine for mod_api::item::stations::AnvilResult {
         })
     }
 }
-impl TryIntoApi for horizon_client::menu::AnvilCraft {
+impl TryIntoApi for myriade_engine::menu::AnvilCraft {
     type Api = mod_api::item::menu::AnvilCraft;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -626,17 +626,17 @@ impl TryIntoApi for horizon_client::menu::AnvilCraft {
     }
 }
 impl TryIntoEngine for mod_api::item::menu::AnvilCraft {
-    type Engine = horizon_client::menu::AnvilCraft;
+    type Engine = myriade_engine::menu::AnvilCraft;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(horizon_client::menu::AnvilCraft {
+        Ok(myriade_engine::menu::AnvilCraft {
             left: self.left.try_into_engine(items)?,
             right: self.right.try_into_engine(items)?,
             output: self.output.try_into_engine(items)?,
         })
     }
 }
-impl TryIntoApi for horizon_client::menu::GrindstonePlace {
+impl TryIntoApi for myriade_engine::menu::GrindstonePlace {
     type Api = mod_api::item::menu::GrindstonePlace;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -650,10 +650,10 @@ impl TryIntoApi for horizon_client::menu::GrindstonePlace {
     }
 }
 impl TryIntoEngine for mod_api::item::menu::GrindstonePlace {
-    type Engine = horizon_client::menu::GrindstonePlace;
+    type Engine = myriade_engine::menu::GrindstonePlace;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(horizon_client::menu::GrindstonePlace {
+        Ok(myriade_engine::menu::GrindstonePlace {
             top: self.top.try_into_engine(items)?,
             bottom: self.bottom.try_into_engine(items)?,
             vanilla_output: self.vanilla_output.try_into_engine(items)?,
@@ -662,7 +662,7 @@ impl TryIntoEngine for mod_api::item::menu::GrindstonePlace {
         })
     }
 }
-impl TryIntoApi for horizon_client::menu::GrindstoneTake {
+impl TryIntoApi for myriade_engine::menu::GrindstoneTake {
     type Api = mod_api::item::menu::GrindstoneTake;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -676,10 +676,10 @@ impl TryIntoApi for horizon_client::menu::GrindstoneTake {
     }
 }
 impl TryIntoEngine for mod_api::item::menu::GrindstoneTake {
-    type Engine = horizon_client::menu::GrindstoneTake;
+    type Engine = myriade_engine::menu::GrindstoneTake;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(horizon_client::menu::GrindstoneTake {
+        Ok(myriade_engine::menu::GrindstoneTake {
             top: self.top.try_into_engine(items)?,
             bottom: self.bottom.try_into_engine(items)?,
             xp: self.xp,
@@ -689,7 +689,7 @@ impl TryIntoEngine for mod_api::item::menu::GrindstoneTake {
     }
 }
 
-impl TryIntoApi for horizon_client::menu::AnvilUpdate {
+impl TryIntoApi for myriade_engine::menu::AnvilUpdate {
     type Api = mod_api::item::menu::AnvilUpdate;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -713,14 +713,14 @@ impl TryIntoApi for horizon_client::menu::AnvilUpdate {
 }
 
 impl TryIntoEngine for mod_api::item::menu::AnvilUpdate {
-    type Engine = horizon_client::menu::AnvilUpdate;
+    type Engine = myriade_engine::menu::AnvilUpdate;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(horizon_client::menu::AnvilUpdate {
+        Ok(myriade_engine::menu::AnvilUpdate {
             left: self.left.try_into_engine(items)?,
             right: self.right.try_into_engine(items)?,
             name: self.name.clone(),
-            vanilla: horizon_client::menu::AnvilVanilla {
+            vanilla: myriade_engine::menu::AnvilVanilla {
                 output: self.vanilla.output.try_into_engine(items)?,
                 xp_cost: self.vanilla.xp_cost,
                 material_cost: self.vanilla.material_cost,
@@ -731,7 +731,7 @@ impl TryIntoEngine for mod_api::item::menu::AnvilUpdate {
         })
     }
 }
-impl TryIntoApi for horizon_client::containers::ModBlockEntityFields {
+impl TryIntoApi for myriade_engine::containers::ModBlockEntityFields {
     type Api = mod_api::item::containers::ModBlockEntityFields;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -743,17 +743,17 @@ impl TryIntoApi for horizon_client::containers::ModBlockEntityFields {
     }
 }
 impl TryIntoEngine for mod_api::item::containers::ModBlockEntityFields {
-    type Engine = horizon_client::containers::ModBlockEntityFields;
+    type Engine = myriade_engine::containers::ModBlockEntityFields;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(horizon_client::containers::ModBlockEntityFields {
+        Ok(myriade_engine::containers::ModBlockEntityFields {
             nbt: self.nbt.clone(),
             items: self.items.try_into_engine(items)?,
             data: self.data.clone(),
         })
     }
 }
-impl TryIntoApi for horizon_client::containers::ModBlockEntity {
+impl TryIntoApi for myriade_engine::containers::ModBlockEntity {
     type Api = mod_api::ModBlockEntity;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -768,7 +768,7 @@ impl TryIntoApi for horizon_client::containers::ModBlockEntity {
     }
 }
 
-impl TryIntoApi for horizon_client_core::suggestion::Suggestion {
+impl TryIntoApi for myriade_data::suggestion::Suggestion {
     type Api = mod_api::Suggestion;
     type Error = std::convert::Infallible;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -779,7 +779,7 @@ impl TryIntoApi for horizon_client_core::suggestion::Suggestion {
     }
 }
 impl TryIntoEngine for mod_api::Suggestion {
-    type Engine = horizon_client_core::suggestion::Suggestion;
+    type Engine = myriade_data::suggestion::Suggestion;
     type Error = StackWriteError;
     fn try_into_engine(&self, _: &Items) -> Result<Self::Engine, Self::Error> {
         Ok(Self::Engine {
@@ -822,7 +822,7 @@ impl TryIntoApi for horizon_world::level::PlacementContext {
     }
 }
 
-impl TryIntoApi for horizon_client_core::gamerules::Value {
+impl TryIntoApi for myriade_data::gamerules::Value {
     type Api = mod_api::GameRuleValue;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -834,7 +834,7 @@ impl TryIntoApi for horizon_client_core::gamerules::Value {
 }
 
 impl TryIntoEngine for mod_api::GameRuleValue {
-    type Engine = horizon_client_core::gamerules::Value;
+    type Engine = myriade_data::gamerules::Value;
     type Error = ();
     fn try_into_engine(&self, _: &Items) -> Result<Self::Engine, Self::Error> {
         match *self {

@@ -107,7 +107,7 @@ fn the_games_own_silk_touch_predicate_still_drops_stone() {
         return;
     };
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../.local/horizon-client/26.3");
+        .join("../../.local/myriade-engine/26.3");
     let Ok((registry, _)) =
         BlockRegistry::from_facts_json_with_flags(fs::File::open(root.join("facts.json")).unwrap())
     else {

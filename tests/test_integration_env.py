@@ -40,7 +40,7 @@ class IntegrationEnvironmentTests(unittest.TestCase):
 class PreparedReportTests(unittest.TestCase):
     def test_partial_report_install_shadows_complete_fallback(self):
         with tempfile.TemporaryDirectory() as root:
-            resources = Path(root) / 'horizon-client' / '26.3'
+            resources = Path(root) / 'myriade-engine' / '26.3'
             fallback = Path(root) / 'datagen' / 'out' / 'reports'
             resources.mkdir(parents=True)
             fallback.mkdir(parents=True)

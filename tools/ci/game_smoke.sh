@@ -3,8 +3,8 @@
 set -euo pipefail
 home=$(mktemp -d "$RUNNER_TEMP/horizon-smoke.XXXXXX")
 version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' research-lock.json | head -1)
-server="$(cd "$BIN" && pwd)/horizon-client"
-resources="$PWD/.local/horizon-client/$version"
+server="$(cd "$BIN" && pwd)/myriade-engine"
+resources="$PWD/.local/myriade-engine/$version"
 port="${SMOKE_PORT:-25599}"
 log="$home/server.log"
 cd "$home"

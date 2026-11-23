@@ -4,8 +4,8 @@ use crate::bridge::host::EcsWorld;
 use crate::boat_hurt::{self, HitResult, HurtFlags, UseResult};
 use crate::targeting::Who;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::MobWorld;
 
 impl EcsWorld {
     /// The game rule `ENTITY_DROPS` for the vehicles a blast breaks (`boat_hurt::EntityDrops`).

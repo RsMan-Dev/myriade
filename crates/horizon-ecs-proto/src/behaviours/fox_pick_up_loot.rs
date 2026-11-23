@@ -6,7 +6,7 @@ use super::*;
 use crate::cow::*;
 use crate::goals::*;
 use crate::item::{self, Item};
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use crate::rules::fox_pick_up_loot::{can_hold_item, mouth_offset, toss_velocity};
 use horizon_core::geometry::Vec3;
 

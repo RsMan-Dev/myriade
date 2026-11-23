@@ -67,7 +67,7 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
 }
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     use crate::spots::{spotter, Pick};
-    use horizon_client_lib::mobs::data::PathComputationType;
+    use myriade_engine_lib::mobs::data::PathComputationType;
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let level = *w.resource::<Level>();
     let (Some(mut s), Some(rng), Some(nav)) = (w.get::<Stroll>(e).copied(), w.get::<Rng>(e).map(|r| r.0), w.get::<NavParams>(e).copied()) else { return false };

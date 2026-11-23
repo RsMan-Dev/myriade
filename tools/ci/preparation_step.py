@@ -31,7 +31,7 @@ def run(step: str, log: Path, command: list[str]) -> int:
     expected = os.environ.get("HORIZON_DIAGNOSTIC_EXPECTED_KEY", "")
     expected = expected if re.fullmatch(r"[0-9a-f]{16}", expected) else "unavailable-or-invalid"
     state = os.environ.get("HORIZON_DIAGNOSTIC_CACHE_STATE", "")
-    state = state if state in ("missing-entry-list", "missing-horizon-client") else "unavailable"
+    state = state if state in ("missing-entry-list", "missing-myriade-engine") else "unavailable"
     try:
         with log.open("wb") as output:
             result = subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, check=False)

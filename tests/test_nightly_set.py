@@ -219,7 +219,7 @@ class RefusalTests(unittest.TestCase):
                      "crates/horizon-server/src/update.rs",
                      "tools/release_train.py"):
             self.assertTrue(ns.guarded(path, PATTERNS), path)
-        for path in ("crates/horizon-client/src/game.rs", "tools/ci.py", "docs/x.md",
+        for path in ("crates/myriade-engine/src/game.rs", "tools/ci.py", "docs/x.md",
                      "crates/horizon-server/src/main.rs"):
             self.assertFalse(ns.guarded(path, PATTERNS), path)
         self.assertTrue(ns.guarded("tools/ci/x.py", ns.guarded_patterns("")))  # even without CODEOWNERS

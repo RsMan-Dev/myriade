@@ -40,7 +40,7 @@ impl TryIntoApi for engine::LootStack {
             .names
             .iter()
             .map(|(id, name)| {
-                horizon_client_lib::api_text::captured_text(name)
+                myriade_engine_lib::api_text::captured_text(name)
                     .map(|name| (id.clone(), name))
                     .map_err(|_| LootValueError::InvalidName)
             })
@@ -77,7 +77,7 @@ impl<C: ?Sized> TryIntoEngine<C> for api::LootStack {
             .names
             .iter()
             .map(|(id, name)| {
-                let name: horizon_client::text::Text = name
+                let name: myriade_engine::text::Text = name
                     .try_into_engine(&())
                     .map_err(|_| LootValueError::InvalidName)?;
                 Ok((id.clone(), name.component()))

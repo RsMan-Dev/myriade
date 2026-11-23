@@ -615,7 +615,7 @@ def summarize(report):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--keep', action='store_true')
-    parser.add_argument('--bin-dir', help='prebuilt horizon-client (default: build it with the fast profile)')
+    parser.add_argument('--bin-dir', help='prebuilt myriade-engine (default: build it with the fast profile)')
     parser.add_argument('--vanilla', help='an existing vanilla world folder (skips generation)')
     parser.add_argument('--horizon', help='an existing Horizon-saved world folder (skips the Horizon run)')
     parser.add_argument('--skip-vanilla-load', action='store_true')
@@ -640,7 +640,7 @@ def main():
     else:
         bin_dir = Path(args.bin_dir).resolve() if args.bin_dir else None
         if bin_dir is None:
-            subprocess.run(['cargo', 'build', '--locked', '--profile', 'fast', '-p', 'horizon-game', '-p', 'horizon-client-lib', '--bins'], cwd=ROOT, check=True)
+            subprocess.run(['cargo', 'build', '--locked', '--profile', 'fast', '-p', 'horizon-game', '-p', 'myriade-engine-lib', '--bins'], cwd=ROOT, check=True)
             bin_dir = ROOT / os.environ.get('CARGO_TARGET_DIR', 'target') / 'fast'
         h = horizon_resave(v0, RUN / 'h', bin_dir)
     print('comparing', v0, 'with', h)

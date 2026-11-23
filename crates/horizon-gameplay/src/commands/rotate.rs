@@ -1,7 +1,7 @@
 //! `/rotate`.
 use super::entity::{EntityHost, EntityRef};
 use super::host::R;
-use horizon_client::{
+use myriade_engine::{
     command::{Arg, Context},
     text::Text,
 };

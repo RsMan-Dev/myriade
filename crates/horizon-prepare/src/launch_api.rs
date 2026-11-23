@@ -5,7 +5,7 @@
 use crate::artifacts::Lock;
 use crate::pyjson::{self, Value};
 
-/// The Launch API's version, the same line as `horizon-client --launch-api`'s
+/// The Launch API's version, the same line as `myriade-engine --launch-api`'s
 /// (docs/api/stability.md): an addition makes the next patch.
 pub const VERSION: &str = "0.1.1";
 
@@ -105,10 +105,10 @@ mod tests {
     /// One Launch API, one version: the client's and the preparer's move together.
     #[test]
     fn the_client_speaks_the_same_version() {
-        let client = include_str!("../../horizon-client/src/game/runtime/launch_api.rs");
+        let client = include_str!("../../myriade-engine/src/game/runtime/launch_api.rs");
         assert!(
             client.contains(&format!("pub const VERSION: &str = \"{VERSION}\";")),
-            "horizon-client's Launch API version is not {VERSION}"
+            "myriade-engine's Launch API version is not {VERSION}"
         );
     }
 }

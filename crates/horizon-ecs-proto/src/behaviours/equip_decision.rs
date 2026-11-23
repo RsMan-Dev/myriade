@@ -1,9 +1,9 @@
 //! Which slot an item a mob meets goes to, and whether it beats what the mob wears or holds there: `Mob.canReplaceCurrentItem` on the facts of
-//! the two items (`horizon_client_lib::mobs::equip`), with the slot `getEquipmentSlotForItem` gives (the worn slot, else the main hand) and
+//! the two items (`myriade_engine_lib::mobs::equip`), with the slot `getEquipmentSlotForItem` gives (the worn slot, else the main hand) and
 //! the fallback of an armour piece that beats nothing it is worn with to an empty main hand (the socle's `look`). Pure: no world.
 use crate::goals::Slot;
 use crate::items;
-use horizon_client_lib::mobs::equip::{can_replace_current_item, Facts, Slot as MSlot};
+use myriade_engine_lib::mobs::equip::{can_replace_current_item, Facts, Slot as MSlot};
 
 /// The facts the choice reads of an item by id (armour, toughness, attack); enchantments, damage and name are not kept here yet.
 pub fn facts(id: u32) -> Facts {

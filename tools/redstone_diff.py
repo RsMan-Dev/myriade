@@ -14,7 +14,7 @@ too (see --keep) but not compared yet.
 Vanilla is the client of tools/perf_bench.py's driver (mods/horizon/src/bench: RedstoneDiff snapshots
 the box around every stepped overworld tick; no server, no EULA); Horizon is its window client on the same
 commands, reading `simulation blocks`. Needs the same artifacts as perf_bench.py (your own client
-jar, built horizon-client, prepared resources).
+jar, built myriade-engine, prepared resources).
 """
 import argparse
 import json
@@ -448,8 +448,8 @@ def main():
     p.add_argument('--seed', type=int, default=1)
     p.add_argument('--ticks', type=int, default=40)
     p.add_argument('--only', nargs='*', help='machine names')
-    p.add_argument('--profile', default='fast', help='the cargo profile of the built horizon-client')
-    p.add_argument('--resources', default=str(ROOT / '.local/horizon-client/26.3'))
+    p.add_argument('--profile', default='fast', help='the cargo profile of the built myriade-engine')
+    p.add_argument('--resources', default=str(ROOT / '.local/myriade-engine/26.3'))
     p.add_argument('--near', nargs=4, type=int, metavar=('DX', 'DY', 'DZ', 'R'),
                    help='keep only the setup commands within R blocks of this offset from the machine\'s origin')
     p.add_argument('--drop', nargs='*', type=int, default=[], help='with --near: leave out these setblock commands (by index)')

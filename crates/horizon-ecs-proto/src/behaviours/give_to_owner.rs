@@ -124,7 +124,7 @@ mod tests {
     use super::*;
     use crate::cow::{species, spawn_species, Herd, Pos};
     use crate::species::Config;
-    use horizon_client_lib::items::ItemStack;
+    use myriade_engine_lib::items::ItemStack;
 
     /// `n` creatures whose only goal is this one, owned by player 1, who stands `dx` blocks away.
     fn world(n: usize, dx: f64) -> (Herd, Vec<Entity>) {

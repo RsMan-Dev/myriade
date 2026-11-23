@@ -1,5 +1,5 @@
 //! The items' default names where they aren't their description id's translation.
-use horizon_client_core::text::Text;
+use myriade_data::text::Text;
 use serde_json::Value;
 use std::{
     collections::HashMap,
@@ -35,7 +35,7 @@ pub fn of(item: &str) -> Option<Text> {
     let names = NAMES.read().unwrap_or_else(|e| e.into_inner()).clone()?;
     names
         .get(item)
-        .map(horizon_client_core::scoreboard::comp_text)
+        .map(myriade_data::scoreboard::comp_text)
 }
 
 #[cfg(test)]

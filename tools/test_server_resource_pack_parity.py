@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A dedicated server's resource pack (server.properties `resource-pack`), against vanilla's, as vanilla clients see it.
 
-A vanilla dedicated server and Horizon's (`horizon-client --dedicated --nogui`) each serve a copy of one flat world
+A vanilla dedicated server and Horizon's (`myriade-engine --dedicated --nogui`) each serve a copy of one flat world
 vanilla generated first, twice: once with a required pack (an id, a SHA-1 and a prompt), once with an optional one
 (none of those: the id is derived from the URL). ServerPackClient, players made of vanilla's protocol code, join each
 and answer the offer the way vanilla's client can:
@@ -134,11 +134,11 @@ def main():
     subprocess.run(['javac', '--release', str(lock['minecraft']['java_major']), '-proc:none', '-nowarn', '-sourcepath',
                     lab.ROOT / 'mods/horizon/src/test/java', '-cp', dependencies, '-d', classes, oracle],
                    cwd=lab.ROOT, check=True, capture_output=True)
-    subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'horizon-client'], cwd=lab.ROOT,
+    subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'myriade-engine'], cwd=lab.ROOT,
                    check=True, capture_output=True)
-    binary = lab.cargo_target() / 'fast' / ('horizon-client.exe' if os.name == 'nt' else 'horizon-client')
+    binary = lab.cargo_target() / 'fast' / ('myriade-engine.exe' if os.name == 'nt' else 'myriade-engine')
     vanilla_server = ['java', '-Xmx2g', '-Duser.timezone=UTC', '-cp', dependencies, 'net.minecraft.server.Main', 'nogui']
-    horizon_server = [binary, '--resources', lab.LOCAL / 'horizon-client/26.3', '--dedicated', '--nogui']
+    horizon_server = [binary, '--resources', lab.LOCAL / 'myriade-engine/26.3', '--dedicated', '--nogui']
     client = ['java', '-Xmx1g', '-cp', str(classes) + os.pathsep + dependencies, 'dev.horizonlab.parity.ServerPackClient']
 
     world = generate_world(vanilla_server, build)

@@ -15,20 +15,20 @@ mixins = "MIXINS"
 # A function below the game crate.
 [[native.mixin]]
 id = "lower"
-target = "horizon_client_render::chunk::Chunk::get"
+target = "myriade_level::chunk::Chunk::get"
 kind = "HEAD"
 helper = "src/mixins/head.rs"
 
 # No such function.
 [[native.mixin]]
 id = "missing"
-target = "horizon_client::game::autosave::Game<'_>::no_such_function"
+target = "myriade_engine::game::autosave::Game<'_>::no_such_function"
 kind = "HEAD"
 helper = "src/mixins/head.rs"
 
 # A body using a macro the game crate doesn't export.
 [[native.mixin]]
 id = "local_macro"
-target = "horizon_client::game::commands::Game<'_>::teleport_stops"
+target = "myriade_engine::game::commands::Game<'_>::teleport_stops"
 kind = "HEAD"
 helper = "src/mixins/head.rs"

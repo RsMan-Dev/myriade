@@ -1,6 +1,6 @@
 //! `/tag`.
 use super::host::{CommandHost, R};
-use horizon_client::{
+use myriade_engine::{
     command::{Arg, Context},
     scoreboard_cmd::{Holder, Tracker, format_list},
     text::Text,
@@ -124,7 +124,7 @@ pub fn tag(host: &mut dyn TagHost, id: &str, ctx: &Context) -> R<i32> {
                     format_list(
                         sorted
                             .into_iter()
-                            .map(|s| Text::literal(s).with_color(horizon_client::text::GREEN))
+                            .map(|s| Text::literal(s).with_color(myriade_engine::text::GREEN))
                             .collect(),
                     )
                 };

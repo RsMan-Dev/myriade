@@ -40,11 +40,11 @@ STRANDS = ["loading", "host", "slots", "attachments", "content_render", "hooks"]
 # storage is already engine-layer (phase 4 dropped), owner 2026-11-10.
 PHASE = {"loading": 1, "host": None, "slots": 3, "attachments": None, "content_render": 5, "hooks": 6}
 # The host areas the scan inventories, as repo paths.
-MOVE_SET = ("crates/horizon-client/src/game/modding/", "crates/horizon-client/src/game/native_hooks/")
-GAME = "crates/horizon-client/src/game"
-# horizon-client-lib's library root sits in horizon-client's src/; these paths there are horizon-client's own.
-CLIENT_SRC = "crates/horizon-client/src/"
-CLIENT_OWN = re.compile(r"crates/horizon-client/src/(game(\.rs|/)|entry\.rs|main\.rs|lib\.rs)")
+MOVE_SET = ("crates/myriade-engine/src/game/modding/", "crates/myriade-engine/src/game/native_hooks/")
+GAME = "crates/myriade-engine/src/game"
+# myriade-engine-lib's library root sits in myriade-engine's src/; these paths there are myriade-engine's own.
+CLIENT_SRC = "crates/myriade-engine/src/"
+CLIENT_OWN = re.compile(r"crates/myriade-engine/src/(game(\.rs|/)|entry\.rs|main\.rs|lib\.rs)")
 
 # (strand, pattern on the edge's path "crate::a::b"); the first match wins. Owners correct strands here.
 RULES = [
@@ -146,7 +146,7 @@ class Workspace:
                 if repo in out and out[repo] != owner and not repo.startswith(CLIENT_SRC):
                     continue
                 if repo.startswith(CLIENT_SRC):
-                    owner_here = "horizon-client" if CLIENT_OWN.match(repo) else "horizon-client-lib"
+                    owner_here = "myriade-engine" if CLIENT_OWN.match(repo) else "myriade-engine-lib"
                 else:
                     owner_here = owner
                 out[repo] = owner_here
@@ -341,7 +341,7 @@ def public(defs):
 def move_set_analysis(sources, edges_by_file, defs):
     """Per move-set file: strand, phase, impls to rewrite, outbound engine-private names. Plus inbound edges."""
     files = {}
-    game_sources = [s for s in sources if s.crate == "horizon-client" and s.path.startswith(GAME)]
+    game_sources = [s for s in sources if s.crate == "myriade-engine" and s.path.startswith(GAME)]
     moved = [s for s in game_sources if in_move_set(s.path)]
     for s in moved:
         strand = next((st for st, rule in FILE_RULES if rule.search(s.path)), None)

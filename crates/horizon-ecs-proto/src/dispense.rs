@@ -5,7 +5,7 @@ use crate::cow::with_level_random;
 use crate::loot::roll_table;
 use crate::nbt::{owner, Field};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::nbt::{Compound, Tag};
 use horizon_core::random::RandomSource;
 use std::borrow::Cow;

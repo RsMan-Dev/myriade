@@ -21,7 +21,7 @@ use crate::host_out_fight::FightOut;
 use crate::rules::dragon_data::BODY;
 use crate::targeting::{Target, Who};
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// What the host reads of one dragon: its place and yaw, its health, its phase, its death time, its parts' places and boxes, its target

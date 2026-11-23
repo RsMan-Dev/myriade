@@ -60,7 +60,7 @@ def main():
         run(['java', '-Xmx2G', '-cp', str(classes) + os.pathsep + cp,
              'dev.horizonlab.parity.VanillaCommandExecOracle',
              Path(scratch) / 'universe', script, expected_path, '1'], 'java', env=env)
-    run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client', '--bin', 'horizon-client'], 'compile-rust', cwd=lab.ROOT)
+    run(['cargo', 'build', '--profile', 'fast', '-p', 'myriade-engine', '--bin', 'myriade-engine'], 'compile-rust', cwd=lab.ROOT)
     bins = Path(lab.cargo_target()) / 'fast'
     with Server(bins, build / 'server', lab.RESOURCES.resolve(), {'level-seed': '42', 'view-distance': '4'}) as server, \
             Bot(timeout=600) as bot:

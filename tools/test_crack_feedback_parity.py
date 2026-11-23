@@ -34,11 +34,11 @@ def main():
     report.unlink(missing_ok=True)
     (build / 'rust.json').unlink(missing_ok=True)
     sources = [lab.ROOT / path for path in (
-        'crates/horizon-client/src/game/network/lan_actions/mod.rs',
-        'crates/horizon-client/src/game/network/lan_actions/mining.rs',
-        'crates/horizon-client/src/game/network/lan_actions/packets.rs',
-        'crates/horizon-client/src/game/network/lan_actions/shared.rs',
-        'crates/horizon-client/src/game/network/lan_actions/tests/crack_feedback_tests.rs',
+        'crates/myriade-engine/src/game/network/lan_actions/mod.rs',
+        'crates/myriade-engine/src/game/network/lan_actions/mining.rs',
+        'crates/myriade-engine/src/game/network/lan_actions/packets.rs',
+        'crates/myriade-engine/src/game/network/lan_actions/shared.rs',
+        'crates/myriade-engine/src/game/network/lan_actions/tests/crack_feedback_tests.rs',
         'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaCrackFeedbackOracle.java',
         'tools/test_crack_feedback_parity.py')]
     hashes = base.source_hashes(sources)
@@ -51,7 +51,7 @@ def main():
                        HORIZON_CRACK_TRACE=build / 'rust.json')
     with (build / 'rust.log').open('w') as log:
         subprocess.run(
-            ['cargo', 'test', '-p', 'horizon-client', '--lib',
+            ['cargo', 'test', '-p', 'myriade-engine', '--lib',
              'crack_packets_follow_start_clock_and_strict_observer_radius',
              '--', '--ignored', '--nocapture'],
             cwd=lab.ROOT, env=env, stdout=log, stderr=subprocess.STDOUT,

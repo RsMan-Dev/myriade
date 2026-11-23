@@ -241,13 +241,13 @@ mod tests {
    1: horizon_threads::stack_dump::imp::on_signal
              at ./src/stack_dump.rs:120:40
    2: __os_lock_spin_lock
-   3: horizon_client::game::Game::tick_server
+   3: myriade_engine::game::Game::tick_server
              at ./src/game/levels.rs:10:5
    4: main
 ";
         assert_eq!(
             after_handler(text),
-            "   3: horizon_client::game::Game::tick_server
+            "   3: myriade_engine::game::Game::tick_server
              at ./src/game/levels.rs:10:5
    4: main
 "

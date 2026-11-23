@@ -33,8 +33,8 @@ def test_bodies(source):
 def violations(root):
     failures = []
     for crate in ('horizon-mod-api', 'horizon-mod-wasm', 'horizon-game',
-                  'horizon-mod-points', 'horizon-mod-render', 'horizon-client',
-                  'horizon-client-lib'):
+                  'horizon-mod-points', 'horizon-mod-render', 'myriade-engine',
+                  'myriade-engine-lib'):
         for path in (root / 'crates' / crate).rglob('*.rs'):
             relative = path.relative_to(root).as_posix()
             source = path.read_text()
@@ -48,7 +48,7 @@ def violations(root):
             for name, body in bodies:
                 dispatch = DISPATCH.search(body)
                 # This fixture constructs a Game through with_game_at first.
-                game_fixture = relative == 'crates/horizon-client/src/game/blocks/cauldron_interactions/tests.rs' and 'fixture(' in body
+                game_fixture = relative == 'crates/myriade-engine/src/game/blocks/cauldron_interactions/tests.rs' and 'fixture(' in body
                 if dispatch and not game_fixture and not READY.search(body[:dispatch.start()]):
                     failures.append(f'{relative}:{name}: initialize before mod dispatch')
     return failures

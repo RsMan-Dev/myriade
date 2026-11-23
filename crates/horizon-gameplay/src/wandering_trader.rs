@@ -1,6 +1,6 @@
 //! `WanderingTraderSpawner`'s clock and the `WanderingTraderData` saved with the world.
 use crate::custom_spawner::CustomSpawnerLevel;
-use horizon_client::{
+use myriade_engine::{
     blocks::BlockFacts,
     mobs::{Species, spawn_rules},
     world::World,

@@ -7,7 +7,7 @@
 use crate::common::*;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_ecs_proto::age_lock::AgeLocked;
 use horizon_ecs_proto::behaviours::act_phase::{ActPhase, Phase};
 use horizon_ecs_proto::behaviours::bed::{lie_down, Sleeping};

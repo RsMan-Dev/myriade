@@ -10,7 +10,7 @@ use crate::goals::*;
 use crate::nbt::{accept, owner, Field};
 use crate::rules::{no_attrs, params, Rule};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::{Compound, Tag};
 use std::borrow::Cow;

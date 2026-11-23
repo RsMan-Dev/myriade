@@ -1,6 +1,6 @@
 //! Shared persistent component parsing and borrowed decoded-value comparisons.
 use crate::properties::resolvable;
-use horizon_client_core::registries::Registries;
+use myriade_data::registries::Registries;
 use horizon_core::nbt::Tag;
 
 /// Decode `Identifier.CODEC` without requiring a registered resource.

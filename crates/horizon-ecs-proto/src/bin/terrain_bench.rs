@@ -3,7 +3,7 @@
 //! chunk area around a position of each wanted biome; blocks are counted per class (empty / plain cube / "other", the class that sends a
 //! call back to the full kernel), and walkers placed at random surface or cave positions walk with a cow's body: every collision call is
 //! counted as served by the masks or returned to the kernel, and for the returned ones the "other" blocks in the box they swept.
-use horizon_client_render::{chunk::Chunk, collisions::SceneCollisions, world::World};
+use myriade_level::{chunk::Chunk, collisions::SceneCollisions, world::World};
 use horizon_core::{
     geometry::{Aabb, Vec3},
     position::ChunkPos,
@@ -39,9 +39,9 @@ fn main() -> Result<(), Error> {
     let threads: usize = a.get(4).and_then(|s| s.parse().ok()).unwrap_or(12);
     let size: i32 = a.get(5).and_then(|s| s.parse().ok()).unwrap_or(14);
     let root = std::path::PathBuf::from(std::env::var("HORIZON_TEST_RESOURCES")?);
-    let assets = horizon_client_lib::assets::Assets::load(&root).map_err(|e| e.to_string())?;
+    let assets = myriade_engine_lib::assets::Assets::load(&root).map_err(|e| e.to_string())?;
     let registry = assets.registry;
-    let binding = horizon_client_render::collisions::load(&root, registry).map_err(|e| e.to_string())?;
+    let binding = myriade_level::collisions::load(&root, registry).map_err(|e| e.to_string())?;
     let data = GeneratorData::load(&root.join("worldgen"), registry)?;
     let generator = OverworldGenerator::for_dimension(data.clone(), seed, "minecraft:normal", "minecraft:overworld")?;
     let occ = Occupancy::default();

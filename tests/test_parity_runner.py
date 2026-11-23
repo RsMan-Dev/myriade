@@ -41,8 +41,8 @@ class ParityRunnerTests(unittest.TestCase):
 
     def test_artifacts_keep_the_package_and_feature_selection(self):
         self.assertEqual(parity.artifacts_of(["cargo", "build", "--locked", "--profile=fast", "-j", "4", "--package",
-                                              "horizon-client", "--bins", "-F", "x"]),
-                         [["bins", "", "fast", ["-p", "horizon-client", "--features", "x"], False]])
+                                              "myriade-engine", "--bins", "-F", "x"]),
+                         [["bins", "", "fast", ["-p", "myriade-engine", "--features", "x"], False]])
         self.assertEqual(parity.artifacts_of(["cargo", "build", "--release", "-p", "horizon-world", "--bin=horizon-world"]),
                          [["bin", "horizon-world", "release", ["-p", "horizon-world"], False]])
 
@@ -57,15 +57,15 @@ class ParityRunnerTests(unittest.TestCase):
         )
 
     def test_prebuild_follows_a_moved_target_without_losing_features(self):
-        selection = ["-p", "horizon-client", "--no-default-features", "--features", "horizon-client/rng-trace"]
+        selection = ["-p", "myriade-engine", "--no-default-features", "--features", "myriade-engine/rng-trace"]
         artifacts = [["example", "client_probe", "fast", selection, True]]
-        packages = {("example", "client_probe"): "horizon-client-lib"}
+        packages = {("example", "client_probe"): "myriade-engine-lib"}
         commands = parity.prebuild_commands(artifacts, packages)
         self.assertEqual(len(commands), 1)
         for command in commands:
             self.assertEqual(command[:5], ["cargo", "build", "--locked", "--profile", "fast"])
             self.assertEqual(command[5:5 + len(selection)], selection)
-            self.assertEqual(command[5 + len(selection):7 + len(selection)], ["-p", "horizon-client-lib"])
+            self.assertEqual(command[5 + len(selection):7 + len(selection)], ["-p", "myriade-engine-lib"])
         self.assertEqual(artifacts[0][3], selection)
 
     def test_prebuild_repeats_each_harness_selection(self):
@@ -74,15 +74,15 @@ class ParityRunnerTests(unittest.TestCase):
             *parity.artifacts_of(["cargo", "build", "--release", "-p", "horizon-world", "--example", "b"]),
             *parity.artifacts_of(["cargo", "build", "--release", "-p", "horizon-world", "--bin", "horizon-world"]),
             *parity.artifacts_of(["cargo", "build", "--release", "--bin", "horizon-world"]),
-            *parity.artifacts_of(["cargo", "run", "--profile", "fast", "-p", "horizon-client", "--example", "c"]),
+            *parity.artifacts_of(["cargo", "run", "--profile", "fast", "-p", "myriade-engine", "--example", "c"]),
             *parity.artifacts_of(["cargo", "build", "--release", "-p", "horizon-world", "--example", "renamed"]),
             ["example", "old", "release"],  # recorded before selections were kept: its own crate's -p
             ["example", "unknown", "release"],  # no longer in the workspace: left to its harness
         ]
-        packages = {("example", "a"): "horizon-world", ("example", "b"): "horizon-world", ("example", "c"): "horizon-client",
+        packages = {("example", "a"): "horizon-world", ("example", "b"): "horizon-world", ("example", "c"): "myriade-engine",
                     ("bin", "horizon-world"): "horizon-world", ("example", "old"): "horizon-world"}
         self.assertEqual(parity.prebuild_commands(artifacts, packages), [
-            ["cargo", "build", "--locked", "--profile", "fast", "-p", "horizon-client", "--example", "c"],
+            ["cargo", "build", "--locked", "--profile", "fast", "-p", "myriade-engine", "--example", "c"],
             ["cargo", "build", "--locked", "--profile", "release", "--bin", "horizon-world"],
             ["cargo", "build", "--locked", "--profile", "release", "-p", "horizon-world", "--bin", "horizon-world"],
             ["cargo", "build", "--locked", "--profile", "release", "-p", "horizon-world", "--example", "a", "--example", "b",
@@ -723,7 +723,7 @@ class ParityRunnerTests(unittest.TestCase):
 
     def test_a_probe_binary_depends_only_on_the_probes_it_ran(self):
         commands = [["/t/release/examples/world_probe", "a_fixture", "/dir"],
-                    ["cargo", "run", "-p", "horizon-client", "--example", "client_probe", "--", "b_fixture"]]
+                    ["cargo", "run", "-p", "myriade-engine", "--example", "client_probe", "--", "b_fixture"]]
         self.assertEqual(parity.probes_run(commands), {"a_fixture", "b_fixture"})
         with tempfile.TemporaryDirectory() as temp, mock.patch.object(parity, "ROOT", Path(temp)):
             probe = Path(temp, "crates/w/examples/probe")
@@ -753,19 +753,19 @@ class ParityRunnerTests(unittest.TestCase):
 
     def test_records_of_the_shared_probe_name_build_their_crates_probe(self):
         record = {"dependencies": ["crates/horizon-world/examples/probe/a_fixture.rs", "crates/horizon-world/src/lib.rs"],
-                  "artifacts": [["example", "probe", "release", ["-p", "horizon-client"], True],
+                  "artifacts": [["example", "probe", "release", ["-p", "myriade-engine"], True],
                                 ["example", "probe", "release"],  # no selection: the crate of its probe sources
                                 ["example", "probe", "release", ["-p", "horizon-core", "-p", "horizon-world"], True],
                                 ["bin", "horizon-world", "release", ["-p", "horizon-world"], False]]}
         artifacts = parity.recorded_artifacts(record)
-        self.assertEqual(artifacts, [["example", "client_probe", "release", ["-p", "horizon-client"], True],
+        self.assertEqual(artifacts, [["example", "client_probe", "release", ["-p", "myriade-engine"], True],
                                      ["example", "world_probe", "release"],
                                      ["example", "world_probe", "release", ["-p", "horizon-core", "-p", "horizon-world"], True],
                                      ["bin", "horizon-world", "release", ["-p", "horizon-world"], False]])
-        packages = {("example", "client_probe"): "horizon-client", ("example", "world_probe"): "horizon-world",
+        packages = {("example", "client_probe"): "myriade-engine", ("example", "world_probe"): "horizon-world",
                     ("bin", "horizon-world"): "horizon-world"}
         self.assertEqual(parity.prebuild_commands(artifacts, packages), [
-            ["cargo", "build", "--locked", "--profile", "release", "-p", "horizon-client", "--example", "client_probe"],
+            ["cargo", "build", "--locked", "--profile", "release", "-p", "myriade-engine", "--example", "client_probe"],
             ["cargo", "build", "--locked", "--profile", "release", "-p", "horizon-core", "-p", "horizon-world",
              "--example", "world_probe"],
             ["cargo", "build", "--locked", "--profile", "release", "-p", "horizon-world", "--bin", "horizon-world"],
@@ -2326,14 +2326,14 @@ class SoloTests(unittest.TestCase):
 
 class ClashTests(unittest.TestCase):
     """On Windows, harnesses that build one program with different selections don't run at once."""
-    PACKAGES = {("bin", "horizon-client"): "horizon-client", ("example", "client_probe"): "horizon-client-lib"}
-    SERVER = ["bin", "horizon-client", "fast", ["-p", "horizon-client"], False]
-    BOTH = ["bins", "", "fast", ["-p", "horizon-client", "-p", "horizon-client-lib"], False]
-    PROBE = ["example", "client_probe", "dev", ["-p", "horizon-client-lib"], True]
+    PACKAGES = {("bin", "myriade-engine"): "myriade-engine", ("example", "client_probe"): "myriade-engine-lib"}
+    SERVER = ["bin", "myriade-engine", "fast", ["-p", "myriade-engine"], False]
+    BOTH = ["bins", "", "fast", ["-p", "myriade-engine", "-p", "myriade-engine-lib"], False]
+    PROBE = ["example", "client_probe", "dev", ["-p", "myriade-engine-lib"], True]
 
     def test_a_run_naming_every_bin_builds_those_of_its_packages(self):
         self.assertEqual(parity.executables([self.BOTH], self.PACKAGES), {
-            ("bin", "horizon-client", "fast"): (("-p", "horizon-client", "-p", "horizon-client-lib"), False)})
+            ("bin", "myriade-engine", "fast"): (("-p", "myriade-engine", "-p", "myriade-engine-lib"), False)})
 
     def test_another_selection_of_a_running_harness_program_waits(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(parity, "STATE_DIR", Path(tmp)):
@@ -2342,7 +2342,7 @@ class ClashTests(unittest.TestCase):
             "server": [self.SERVER], "same": [self.SERVER, self.PROBE], "both": [self.BOTH], "probe": [self.PROBE],
             "python_only": []}.items()}
         local.running = {"server": {}}
-        self.assertFalse(local.accepts("both"))  # it would relink horizon-client.exe while "server" runs it
+        self.assertFalse(local.accepts("both"))  # it would relink myriade-engine.exe while "server" runs it
         self.assertTrue(local.accepts("same"))  # Cargo finds it fresh
         self.assertTrue(local.accepts("probe"))
         self.assertTrue(local.accepts("python_only"))
@@ -2359,8 +2359,8 @@ if __name__ == "__main__":
 
 class WorkspaceManifestTests(unittest.TestCase):
     """A crate split's Cargo.toml and Cargo.lock changes don't select every harness; a dependency change still does."""
-    CLIENT = '[package]\nname = "horizon-client"\n\n[dependencies]\nserde = "1"\nwgpu = { version = "27", features = ["x"] }\n'
-    LOCK = ('version = 4\n\n[[package]]\nname = "horizon-client"\nversion = "0.1.0"\ndependencies = [\n "serde",\n]\n\n'
+    CLIENT = '[package]\nname = "myriade-engine"\n\n[dependencies]\nserde = "1"\nwgpu = { version = "27", features = ["x"] }\n'
+    LOCK = ('version = 4\n\n[[package]]\nname = "myriade-engine"\nversion = "0.1.0"\ndependencies = [\n "serde",\n]\n\n'
             '[[package]]\nname = "serde"\nversion = "1.0.1"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n')
 
     def verdict(self, base, head):
@@ -2379,18 +2379,18 @@ class WorkspaceManifestTests(unittest.TestCase):
         client = self.CLIENT + 'horizon-command = { path = "../horizon-command" }\n'
         lock = self.LOCK.replace('[[package]]\nname = "serde"', '[[package]]\nname = "horizon-command"\nversion = "0.1.0"\n\n'
                                  '[[package]]\nname = "serde"')
-        base = {"Cargo.toml": '[workspace]\nmembers = ["crates/horizon-client"]\nresolver = "2"\n',
-                "crates/horizon-client/Cargo.toml": self.CLIENT, "Cargo.lock": self.LOCK}
-        head = {"Cargo.toml": '[workspace]\nmembers = ["crates/horizon-client", "crates/horizon-command"]\nresolver = "2"\n',
-                "crates/horizon-client/Cargo.toml": client, "crates/horizon-command/Cargo.toml": command, "Cargo.lock": lock}
+        base = {"Cargo.toml": '[workspace]\nmembers = ["crates/myriade-engine"]\nresolver = "2"\n',
+                "crates/myriade-engine/Cargo.toml": self.CLIENT, "Cargo.lock": self.LOCK}
+        head = {"Cargo.toml": '[workspace]\nmembers = ["crates/myriade-engine", "crates/horizon-command"]\nresolver = "2"\n',
+                "crates/myriade-engine/Cargo.toml": client, "crates/horizon-command/Cargo.toml": command, "Cargo.lock": lock}
         self.assertEqual(self.verdict(base, head), set(head))
 
     def test_a_dependency_change_still_counts(self):
-        base = {"crates/horizon-client/Cargo.toml": self.CLIENT, "Cargo.lock": self.LOCK}
-        bumped = {"crates/horizon-client/Cargo.toml": self.CLIENT, "Cargo.lock": self.LOCK.replace("1.0.1", "1.0.2")}
+        base = {"crates/myriade-engine/Cargo.toml": self.CLIENT, "Cargo.lock": self.LOCK}
+        bumped = {"crates/myriade-engine/Cargo.toml": self.CLIENT, "Cargo.lock": self.LOCK.replace("1.0.1", "1.0.2")}
         self.assertEqual(self.verdict(base, bumped), set())
-        feature = {"crates/horizon-client/Cargo.toml": self.CLIENT.replace('["x"]', '["x", "y"]')}
-        self.assertEqual(self.verdict({"crates/horizon-client/Cargo.toml": self.CLIENT}, feature), set())
+        feature = {"crates/myriade-engine/Cargo.toml": self.CLIENT.replace('["x"]', '["x", "y"]')}
+        self.assertEqual(self.verdict({"crates/myriade-engine/Cargo.toml": self.CLIENT}, feature), set())
         resolver = {"Cargo.toml": '[workspace]\nmembers = ["a"]\nresolver = "3"\n'}
         self.assertEqual(self.verdict({"Cargo.toml": '[workspace]\nmembers = ["a"]\nresolver = "2"\n'}, resolver), set())
 
@@ -2405,23 +2405,23 @@ class WorkspaceManifestTests(unittest.TestCase):
     def test_a_feature_of_a_workspace_crate_counts_through_its_sources(self):
         items = '[package]\nname = "horizon-items"\n\n[features]\ntest-support = []\n'
         client = self.CLIENT + '\n[dev-dependencies]\nhorizon-items = { path = "../horizon-items", features = ["test-support"] }\n'
-        head = {"crates/horizon-items/Cargo.toml": items, "crates/horizon-client/Cargo.toml": client,
+        head = {"crates/horizon-items/Cargo.toml": items, "crates/myriade-engine/Cargo.toml": client,
                 "crates/horizon-items/src/lib.rs": '#[cfg(feature = "test-support")]\npub fn for_tests() {}\n'}
-        base = {"crates/horizon-client/Cargo.toml": self.CLIENT}
+        base = {"crates/myriade-engine/Cargo.toml": self.CLIENT}
         # The new crate's files are all changed, the code the feature gates with them.
-        self.assertEqual(self.verdict(base, head), {"crates/horizon-items/Cargo.toml", "crates/horizon-client/Cargo.toml"})
+        self.assertEqual(self.verdict(base, head), {"crates/horizon-items/Cargo.toml", "crates/myriade-engine/Cargo.toml"})
         # Turning on a feature of a crate whose gated code didn't change selects as before.
         world = '[package]\nname = "horizon-world"\n\n[features]\nextra = ["more"]\nmore = []\n'
         with tempfile.TemporaryDirectory() as temp, mock.patch.object(parity, "ROOT", Path(temp)):
             Path(temp, "crates/horizon-world/src").mkdir(parents=True)
             Path(temp, "crates/horizon-world/Cargo.toml").write_text(world)
             Path(temp, "crates/horizon-world/src/lib.rs").write_text('#[cfg(feature = "more")]\nfn x() {}\n')
-            self.assertFalse(parity.feature_sources_changed("horizon-world", "extra", {"crates/horizon-client/Cargo.toml"}))
+            self.assertFalse(parity.feature_sources_changed("horizon-world", "extra", {"crates/myriade-engine/Cargo.toml"}))
             self.assertTrue(parity.feature_sources_changed("horizon-world", "extra", {"crates/horizon-world/src/lib.rs"}))
             self.assertFalse(parity.feature_sources_changed("horizon-nothing", "extra", set()))
         # A feature that reaches an external package counts.
-        optional = {"crates/horizon-client/Cargo.toml": self.CLIENT + '\n[features]\nfast = ["wgpu/x"]\n'}
-        self.assertEqual(self.verdict({"crates/horizon-client/Cargo.toml": self.CLIENT}, optional), set())
+        optional = {"crates/myriade-engine/Cargo.toml": self.CLIENT + '\n[features]\nfast = ["wgpu/x"]\n'}
+        self.assertEqual(self.verdict({"crates/myriade-engine/Cargo.toml": self.CLIENT}, optional), set())
 
     def test_external_feature_sources_are_not_discarded(self):
         with tempfile.TemporaryDirectory() as temp, mock.patch.object(parity, "ROOT", Path(temp)):

@@ -1,4 +1,4 @@
-//! Fiche 103, `AnimalPanic` (`horizon-client/src/mobs/animal_panic.rs:11-160`) : la panique des animaux à cerveau (chameau,
+//! Fiche 103, `AnimalPanic` (`myriade-engine/src/mobs/animal_panic.rs:11-160`) : la panique des animaux à cerveau (chameau,
 //! grenouille, nautile). Module NEUF, distinct de `panic` (qui s'arrête à l'arrivée). Départ après un dégât de cause
 //! « panique » (`LastDamage`, lu au tick suivant `Events.hurt`), durée `min + nextInt(spread)`, un nouveau point à chaque
 //! fin de chemin, point d'eau si en feu. Pas de système : `tick` (règle du cadre, LISEZMOI « Les ticks des modules »).
@@ -101,7 +101,7 @@ fn spot(w: &mut World, e: Entity, p: &Params) -> Option<[f64; 3]> {
 /// `animal_water_pos`: the nearest water block; a body that rounds up to two blocks wide also needs the water to its
 /// south, east and south-east. Nothing when the animal stands in a block with a collision shape.
 fn water_spot(w: &mut World, e: Entity, range: i32) -> Option<[f64; 3]> {
-    use horizon_client_lib::blocks::Fluid;
+    use myriade_engine_lib::blocks::Fluid;
     let pos = w.get::<Pos>(e)?.0;
     let wide = w.get::<Body>(e).is_some_and(|b| rules::is_wide(f64::from(b.width)));
     let mw = w.resource::<Level>().mw.0;

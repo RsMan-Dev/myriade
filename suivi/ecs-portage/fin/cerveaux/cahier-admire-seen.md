@@ -7,7 +7,7 @@ Fichiers :
 - src/species/mod.rs : ligne RESOLVED de minecraft:piglin, `("admire_seen", 1)` juste après `("admire", 1)`.
 - tests/it/piglin_vs_mob.rs : un test différentiel.
 Modèle :
-- Mob : crates/horizon-client/src/mobs/piglin.rs : `Memories::admire_seen` (172-198), `AdmireSeen` (1734-1760), compteurs décrémentés à 1955-1962, ADMIRE = 119 (ligne 18).
+- Mob : crates/myriade-engine/src/mobs/piglin.rs : `Memories::admire_seen` (172-198), `AdmireSeen` (1734-1760), compteurs décrémentés à 1955-1962, ADMIRE = 119 (ligne 18).
 - Forme : src/behaviours/admire.rs (modules à état + équipement), src/behaviours/go_to_wanted.rs (recherche d'objet : `wanted_near`).
 Interfaces :
 Params { items, duration: i32 (119), too_far_sqr: f64 (81.0), tired: i32 (200), walk_off: i32 (200), disabled: i32 (0) } avec DEFAULT. Composant d'état `SeenAdmire { until: u64, reach: Option<u32> }` (SparseSet, présent seulement pendant le but) ; ce qui doit survivre à l'arrêt (`walk_off` : échéance en ticks absolue, `Component` SparseSet) est posé par échéance sur l'horloge `now_of`, pas décrémenté par tick. Drapeaux MOVE | LOOK. can_use : un objet voulu (de `items`, ramassable, dans 14 blocs et visible) est vu, la main gauche est vide, pas de `walk_off` en cours. Tant que le but court : marcher vers l'objet (vitesse 1.0) quand la navigation est finie ; il s'arrête si l'objet est à plus de 9 blocs (81 au carré), ou après 200 ticks d'essais (alors walk_off 200 ticks), ou si la main gauche se remplit. Réveil par événement (objet apparu / main changée) via `arm` comme `admire`, jamais de scrutation chaque tick.

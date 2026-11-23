@@ -2,7 +2,7 @@
 //! de naissance (panda), effets d'attribut, type de villageois par biome, jour d'Halloween. Référence = jar vanilla 26.3.
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::nbt::Tag;
 use horizon_core::random::{LegacyRandom, RandomSource};
 use horizon_ecs_proto::{

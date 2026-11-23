@@ -3,7 +3,7 @@
 //! 26.3 ones (`javap`: `AbstractGolem`, `Villager`, `WanderingTrader`, `MobEffects`), not the old `Mob`.
 use crate::common::*;
 use bevy_ecs::prelude::Entity;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use horizon_ecs_proto::absorption::{absorb, Absorption};
 use horizon_ecs_proto::behaviours::cat_state::Trusting;
@@ -240,7 +240,7 @@ fn a_totem_fired_by_effect_damage_keeps_its_effects() {
     }
     let mut h = Herd::with_slab_awake(8, true, false);
     let pig = spawn(&mut h, "minecraft:pig", 0.5, 0.5);
-    horizon_ecs_proto::equip_stack::set(&mut h.world, pig, 0, Some(horizon_client_lib::items::ItemStack::new("minecraft:totem_of_undying", 1)));
+    horizon_ecs_proto::equip_stack::set(&mut h.world, pig, 0, Some(myriade_engine_lib::items::ItemStack::new("minecraft:totem_of_undying", 1)));
     h.world.resource_mut::<DamageQueue>().add(pig, 30.0, Cause::Magic);
     h.tick();
     assert_eq!(health(&h, pig), 1.0, "the totem did not save the pig at 1 health");
@@ -291,7 +291,7 @@ fn a_totem_does_not_save_from_the_void() {
     }
     let mut h = Herd::with_slab_awake(8, true, false);
     let pig = spawn(&mut h, "minecraft:pig", 0.5, 0.5);
-    horizon_ecs_proto::equip_stack::set(&mut h.world, pig, 0, Some(horizon_client_lib::items::ItemStack::new("minecraft:totem_of_undying", 1)));
+    horizon_ecs_proto::equip_stack::set(&mut h.world, pig, 0, Some(myriade_engine_lib::items::ItemStack::new("minecraft:totem_of_undying", 1)));
     h.world.resource_mut::<DamageQueue>().add(pig, 30.0, Cause::OutOfWorld);
     h.tick();
     assert!(equip_stack::get(&h.world, pig, 0).is_some(), "the void's hit used the totem");

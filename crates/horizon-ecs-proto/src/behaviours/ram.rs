@@ -12,8 +12,8 @@ use crate::spots::stable_destination;
 use crate::bridge::teams::allied;
 use crate::hostile::PlayerState;
 use crate::targeting::{self, Eye, Who};
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 /// `RAMS`, `RAM_PREPARE_TIME`, `MIN/MAX_RAM_DISTANCE`, les délais d'expiration, la portée de la cible et les vitesses.

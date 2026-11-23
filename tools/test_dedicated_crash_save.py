@@ -157,7 +157,7 @@ def signal_saves(build):
 
 
 def main():
-    subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '-p', 'horizon-client-lib', '--bin', 'horizon-client'], cwd=lab.ROOT, check=True)
+    subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '-p', 'myriade-engine-lib', '--bin', 'myriade-engine'], cwd=lab.ROOT, check=True)
     build = lab.LOCAL / 'dedicated-crash-save'
     shutil.rmtree(build, ignore_errors=True)
     build.mkdir(parents=True)

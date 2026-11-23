@@ -1,7 +1,7 @@
 # Section meshing parity
 
 `tools/test_section_mesh_parity.py` compares the vertices Horizon's section
-mesher (`crates/horizon-client-render/src/mesher.rs`, with `mesher/lighting.rs` and
+mesher (`crates/myriade-level/src/mesher.rs`, with `mesher/lighting.rs` and
 `mesher/fluid.rs`) emits with the vertices the pinned client's own renderers
 emit for the same scenes.
 
@@ -20,7 +20,7 @@ emit for the same scenes.
   `FluidRenderer.tesselate`, then `RenderShape.MODEL` blocks through
   `ModelBlockRenderer.tesselateBlock` with smooth lighting on, culling on,
   cutout leaves, `BlockColors.createDefault()` and `state.getSeed(pos)`.
-- **Horizon side**: `crates/horizon-client/examples/probe/section_mesh_fixture.rs`
+- **Horizon side**: `crates/myriade-engine/examples/probe/section_mesh_fixture.rs`
   loads the prepared resources (`Assets`, `BlockFacts`, `Biomes`,
   `load_visibility`, `MeshTables`), builds the same blocks and light in real
   client `Chunk`s (a 3x3 chunk region), sets every biome's colours to the
@@ -145,7 +145,7 @@ gate.
 - Leaf culling: the fixture builds its `Mesher` with `LeafCullingMode::Off`,
   so the gate compares vanilla's leaves. The Solid, Solid Aggressive and
   Hollow modes deliberately change the opaque layer or drop quads; they are
-  covered by `crates/horizon-client-render/src/mesher/leaf_culling_tests.rs`
+  covered by `crates/myriade-level/src/mesher/leaf_culling_tests.rs`
   and never by the parity corpus.
 - Layers: vanilla's solid and cutout layers are compared as one class because
   Horizon draws both in its opaque pass.

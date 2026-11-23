@@ -28,11 +28,11 @@ logs.mkdir(parents=True, exist_ok=True)
 signal.signal(signal.SIGTERM, lambda *_: sys.exit(128 + signal.SIGTERM))
 
 mutants = [
-    ("immediate_publication", "crates/horizon-client/src/game/modding/block_entity_tick_items.rs",
+    ("immediate_publication", "crates/myriade-engine/src/game/modding/block_entity_tick_items.rs",
      "        let key = self.block_entity_tick_key?;",
      "        let key = self.block_entity_tick_key?;\n        if let Some(entity) = self.dropped.iter_mut().find(|e| e.id == id) { entity.stack = replacement.clone().unwrap_or_else(|| ItemStack::new(\"minecraft:air\", 0)); }",
      "native_tick_publishes_or_rejects_item_proposals_with_writeback", {"ROW4_NATIVE_CASE": "invalid_stack"}),
-    ("skip_original_stack_check", "crates/horizon-client/src/game/modding/block_entity_tick_items.rs",
+    ("skip_original_stack_check", "crates/myriade-engine/src/game/modding/block_entity_tick_items.rs",
      "e.id == proposal.id && e.stack == proposal.original", "e.id == proposal.id",
      "finalization_never_retargets_stale_items_or_replaced_placeholders", {"ROW4_PRECONDITION_CASE": "stack", "HORIZON_LIVE_HOLDER_GAME_CHILD": "valid"}),
     ("drop_decode_poison", "crates/horizon-mod-wasm/src/runtime.rs",
@@ -47,7 +47,7 @@ for name, relative, old, new, test, case in mutants:
     try:
         path.write_text(original.replace(old, new))
         env = dict(os.environ, CARGO_INCREMENTAL="0")
-        command = ["cargo", "test", "--profile", "fast", "-p", "horizon-client", "--lib", "--no-run", "--message-format=json", "-j", "2"]
+        command = ["cargo", "test", "--profile", "fast", "-p", "myriade-engine", "--lib", "--no-run", "--message-format=json", "-j", "2"]
         build = subprocess.run(command, cwd=ROOT, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         (logs / (name + "-build.log")).write_text(build.stdout)
         assert build.returncode == 0, (name, "mutant must compile")
@@ -55,7 +55,7 @@ for name, relative, old, new, test, case in mutants:
         for line in build.stdout.splitlines():
             if line.startswith("{"):
                 record = json.loads(line)
-                if record.get("reason") == "compiler-artifact" and record.get("executable") and record["target"]["name"] == "horizon_client":
+                if record.get("reason") == "compiler-artifact" and record.get("executable") and record["target"]["name"] == "myriade_engine":
                     executable = record["executable"]
         assert executable, "missing test executable"
         with tempfile.TemporaryDirectory(prefix="row4-mutant-") as home:

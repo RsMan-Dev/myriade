@@ -29,6 +29,6 @@ with = "Slot"
 # ...whose entry an OVERWRITE would replace: E_LOOP_ENTRY_REPLACED.
 [[native.mixin]]
 id = "overwrite"
-target = "horizon_client::game::block_entity_ticks::Game<'_>::tick_block_entities"
+target = "myriade_engine::game::block_entity_ticks::Game<'_>::tick_block_entities"
 kind = "OVERWRITE"
 helper = "src/mixins/overwrite.rs"

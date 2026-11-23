@@ -93,7 +93,7 @@ assert!(!dependencies.contains_key("horizon-mods"));
         expected = '{{#include ../../crates/horizon-mod-package/src/lib.rs}}\n(crates/horizon-mod-package)\ncrates/horizon-mod-package/**\n'
         self.assertEqual(rename.rewrite("docs/modding/src/reference.md", source), expected)
         translation = '{"native.mods": "In horizon-mods; internal type horizon_mods::Package"}'
-        self.assertEqual(rename.rewrite("crates/horizon-client/assets/horizon/lang/en_us.json", translation), translation)
+        self.assertEqual(rename.rewrite("crates/myriade-engine/assets/horizon/lang/en_us.json", translation), translation)
         self.assertEqual(rename.rewrite("roadmap/roadmap.toml", 'dev = "horizon-mods/native/"'),
                          'dev = "horizon-mods/native/"')
 

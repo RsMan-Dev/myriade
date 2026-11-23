@@ -5,7 +5,7 @@ For each engine type in the allow-list (api_scaffold.toml) it adds, never overwr
   * the API type to crates/horizon-mod-vocab/src/<domain>/<topic>.rs (a mirror, or an `XRef` handle);
   * its re-export to src/exports/<topic>.rs;
   * for a handle with methods, a `<Name>Backend` host area to src/host/<topic>.rs;
-  * both conversions to crates/horizon-client/src/game/modding/api_values/<topic>.rs.
+  * both conversions to crates/myriade-engine/src/game/modding/api_values/<topic>.rs.
 It refuses when the type or its `<Name>Backend` already exists in crates/horizon-mod-vocab/src, and never
 targets lib.rs. Conversions in the client crate are not checked. Every emitted value explicitly derives `Wire`; handles also get a `Fields` impl.
 
@@ -22,7 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 API = Path('crates/horizon-mod-vocab/src')
-CONV = Path('crates/horizon-client/src/game/modding/api_values')
+CONV = Path('crates/myriade-engine/src/game/modding/api_values')
 DOMAINS = ('world', 'block', 'item', 'entity', 'client', 'command', 'text', 'content', 'wire')
 SKIP = set('Option Vec Result R Box Self dyn mut str String Path static Game Host super std path crate fn impl '
            'Fn FnMut FnOnce Cow HashMap HashSet Rc Arc i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 usize isize '

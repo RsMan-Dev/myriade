@@ -27,7 +27,7 @@ from tools.ci.rust_changes import changed_paths  # noqa: E402
 # directory only document the read: a change there selects the whole workspace.
 HORIZON_CLIENT = [
     # The build script and the native hook tests read the hook targets' sources.
-    "crates/horizon-client-render/src", "crates/horizon-world/src", "crates/horizon-items/src",
+    "crates/myriade-level/src", "crates/horizon-world/src", "crates/horizon-items/src",
     "crates/horizon-guest-stack/src/guest_stack_constants.rs", "crates/horizon-mod-wasm/tests/fixture/src",
     "docs/api/launch-reference.md", "docs/modding/examples/src/worldgen.rs",
     "docs/parity/random-chance-seeded.jsonl", "packaging/executable_link.rs", "packaging/windows/exe.rs",
@@ -38,8 +38,8 @@ HORIZON_CLIENT = [
 # The generator scans these to write the mod API, the points and the host boundary: its own sources, the vocabulary, the
 # engine crates holding hook targets and their manifests.
 MOD_API_GEN = [
-    "Cargo.lock", "crates/horizon-assets/src", "crates/horizon-client", "crates/horizon-client-core/src",
-    "crates/horizon-client-render", "crates/horizon-core/src", "crates/horizon-engine-slots", "crates/horizon-items",
+    "Cargo.lock", "crates/horizon-assets/src", "crates/myriade-engine", "crates/myriade-data/src",
+    "crates/myriade-level", "crates/horizon-core/src", "crates/horizon-engine-slots", "crates/horizon-items",
     "crates/horizon-mod-api", "crates/horizon-mod-api-macros", "crates/horizon-mod-package/src",
     "crates/horizon-mod-runtime/src", "crates/horizon-mod-vocab/behaviours",
     "crates/horizon-mod-vocab/src", "crates/horizon-world", "packaging/executable_link.rs",
@@ -50,13 +50,13 @@ READERS = {
         "Cargo.lock", "crates/horizon-mod-api", "crates/horizon-mod-package/src/sdk/fixture.tar.xz",
         "crates/horizon-mod-package/tests/index", "docs/modding/src/how-to/native-mods.md", "tools/ci/rust-version",
     ],
-    "horizon-client": HORIZON_CLIENT,
-    # Shares horizon-client's sources, so its unit tests run the same reads.
-    "horizon-client-lib": HORIZON_CLIENT,
+    "myriade-engine": HORIZON_CLIENT,
+    # Shares myriade-engine's sources, so its unit tests run the same reads.
+    "myriade-engine-lib": HORIZON_CLIENT,
     # lang.rs embeds the bundled English file.
-    "horizon-client-core": ["crates/horizon-client/assets/horizon/lang"],
-    "horizon-client-render": [
-        "crates/horizon-client/assets/horizon/lang", "crates/horizon-client/assets/horizon/textures/gui",
+    "myriade-data": ["crates/myriade-engine/assets/horizon/lang"],
+    "myriade-level": [
+        "crates/myriade-engine/assets/horizon/lang", "crates/myriade-engine/assets/horizon/textures/gui",
     ],
     # The daily Character comparator reads the original public-JDK API helper.
     "horizon-core": ["tools/JavaCharacterTables.java"],
@@ -64,9 +64,9 @@ READERS = {
     "horizon-engine-slots": MOD_API_GEN,
     "horizon-game": ["packaging/windows/exe.rs"],
     # Shared source-only module discovery reads the game's declarations and vocabulary export fragments.
-    "horizon-game-discovery": ["crates/horizon-client/src", "crates/horizon-mod-vocab/src"],
+    "horizon-game-discovery": ["crates/myriade-engine/src", "crates/horizon-mod-vocab/src"],
     # The shared guest-stack tests read the sources that use its constants, and the jobs they wait on.
-    "horizon-guest-stack": ["crates/horizon-client/src", "crates/horizon-threads/src"],
+    "horizon-guest-stack": ["crates/myriade-engine/src", "crates/horizon-threads/src"],
     "horizon-mod-api": MOD_API_GEN,
     "horizon-mod-api-gen": MOD_API_GEN,
     "horizon-mod-api-gen-tests": MOD_API_GEN,
@@ -82,7 +82,7 @@ READERS = {
     ],
     "horizon-port-pack": ["docs/modpacks/atm10-mods.csv"],
     "horizon-prepare": [
-        "crates/horizon-client/src/game/runtime/launch_api.rs", "mods/horizon/src/test/java", "research-lock.json",
+        "crates/myriade-engine/src/game/runtime/launch_api.rs", "mods/horizon/src/test/java", "research-lock.json",
     ],
     "horizon-release-sign": ["tools/ci/sign_native_build.sh", "tools/ci/sign_release.sh"],
     "horizon-server": [
@@ -93,18 +93,18 @@ READERS = {
     "horizon-world": ["crates/horizon-core", "Cargo.lock"],
     # Commands (tokens, icons, package), not tests: listed so the scan finds nothing unexplained.
     "xtask": [
-        "LICENSES/GPL-3.0.txt", "crates/horizon-client/src", "crates/horizon-mod-vocab/src/hooks",
+        "LICENSES/GPL-3.0.txt", "crates/myriade-engine/src", "crates/horizon-mod-vocab/src/hooks",
         "crates/horizon-prepare", "crates/horizon-theme", "docs/media/brand",
         "mods/horizon/src/test/java", "packaging", "research-lock.json", "tools",
     ],
 }
 # What a package's tests only read at run time and nothing else uses: the package is selected, its dependents are not.
-# horizon-client-core's lang.rs tests read the sources of every crate for the language keys the code names.
-SCANNED = {"horizon-client-core": ["crates"]}
+# myriade-data's lang.rs tests read the sources of every crate for the language keys the code names.
+SCANNED = {"myriade-data": ["crates"]}
 # Literals the scan takes for a walk up to crates/ that are not one (a ".." among path-traversal checks).
 # "machines/.." in a test's sample paths, "mods/" in an instance's file names: no read either.
 NOT_READS = {
-    "horizon-client": {"crates"}, "horizon-client-lib": {"crates"}, "horizon-mod-package": {"crates"},
+    "myriade-engine": {"crates"}, "myriade-engine-lib": {"crates"}, "horizon-mod-package": {"crates"},
     "horizon-mod-vocab": {"."}, "horizon-port-pack": {"mods"}, "horizon-prepare": {"crates"},
     "horizon-server-launch": {"crates"},
 }
@@ -128,7 +128,7 @@ class Workspace:
         for package in metadata["packages"]:
             for target in package["targets"]:
                 source = relative(target["src_path"])
-                # horizon-client-lib builds horizon-client's files: all of that package's folder counts.
+                # myriade-engine-lib builds myriade-engine's files: all of that package's folder counts.
                 folder = max((d for d in home.values() if under(source, d)), key=len, default=None)
                 self.dirs[package["name"]].add(folder or posixpath.dirname(source))
         self.home = home

@@ -3,7 +3,7 @@ use crate::behaviours::{Entry, Module};
 use crate::bridge::host::EcsWorld;
 use crate::goal_edit;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 impl EcsWorld {
     /// `GoalSelector.addGoal` with a ready entry; false when the entity cannot hold it.

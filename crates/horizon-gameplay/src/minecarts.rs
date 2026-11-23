@@ -1,10 +1,10 @@
 //! Minecarts (`AbstractMinecart` with `OldMinecartBehavior`): the cart's state, its kinds, the
 //! rail shapes, the coarse index of carts and mobs for pushes, the pure rules around them, and
-//! the save and load of a cart. The parts that need `Game` stay in horizon-client.
-use horizon_client::fast_hash::FxHashSet;
-use horizon_client::join_seq::{JoinList, ListStamp};
-use horizon_client::mobs::{seen_grid::SeenGrid};
-use horizon_client::{
+//! the save and load of a cart. The parts that need `Game` stay in myriade-engine.
+use myriade_engine::fast_hash::FxHashSet;
+use myriade_engine::join_seq::{JoinList, ListStamp};
+use myriade_engine::mobs::{seen_grid::SeenGrid};
+use myriade_engine::{
     items::{ItemStack, Items},
     mobs::{Part, Species},
 };
@@ -20,7 +20,7 @@ pub use seat::*;
 
 /// `Entity.load`'s `TicksFrozen` (an int; 0 when absent).
 fn saved_ticks_frozen(tag: &horizon_core::nbt::Tag) -> i32 {
-    horizon_client::save::number(tag.get("TicksFrozen")).unwrap_or(0) as i32
+    myriade_engine::save::number(tag.get("TicksFrozen")).unwrap_or(0) as i32
 }
 /// `Entity.saveWithoutId`: `TicksFrozen` is written only while positive.
 fn put_ticks_frozen(map: &mut horizon_core::nbt::Compound, ticks: i32) {
@@ -101,8 +101,8 @@ impl CartKind {
 #[derive(Clone, Debug)]
 pub struct Minecart {
     pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
-    /// When it joined its list (`horizon_client::join_seq`); set by the list.
-    pub join: horizon_client::join_seq::JoinSeq,
+    /// When it joined its list (`myriade_engine::join_seq`); set by the list.
+    pub join: myriade_engine::join_seq::JoinSeq,
     pub id: u32,
     pub kind: CartKind,
     pub position: Vec3,
@@ -156,7 +156,7 @@ pub struct Minecart {
     pub enabled: bool,
     /// Chest minecarts: the loot table rolled into `items` on load, saved
     /// again while the items are still that roll.
-    pub loot: Option<horizon_client::save::PendingContainerLoot>,
+    pub loot: Option<myriade_engine::save::PendingContainerLoot>,
     /// `Entity.firstTick`: not ticked yet (saved as `HasTicked`).
     pub first_tick: bool,
     /// `Entity.isInWater` (`wasTouchingWater`): `AbstractMinecart.tick`
@@ -167,7 +167,7 @@ pub struct Minecart {
     /// Command block minecarts: the cart's `BaseCommandBlock` (command,
     /// success count, last output, output tracking). The block-only flags of
     /// `CommandBlock` stay unset.
-    pub command: horizon_client::command_block::CommandBlock,
+    pub command: myriade_engine::command_block::CommandBlock,
     /// `Entity.tickCount`, which `MinecartCommandBlock.activateMinecart`
     /// measures its `ACTIVATION_DELAY` against.
     pub tick_count: i32,
@@ -178,7 +178,7 @@ pub struct Minecart {
     pub command_due: bool,
     /// Spawner minecarts: the cart's `BaseSpawner` (`Delay`, `SpawnData`,
     /// `SpawnPotentials` and the rest as a spawner block saves them).
-    pub spawner: Option<Box<horizon_client::mobs::spawner::Spawner>>,
+    pub spawner: Option<Box<myriade_engine::mobs::spawner::Spawner>>,
     /// The synched `DATA_ID_COMMAND_NAME` and `DATA_ID_LAST_OUTPUT`, which
     /// follow the command block only at `onUpdated`.
     pub synced_command: String,
@@ -351,7 +351,7 @@ pub fn push_along(push: Vec3, movement: Vec3) -> Vec3 {
 /// The minecart's passenger attachment minus Player.DEFAULT_VEHICLE_ATTACHMENT.
 pub const SEAT: f64 = PASSENGER_Y - 0.6;
 /// The placeholder container key under which an open cart's items live.
-pub const CART_KEY_Y: i32 = horizon_client::lan::menu::VEHICLE_KEY_Y;
+pub const CART_KEY_Y: i32 = myriade_engine::lan::menu::VEHICLE_KEY_Y;
 
 /// `OldMinecartBehavior.pushAndPickupEntities`: living entities the cart
 /// offers `startRiding` instead of `Entity.push`. Players click to board;
@@ -514,7 +514,7 @@ impl Minecart {
             loot: None,
             first_tick: true,
             in_water: false,
-            command: horizon_client::command_block::CommandBlock::default(),
+            command: myriade_engine::command_block::CommandBlock::default(),
             tick_count: 0,
             last_activated: 0,
             command_due: false,
@@ -524,7 +524,7 @@ impl Minecart {
             synced_output: String::new(),
             custom_display: None,
             custom_offset: None,
-            random: EntityRandom::own(horizon_client::random_source::entity()),
+            random: EntityRandom::own(myriade_engine::random_source::entity()),
         }
     }
     pub fn bounds(&self) -> Aabb {
@@ -567,7 +567,7 @@ pub struct CartModels {
     pub models: HashMap<CartKind, Part>,
 }
 impl CartModels {
-    pub fn load(document: Option<&horizon_client::mobs::EntityModelDocument>) -> Self {
+    pub fn load(document: Option<&myriade_engine::mobs::EntityModelDocument>) -> Self {
         let kinds = [
             CartKind::Rideable,
             CartKind::Chest,
@@ -592,7 +592,7 @@ impl Minecart {
         raw: Option<&horizon_core::nbt::Tag>,
     ) -> horizon_core::nbt::Tag {
         use horizon_core::nbt::{JavaString, Tag};
-        let mut tag = horizon_client::entity_nbt::vehicle_to_nbt(
+        let mut tag = myriade_engine::entity_nbt::vehicle_to_nbt(
             self.kind.id(),
             self.position,
             self.velocity,
@@ -601,7 +601,7 @@ impl Minecart {
             uuid,
             raw,
         );
-        horizon_client::entity_nbt::write_saved_flags(&mut tag, self.on_ground, self.no_gravity);
+        myriade_engine::entity_nbt::write_saved_flags(&mut tag, self.on_ground, self.no_gravity);
         if let Tag::Compound(map) = &mut tag {
             // ContainerEntity.addChestVehicleSaveData belongs only to the
             // container subclasses, never to a plain or specialized cart.
@@ -620,7 +620,7 @@ impl Minecart {
             put_ticks_frozen(map, self.ticks_frozen);
             let loaded_fire = map
                 .get(&JavaString::from("Fire"))
-                .and_then(horizon_client::nbt_path::int_value)
+                .and_then(myriade_engine::nbt_path::int_value)
                 .unwrap_or(0) as i16;
             let mut put = |k: &str, v: Tag| {
                 map.insert(JavaString::from(k), v);
@@ -643,7 +643,7 @@ impl Minecart {
             }
             match self.kind {
                 CartKind::Chest | CartKind::Hopper => {
-                    put("Items", horizon_client::save::encode_items(&self.items));
+                    put("Items", myriade_engine::save::encode_items(&self.items));
                     if self.kind == CartKind::Hopper {
                         put("Enabled", Tag::Byte(i8::from(self.enabled)));
                     }
@@ -685,7 +685,7 @@ impl Minecart {
                 CartKind::Spawner => {
                     if let Some(spawner) = &self.spawner {
                         for (key, value) in
-                            horizon_client::mobs::spawner::SpawnerExt::save(&**spawner)
+                            myriade_engine::mobs::spawner::SpawnerExt::save(&**spawner)
                         {
                             put(key, value);
                         }
@@ -706,7 +706,7 @@ impl Minecart {
         tag
     }
     pub fn from_nbt(tag: &horizon_core::nbt::Tag, id: u32, kind: CartKind) -> Option<Self> {
-        let (position, _, _) = horizon_client::entity_nbt::boat_from_nbt(tag)?;
+        let (position, _, _) = myriade_engine::entity_nbt::boat_from_nbt(tag)?;
         let mut c = Self::new(id, kind, position);
         c.load(tag)?;
         Some(c)
@@ -716,7 +716,7 @@ impl Minecart {
     /// `None`, with nothing changed, when the compound has no position.
     pub fn load(&mut self, tag: &horizon_core::nbt::Tag) -> Option<()> {
         use horizon_core::nbt::Tag;
-        let (position, velocity, yaw) = horizon_client::entity_nbt::boat_from_nbt(tag)?;
+        let (position, velocity, yaw) = myriade_engine::entity_nbt::boat_from_nbt(tag)?;
         let kind = self.kind;
         let c = self;
         c.position = position;
@@ -724,14 +724,14 @@ impl Minecart {
         c.velocity = velocity;
         c.yaw = yaw;
         c.previous_yaw = yaw;
-        c.no_gravity = horizon_client::entity_nbt::flag(tag, "NoGravity");
-        c.on_ground = horizon_client::entity_nbt::flag(tag, "OnGround");
-        c.pitch = horizon_client::entity_nbt::rotation(tag)[1];
+        c.no_gravity = myriade_engine::entity_nbt::flag(tag, "NoGravity");
+        c.on_ground = myriade_engine::entity_nbt::flag(tag, "OnGround");
+        c.pitch = myriade_engine::entity_nbt::rotation(tag)[1];
         c.previous_pitch = c.pitch;
         // ValueInput's numeric getters take any NumericTag: getIntOr is its
         // intValue, getShortOr the low 16 bits of it, getBooleanOr
         // `byteValue() != 0` (the low 8), getDoubleOr its doubleValue.
-        let int = |k: &str| tag.get(k).and_then(horizon_client::nbt_path::int_value);
+        let int = |k: &str| tag.get(k).and_then(myriade_engine::nbt_path::int_value);
         let flag = |k: &str, default: bool| int(k).map_or(default, |v| v as i8 != 0);
         let double = |k: &str| match tag.get(k) {
             Some(Tag::Byte(v)) => f64::from(*v),
@@ -743,16 +743,16 @@ impl Minecart {
             _ => 0.0,
         };
         // Entity.load: OnGround and fall_distance, as saved.
-        (c.on_ground, c.fall_distance) = horizon_client::entity_nbt::ground_from_nbt(tag);
+        (c.on_ground, c.fall_distance) = myriade_engine::entity_nbt::ground_from_nbt(tag);
         c.ticks_frozen = saved_ticks_frozen(tag);
         c.flipped = flag("FlippedRotation", false);
         c.first_tick = flag("HasTicked", false);
         if kind.slots() > 0 {
-            c.loot = horizon_client::save::PendingContainerLoot::from_tag(tag);
+            c.loot = myriade_engine::save::PendingContainerLoot::from_tag(tag);
             c.items = if c.loot.is_some() {
                 vec![None; kind.slots()]
             } else {
-                horizon_client::save::decode_items(tag.get("Items"), kind.slots())
+                myriade_engine::save::decode_items(tag.get("Items"), kind.slots())
             };
         }
         c.enabled = flag("Enabled", true);
@@ -767,7 +767,7 @@ impl Minecart {
                 Some(Tag::Double(v)) => f64::from_bits(*v) as f32,
                 Some(Tag::Long(v)) => *v as f32,
                 Some(other) => {
-                    horizon_client::nbt_path::int_value(other).map_or(default, |v| v as f32)
+                    myriade_engine::nbt_path::int_value(other).map_or(default, |v| v as f32)
                 }
                 None => default,
             };
@@ -779,7 +779,7 @@ impl Minecart {
         c.custom_display = tag.get("DisplayState").cloned();
         c.custom_offset = int("DisplayOffset");
         if kind == CartKind::CommandBlock {
-            c.command = horizon_client::command_block::CommandBlock::load(tag);
+            c.command = myriade_engine::command_block::CommandBlock::load(tag);
             // MinecartCommandBlock.readAdditionalSaveData sets the synched command.
             // A changed value invokes onSyncedDataUpdated -> setCommand, resetting successes.
             if c.synced_command != c.command.command {
@@ -790,7 +790,7 @@ impl Minecart {
         }
         // MinecartSpawner.readAdditionalSaveData: BaseSpawner.load.
         if kind == CartKind::Spawner {
-            c.spawner = Some(Box::new(horizon_client::mobs::spawner::SpawnerExt::load(
+            c.spawner = Some(Box::new(myriade_engine::mobs::spawner::SpawnerExt::load(
                 tag,
             )));
         }
@@ -837,9 +837,9 @@ pub fn furnace_speed(c: &Minecart, base: f64) -> f64 {
         base
     }
 }
-horizon_client::impl_joined!(Minecart);
+myriade_engine::impl_joined!(Minecart);
 horizon_mod_runtime::impl_attachment_lifetime!(Minecart);
-impl horizon_client::entity_rules::EntityRules for Minecart {
+impl myriade_engine::entity_rules::EntityRules for Minecart {
     fn is_no_gravity(&self) -> bool {
         self.no_gravity
     }

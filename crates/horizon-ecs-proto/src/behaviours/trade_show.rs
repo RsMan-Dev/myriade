@@ -3,7 +3,7 @@
 //! player's hand (`goals::Player.main`), and the goal re-arms itself on its wheel deadline while `Showing` exists.
 use super::trade_offers::{ensure_offers, Merchant};
 use super::*;
-use horizon_client_lib::merchant::MerchantOffer;
+use myriade_engine_lib::merchant::MerchantOffer;
 use crate::cow::{GrowAt, Pos};
 use crate::goals::*;
 use crate::rules::trade_show::{cycle_done, in_show_range, next_index, CYCLE, LOOK_TICKS};

@@ -5,7 +5,7 @@ use crate::behaviours::food_inventory::Stock;
 use crate::behaviours::food_stock as stock;
 use crate::behaviours::inventory;
 use crate::behaviours::trade_offers::{Merchant, TradeData};
-use horizon_client_lib::mobs::villager::food_points;
+use myriade_engine_lib::mobs::villager::food_points;
 use crate::behaviours::gossip;
 use crate::behaviours::play_tag::INTERACTION_TARGET;
 use crate::brain::*;
@@ -83,7 +83,7 @@ fn share(w: &mut World, e: Entity, other: Entity, me: horizon_core::geometry::Ve
     let from = horizon_core::geometry::Vec3::new(me.x, me.y + eye - k, me.z);
     let v = toss_velocity(me, at, k);
     for (name, n) in thrown {
-        crate::item::drop_item(w, horizon_client_lib::items::ItemStack::new(&name, u32::from(n)), from, v, 10);
+        crate::item::drop_item(w, myriade_engine_lib::items::ItemStack::new(&name, u32::from(n)), from, v, 10);
     }
 }
 

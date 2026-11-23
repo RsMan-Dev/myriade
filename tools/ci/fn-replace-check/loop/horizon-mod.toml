@@ -11,7 +11,7 @@ capabilities = ["registries"]
 # one replacement cell.
 [[inject]]
 id = "listen"
-at = "horizon_client::game::block_entity_ticks::Game<'_>::tick_block_entities"
+at = "myriade_engine::game::block_entity_ticks::Game<'_>::tick_block_entities"
 kind = "head"
 with = "entry_listener"
 
@@ -40,7 +40,7 @@ priority = 10
 # A HEAD mixin on the loop's entry composes around the loop's copy.
 [[native.mixin]]
 id = "entry"
-target = "horizon_client::game::block_entity_ticks::Game<'_>::tick_block_entities"
+target = "myriade_engine::game::block_entity_ticks::Game<'_>::tick_block_entities"
 kind = "HEAD"
 helper = "src/mixins/entry.rs"
 bindings = [{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" }]
@@ -49,7 +49,7 @@ bindings = [{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" }]
 # function is copied for the slots' type, and this row is applied to that copy.
 [[native.mixin]]
 id = "inside"
-target = "horizon_client::game::block_entity_ticks::Game<'_>::tick_block_entities_with"
+target = "myriade_engine::game::block_entity_ticks::Game<'_>::tick_block_entities_with"
 kind = "MODIFY_EXPRESSION_VALUE"
 selector = "ticking(pos.0, pos.2)"
 require = 1

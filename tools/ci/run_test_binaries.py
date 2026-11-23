@@ -32,7 +32,7 @@ tests and the summed test seconds. (libtest's own `--ensure-time` was the altern
 the binary with libtest's words, not the instruction, and needs a threshold variable per kind of test target.)
 
 `--no-data-skips` (verify) fails the run when a test that ran prints the `skipped: no vanilla data; test=NAME` line of
-the shared helper (`crates/horizon-client/src/test_fixtures.rs`, `report_missing`): such a test returns early and is
+the shared helper (`crates/myriade-engine/src/test_fixtures.rs`, `report_missing`): such a test returns early and is
 counted as passed, though verify has no prepared resources. Every one is listed with its package and the fix. The
 daily run has the data, so those tests print nothing there and do not pass the flag.
 """

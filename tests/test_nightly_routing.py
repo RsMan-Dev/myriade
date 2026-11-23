@@ -17,7 +17,7 @@ class NightlyRoutingTests(unittest.TestCase):
             root = Path(folder)
             binary_dir = root / "target tree/release"
             binary_dir.mkdir(parents=True)
-            binary = binary_dir / "horizon-client"
+            binary = binary_dir / "myriade-engine"
             binary.write_text("#!/bin/sh\nprintf 'smoke ran'\n")
             binary.chmod(0o755)
             for directory in [str(binary_dir), str(binary_dir.relative_to(root))]:

@@ -125,7 +125,7 @@ TREE_LOOKUP_ERROR = 'error IllegalStateException net.minecraft.core.RegistryAcce
 def execute(name, cases, args, facts, origin_of=None):
     """Run both sides; return failing cases, counting mismatches and oracle errors."""
     lock, jars, libraries = base.verify_artifacts()
-    resources = lab.LOCAL / 'horizon-client' / lock['minecraft']['version']
+    resources = lab.LOCAL / 'myriade-engine' / lock['minecraft']['version']
     work = lab.LOCAL / name
     work.mkdir(parents=True, exist_ok=True)
     (work / 'cases.jsonl').write_text(''.join(json.dumps(case) + '\n' for case in cases))
@@ -214,7 +214,7 @@ def describe_case(case, facts):
 
 def load_facts():
     lock, _, _ = base.verify_artifacts()
-    return Facts(lab.LOCAL / 'horizon-client' / lock['minecraft']['version'])
+    return Facts(lab.LOCAL / 'myriade-engine' / lock['minecraft']['version'])
 
 
 def state_pool(facts, only):

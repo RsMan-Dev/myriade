@@ -6,7 +6,7 @@
 use super::*;
 use crate::{cow::*, goals::*, spots::{Pick, spotter}};
 use crate::targeting::Target;
-use horizon_client_lib::mobs::spawn_place::infested_host;
+use myriade_engine_lib::mobs::spawn_place::infested_host;
 use crate::rules::silverfish_merge::{asks_until_success, feet_cell, host_cells, infested, merge_pick, odds};
 
 #[derive(Clone, Copy, Debug)]

@@ -9,7 +9,7 @@ use crate::{
 };
 use crate::rules::lava::{at_surface, lifted};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::blocks::Fluid;
+use myriade_engine_lib::blocks::Fluid;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {}

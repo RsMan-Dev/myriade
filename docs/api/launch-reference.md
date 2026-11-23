@@ -1,7 +1,7 @@
-<!-- Generated from crates/horizon-client/src/game/runtime/launch_api.rs; a test fails when this file is out of date. Update it with: HORIZON_WRITE_DOCS=1 cargo test -p horizon-client --lib launch_api -->
+<!-- Generated from crates/myriade-engine/src/game/runtime/launch_api.rs; a test fails when this file is out of date. Update it with: HORIZON_WRITE_DOCS=1 cargo test -p myriade-engine --lib launch_api -->
 # Launch API reference
 
-What `horizon-client` promises a launcher that starts it, Launch API 0.1.1. The guide: [launch.md](launch.md); stability and versions: [stability.md](stability.md).
+What `myriade-engine` promises a launcher that starts it, Launch API 0.1.1. The guide: [launch.md](launch.md); stability and versions: [stability.md](stability.md).
 
 ## Options
 
@@ -10,7 +10,7 @@ Any other option is refused with exit code 2, so ask `--launch-api` before passi
 | Option | What it does |
 | --- | --- |
 | `--developer-single-player` | Restricts this run to account-free single-player: no session loading, external connections or LAN hosting. Not a sandbox for native mods. |
-| `--resources DIR` | The prepared resources (horizon-prepare's output). Default: `resources` beside the executable, else `.local/horizon-client/26.3`. |
+| `--resources DIR` | The prepared resources (horizon-prepare's output). Default: `resources` beside the executable, else `.local/myriade-engine/26.3`. |
 | `--game-dir DIR` | The game folder: `saves/`, `options.txt`, `resourcepacks/`, `horizon-mods/`, `screenshots/`. Created when missing. Default: the working directory. `--gameDir` is the same. |
 | `--home DIR` | Logs (`logs/latest.log`) and crash reports (`crash-reports/`). Default: `HORIZON_HOME`, else `horizon` in the platform data folder. |
 | `--player-dir DIR` | One player's own files, for several games playing in one game folder at the same time: `options.txt` and the settings beside it, `logs/`, `crash-reports/`, `horizon-player.txt`, `servers.dat`, `hotbar.nbt`, `screenshots/`. Saves, packs, mods and their config, the chat's command history and Play with Friends' relay settings stay in the game folder. A relative path is taken from the folder the game starts in. Created when missing. Default: the game folder, and `--home` for logs. `horizon-ctl logs` and the launcher read `--home`'s logs. |

@@ -14,7 +14,7 @@ Verified repository-relative owners:
 | --- | --- |
 | Existing API snapshot and nested Wire values | `crates/horizon-mod-vocab/src/world/snapshots.rs:104`, `:129`, `:140`, `:174`, `:187`, `:199` |
 | Condition/function catalog, authoritative server | `crates/horizon-mod-vocab/src/hooks/loot_condition.rs:9`, `loot_function.rs:10` |
-| Guarded conversion and dispatch, immutable context | `crates/horizon-client/src/game/modding/api_values/loot_values.rs:7`, `:24`, `:174` |
+| Guarded conversion and dispatch, immutable context | `crates/myriade-engine/src/game/modding/api_values/loot_values.rs:7`, `:24`, `:174` |
 | Engine callbacks and borrowed context | `crates/horizon-world/src/loot.rs:89`, `:103`, `:120`; forwarding `crates/horizon-world/src/native_load_hooks.rs:40`, `:51` |
 | World evaluator: custom condition, context capture, custom function | `crates/horizon-world/src/loot.rs:1583`, `:1613`, `:2107` |
 | Items evaluator: context capture, custom condition/function | `crates/horizon-items/src/items.rs:2049`, `:2234`, `:2627` |

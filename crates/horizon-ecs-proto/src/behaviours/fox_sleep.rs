@@ -11,7 +11,7 @@ use crate::{
     spots::{walk_target_value, WalkValue},
 };
 use crate::rules::fox_sleep::{alarm_height, alarm_range, countdown_wait, creature_alarm_reach, player_alarm_reach};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{Axis, Vec3};
 
 #[derive(Clone, Copy, Debug)]

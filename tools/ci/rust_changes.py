@@ -26,8 +26,8 @@ EMBEDDED = {
     "crates/horizon-mod-api-gen/coverage-notes.md": ("crates/horizon-mod-api-gen/src/wire/host.rs",),
     "docs/modpacks/atm10-mods.csv": ("crates/horizon-port-pack/src/classify.rs",),
     "docs/parity/random-chance-seeded.jsonl": (
-        "crates/horizon-client/src/advancements.rs",
-        "crates/horizon-client/src/game/interface/advancements/mod.rs",
+        "crates/myriade-engine/src/advancements.rs",
+        "crates/myriade-engine/src/game/interface/advancements/mod.rs",
     ),
 }
 
@@ -48,7 +48,7 @@ def needs_rust_alone(paths):
     ) for path in paths)
 
 
-# verify's second clippy, the server build (horizon-client without default features): what it checks differently from
+# verify's second clippy, the server build (myriade-engine without default features): what it checks differently from
 # the first is the feature-gated code of the client crates and the features the manifests choose. ci.yml does not read
 # the answer: verify-server runs on every pull request that changes Rust, because a crate below the client can break
 # the server build without touching either, and not in the merge queue.
@@ -56,7 +56,7 @@ SERVER_BUILD_CHECK = {".github/workflows/ci.yml", "tools/ci/rust_changes.py"}
 
 
 def needs_server_build(paths):
-    return any(path.startswith("crates/horizon-client") or path.endswith("Cargo.toml") or path in ROOT_RUST
+    return any(path.startswith("crates/myriade-engine") or path.endswith("Cargo.toml") or path in ROOT_RUST
                or path.startswith(".cargo/") or path in SERVER_BUILD_CHECK for path in paths)
 
 
@@ -80,10 +80,10 @@ def needs_tooling(changes):
 # the generator's crates, the check itself and the surface report beside it, and what decides the set of crates it walks
 # (manifests and the lockfile; the unknown-change stand-in is Cargo.lock). The generator also reads every `#[replaceable]` function in a lower crate, so a
 # changed Rust file under crates/ that mentions the attribute, before or after, counts too (mentions_replaceable).
-MOD_POINT_PREFIXES = ("crates/horizon-client/src/game/", "crates/horizon-mod-")
+MOD_POINT_PREFIXES = ("crates/myriade-engine/src/game/", "crates/horizon-mod-")
 # The network NBT's tag ids and limits are in the core hash every wasm mod is checked by; the other core inputs live in
 # crates/horizon-mod-*.
-MOD_POINT_FILES = {"crates/horizon-client/src/game.rs", "tools/check_mod_points_unchanged.py", "Cargo.lock",
+MOD_POINT_FILES = {"crates/myriade-engine/src/game.rs", "tools/check_mod_points_unchanged.py", "Cargo.lock",
                    ".github/workflows/ci.yml", "tools/ci/rust_changes.py", "tools/ci/surface_report.py",
                    "tools/ci/surface.toml", "crates/horizon-core/src/nbt.rs"}
 PATHS_PER_GREP = 200

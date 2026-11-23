@@ -360,18 +360,18 @@ def main():
     build.mkdir(parents=True, exist_ok=True)
     report = build / 'report.json'
     report.unlink(missing_ok=True)
-    oh.run_logged(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'horizon-client'], build,
+    oh.run_logged(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'myriade-engine'], build,
                   'compile-rust')
     metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'],
                                                   cwd=lab.ROOT, text=True))
-    binary = Path(metadata['target_directory']) / 'fast' / ('horizon-client.exe' if os.name == 'nt' else 'horizon-client')
+    binary = Path(metadata['target_directory']) / 'fast' / ('myriade-engine.exe' if os.name == 'nt' else 'myriade-engine')
     dependencies = os.pathsep.join(map(str, [jars['server'], *libraries]))
 
     services = Services()
     discovery = services.url + '/minecraft/client'
     vanilla = ['java', '-Xmx2g', '-Duser.timezone=UTC', f'-Dminecraft.api.discovery.host={discovery}',
                '-cp', dependencies, 'net.minecraft.server.Main', 'nogui']
-    horizon = [binary, '--resources', lab.LOCAL / 'horizon-client/26.3', '--dedicated', '--nogui']
+    horizon = [binary, '--resources', lab.LOCAL / 'myriade-engine/26.3', '--dedicated', '--nogui']
     checks, transcripts = [], {}
     try:
         for label, command in [('vanilla', vanilla), ('horizon', horizon)]:

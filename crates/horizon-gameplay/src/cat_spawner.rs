@@ -1,8 +1,8 @@
 //! `CatSpawner`: every 1200 ticks a cat may appear near a random player,
 //! in a village with enough occupied beds or inside a swamp hut.
 use crate::custom_spawner::{CustomSpawnerLevel, section, sections_to_village};
-use horizon_client::chunk_map::ChunkMap;
-use horizon_client::mobs::{Species, spawn_rules};
+use myriade_engine::chunk_map::ChunkMap;
+use myriade_engine::mobs::{Species, spawn_rules};
 use horizon_core::{geometry::Vec3, random::RandomSource};
 
 pub const TICK_DELAY: i32 = 1200;

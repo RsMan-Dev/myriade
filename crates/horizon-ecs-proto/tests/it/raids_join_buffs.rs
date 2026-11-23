@@ -1,7 +1,7 @@
 //! A raider that joins a raid in the world (loaded with a `RaidId`, or a patrol raider that walks into a raid) tells the host once, and the
 //! raid buffs of a wave are worn from the entity's own draw.
 use crate::common::*;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_core::nbt::{Compound, Tag};
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::host_out::HostEvent;
@@ -15,7 +15,7 @@ fn with_player(h: &mut EcsWorld) {
     h.set_player(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None });
 }
 
-fn world() -> (&'static horizon_client_lib::mobs::MobWorld<'static>, EcsWorld) {
+fn world() -> (&'static myriade_engine_lib::mobs::MobWorld<'static>, EcsWorld) {
     let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
     let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
     let h = EcsWorld::new(&HostSetup { seed: 7, dimension: "overworld", simulation_radius: 4 }, mw, types, &tags);

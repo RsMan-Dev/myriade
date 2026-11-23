@@ -1,7 +1,7 @@
 //! The ECS trial spawner (`spawn_trial`) on its own: the states, the omen, the reward ejection and the cooldown move as vanilla's
 //! `TrialSpawnerState` does (`tick_and_get_next`). No species passes `valid`, so no mob is born: the wave's numbers are the ones read.
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_ecs_proto::cow::{Clock, Herd, Level, Species};
 use horizon_ecs_proto::goals::{Events, Online, Player};
 use horizon_ecs_proto::spawn_spawner::ensure;

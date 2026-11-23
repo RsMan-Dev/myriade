@@ -78,8 +78,8 @@ fn the_occupancy_masks_equal_the_reference_in_cube_worlds_and_after_changes() {
                 let (new, old, kernel) = (run(world, c), run_reference(world, c), run_kernel(world, c));
                 assert!(same(&new, &old), "seed {seed} round {round}: {:?} {:?} step {} ground {}: masks {new:?} reference {old:?}", c.bounds, c.movement, c.step, c.on_ground);
                 assert!(same(&kernel, &old));
-                let scene = horizon_client_render::collisions::SceneCollisions { world: world.world, binding: world.collision, subject: None };
-                let mut scene2 = horizon_client_render::collisions::SceneCollisions { world: world.world, binding: world.collision, subject: None };
+                let scene = myriade_level::collisions::SceneCollisions { world: world.world, binding: world.collision, subject: None };
+                let mut scene2 = myriade_level::collisions::SceneCollisions { world: world.world, binding: world.collision, subject: None };
                 assert_eq!(occ.no_collision(scene, c.bounds), scene2.unobstructed(c.bounds).unwrap_or(false), "no_collision {:?}", c.bounds);
                 calls += 1;
             }
@@ -347,7 +347,7 @@ fn contextual_states_have_no_cached_shape() {
 
 /// Calls built on the hard cells of a world: boxes whose feet are at the heights that tell the contextual shapes apart (on the
 /// top of the block, a hair above or below, inside it), standing on it, falling onto it, walking against it.
-fn feet_calls(world: &horizon_client_lib::mobs::MobWorld<'_>, r: &mut Rng, half: i32) -> Vec<Call> {
+fn feet_calls(world: &myriade_engine_lib::mobs::MobWorld<'_>, r: &mut Rng, half: i32) -> Vec<Call> {
     use horizon_core::geometry::{Aabb, Vec3};
     let mut out = Vec::new();
     for x in -half..half {
@@ -419,8 +419,8 @@ fn hard_cells_agree_for_no_collision() {
         let occ = occupancy_of(world);
         for c in random_calls(seed, 6_000) {
             for sub in subs.iter().take(3) {
-                let scene = horizon_client_render::collisions::SceneCollisions { world: world.world, binding: world.collision, subject: *sub };
-                let mut scene2 = horizon_client_render::collisions::SceneCollisions { world: world.world, binding: world.collision, subject: *sub };
+                let scene = myriade_level::collisions::SceneCollisions { world: world.world, binding: world.collision, subject: *sub };
+                let mut scene2 = myriade_level::collisions::SceneCollisions { world: world.world, binding: world.collision, subject: *sub };
                 assert_eq!(occ.no_collision(scene, c.bounds), scene2.unobstructed(c.bounds).unwrap_or(false), "no_collision {:?} seed {seed} {only:?}", c.bounds);
             }
         }
@@ -471,7 +471,7 @@ fn a_column_offset_is_a_function_of_two_seed_nibbles() {
     use horizon_world::registry::BlockStateId;
     let mw = varied_world(1);
     let b = mw.collision;
-    let mut scene = horizon_client_render::collisions::SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
+    let mut scene = myriade_level::collisions::SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
     let mut checked = 0;
     for name in ["bamboo", "pointed_dripstone", "sulfur_spike"] {
         let Some(state) = (0..mw.registry.len() as u32).map(BlockStateId).find(|&id| mw.registry.state(id).unwrap().name == format!("minecraft:{name}") && b.cached_shapes().cached_shape(id).unwrap().is_none()) else { continue };
@@ -565,12 +565,12 @@ fn clear_and_threads_agree_with_the_reference() {
     assert!(before.iter().zip(&after).any(|(a, b)| !same(a, b)), "the changes must matter");
     std::thread::scope(|scope| {
         // The world is read only here (the masks are what is under test); it is not `Sync` for what the mobs hold in it, which these calls never touch.
-        let addr = world as *const horizon_client_lib::mobs::MobWorld<'_> as usize;
+        let addr = world as *const myriade_engine_lib::mobs::MobWorld<'_> as usize;
         for t in 0..4 {
             let (calls, after) = (&calls, &after);
             scope.spawn(move || {
                 // SAFETY: the world outlives the scope and nothing writes to it.
-                let world = unsafe { &*(addr as *const horizon_client_lib::mobs::MobWorld<'static>) };
+                let world = unsafe { &*(addr as *const myriade_engine_lib::mobs::MobWorld<'static>) };
                 for (i, c) in calls.iter().enumerate().skip(t).step_by(4) {
                     let got = run(world, c);
                     assert!(same(&got, &after[i]), "thread {t} call {i}: masks {got:?} reference {:?}", after[i]);

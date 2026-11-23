@@ -1,5 +1,5 @@
 //! The fox's shared state: the ticks of its crouch, the tick where its selector asks, the wait of a retry, and the path clear to a point.
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 /// Ticks of crouch after which `Fox.isFullyCrouched` holds: the amount goes up 0,2 a tick from 0 and stops at 5

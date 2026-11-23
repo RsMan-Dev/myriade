@@ -8,7 +8,7 @@ use crate::goals::{equipped, Slot};
 use crate::rules::{no_attrs, no_interact, params, Rule};
 use crate::spawn_reason::SpawnReason;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::random::RandomSource;
 
 /// The date of the host's day: `SpecialDates.isHalloween` (31 October). Absent: false.

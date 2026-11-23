@@ -1,5 +1,5 @@
 //! Behaviour tests over an in-memory level. They need the prepared client
-//! resources (`HORIZON_RESOURCES`, or `.local/horizon-client/<version>` at the
+//! resources (`HORIZON_RESOURCES`, or `.local/myriade-engine/<version>` at the
 //! repository root) and are skipped when those are absent.
 use super::*;
 use crate::chunk::BlockState;
@@ -21,7 +21,7 @@ pub(super) fn fixture() -> Option<&'static Fixture> {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| {
                     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                        .join("../../.local/horizon-client")
+                        .join("../../.local/myriade-engine")
                         .join(horizon_core::VANILLA_VERSION)
                 });
             if !root.join("block-behaviours.json").exists() {

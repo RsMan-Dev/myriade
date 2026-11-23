@@ -254,11 +254,11 @@ def main():
     oh.run_logged(['javac', '--release', lock['minecraft']['java_major'], '-proc:none', '-nowarn', '-sourcepath',
                    lab.ROOT / 'mods/horizon/src/test/java', '-cp', dependencies, '-d', classes, oracle],
                   build, 'compile-java')
-    oh.run_logged(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'horizon-client'], build,
+    oh.run_logged(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'myriade-engine'], build,
                   'compile-rust')
     metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'],
                                                   cwd=lab.ROOT, text=True))
-    binary = Path(metadata['target_directory']) / 'fast' / ('horizon-client.exe' if os.name == 'nt' else 'horizon-client')
+    binary = Path(metadata['target_directory']) / 'fast' / ('myriade-engine.exe' if os.name == 'nt' else 'myriade-engine')
     java = ['java', '-Xmx1g', '-Duser.timezone=UTC', '-cp', str(classes) + os.pathsep + dependencies,
             'dev.horizonlab.parity.SecureChatClient']
     oh.run_logged([*java, 'keys', build], build, 'keys')
@@ -268,7 +268,7 @@ def main():
     servers = {
         'vanilla': ['java', '-Xmx2g', '-Duser.timezone=UTC', f'-Dminecraft.api.discovery.host={discovery}',
                     '-cp', dependencies, 'net.minecraft.server.Main', 'nogui'],
-        'horizon': [binary, '--resources', lab.LOCAL / 'horizon-client/26.3', '--dedicated', '--nogui'],
+        'horizon': [binary, '--resources', lab.LOCAL / 'myriade-engine/26.3', '--dedicated', '--nogui'],
     }
 
     def client(port, scenario, out):

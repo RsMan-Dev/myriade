@@ -4,7 +4,7 @@
 //! that the entity has while it wears something that modifies an attribute. These modifiers are transient: they are not saved.
 use crate::attr_mod::Modifier;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 /// The modifiers `stack` grants in the slot of ordinal `slot` (`EquipmentSlot` order), as (attribute without `minecraft:`, modifier); the
 /// host has already kept the rows whose slot group matches.

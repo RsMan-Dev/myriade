@@ -148,8 +148,8 @@ def main():
         binary = args.binary.resolve(strict=True)
     else:
         subprocess.run(['cargo', 'build', '--locked', '--profile', 'fast', '-p', 'horizon-game',
-                        '--bin', 'horizon-client'], cwd=lab.ROOT, check=True)
-        binary = lab.cargo_target() / 'fast' / ('horizon-client.exe' if os.name == 'nt' else 'horizon-client')
+                        '--bin', 'myriade-engine'], cwd=lab.ROOT, check=True)
+        binary = lab.cargo_target() / 'fast' / ('myriade-engine.exe' if os.name == 'nt' else 'myriade-engine')
     lock, jars, libraries = base.verify_artifacts()
     classes, dependencies, _ = oracle_harness.compile_oracle(out, 'VanillaEntitySoundPacketOracle',
         jars, libraries, lock['minecraft']['java_major'])

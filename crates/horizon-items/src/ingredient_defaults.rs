@@ -50,7 +50,7 @@ impl Items {
         let registry = Arc::make_mut(&mut self.component_registry);
         registry.by_registry.insert(
             "minecraft:damage_type".into(),
-            horizon_client_core::registries::RegistryIds {
+            myriade_data::registries::RegistryIds {
                 ids,
                 tags: catalog.tags().map(str::to_owned).collect(),
             },
@@ -137,8 +137,8 @@ pub(super) fn component_registry(
     root: &Path,
     enchantments: &crate::enchant::Enchantments,
     entity_tags: &HashMap<String, HashSet<String>>,
-) -> Result<Arc<horizon_client_core::registries::Registries>> {
-    let mut registry = horizon_client_core::registries::Registries::default();
+) -> Result<Arc<myriade_data::registries::Registries>> {
+    let mut registry = myriade_data::registries::Registries::default();
     let path = root.join("command-registries.json");
     if path.exists() {
         registry.fill_from_export(&serde_json::from_slice(&fs::read(path)?)?);
@@ -192,7 +192,7 @@ pub(super) fn component_registry(
     registry.damage_types.clear();
     registry.by_registry.insert(
         "minecraft:damage_type".into(),
-        horizon_client_core::registries::RegistryIds::default(),
+        myriade_data::registries::RegistryIds::default(),
     );
     Ok(Arc::new(registry))
 }

@@ -1,6 +1,6 @@
 //! The numbers of an explosion: the exposure of a box to the centre, the share of the diameter, the push and the damage (`ServerExplosion`).
-use horizon_client_lib::arrows::clip_block_hit;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::arrows::clip_block_hit;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// `ServerExplosion.getSeenPercent` for a box: the share of the grid's rays to `center` that no block collider stops.

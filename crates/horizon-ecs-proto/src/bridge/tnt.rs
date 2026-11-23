@@ -8,7 +8,7 @@ use crate::projectile::Blast;
 use crate::targeting::Who;
 use crate::tnt::{self, Primed};
 use crate::tnt_tick::TntOut;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 impl EcsWorld {

@@ -3,8 +3,8 @@
 //! a tropical fish follows the first fish of its school (`TropicalFish.finalizeSpawn`).
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_ecs_proto::behaviours::follow_flock_leader::School;
 use horizon_ecs_proto::bridge::host::PlayerFact;
 use horizon_ecs_proto::bridge::players::set_player;

@@ -1,7 +1,7 @@
 id = "fnr_lower"
 name = "Function replacement check: a function below the game crate"
 version = "0.1.0"
-description = "fn-replace: HEAD on listed functions below the game crate (horizon-client-lib, horizon-mod-render), each copied into its own patch crate"
+description = "fn-replace: HEAD on listed functions below the game crate (myriade-engine-lib, horizon-mod-render), each copied into its own patch crate"
 authors = []
 api = "0.2"
 side = "both"
@@ -14,13 +14,13 @@ mixins = "MIXINS"
 
 [[native.mixin]]
 id = "commands"
-target = "horizon_client_lib::lan::hub::Hub::set_mod_commands"
+target = "myriade_engine_lib::lan::hub::Hub::set_mod_commands"
 kind = "HEAD"
 helper = "src/mixins/commands.rs"
 
 [[native.mixin]]
 id = "worldgen"
-target = "horizon_client_lib::vanillagen::shared_data_with"
+target = "myriade_engine_lib::vanillagen::shared_data_with"
 kind = "HEAD"
 helper = "src/mixins/worldgen.rs"
 

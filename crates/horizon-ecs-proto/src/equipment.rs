@@ -58,7 +58,7 @@ pub fn set_slot(w: &mut World, e: Entity, slot: Slot, item: u32) -> u32 {
         Slot::Saddle => 7,
     };
     if crate::equip_stack::get(w, e, ordinal).is_none() {
-        let bare = items::item_name(item).map(|n| horizon_client_lib::items::ItemStack::new(n, 1));
+        let bare = items::item_name(item).map(|n| myriade_engine_lib::items::ItemStack::new(n, 1));
         crate::equip_attrs::changed(w, e, ordinal, bare.as_ref());
     }
     w.resource_mut::<Events>().equipment_changed.push(e);

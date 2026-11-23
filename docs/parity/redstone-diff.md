@@ -12,7 +12,7 @@ python tools/redstone_diff.py --only soup-s1-7 --keep scratch/rd     # one machi
 python tools/redstone_diff.py --only soup-s1-7 --near 6 1 2 3        # narrow a difference down to a box (DX DY DZ R)
 ```
 
-Needs what `tools/perf_bench.py` needs: your own client jar, a built `horizon-client`,
+Needs what `tools/perf_bench.py` needs: your own client jar, a built `myriade-engine`,
 prepared resources. No server and no EULA: vanilla is the client, driven by the bench mod.
 
 ## How it works

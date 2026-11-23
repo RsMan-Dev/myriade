@@ -14,7 +14,7 @@ fn level() -> Level {
     build_level_with(0, |blocks, registry| {
         for cx in -2..2 {
             for cz in -2..2 {
-                blocks.chunks.insert((cx, cz), Arc::new(horizon_client_render::chunk::Chunk::empty(cx, cz)));
+                blocks.chunks.insert((cx, cz), Arc::new(myriade_level::chunk::Chunk::empty(cx, cz)));
             }
         }
         let stone = registry.default_state("minecraft:stone").unwrap();

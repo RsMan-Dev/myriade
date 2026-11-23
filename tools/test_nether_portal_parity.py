@@ -266,7 +266,7 @@ def main():
         args.count = 1500
     lock, jars, libraries = base.verify_artifacts()
     facts = h.load_facts()
-    resources = lab.LOCAL / 'horizon-client' / lock['minecraft']['version']
+    resources = lab.LOCAL / 'myriade-engine' / lock['minecraft']['version']
     work = lab.LOCAL / 'nether-portal-parity'
     work.mkdir(parents=True, exist_ok=True)
     all_cases = list(cases(facts, args.count, args.seed))

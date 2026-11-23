@@ -1,7 +1,7 @@
 //! The reads of an entity's body and identity by `Entity` (lot 40): each reads its component, and a sleeping entity reads as absent.
 use crate::common::*;
 use bevy_ecs::{entity_disabling::Disabled, prelude::*};
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup, HurtSource, PlayerFact, Select};
 use horizon_ecs_proto::bridge::select;

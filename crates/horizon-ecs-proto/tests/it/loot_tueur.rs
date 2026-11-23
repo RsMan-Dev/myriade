@@ -2,7 +2,7 @@
 //! `HORIZON_TEST_RESOURCES` set; the loot tests are written for a cow, the reinforcement test for a zombie (`HORIZON_SPECIES`).
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::random::LegacyRandom;
 use horizon_ecs_proto::bridge::players::set_player;
 use horizon_ecs_proto::bridge::host::PlayerFact;
@@ -66,7 +66,7 @@ fn mob_drops_off_leaves_neither_items_nor_experience() {
     let (items, orbs) = (0..10).map(|k| kill_cow(&mut h, 77 + k, None)).fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
     assert!(items > 0 && orbs > 0, "rule on: {items} items, {orbs} orbs");
     let mut level = *h.world.resource::<Level>();
-    let off: &'static horizon_client_lib::mobs::MobWorld<'static> = Box::leak(Box::new(horizon_client_lib::mobs::MobWorld { mob_drops: false, ..level.mw.0.clone() }));
+    let off: &'static myriade_engine_lib::mobs::MobWorld<'static> = Box::leak(Box::new(myriade_engine_lib::mobs::MobWorld { mob_drops: false, ..level.mw.0.clone() }));
     level.mw = Mw(off);
     *h.world.resource_mut::<Level>() = level;
     let (items, orbs) = (0..10).map(|k| kill_cow(&mut h, 77 + k, None)).fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));

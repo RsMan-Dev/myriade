@@ -1,6 +1,6 @@
 //! `/version`.
 use super::host::{CommandHost, R};
-use horizon_client::text::Text;
+use myriade_engine::text::Text;
 use horizon_core::version::{BUILD_TIME, DATA_VERSION, STABLE, VANILLA_VERSION, VERSION_ID};
 
 /// What `/version` needs from the game: whether its source is silent, and the chat.

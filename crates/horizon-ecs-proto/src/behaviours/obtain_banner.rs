@@ -118,7 +118,7 @@ pub fn take_banner(w: &mut World, e: Entity, it: Entity) -> bool {
 /// The head takes the ominous banner and its drop chance 2.0 (`Raid.setLeader`, `PatrollingMonster.finalizeSpawn`).
 pub fn wear_banner(w: &mut World, e: Entity) {
     use crate::equipment_drop::{index, DropChances, DEFAULT};
-    crate::equip_stack::set(w, e, HEAD, Some(horizon_client_lib::mobs::raider::ominous_banner()));
+    crate::equip_stack::set(w, e, HEAD, Some(myriade_engine_lib::mobs::raider::ominous_banner()));
     let mut chances = w.get::<DropChances>(e).copied().unwrap_or(DropChances([DEFAULT; 8]));
     chances.0[index(Slot::Head)] = 2.0;
     w.entity_mut(e).insert(chances);

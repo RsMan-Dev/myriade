@@ -1012,7 +1012,7 @@ mod tests {
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|| {
                     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                        .join("../../.local/horizon-client/26.3")
+                        .join("../../.local/myriade-engine/26.3")
                 });
             let read = |name: &str| -> Option<BTreeMap<String, String>> {
                 let text = std::fs::read_to_string(root.join("worldgen").join(name)).ok()?;

@@ -14,7 +14,7 @@ horizon-core = { path = "../../crates/horizon-core" }
 log = "0.4"
 
 [features]
-# The residency journal observation horizon-client-lib turns on for these same sources. The
+# The residency journal observation myriade-engine-lib turns on for these same sources. The
 # probe's tests reach it through `cfg(test)`; the name is declared so the plain build's
 # `unexpected_cfgs` check accepts it.
 test-residency-observer = []

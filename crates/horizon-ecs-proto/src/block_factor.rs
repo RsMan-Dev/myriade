@@ -1,7 +1,7 @@
 //! The speed and jump factors of the block an entity stands on (`Entity.getBlockSpeedFactor`, `Entity.getBlockJumpFactor`). The table is
 //! the level's movement properties (`MobWorld::movement`), read in place; the rule (the block at the feet, else the block below) is
 //! horizon-world's `movement_support`. The block factor parts of the host stay on its side. Pure reads: nothing is kept per entity.
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 use horizon_core::position::BlockPos;
 use horizon_world::movement_properties::MovementBlock;

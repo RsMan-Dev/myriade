@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The prepared output's version: what keeps `OUTPUT_VERSION` (crates/horizon-prepare/src/lib.rs) honest.
 
-The launcher copies a prepared version's resources (`.local/horizon-client/<version>`) to a newly installed
+The launcher copies a prepared version's resources (`.local/myriade-engine/<version>`) to a newly installed
 one when both pin the same Minecraft jars and their preparers declare the same `OUTPUT_VERSION`, so a release
 that changes the preparer's code without changing what it makes asks nobody to prepare again. The number is
 bumped by hand; this tool catches a change to the output without a bump.
@@ -11,7 +11,7 @@ It only grows: the last line is the current version, and a change to the output 
 
     python3 tools/prepare_output.py digest [RESOURCES]          the digest of a preparation
     python3 tools/prepare_output.py check [--base SHA] [--cache] [RESOURCES]
-        fails when RESOURCES (default: this checkout's .local/horizon-client/<version>, as CI prepares it) is
+        fails when RESOURCES (default: this checkout's .local/myriade-engine/<version>, as CI prepares it) is
         not what the last line says, or when the file changed other than by appending since SHA. --cache keeps
         the digest beside RESOURCES (CI: a preparation never changes once made; it takes ~30 s to compute)
 
@@ -44,7 +44,7 @@ STAMP = 'horizon-prepare.json'
 # The empty file a preparation locks while it writes (crates/horizon-prepare/src/lib.rs, LOCK).
 LOCK = '.horizon-prepare.lock'
 # Written into a preparation by something other than the preparer's export: the sounds and languages step
-# (crates/horizon-prepare/src/sounds.rs) and, at run time, the game's caches (horizon-client-render's sprite_cache.rs,
+# (crates/horizon-prepare/src/sounds.rs) and, at run time, the game's caches (myriade-level's sprite_cache.rs,
 # horizon-core's prepared_files.rs). Whether a harness ran the game before the check must not change the digest.
 DATA_FILE = 'horizon-data.bin'
 LAUNCHER_FILES = ('assets/minecraft/sounds.json', 'assets/pack.mcmeta', 'asset-index.json')
@@ -142,7 +142,7 @@ def problems(versions: list[tuple[int, str]], constant: int | None) -> list[str]
 
 def default_resources() -> Path:
     lock = json.loads((ROOT / 'research-lock.json').read_text())
-    return ROOT / '.local/horizon-client' / lock['minecraft']['version']
+    return ROOT / '.local/myriade-engine' / lock['minecraft']['version']
 
 
 def main() -> int:

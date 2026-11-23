@@ -1,8 +1,8 @@
 use crate::common::*;
-use horizon_client_lib::blocks::Fluid;
-use horizon_client_lib::mobs::data::PathComputationType;
-use horizon_client_lib::mobs::path::PathType;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::blocks::Fluid;
+use myriade_engine_lib::mobs::data::PathComputationType;
+use myriade_engine_lib::mobs::path::PathType;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_ecs_proto::pathsearch::{part_pathfindable, resolve_part_answers};
 use horizon_world::registry::BlockStateId;
 

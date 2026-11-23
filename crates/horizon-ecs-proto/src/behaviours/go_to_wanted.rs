@@ -6,7 +6,7 @@ use super::*;
 use crate::pocket::{self, Pocket};
 use crate::{cow::*, goals::*, item};
 use crate::rules::go_to_wanted::{MAX_PICK, WAKE_RANGE, in_wake_box, out_of_reach, search_area};
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {

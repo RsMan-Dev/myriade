@@ -14,15 +14,15 @@ Paths and lines refer to this checkout; these are inspected owners, not complete
 
 | Route | Current owner and required integration |
 | --- | --- |
-| Explicit full save | `crates/horizon-client/src/game.rs:14861` save_level captures full copies, calls the seam at :14888 and submits save_later; gate before capture and enqueue one worker callback per copy. |
-| Streaming unload | `crates/horizon-client/src/game.rs:16089` handles proto snapshots; :16101 handles full copies from unloaded chunks before save_later. Hold recovery data until acknowledged persistence. |
-| Late full generation | `crates/horizon-client/src/game.rs:14871` and :16080 call native_late_full_chunk_snapshot before save_finished. Use the same worker envelope, not a second hook. |
-| Closing world | `crates/horizon-client/src/game/world/saving.rs:176` and :193 call proto/full seams. Drain callback and disk acknowledgements before destroying worker runtime. |
-| Proto save, synchronous and asynchronous | `crates/horizon-client-render/src/streaming.rs:2534` prepares saves; :2578 finish_save selects synchronous save_protos or submit_protos; :1095 executes Job::Save. Both must pass the same callback boundary, including the synchronous route. |
-| Lower-level bypass | `crates/horizon-client-render/src/streaming.rs:2519` save and :1570 save_finished can bypass Game dispatch. Centralize dispatch in the persistence job owner so these cannot omit it; avoid duplicate callbacks from Game seams. |
-| Full/proto adapter | `crates/horizon-client/src/game/modding/native_chunk_save.rs:9,18,27` are server-thread preparation seams; :24 and :47 are empty. Retain capture authority here, replace empty dispatch with job preparation. |
-| Disk attachment encode/decode | `crates/horizon-client/src/save.rs:1623` writes attachment NBT; :1885 restores it. Load callback belongs after this decode, before publishing the loaded holder; save callback precedes this encode. |
-| Residency publication | `crates/horizon-client-render/src/streaming.rs:1530` installs loaded block entities. Require successful attachment load completion before any corresponding live publication. |
+| Explicit full save | `crates/myriade-engine/src/game.rs:14861` save_level captures full copies, calls the seam at :14888 and submits save_later; gate before capture and enqueue one worker callback per copy. |
+| Streaming unload | `crates/myriade-engine/src/game.rs:16089` handles proto snapshots; :16101 handles full copies from unloaded chunks before save_later. Hold recovery data until acknowledged persistence. |
+| Late full generation | `crates/myriade-engine/src/game.rs:14871` and :16080 call native_late_full_chunk_snapshot before save_finished. Use the same worker envelope, not a second hook. |
+| Closing world | `crates/myriade-engine/src/game/world/saving.rs:176` and :193 call proto/full seams. Drain callback and disk acknowledgements before destroying worker runtime. |
+| Proto save, synchronous and asynchronous | `crates/myriade-level/src/streaming.rs:2534` prepares saves; :2578 finish_save selects synchronous save_protos or submit_protos; :1095 executes Job::Save. Both must pass the same callback boundary, including the synchronous route. |
+| Lower-level bypass | `crates/myriade-level/src/streaming.rs:2519` save and :1570 save_finished can bypass Game dispatch. Centralize dispatch in the persistence job owner so these cannot omit it; avoid duplicate callbacks from Game seams. |
+| Full/proto adapter | `crates/myriade-engine/src/game/modding/native_chunk_save.rs:9,18,27` are server-thread preparation seams; :24 and :47 are empty. Retain capture authority here, replace empty dispatch with job preparation. |
+| Disk attachment encode/decode | `crates/myriade-engine/src/save.rs:1623` writes attachment NBT; :1885 restores it. Load callback belongs after this decode, before publishing the loaded holder; save callback precedes this encode. |
+| Residency publication | `crates/myriade-level/src/streaming.rs:1530` installs loaded block entities. Require successful attachment load completion before any corresponding live publication. |
 
 Forced saves, periodic saves, dimension transitions and shutdown must be traced to these owners during implementation; this audit does not claim their entire caller graphs are verified. Background job failure currently requires an explicit result/acknowledgement audit rather than assuming Done::Saved means durable success. Remote clients must never run authoritative disk hooks. Missing chunks and newly generated chunks with no decoded disk record do not fire load; proto-to-full promotion does not fire a second load.
 

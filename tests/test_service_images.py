@@ -109,7 +109,7 @@ class ServiceImageTests(unittest.TestCase):
         # The generator also reads the crate each hook target names, known only when it runs: no list of crates is
         # complete, so the image copies them all and Railway watches them all.
         named, dynamic = generator_reads()
-        self.assertIn("horizon-client", named)
+        self.assertIn("myriade-engine", named)
         self.assertTrue(dynamic, "the generator no longer reads crates named at run time: a list of crates may do")
         for service in SERVICES:
             crate = ROOT / "crates" / service
@@ -153,7 +153,7 @@ class ServiceImageTests(unittest.TestCase):
         # A Dockerfile that names its crates one by one copies only those.
         telemetry = ROOT / "crates" / "horizon-telemetry-server" / "Dockerfile"
         self.assertFalse(copies_every_crate(telemetry))
-        self.assertNotIn("horizon-client", copied_crates(telemetry))
+        self.assertNotIn("myriade-engine", copied_crates(telemetry))
 
 
 if __name__ == "__main__":

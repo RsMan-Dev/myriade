@@ -449,7 +449,7 @@ mod tests {
         let mut r = Report::new(
             Kind::Game,
             App {
-                name: "horizon-client".into(),
+                name: "myriade-engine".into(),
                 version: "0.1.0".into(),
                 ..App::default()
             },

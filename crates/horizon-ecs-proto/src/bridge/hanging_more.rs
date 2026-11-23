@@ -7,8 +7,8 @@ use crate::hanging::{self, Attached, Size};
 use crate::painting::{self, Motives};
 use crate::targeting::Who;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::MobWorld;
 
 impl EcsWorld {
     /// `ItemFrameItem.useOn`: a frame (glow or not) on `face` of the block `at`, placed by `who`; None when the wall does not hold.

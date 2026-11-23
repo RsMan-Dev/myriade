@@ -45,7 +45,7 @@ Usage: horizon-prepare [--prepare] [--server-jar PATH] [--minecraft-dir PATH] [-
                         after JAVA_HOME and the PATH, before the official launcher's runtimes
   --root PATH           The Horizon folder to prepare (default: the folder this program is
                         in, else the nearest folder above the current one with research-lock.json)
-  --output PATH         Where the resources go (default: <root>/.local/horizon-client/<version>);
+  --output PATH         Where the resources go (default: <root>/.local/myriade-engine/<version>);
                         the exporters' scratch files stay in <root>/.local
   --check               Exit 0 when the resources are complete and current for this preparer,
                         else 1: each gap on stdout with what it needs, or an error: line on
@@ -62,8 +62,8 @@ Usage: horizon-prepare [--prepare] [--server-jar PATH] [--minecraft-dir PATH] [-
 Needs Minecraft played once from the official launcher, and Java of the version
 research-lock.json pins. Releases use a runtime; development or changed exporters need a JDK.
 compile-exporters builds and validates a release bundle from the already imported pinned jars.
-The resources go to <root>/.local/horizon-client/<version>, or --output; pass that to
-horizon-client --resources. Exit codes: 0 done, 1 failed (or --check found gaps), 2 a refused
+The resources go to <root>/.local/myriade-engine/<version>, or --output; pass that to
+myriade-engine --resources. Exit codes: 0 done, 1 failed (or --check found gaps), 2 a refused
 command line (docs/api/launch.md).
 
 horizon-prepare panorama repairs the classic menu background in existing resources without Java.

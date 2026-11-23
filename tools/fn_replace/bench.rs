@@ -1,4 +1,4 @@
-//! fn-replace bench: one game point, `horizon_client::game::autosave_interval(rate: f32) -> i64`,
+//! fn-replace bench: one game point, `myriade_engine::game::autosave_interval(rate: f32) -> i64`,
 //! called from outside the prebuilt game, built with rustc against the SDK folder alone.
 //!
 //! usage: bench <mode> [millions of calls]
@@ -9,7 +9,7 @@
 //!   both     the patched copy, with the API listener around it
 extern crate horizon_game;
 extern crate mod_points;
-use horizon_client::game as g;
+use myriade_engine::game as g;
 use std::hint::black_box;
 use std::time::Instant;
 
@@ -47,7 +47,7 @@ fn main() {
         );
         mod_points::register(&double).unwrap();
         mod_points::__private::seal();
-        horizon_client::__fnr_arm();
+        myriade_engine::__fnr_arm();
     }
     let f: fn(f32) -> i64 = if mode == "plain" {
         plain

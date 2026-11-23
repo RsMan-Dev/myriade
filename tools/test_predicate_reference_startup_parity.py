@@ -236,7 +236,7 @@ def run(kind, case, parent, binary, timeout, reload=False):
     java = shutil.which('java')
     command = ([java, '-Xms256M', '-Xmx2G', '-jar', str(ROOT / '.local/minecraft/26.3/jars/server.jar'), '--nogui']
                if kind == 'java' else
-               [str(binary), '--resources', str(ROOT / '.local/horizon-client/26.3'), '--dedicated', '--nogui'])
+               [str(binary), '--resources', str(ROOT / '.local/myriade-engine/26.3'), '--dedicated', '--nogui'])
     env = lab.game_env(HORIZON_HOME=out / 'homes/horizon',
                        XDG_DATA_HOME=out / 'homes/xdg-data', XDG_CONFIG_HOME=out / 'homes/xdg-config')
     start = time.monotonic()

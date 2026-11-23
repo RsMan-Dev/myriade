@@ -1,0 +1,199 @@
+//! `ItemPickupParticle`: a taken item entity, experience orb, arrow or trident flies
+//! into whoever took it over three ticks (`ClientPacketListener.handleTakeItemEntity`
+//! adds one for every `ClientboundTakeItemEntityPacket`), drawn with the render
+//! state it had when it was taken (`extractEntity(from, 1.0F)`).
+use super::Game;
+use myriade_engine::projectiles::Projectile;
+
+/// `ItemPickupParticle.LIFE_TIME`.
+const LIFE_TIME: u32 = 3;
+
+/// The taken entity, as it was when taken.
+pub(in crate::game) enum Taken {
+    Arrow(Box<Projectile>),
+    Trident(Box<super::trident::ThrownTrident>),
+    /// An ECS item or orb taken (`kind` "item" or "orb"): its network id, its count and its position, read before it left the level.
+    Ecs { id: u32, count: i32, at: [f64; 3], kind: &'static str },
+}
+impl Taken {
+    /// The render state's position: the entity's at partial tick 1.
+    fn position(&self) -> [f64; 3] {
+        let p = match self {
+            Taken::Arrow(a) => a.position,
+            Taken::Trident(t) => t.position,
+            Taken::Ecs { at, .. } => return *at,
+        };
+        [p.x, p.y, p.z]
+    }
+    /// `ClientboundTakeItemEntityPacket`'s taken entity.
+    fn entity_id(&self) -> u32 {
+        match self {
+            Taken::Arrow(a) => a.id,
+            Taken::Trident(t) => t.id,
+            Taken::Ecs { id, .. } => *id,
+        }
+    }
+    /// The packet's amount: the stack's size, or one of the others.
+    fn amount(&self) -> i32 {
+        match self {
+            Taken::Ecs { count, .. } => *count,
+            Taken::Arrow(_) | Taken::Trident(_) => 1,
+        }
+    }
+}
+
+/// Whoever took it: the particle's `target`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::game) enum Collector {
+    Player,
+    /// A mob, or another player on a server (both kept as mobs here), by its ECS id.
+    Mob(u32),
+    /// A mob that lives in the ECS, by its network id.
+    Ecs(u32),
+}
+
+pub(super) struct Pickup {
+    pub taken: Taken,
+    collector: Collector,
+    life: u32,
+    target: [f64; 3],
+    target_old: [f64; 3],
+}
+
+/// `ParticleEngine`'s ITEM_PICKUP group and the particles waiting to join it.
+#[derive(Default)]
+pub(super) struct Pickups {
+    pub live: Vec<Pickup>,
+    added: Vec<Pickup>,
+    /// The particles made so far, by kind of taken entity (for the control socket).
+    made: std::collections::BTreeMap<&'static str, u64>,
+}
+impl Pickups {
+    pub fn clear(&mut self) {
+        self.live.clear();
+        self.added.clear();
+    }
+    pub fn made(&self) -> &std::collections::BTreeMap<&'static str, u64> {
+        &self.made
+    }
+}
+
+/// `ItemPickupParticleGroup.ParticleInstance.fromParticle`: the position at
+/// `partial`, from the taken entity's to the collector's (lerped between ticks)
+/// along the square of the particle's age.
+pub(super) fn position(p: &Pickup, partial: f64) -> [f64; 3] {
+    let time = (p.life as f32 + partial as f32) / LIFE_TIME as f32;
+    let time = f64::from(time * time);
+    let from = p.taken.position();
+    std::array::from_fn(|i| {
+        let target = p.target_old[i] + partial * (p.target[i] - p.target_old[i]);
+        from[i] + time * (target - from[i])
+    })
+}
+
+impl Game<'_> {
+    /// `ItemPickupParticle.updatePosition`: the collector's x and z, halfway up to its eyes.
+    fn collector_target(&self, collector: Collector) -> Option<[f64; 3]> {
+        let (p, eye) = match collector {
+            Collector::Player => {
+                let p = self.player.as_ref()?;
+                (p.position, f64::from(p.dimensions.eye_height))
+            }
+            // The ECS holds the mob: its position, and its eye height from P's fluid parameters.
+            Collector::Mob(id) | Collector::Ecs(id) => {
+                let e = self.ecs.entity_of(id)?;
+                let p = self.ecs.position(id)?;
+                let eye = self.ecs.world()?.get::<horizon_ecs_proto::cow::FluidParams>(e)?.eye_height;
+                (horizon_core::geometry::Vec3::new(p[0], p[1], p[2]), eye)
+            }
+        };
+        Some([p.x, (p.y + (p.y + eye)) / 2.0, p.z])
+    }
+    /// `handleTakeItemEntity`: `particleEngine.add(new ItemPickupParticle(...))` when the
+    /// collector is known; it joins the group at the end of the next particle tick.
+    pub(in crate::game) fn add_pickup(&mut self, taken: Taken, collector: Collector) {
+        // The clients add the particle from ClientboundTakeItemEntityPacket;
+        // the server's own is never drawn, so a mob's take has to be sent (#12493).
+        if let (Collector::Mob(id), Some(host)) = (collector, &self.lan) {
+            host.hub.take_item(
+                taken.entity_id() as i32,
+                id as i32,
+                taken.amount(),
+                taken.position(),
+            );
+        }
+        if let Some(target) = self.collector_target(collector) {
+            self.add_pickup_toward(taken, collector, target);
+        }
+    }
+    /// [`Self::add_pickup`] with the collector's first target given.
+    pub(super) fn add_pickup_toward(
+        &mut self,
+        taken: Taken,
+        collector: Collector,
+        target: [f64; 3],
+    ) {
+        let kind = match taken {
+            Taken::Arrow(_) => "arrow",
+            Taken::Trident(_) => "trident",
+            Taken::Ecs { kind, .. } => kind,
+        };
+        *self.pickups.made.entry(kind).or_default() += 1;
+        self.pickups.added.push(Pickup {
+            taken,
+            collector,
+            life: 0,
+            target,
+            target_old: target,
+        });
+    }
+    /// `ParticleEngine.tick` for the ITEM_PICKUP group: age (removed at
+    /// `LIFE_TIME`), follow the collector, then let the new particles in.
+    pub(super) fn tick_pickups(&mut self) {
+        let mut live = std::mem::take(&mut self.pickups.live);
+        live.retain_mut(|p| {
+            p.life += 1;
+            if p.life == LIFE_TIME {
+                return false;
+            }
+            p.target_old = p.target;
+            if let Some(t) = self.collector_target(p.collector) {
+                p.target = t;
+            }
+            true
+        });
+        live.append(&mut self.pickups.added);
+        self.pickups.live = live;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flies_along_the_square_of_its_age_to_the_moving_target() {
+        let mut p = Pickup {
+            taken: Taken::Ecs { id: 0, count: 1, at: [0.0, 64.0, 0.0], kind: "orb" },
+            collector: Collector::Player,
+            life: 0,
+            target: [3.0, 65.0, 0.0],
+            target_old: [3.0, 65.0, 0.0],
+        };
+        // Added this tick: still at the orb.
+        assert_eq!(position(&p, 0.0), [0.0, 64.0, 0.0]);
+        // Halfway through the first tick: (0.5 / 3)^2 of the way.
+        let t = (0.5f32 / 3.0) * (0.5 / 3.0);
+        let mid = position(&p, 0.5);
+        assert!((mid[0] - 3.0 * f64::from(t)).abs() < 1e-9, "{mid:?}");
+        // Last tick before removal, the target moved: lerped between its ticks.
+        p.life = 2;
+        p.target_old = [3.0, 65.0, 0.0];
+        p.target = [4.0, 65.0, 0.0];
+        let end = position(&p, 1.0);
+        assert!(
+            (end[0] - 4.0).abs() < 1e-9 && (end[1] - 65.0).abs() < 1e-9,
+            "{end:?}"
+        );
+    }
+}

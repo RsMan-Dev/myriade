@@ -9,7 +9,7 @@ STRANDS = ["loading", "host", "slots", "attachments", "content_render", "hooks"]
 # How each strand is resolved (arismoko/horizon#2534): phases 2 and 4 are dropped (owner, 2026-11-10); phase 6 is not built.
 LABEL = {"loading": "phase 1", "host": "stays in the engine", "slots": "phase 3",
          "attachments": "stays in the engine", "content_render": "phase 5", "hooks": "phase 6, not built"}
-HOST_AREAS = ("crates/horizon-client/src/game/modding/", "crates/horizon-client/src/game/native_hooks/")
+HOST_AREAS = ("crates/myriade-engine/src/game/modding/", "crates/myriade-engine/src/game/native_hooks/")
 # What a hook-firing engine file needs of mod_api, from least to most.
 DISPATCH = re.compile(r"^mod_api::(HookId|Flow|Hooks|__subscriptions|InteractionResult|\w+(Event|Call|Result)"
                       r"|__private::(listened|has_\w+_hook|built|enter|\w+Call))(::|$)")
@@ -20,14 +20,14 @@ MORE = re.compile(r"^mod_api::(\w*Host|HostSide|Backend\w*|RegistrationContext|R
 
 
 def area(path):
-    m = re.match(r"crates/horizon-client/src/game/(\w+)/", path)
+    m = re.match(r"crates/myriade-engine/src/game/(\w+)/", path)
     if m:
         return f"game/{m.group(1)}"
-    if path == "crates/horizon-client/src/game.rs":
+    if path == "crates/myriade-engine/src/game.rs":
         return "game.rs"
-    if path.startswith("crates/horizon-client/src/game/"):
+    if path.startswith("crates/myriade-engine/src/game/"):
         return "game"
-    if path.startswith("crates/horizon-client/"):
+    if path.startswith("crates/myriade-engine/"):
         return "client (non-game)"
     return path.split("/")[1]
 
@@ -63,7 +63,7 @@ def render(result):
         row[2 if e["test"] else 1] += 1
     out.append(table(["engine crate", "mod crate", "files", "prod refs", "test refs"],
                      [(c, m, len(v[0]), v[1], v[2]) for (c, m), v in sorted(by.items())]))
-    out.append("\n### By area (horizon-client game areas, other crates whole)\n")
+    out.append("\n### By area (myriade-engine game areas, other crates whole)\n")
     by = defaultdict(lambda: [set(), 0, 0])
     for e in edges:
         row = by[area(e["file"])]
@@ -108,7 +108,7 @@ def render(result):
     out.append(f"\nOutside the host areas, {test_only['test code']} `mod_api` references are in test code; "
                f"{test_only['testing items']} of them name `testing`, `part_tests` or `with_test_packages`.")
     out.append("\n### The host areas by strand (files under game/modding/ and game/native_hooks/)\n")
-    out.append("`inherent impls`: `impl Game`/`impl GameLevel` blocks, which can't leave horizon-client as they "
+    out.append("`inherent impls`: `impl Game`/`impl GameLevel` blocks, which can't leave myriade-engine as they "
                "are. `foreign trait impls`: impls of a mod crate's trait, which horizon-game may not write for "
                "an engine type (orphan rule). `to make public`: distinct engine-private functions, `Game` fields "
                "and `game` items the files use (textual estimate). `inbound`: engine references into them.\n")

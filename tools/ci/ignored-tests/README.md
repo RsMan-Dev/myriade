@@ -67,7 +67,7 @@ adapter-gated GPU cases. Ordinary `needs HORIZON_TEST_RESOURCES`/`HORIZON_RESOUR
 as external-fixture exceptions. The fishing RNG step specifically needs the independent oracle supplied by
 `tools/test_fishing_rng_parity.py`, not just prepared resources; every parity assertion stays in that harness step.
 
-One preserved source copy, `crates/horizon-client/src/mobs/living_tests.rs`, is not declared or included by any
+One preserved source copy, `crates/myriade-engine/src/mobs/living_tests.rs`, is not declared or included by any
 Cargo target. Its `living_jump_power_respects_honey_block_and_jump_boost` attribute retains the exact reason
 `requires prepared vanilla resources; run explicitly with --ignored`. It has no logical libtest identity while
 uncompiled; no prefix exemption is granted. If a target declares it later, its descriptive reason fails the guard
@@ -78,7 +78,7 @@ until it is explicitly scheduled. No tests or assertions are removed from this s
 such as `ci.yml`) and the note says why (a benchmark, a fixture writer, a real GPU, the OS keychain, ...). The shards
 skip it. Do not name an excluded fork workflow as an owner or substitute a workflow that does not run the test.
 
-A rowless `#[ignore]` in a target a package's shard builds (`horizon-client`'s targets, the other shard packages'
+A rowless `#[ignore]` in a target a package's shard builds (`myriade-engine`'s targets, the other shard packages'
 libraries) still runs every day with `--include-ignored` and must pass, so it needs no row. Anywhere else it would run
 nowhere, so verify-tree fails it until it has a row: `daily` to run it in the daily run, or `manual` to say who does.
 

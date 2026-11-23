@@ -1,7 +1,7 @@
 //! The scoreboard's teams as alliances (greffe lot 38): a member of a team is allied to the others, a creature does not pick a team
 //! mate as its target, and leaving the team ends the alliance. The refusal follows the Mob's `p.allies.contains` (`goals.rs:955`).
 use crate::common::*;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup, PlayerFact};
 use horizon_ecs_proto::bridge::teams::{allied, clear_team, set_team};
 use horizon_ecs_proto::goals::Player;

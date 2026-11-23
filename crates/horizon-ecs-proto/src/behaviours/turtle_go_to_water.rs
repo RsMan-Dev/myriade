@@ -7,7 +7,7 @@ use crate::move_to_block::MoveToBlock;
 use crate::rules::teleport_on::cell_of;
 use crate::rules::turtle_go_to_water::{reduced, search_wait};
 use crate::{cow::*, goals::*};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {

@@ -2,7 +2,7 @@
 //! drops, map markers). Not in `host_out.rs`: at fusion this enum becomes `HostEvent::Frame(FrameEvent)`, and `HostOut::frame` pushes
 //! it. Each event carries `who` (the player, None when there is none) and the `Spot` of the hanging entity.
 use crate::targeting::Who;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 /// Where a hanging entity is: its air cell, the face it hangs on, and whether it is a glow frame.
 #[derive(Clone, Copy, Debug, PartialEq)]

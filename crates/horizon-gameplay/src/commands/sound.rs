@@ -1,8 +1,8 @@
 //! `/playsound` and `/stopsound`.
 use super::entity::{EntityHost, EntityRef, holder, num};
 use super::host::R;
-use horizon_client_core::sound_source::SOUND_SOURCES;
-use horizon_client::{
+use myriade_data::sound_source::SOUND_SOURCES;
+use myriade_engine::{
     command::{Arg, Context},
     scoreboard_cmd::Tracker,
     text::Text,

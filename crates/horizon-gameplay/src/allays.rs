@@ -1,7 +1,7 @@
 //! Allays on the server side: spotting and picking up matching drops, and
 //! throwing their load to the liked player or note block (`AllayAi`).
 use crate::mob_level::MobLevel;
-use horizon_client::{
+use myriade_engine::{
     items::ItemStack,
     mobs::{Species, allay},
 };

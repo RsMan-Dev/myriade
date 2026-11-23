@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 # A quoted repository path, not part of an f-string placeholder or a longer name.
 REPO_PATH = re.compile(r"""(?<![{\w])['"]((?:crates|mods|tools)/[\w./-]+\.(?:rs|java|py|toml))['"]""")
-CLIENT_BUILD = re.compile(r"""\[[^\[\]]*?['"]--bin['"]\s*,\s*['"]horizon-client['"][^\[\]]*?\]""")
+CLIENT_BUILD = re.compile(r"""\[[^\[\]]*?['"]--bin['"]\s*,\s*['"]myriade-engine['"][^\[\]]*?\]""")
 PACKAGE = re.compile(r"""['"]-p['"]\s*,\s*['"]([\w-]+)['"]""")
 
 

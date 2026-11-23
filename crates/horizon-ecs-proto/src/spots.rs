@@ -8,7 +8,7 @@ use crate::IFloor as _;
 use crate::cow::{Level, NavParams, Rng};
 use crate::rules::spots::outside_home;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 /// `PathfinderMob.getWalkTargetValue`: what the species prefers to walk to (data of the species, set at spawn).
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,14 +50,14 @@ pub fn walk_target_value(mw: &MobWorld, wv: WalkValue, p: [i32; 3]) -> f32 {
             }
         }
         WalkValue::Turtle => {
-            if mw.fluid(p[0], p[1], p[2]) == horizon_client_lib::blocks::Fluid::Water || mw.has_tag("minecraft:sand", mw.block_name(p[0], p[1] - 1, p[2])) {
+            if mw.fluid(p[0], p[1], p[2]) == myriade_engine_lib::blocks::Fluid::Water || mw.has_tag("minecraft:sand", mw.block_name(p[0], p[1] - 1, p[2])) {
                 10.0
             } else {
                 light()
             }
         }
         WalkValue::Guardian => {
-            if mw.fluid(p[0], p[1], p[2]) == horizon_client_lib::blocks::Fluid::Water {
+            if mw.fluid(p[0], p[1], p[2]) == myriade_engine_lib::blocks::Fluid::Water {
                 10.0 + light()
             } else {
                 -light()
@@ -88,14 +88,14 @@ pub fn walk_target_value(mw: &MobWorld, wv: WalkValue, p: [i32; 3]) -> f32 {
             }
         }
         WalkValue::Strider => {
-            if mw.fluid(p[0], p[1], p[2]) == horizon_client_lib::blocks::Fluid::Lava {
+            if mw.fluid(p[0], p[1], p[2]) == myriade_engine_lib::blocks::Fluid::Lava {
                 10.0
             } else {
                 0.0
             }
         }
         WalkValue::Silverfish => {
-            if horizon_client_lib::mobs::hostile::is_infested_host(mw.block_name(p[0], p[1] - 1, p[2])) {
+            if myriade_engine_lib::mobs::hostile::is_infested_host(mw.block_name(p[0], p[1] - 1, p[2])) {
                 10.0
             } else {
                 -light()
@@ -231,7 +231,7 @@ impl Spotter<'_> {
                 p[1] += 1;
             }
         }
-        let water = mw.fluid(p[0], p[1], p[2]) == horizon_client_lib::blocks::Fluid::Water;
+        let water = mw.fluid(p[0], p[1], p[2]) == myriade_engine_lib::blocks::Fluid::Water;
         (!water && self.malus_is_zero(p)).then_some(p)
     }
     fn candidate(&mut self, pick: Pick) -> Option<[i32; 3]> {
@@ -275,7 +275,7 @@ impl Spotter<'_> {
         // Not solid: the spot stays in the air (`moveUpToAboveSolid` returns it as is), as vanilla's `HoverRandomPos` keeps it.
         let above = self.rng.next_int(3) + 1;
         let p = self.move_up_to_above_solid(p, above);
-        let water = mw.fluid(p[0], p[1], p[2]) == horizon_client_lib::blocks::Fluid::Water;
+        let water = mw.fluid(p[0], p[1], p[2]) == myriade_engine_lib::blocks::Fluid::Water;
         (!water && self.malus_is_zero(p)).then_some(p)
     }
     fn move_up_to_above_solid(&self, mut p: [i32; 3], above: i32) -> [i32; 3] {
@@ -366,7 +366,7 @@ impl Spotter<'_> {
                 let (xd, zd) = (to[0] - self.pos[0], to[2] - self.pos[2]);
                 self.best_of_ten(|s| {
                     let p = s.air_and_water_p(h, v, fly, xd, zd, max_rad)?;
-                    (s.mw.fluid(p[0], p[1], p[2]) != horizon_client_lib::blocks::Fluid::Water).then_some(p)
+                    (s.mw.fluid(p[0], p[1], p[2]) != myriade_engine_lib::blocks::Fluid::Water).then_some(p)
                 })
             }
             other => self.best_of_ten(|s| s.candidate(other)),

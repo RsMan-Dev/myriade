@@ -2,8 +2,8 @@
 //! (`blocks`), item stacks and definitions (`items`), their data components
 //! (`item_data`), mining speed (`mining`), enchantments, cooldowns, bundles and
 //! item stacks in NBT.
-//! horizon-client re-exports each module under its old path
-//! (`horizon_client::items`, ...).
+//! myriade-engine re-exports each module under its old path
+//! (`myriade_engine::items`, ...).
 #![forbid(unsafe_code)]
 pub mod banner_layer;
 pub mod blocks;
@@ -33,4 +33,4 @@ pub mod random_sequences;
 pub mod recipe_filters;
 pub mod recipe_sources;
 pub mod use_animation;
-pub use horizon_client_core::Result;
+pub use myriade_data::Result;

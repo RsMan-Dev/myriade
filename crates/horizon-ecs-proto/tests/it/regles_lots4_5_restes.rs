@@ -4,7 +4,7 @@
 //! viennent du jar 26.3 (`javap`) ou des tests d'origine.
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_ecs_proto::behaviours::act_phase::ActPhase;
 use horizon_ecs_proto::behaviours::breed::{self, Love};
 use horizon_ecs_proto::behaviours::sit_when_ordered::{self, SitPose};

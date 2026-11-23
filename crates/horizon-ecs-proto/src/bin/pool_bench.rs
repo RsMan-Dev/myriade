@@ -1,7 +1,7 @@
 //! `pool-bench [N [ROUNDS]]`, `HORIZON_TEST_RESOURCES` set: the cost of one collision call (`Occupancy::resolve`, what `do_move` calls)
 //! for N walkers PACKED into one or a few sections (spacing 0.5 to 1 block) against N walkers SPREAD one per section (16.5 blocks), and
 //! how many calls of one tick ask for the same neighbourhood of cells (the swept box and its ring, in whole cells).
-use horizon_client_render::collisions::SceneCollisions;
+use myriade_level::collisions::SceneCollisions;
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_ecs_proto::instr::Counter;
 use std::collections::HashSet;

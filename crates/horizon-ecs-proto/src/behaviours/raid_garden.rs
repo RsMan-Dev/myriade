@@ -5,7 +5,7 @@
 //! that wants `!can_raid`, so the goal ends at its first check. The jump of the rabbit is not ported (`MoveKind::Custom`).
 use super::*;
 use crate::{cow::*, goals::*, move_to_block::MoveToBlock};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use crate::rules::cat_state::reduced;
 use crate::rules::raid_garden::{asks_ticks, ripe_carrot};
 

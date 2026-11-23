@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tame wolves left behind by their owner on a dedicated server, against vanilla's, seen by a vanilla client.
 
-A vanilla dedicated server and Horizon's (`horizon-client --dedicated --nogui`) each serve a copy of one flat world
+A vanilla dedicated server and Horizon's (`myriade-engine --dedicated --nogui`) each serve a copy of one flat world
 vanilla generated first, with Alice an operator. Three standing wolves she owns wait near her: one free, one on a lead
 held by a pig that never moves (NoAI), one sitting in a boat. She then teleports 40 blocks away.
 `TamableAnimal.shouldTryTeleportToOwner` (12 blocks or more) sends a pet to its owner unless `unableToMoveToOwner`:

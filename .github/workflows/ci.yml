@@ -280,7 +280,7 @@ jobs:
         if: startsWith(runner.name, 'blacksmith-')
         run: tools/ci/build_folder.sh ~/horizon-target
       - name: Lint the server build
-        run: cargo +stable clippy -p horizon-client --lib --bins --locked --no-default-features -- -D warnings
+        run: cargo +stable clippy -p myriade-engine --lib --bins --locked --no-default-features -- -D warnings
       - name: Load probe
         if: always()
         continue-on-error: true
@@ -536,7 +536,7 @@ jobs:
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
         run: |
           changed=$(git diff --name-only "$(git merge-base "$BASE_SHA" HEAD)" HEAD)
-          harness=$(grep -E '^(tools/test_[a-z0-9_]+_parity\.py|tools/(parity[a-z_]*|lab)\.py|tools/parity_hosts\.json|mods/horizon/src/test/|crates/[^/]+/examples/|crates/horizon-client/src/game/[a-z_]*(fixture|harness)\.rs|\.github/workflows/parity[a-z-]*\.yml)' <<< "$changed" || true)
+          harness=$(grep -E '^(tools/test_[a-z0-9_]+_parity\.py|tools/(parity[a-z_]*|lab)\.py|tools/parity_hosts\.json|mods/horizon/src/test/|crates/[^/]+/examples/|crates/myriade-engine/src/game/[a-z_]*(fixture|harness)\.rs|\.github/workflows/parity[a-z-]*\.yml)' <<< "$changed" || true)
           if [ -n "$harness" ] || [[ " $LABELS " == *" run-parity "* ]] || [[ " $LABELS " == *" frame-identity "* ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "The pull request runs its harnesses: ${harness:-label run-parity}"

@@ -62,15 +62,15 @@ fn expand_items(
                 continue;
             }
             let generated = if tokens.contains("game_modules.rs")
-                && path.ends_with("crates/horizon-client/src/game.rs")
+                && path.ends_with("crates/myriade-engine/src/game.rs")
             {
                 Some(horizon_game_discovery::declarations(
-                    &root.join("crates/horizon-client/src/game"),
+                    &root.join("crates/myriade-engine/src/game"),
                     &["native_hooks", "host", "creatures", "ecs"],
                 )?)
             } else if tokens.contains("builtin_ingredient_test_modules.rs") {
                 Some(horizon_game_discovery::folder_modules(&root.join(
-                    "crates/horizon-client/src/crafting/ingredient/builtin_kinds_tests/families",
+                    "crates/myriade-engine/src/crafting/ingredient/builtin_kinds_tests/families",
                 ))?)
             } else if tokens.contains("native_hook_modules.rs") {
                 Some(horizon_game_discovery::native_hook_modules(root)?)

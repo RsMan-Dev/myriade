@@ -4,11 +4,11 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "The dedicated server executable (`horizon-client`): the engine's entry with the platform's parts registered"
+description = "The dedicated server executable (`myriade-engine`): the engine's entry with the platform's parts registered"
 
 [dependencies]
 horizon-guest-stack = { path = "../horizon-guest-stack" }
-horizon-client = { path = "../horizon-client", default-features = false }
+myriade-engine = { path = "../myriade-engine", default-features = false }
 
 
 libloading = "0.8"
@@ -22,18 +22,18 @@ workspace = true
 # The binary holds no tests (the library does): `cargo test` builds no empty test harness for it, which linked the
 # whole crate again. It still builds for integration tests (CARGO_BIN_EXE_*) and clippy --all-targets.
 [[bin]]
-name = "horizon-client"
+name = "myriade-engine"
 path = "src/main.rs"
 test = false
 
 [features]
-# horizon-client/client-lib-default: one build of the server whether or not horizon-client-lib is also named.
-default = ["horizon-client/client-lib-default"]
-testing = ["horizon-client/testing"]
-rng-trace = ["horizon-client/rng-trace"]
-system-allocator = ["horizon-client/system-allocator"]
-alloc-census = ["horizon-client/alloc-census"]
-alloc-count = ["horizon-client/alloc-count"]
+# myriade-engine/engine-lib-default: one build of the server whether or not myriade-engine-lib is also named.
+default = ["myriade-engine/engine-lib-default"]
+testing = ["myriade-engine/testing"]
+rng-trace = ["myriade-engine/rng-trace"]
+system-allocator = ["myriade-engine/system-allocator"]
+alloc-census = ["myriade-engine/alloc-census"]
+alloc-count = ["myriade-engine/alloc-count"]
 
 [dev-dependencies]
 horizon-protocol = { path = "../horizon-protocol" }

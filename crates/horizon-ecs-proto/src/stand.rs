@@ -6,7 +6,7 @@ use crate::cow::*;
 pub use crate::rules::stand::clicked_slot;
 use crate::rules::stand::blow_breaks;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 
 pub const SMALL: u8 = 1;

@@ -57,9 +57,9 @@ owners, not proof that proposed dispatch already exists.
 | Route | Current owner | Required integration |
 | --- | --- | --- |
 | Item declaration and humanoid pose | `crates/horizon-mod-vocab/src/content/content_declarations.rs:228`; `crates/horizon-mod-vocab/src/hooks/get_arm_pose.rs:23` | Reuse one resolved pose path for player and humanoid consumers. |
-| Block particle sprite and destroy particles | `crates/horizon-client/src/game/blocks/block_particles.rs:47`, `:83` | Resolve block extension through the existing particle owner; hit route still needs caller audit. |
-| Fluid box drawing and appearance lookup | `crates/horizon-client/src/game/modding/native_fluid_render.rs:15`, `:40` | Reuse appearance; this box route alone does not establish terrain/camera coverage. |
-| Mob/player geometry and layers | `crates/horizon-client/src/game/modding/native_mob_draw.rs:57`, `:74`, `:97`, `:119` | Preserve existing entity submission; non-mob families require arismoko/horizon#896/#897 audit. |
+| Block particle sprite and destroy particles | `crates/myriade-engine/src/game/blocks/block_particles.rs:47`, `:83` | Resolve block extension through the existing particle owner; hit route still needs caller audit. |
+| Fluid box drawing and appearance lookup | `crates/myriade-engine/src/game/modding/native_fluid_render.rs:15`, `:40` | Reuse appearance; this box route alone does not establish terrain/camera coverage. |
+| Mob/player geometry and layers | `crates/myriade-engine/src/game/modding/native_mob_draw.rs:57`, `:74`, `:97`, `:119` | Preserve existing entity submission; non-mob families require arismoko/horizon#896/#897 audit. |
 | Terrain workers, reload, cancellation and upload | Section meshing's verified route table | Same frozen plan, leases and stale-result checks; no live registrar callbacks on workers. |
 | Item baking and GUI/hand/ground/frame/equipment submission | Baked-model design's route table | Complete its explicitly outstanding caller audit before claiming coverage. |
 | Effect inventory/HUD; fluid camera and fog | Concrete complete owners not verified | Registration refuses these capabilities pending owner/caller audit; do not claim coverage. |

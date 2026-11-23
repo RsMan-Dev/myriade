@@ -1,4 +1,4 @@
-//! Gives the Windows executable Horizon's icon and its stack, as horizon-client's
+//! Gives the Windows executable Horizon's icon and its stack, as myriade-engine's
 //! (`packaging/windows/exe.rs`). Also the game's build identity, read by `native_libraries`.
 #[path = "../../packaging/windows/exe.rs"]
 mod windows_exe;
@@ -6,7 +6,7 @@ mod windows_exe;
 use std::process::Command;
 
 fn main() {
-    windows_exe::resources("horizon-client");
+    windows_exe::resources("myriade-engine");
     game_build_identity();
 }
 

@@ -1,6 +1,6 @@
 //! `MeleeAttack` (`brain/behaviours/melee_attack.rs`): the melee reach and the blow's damage.
 use horizon_core::geometry::{Aabb, Axis, Vec3};
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_items::properties::resolvable::Float;
 use horizon_core::nbt::Tag;
 use bevy_ecs::prelude::Resource;

@@ -16,9 +16,9 @@ use crate::rules::hook_wait::{approach_distance, lured_after};
 use crate::targeting::player_box;
 use crate::type_tags::TagId;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::arrows::clip_block_hit;
-use horizon_client_lib::mobs::spawn_rules::SpawnLevel;
-use horizon_client_lib::blocks::Fluid;
+use myriade_engine_lib::arrows::clip_block_hit;
+use myriade_engine_lib::mobs::spawn_rules::SpawnLevel;
+use myriade_engine_lib::blocks::Fluid;
 use horizon_core::geometry::{trig, Aabb, Vec3};
 use horizon_core::random::{LegacyRandom, RandomSource};
 

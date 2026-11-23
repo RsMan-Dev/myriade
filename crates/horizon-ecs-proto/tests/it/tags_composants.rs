@@ -11,7 +11,7 @@ use horizon_ecs_proto::{
 /// The original's members of a tag (`ns:name`, nested `#tag` already flattened by the loader).
 fn original(name: &str) -> std::collections::HashSet<String> {
     let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let tags = horizon_client_lib::items::load_tags(&root, "entity_type", &horizon_world::loot::PackOverlay::NONE).expect("entity_type tags");
+    let tags = myriade_engine_lib::items::load_tags(&root, "entity_type", &horizon_world::loot::PackOverlay::NONE).expect("entity_type tags");
     tags.get(&format!("minecraft:{name}")).cloned().unwrap_or_default()
 }
 

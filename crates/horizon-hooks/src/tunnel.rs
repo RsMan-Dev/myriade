@@ -2,7 +2,7 @@
 //! (a Horizon crate, docs/play-with-friends.md). The engine keeps the address form and the join
 //! (`net.rs`); the [`Resolver`] a registered hook offers ([`Hooks::tunnel`](crate::Hooks::tunnel))
 //! reads the codes and opens the tunnel, which the client then reaches on a loopback port like any
-//! server. Without one (horizon-client's own executable, the server build) no code is one, and
+//! server. Without one (myriade-engine's own executable, the server build) no code is one, and
 //! such an address is refused, never retried.
 //!
 //! Hosting needs no hook here: the tunnel's host end connects to the world's LAN port over

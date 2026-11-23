@@ -7,7 +7,7 @@ test that runs it. No Farmer's Delight-specific hook is proposed. The three cont
 map found have their own issues: `can_eat` changing the answer (arismoko/horizon#1897), the attack strength at the
 blow (arismoko/horizon#1898) and the dispenser's behaviour by the facing block (arismoko/horizon#1899).
 
-Prefix **API** = `crates/horizon-mod-vocab/src/`; **Game** = `crates/horizon-client/src/game/`.
+Prefix **API** = `crates/horizon-mod-vocab/src/`; **Game** = `crates/myriade-engine/src/game/`.
 
 | Farmer's Delight's injection | Hook and contract | Status | Evidence |
 |---|---|---|---|

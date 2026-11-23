@@ -10,8 +10,8 @@ from tools.ci import ignored_shards
 class ShardMatrix(unittest.TestCase):
     def test_a_split_package_becomes_one_entry_per_leg(self):
         self.assertEqual(
-            ignored_shards.expand(["horizon-client", "horizon-world"]),
-            ["horizon-client#1of2", "horizon-client#2of2", "horizon-world"],
+            ignored_shards.expand(["myriade-engine", "horizon-world"]),
+            ["myriade-engine#1of2", "myriade-engine#2of2", "horizon-world"],
         )
 
     def test_every_shard_is_covered_by_the_full_matrix(self):

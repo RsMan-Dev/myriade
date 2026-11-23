@@ -58,7 +58,7 @@ fn systems(s: &mut Schedule, slot: GoalSlot) {
 }
 fn conductor(level: &Level, p: [i32; 3]) -> bool {
     let mw = level.mw.0;
-    mw.data.state(mw.world.block(p[0], p[1], p[2])).flags & horizon_client_lib::mobs::data::REDSTONE_CONDUCTOR != 0
+    mw.data.state(mw.world.block(p[0], p[1], p[2])).flags & myriade_engine_lib::mobs::data::REDSTONE_CONDUCTOR != 0
 }
 /// A player within 4 blocks, or a hit: the bat takes off.
 pub fn take_off(w: &mut World, e: Entity) {

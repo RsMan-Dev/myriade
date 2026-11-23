@@ -4,7 +4,7 @@
 use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
-use horizon_client_lib::entities::ExperienceOrb;
+use myriade_engine_lib::entities::ExperienceOrb;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::cow::*;
 use horizon_ecs_proto::goals::*;

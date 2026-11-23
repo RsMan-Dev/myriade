@@ -18,7 +18,7 @@ TOOLS = Path(lab.ROOT) / "tools"
 # Strings that mean "this script starts the game": a binary a harness runs, or the audio switch every game run sets.
 SPAWN_MARKERS = {
     "HORIZON_NO_AUDIO", "horizon-server", "horizon-server.exe",
-    "horizon-client.exe", "release/horizon-client", "fast/horizon-client", "debug/horizon-client",
+    "myriade-engine.exe", "release/myriade-engine", "fast/myriade-engine", "debug/myriade-engine",
 }
 
 # Scripts that mention those strings without starting a game themselves, and why.

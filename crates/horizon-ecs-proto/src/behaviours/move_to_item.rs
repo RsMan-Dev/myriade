@@ -162,7 +162,7 @@ mod tests {
     use crate::behaviours::{play_with_items, Entry};
     use crate::cow::{ActiveUntil, Herd, SpeciesTable, spawn_species};
     use crate::species::Config;
-    use horizon_client_lib::items::ItemStack;
+    use myriade_engine_lib::items::ItemStack;
 
     fn config() -> Config {
         let entries: &'static [Entry] = Box::leak(Box::new([

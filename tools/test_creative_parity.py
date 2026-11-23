@@ -8,7 +8,7 @@ registries), then what the vanilla client shows: every tab's display items
 and, for each search query, CreativeModeInventoryScreen.refreshSearchResults'
 items, searched through the client's own SessionSearchTrees.
 examples/probe/creative_search_fixture loads the export into
-horizon_client::creative::Creative. The tabs it shows (id, title, icon,
+myriade_engine::creative::Creative. The tabs it shows (id, title, icon,
 position, every stack with its components), the search tab's stacks and the
 results of every query must agree. The queries are QUERIES below, then every
 search stack's item path and tooltip lines, every item tag with and without
@@ -99,7 +99,7 @@ def compare(args, build, classes, dependencies, queries, run, mode):
          queries, build / 'creative-inventory.json', build / f'vanilla{suffix}.json', lib.RESOURCES,
          *([mode] if mode else [])],
         'vanilla' + suffix)
-    lib.cargo_example('horizon-client', 'creative_search_fixture', lib.RESOURCES, build / 'creative-inventory.json',
+    lib.cargo_example('myriade-engine', 'creative_search_fixture', lib.RESOURCES, build / 'creative-inventory.json',
                       build / f'vanilla{suffix}.json', build / f'rust{suffix}.json', *([mode] if mode else []))
     vanilla = json.loads((build / f'vanilla{suffix}.json').read_text(encoding='utf-8'))
     rust = json.loads((build / f'rust{suffix}.json').read_text(encoding='utf-8'))

@@ -1,7 +1,7 @@
 //! The dedicated server's chat filter (docs/chat-filter.md), without the game: `server.toml`'s
 //! `[chat_filter]`, the matcher for the slur list (`data/slurs.txt`, or the owner's `words_file`), and
 //! the escalation (a refused message, then a mute, then a temporary ban), with the mutes kept in a file
-//! so that they outlive a restart. The server's hub (`horizon_client::lan`) asks it, through the engine's
+//! so that they outlive a restart. The server's hub (`myriade_engine::lan`) asks it, through the engine's
 //! `horizon_server_files::chat_guard` hook, before it relays a player's text, and carries out what it decides.
 
 use serde::{Deserialize, Serialize};

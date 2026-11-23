@@ -3,7 +3,7 @@
 //! `speedFactor` 0.4 and `jumpFactor` 0.5, stone the defaults 1.0; `LivingEntity.handleOnClimbable`: a fall at most 0.15; `Entity`:
 //! a bubble column adds 0.06 to the rise per block it touches, capped at 0.7).
 use crate::common::*;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 use horizon_core::position::BlockPos;
 use horizon_ecs_proto::bridge::host::HostSetup;

@@ -3,8 +3,8 @@
 //! columns in order, universal anger, and a breed with a panicking partner. Expected values are the vanilla 26.3 ones (`javap`).
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_ecs_proto::behaviours::breath_air::air_position;
 use horizon_ecs_proto::behaviours::breed::Love;

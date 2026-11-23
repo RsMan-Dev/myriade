@@ -159,17 +159,17 @@ class ReachTests(unittest.TestCase):
 
     def test_old_broad_client_records_find_probes(self):
         workspace(self.root, {
-            "crates/horizon-client/Cargo.toml": '[package]\nname = "horizon-client"\nautobins = false\nautoexamples = false\n'
-            '[[bin]]\nname = "horizon-client"\npath = "src/main.rs"\n',
-            "crates/horizon-client/src/main.rs": "fn main() {}\n",
-            "crates/horizon-client/examples/probe/main.rs": "fn main() {}\n",
-            "crates/horizon-client-lib/Cargo.toml": '[package]\nname = "horizon-client-lib"\nautobins = false\nautoexamples = false\n'
-            '[[example]]\nname = "client_probe"\npath = "../horizon-client/examples/probe/main.rs"\n',
+            "crates/myriade-engine/Cargo.toml": '[package]\nname = "myriade-engine"\nautobins = false\nautoexamples = false\n'
+            '[[bin]]\nname = "myriade-engine"\npath = "src/main.rs"\n',
+            "crates/myriade-engine/src/main.rs": "fn main() {}\n",
+            "crates/myriade-engine/examples/probe/main.rs": "fn main() {}\n",
+            "crates/myriade-engine-lib/Cargo.toml": '[package]\nname = "myriade-engine-lib"\nautobins = false\nautoexamples = false\n'
+            '[[example]]\nname = "client_probe"\npath = "../myriade-engine/examples/probe/main.rs"\n',
         })
         graph = parity_reach.SourceGraph(self.root, parity.rust_code)
-        game, probe = ("crates/horizon-client/" + path for path in ["src/main.rs", "examples/probe/main.rs"])
-        self.assertEqual(graph.entries([["bins", "", "dev", ["-p", "horizon-client"], False]], {game, probe}), {game})
-        self.assertEqual(graph.entries([["examples", "", "dev", ["-p", "horizon-client"], True]], {game, probe}),
+        game, probe = ("crates/myriade-engine/" + path for path in ["src/main.rs", "examples/probe/main.rs"])
+        self.assertEqual(graph.entries([["bins", "", "dev", ["-p", "myriade-engine"], False]], {game, probe}), {game})
+        self.assertEqual(graph.entries([["examples", "", "dev", ["-p", "myriade-engine"], True]], {game, probe}),
                          {probe})
 
     def test_unknown_probes_keep_everything(self):

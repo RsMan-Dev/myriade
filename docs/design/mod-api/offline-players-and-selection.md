@@ -14,8 +14,8 @@ Paths and lines are from the inspected worktree base; proposed new ownership bel
 
 | Route | Existing owner and proposed treatment |
 | --- | --- |
-| Cache load, dedicated | `crates/horizon-client/src/game/interface/dedicated/mod.rs:943` loads UserCache, :949 installs the static declared at :171. Transfer that same instance into server-owned state; remove the static and redirect all consumers. |
-| Join | `crates/horizon-client/src/game/network/lan/mod.rs:2646` calls dedicated::player_joined, implemented at `game/interface/dedicated/mod.rs:174`. Move admission recording to the shared successful join boundary for dedicated, integrated owner and LAN guests; failed authentication is excluded. |
+| Cache load, dedicated | `crates/myriade-engine/src/game/interface/dedicated/mod.rs:943` loads UserCache, :949 installs the static declared at :171. Transfer that same instance into server-owned state; remove the static and redirect all consumers. |
+| Join | `crates/myriade-engine/src/game/network/lan/mod.rs:2646` calls dedicated::player_joined, implemented at `game/interface/dedicated/mod.rs:174`. Move admission recording to the shared successful join boundary for dedicated, integrated owner and LAN guests; failed authentication is excluded. |
 | Existing lookup consumers | `game/interface/dedicated/mod.rs:184` cached_user_by_id and :1625 name resolution must use the same instance. Reads must not call mutating get_by_id/get_by_name. |
 | Cache storage | `crates/horizon-server-files/src/user_cache.rs:38` UserCache, :53 load, :121 add, :136 get_by_id, :145 find_by_name, :210 serialization, :227 save. Add immutable enumeration over authoritative UUID entries here, without parsing JSON or exposing internal records. |
 | Integrated creation / shutdown | `game/world/integrated.rs:849` supplies owner profile, :898 stop_integrated, :949 stop_serving. Construct cache for the serving Game, not the window or remote client. LAN publication shares this owner. |
@@ -24,7 +24,7 @@ Paths and lines are from the inspected worktree base; proposed new ownership bel
 | Selector | `game/administration/commands/mod.rs:795` select, :835 level switching, :855 random ordering, :870 select_in_level, :1141 command-level switching. Extract filtering and ordering once; commands and service both call it. |
 | Typed syntax | `crates/horizon-command/src/args.rs:334` Sort and :345 Selector, plus `selector.rs:99` parser. Keep one parser; public records are API-owned conversions, not parser internals. |
 
-The game paths in the table abbreviate `crates/horizon-client/src/`. Remote windows and LAN guests have no authoritative service; server commands, integrated owner, network guests and dedicated console ultimately use the same server evaluator. Command execution may still switch levels to apply actions after selection; immutable evaluation itself must not.
+The game paths in the table abbreviate `crates/myriade-engine/src/`. Remote windows and LAN guests have no authoritative service; server commands, integrated owner, network guests and dedicated console ultimately use the same server evaluator. Command execution may still switch levels to apply actions after selection; immutable evaluation itself must not.
 
 ## Per-server records
 

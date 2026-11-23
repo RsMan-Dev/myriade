@@ -23,7 +23,7 @@ pub static SHEARING: ShearDef = ShearDef {
     apply: |w, e| {
         let item = crate::equipment::take_slot(w, e, Slot::Saddle);
         let (Some(name), Some(at)) = (crate::items::item_name(item).filter(|_| item != 0), w.get::<crate::cow::Pos>(e).map(|p| p.0)) else { return false };
-        crate::behaviours::shear::drop_stacks(w, vec![horizon_client_lib::items::ItemStack::new(name, 1)], [at.x, at.y + 1.5, at.z]);
+        crate::behaviours::shear::drop_stacks(w, vec![myriade_engine_lib::items::ItemStack::new(name, 1)], [at.x, at.y + 1.5, at.z]);
         true
     },
     table: |_, _| None,

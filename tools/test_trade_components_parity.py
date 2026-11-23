@@ -58,8 +58,8 @@ def main():
     classes.mkdir(exist_ok=True)
     oracle = lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaTradeComponentsOracle.java'
     sources = [Path(__file__), oracle,
-               lab.ROOT / 'crates/horizon-client/examples/probe/trade_components_probe.rs',
-               lab.ROOT / 'crates/horizon-client/src/merchant.rs']
+               lab.ROOT / 'crates/myriade-engine/examples/probe/trade_components_probe.rs',
+               lab.ROOT / 'crates/myriade-engine/src/merchant.rs']
     tested = base.source_hashes(sources)
     cp = os.pathsep.join(map(str, [jars['server'], *libraries]))
     subprocess.run(['javac', '--release', str(lock['minecraft']['java_major']), '-proc:none', '-cp', cp,
@@ -73,7 +73,7 @@ def main():
         print(f'{len(expected)} headless vanilla cases')
         return
     if not args.no_build:
-        subprocess.run(['cargo', 'build', '--locked', '-p', 'horizon-client-lib', '--example', 'client_probe'], check=True)
+        subprocess.run(['cargo', 'build', '--locked', '-p', 'myriade-engine-lib', '--example', 'client_probe'], check=True)
     binary = lab.cargo_target() / 'debug/examples/client_probe'
     with tempfile.TemporaryDirectory(prefix='horizon-trade-components-rust-') as scratch:
         subprocess.run([str(binary), 'trade_components_probe', str(args.resources.resolve()), str(inputs), str(build / 'rust.jsonl')],

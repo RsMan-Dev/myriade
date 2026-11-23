@@ -10,7 +10,7 @@ use crate::lightning::BoltLevel;
 use crate::lightning_tick;
 use crate::targeting::Who;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 fn at_of(at: [f64; 3]) -> Vec3 {
@@ -153,7 +153,7 @@ impl EcsWorld {
     }
 
     /// An ominous item spawner at `at`, dropping `item` after `after` ticks (`ominous_spawner::spawn`).
-    pub fn spawn_ominous(&mut self, mw: &MobWorld<'_>, at: [f64; 3], item: horizon_client_lib::items::ItemStack, after: u32) -> Entity {
+    pub fn spawn_ominous(&mut self, mw: &MobWorld<'_>, at: [f64; 3], item: myriade_engine_lib::items::ItemStack, after: u32) -> Entity {
         self.lent(mw, |w| crate::ominous_spawner::spawn(w, item, at_of(at), after))
     }
 }

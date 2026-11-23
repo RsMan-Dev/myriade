@@ -51,9 +51,9 @@ def vanilla():
 
 def engine():
     resources = os.environ.get('HORIZON_TEST_RESOURCES') or str(
-        lab.LOCAL / 'horizon-client' / '26.3')
+        lab.LOCAL / 'myriade-engine' / '26.3')
     return subprocess.check_output([
-        'cargo', 'test', '-p', 'horizon-client', '--lib', TEST,
+        'cargo', 'test', '-p', 'myriade-engine', '--lib', TEST,
         '--', '--ignored', '--exact', f'game::persist::lookup_order_tests::{TEST}',
         '--nocapture'],
         cwd=lab.ROOT, text=True, env={**os.environ, 'HORIZON_TEST_RESOURCES': resources})

@@ -9,8 +9,8 @@
 //! already tracks it. Otherwise it is described in full, so a pairing always sends the entity
 //! as it is.
 
-use horizon_client::fast_hash::FxHashMap;
-use horizon_client::lan::{hub::Hub, tracking};
+use myriade_engine::fast_hash::FxHashMap;
+use myriade_engine::lan::{hub::Hub, tracking};
 
 /// Per level, the idle entities the last pass noted (`Kept`).
 #[derive(Default)]

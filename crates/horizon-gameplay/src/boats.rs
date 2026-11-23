@@ -1,6 +1,6 @@
 //! `AbstractBoat`'s state and the rules that need no game: water, land and air status, seats,
 //! the bubble-column wobble, saving to NBT and the wood of a boat or raft item.
-use horizon_client::{
+use myriade_engine::{
     entity_rules::EntityRules,
     items::ItemStack,
     mobs::{
@@ -34,8 +34,8 @@ pub enum Status {
 pub struct Boat {
     /// `Entity.xRot`: kept for `/tp` and `Rotation`; the kind turns only in yaw.
     pub pitch: f32,
-    /// When it joined its list (`horizon_client::join_seq`); set by the list.
-    pub join: horizon_client::join_seq::JoinSeq,
+    /// When it joined its list (`myriade_engine::join_seq`); set by the list.
+    pub join: myriade_engine::join_seq::JoinSeq,
     pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     pub id: u32,
     /// Wood type (`oak`, `bamboo` for the raft).
@@ -123,11 +123,11 @@ pub const BUBBLE_DOWN_EVENT: i8 = 71;
 pub const BUBBLE_UP_EVENT: i8 = 72;
 /// `Entity.load`'s `Fire` (a short; 0 when absent).
 pub fn saved_fire(tag: &Tag) -> i32 {
-    i32::from(horizon_client::save::number(tag.get("Fire")).unwrap_or(0) as i16)
+    i32::from(myriade_engine::save::number(tag.get("Fire")).unwrap_or(0) as i16)
 }
 /// `Entity.load`'s `TicksFrozen` (an int; 0 when absent).
 pub fn saved_ticks_frozen(tag: &Tag) -> i32 {
-    horizon_client::save::number(tag.get("TicksFrozen")).unwrap_or(0) as i32
+    myriade_engine::save::number(tag.get("TicksFrozen")).unwrap_or(0) as i32
 }
 /// `Entity.saveWithoutId`: `TicksFrozen` is written only while positive.
 pub fn put_ticks_frozen(map: &mut horizon_core::nbt::Compound, ticks: i32) {
@@ -204,7 +204,7 @@ impl Boat {
             leash_pending: None,
             leash_spin: 0.0,
             age: 0,
-            random: EntityRandom::own(horizon_client::random_source::entity()),
+            random: EntityRandom::own(myriade_engine::random_source::entity()),
         }
     }
     /// A chest boat or chest raft.
@@ -227,7 +227,7 @@ impl Boat {
     /// `Entity.saveWithoutId` with `AbstractChestBoat`'s items: the loaded
     /// compound `raw` under the live fields.
     pub fn to_nbt(&self, uuid: [i32; 4], raw: Option<&Tag>) -> Tag {
-        let mut tag = horizon_client::entity_nbt::boat_to_nbt(
+        let mut tag = myriade_engine::entity_nbt::boat_to_nbt(
             &self.entity_type(),
             self.position,
             self.velocity,
@@ -237,7 +237,7 @@ impl Boat {
             raw,
             self.chest.then_some(&self.items[..]),
         );
-        horizon_client::entity_nbt::write_saved_flags(&mut tag, self.on_ground, self.no_gravity);
+        myriade_engine::entity_nbt::write_saved_flags(&mut tag, self.on_ground, self.no_gravity);
         if let Tag::Compound(map) = &mut tag {
             map.insert("Fire".into(), Tag::Short(self.fire_ticks as i16));
             put_ticks_frozen(map, self.ticks_frozen);
@@ -401,5 +401,5 @@ impl EntityRules for Boat {
         0.04
     }
 }
-horizon_client::impl_joined!(Boat);
+myriade_engine::impl_joined!(Boat);
 horizon_mod_runtime::impl_attachment_lifetime!(Boat);

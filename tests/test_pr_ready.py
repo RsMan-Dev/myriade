@@ -16,10 +16,10 @@ from unittest import mock
 
 from tools import pr_ready
 
-PACKAGES = {"horizon-core": "crates/horizon-core", "horizon-client": "crates/horizon-client",
+PACKAGES = {"horizon-core": "crates/horizon-core", "myriade-engine": "crates/myriade-engine",
             "horizon-theme": "crates/horizon-theme", "xtask": "xtask"}
 LIBRARIES = set(PACKAGES) - {"xtask"}
-DEPENDENCIES = {"horizon-client": {"horizon-core"}}
+DEPENDENCIES = {"myriade-engine": {"horizon-core"}}
 MODS = ""
 CLIPPY = f'status=0\n{pr_ready.CI_CLIPPY} || status=$?\n{pr_ready.CI_CLIPPY_SERVER} || status=$?\nexit "$status"'
 # The bash on PATH: Windows' CreateProcess looks in System32 before PATH, so a bare "bash" there is WSL's
@@ -184,18 +184,18 @@ class PrReadyTests(unittest.TestCase):
                 return pr_ready.block(args(), "origin/main", "abcdef123", [], {}, [step], "skip-release", 0,
                                       ("a" * 40, "", ""))
             self.assertIn("data-backed tests not run: no prepared data here", render())
-            prepared = pr_ready.ROOT / ".local/horizon-client/26.3"
+            prepared = pr_ready.ROOT / ".local/myriade-engine/26.3"
             prepared.mkdir(parents=True)
             self.assertIn("data-backed tests not run: no prepared data here", render())
             (prepared / "gameplay-facts.json").write_text("{}")
-            self.assertIn("data-backed tests: horizon-client-lib mod_content::tests:: (--ignored): 3 passed", render())
+            self.assertIn("data-backed tests: myriade-engine-lib mod_content::tests:: (--ignored): 3 passed", render())
             override = Path(directory) / "override"
             override.mkdir()
             os.environ["HORIZON_TEST_RESOURCES"] = str(override)
             self.assertIn("data-backed tests not run: no prepared data here", render())
             (override / "gameplay-facts.json").write_text("{}")
             (prepared / "gameplay-facts.json").unlink()
-            self.assertIn("data-backed tests: horizon-client-lib mod_content::tests:: (--ignored): 3 passed", render())
+            self.assertIn("data-backed tests: myriade-engine-lib mod_content::tests:: (--ignored): 3 passed", render())
             step.status, step.detail = "skip", "content root untouched"
             self.assertIn("data-backed tests not run: content root untouched", render())
 
@@ -217,9 +217,9 @@ class PrReadyTests(unittest.TestCase):
         self.assertEqual(step.status, "pass")
 
     def test_paths_map_to_the_crates_that_own_them(self):
-        self.assertEqual(pr_ready.touched_crates({"crates/horizon-core/src/jmath.rs", "crates/horizon-client/build.rs",
+        self.assertEqual(pr_ready.touched_crates({"crates/horizon-core/src/jmath.rs", "crates/myriade-engine/build.rs",
                                                   "xtask/src/main.rs", "tools/parity.py"}, PACKAGES),
-                         ["horizon-client", "horizon-core", "xtask"])
+                         ["myriade-engine", "horizon-core", "xtask"])
         self.assertEqual(pr_ready.touched_crates({"crates/horizon-core/README.md"}, PACKAGES), [])
         # The generated stylesheet is checked by horizon-theme's tests.
         self.assertEqual(pr_ready.touched_crates({"crates/horizon-theme/tokens.css"}, PACKAGES), ["horizon-theme"])
@@ -229,29 +229,29 @@ class PrReadyTests(unittest.TestCase):
         self.assertIsNone(pr_ready.touched_crates({"Cargo.lock", "crates/horizon-core/src/lib.rs"}, PACKAGES))
 
     def test_shared_client_sources_select_the_library_without_gameplay(self):
-        packages = {**PACKAGES, "horizon-client-lib": "crates/horizon-client-lib"}
-        for path in ["src/client_lib.rs", "src/health.rs", "src/lan/hub.rs",
+        packages = {**PACKAGES, "myriade-engine-lib": "crates/myriade-engine-lib"}
+        for path in ["src/engine_lib.rs", "src/health.rs", "src/lan/hub.rs",
                      "examples/probe/main.rs", "tests/lan_bot.rs"]:
-            self.assertEqual(pr_ready.touched_crates({f"crates/horizon-client/{path}"}, packages),
-                             ["horizon-client-lib"])
+            self.assertEqual(pr_ready.touched_crates({f"crates/myriade-engine/{path}"}, packages),
+                             ["myriade-engine-lib"])
         for path in ["src/lib.rs", "src/main.rs", "src/entry.rs", "src/game.rs", "src/game/items/combat.rs",
                      "tests/it/mod_api_hooks.rs", "Cargo.toml", "build.rs"]:
-            self.assertEqual(pr_ready.touched_crates({f"crates/horizon-client/{path}"}, packages),
-                             ["horizon-client"])
+            self.assertEqual(pr_ready.touched_crates({f"crates/myriade-engine/{path}"}, packages),
+                             ["myriade-engine"])
 
     def test_which_workspace_builds_a_path(self):
         self.assertTrue(pr_ready.workspace_rust("crates/horizon-theme/fonts/x.ttf"))
         self.assertTrue(pr_ready.workspace_rust("Cargo.toml"))
-        self.assertFalse(pr_ready.workspace_rust("crates/horizon-client/README.md"))
+        self.assertFalse(pr_ready.workspace_rust("crates/myriade-engine/README.md"))
 
     def test_crate_checks_do_not_link_unrelated_examples(self):
         with mock.patch.object(pr_ready, "affected_here", return_value=[]):
-            steps = pr_ready.plan(args(quick=True), "origin/main", {"crates/horizon-client/src/game.rs"}, PACKAGES, LIBRARIES, DEPENDENCIES)
+            steps = pr_ready.plan(args(quick=True), "origin/main", {"crates/myriade-engine/src/game.rs"}, PACKAGES, LIBRARIES, DEPENDENCIES)
         by_name = {step.name: step for step in steps}
         self.assertEqual(by_name["clippy"].command, CLIPPY)
-        self.assertEqual(by_name["tests: horizon-client"].command,
-                         "cargo test --locked -p horizon-client --tests")
-        self.assertEqual(by_name["doc tests"].command, "cargo test --locked -p horizon-client --doc")
+        self.assertEqual(by_name["tests: myriade-engine"].command,
+                         "cargo test --locked -p myriade-engine --tests")
+        self.assertEqual(by_name["doc tests"].command, "cargo test --locked -p myriade-engine --doc")
         self.assertIsNone(by_name["doc tests"].status)
 
     def test_content_root_tests_run_only_when_what_they_load_changes(self):
@@ -259,8 +259,8 @@ class PrReadyTests(unittest.TestCase):
             with mock.patch.object(pr_ready, "affected_here", return_value=[]):
                 steps = pr_ready.plan(args(quick=True), "origin/main", {path}, PACKAGES, LIBRARIES, DEPENDENCIES)
             return {step.name: step for step in steps}["content root tests"]
-        self.assertEqual(content_step("crates/horizon-client/src/game.rs").skip, "content root untouched")
-        for path in ["crates/horizon-client/src/mod_content.rs", "crates/horizon-client/src/mod_content_tests.rs",
+        self.assertEqual(content_step("crates/myriade-engine/src/game.rs").skip, "content root untouched")
+        for path in ["crates/myriade-engine/src/mod_content.rs", "crates/myriade-engine/src/mod_content_tests.rs",
                      "crates/horizon-mod-package/src/content.rs", "crates/horizon-assets/src/lib.rs", "Cargo.lock"]:
             with self.subTest(path=path):
                 step = content_step(path)
@@ -322,7 +322,7 @@ class PrReadyTests(unittest.TestCase):
                 # examples directory in the root test target, including CARGO_TARGET_DIR.
                 self.assertLess(steps.index(actor), next(i for i, step in enumerate(steps)
                                 if step.name.startswith("tests")))
-        for path in ("README.md", "crates/horizon-client/src/lib.rs"):
+        for path in ("README.md", "crates/myriade-engine/src/lib.rs"):
             with self.subTest(path=path), mock.patch.object(pr_ready, "affected_here", return_value=[]):
                 steps = pr_ready.plan(args(quick=True), "origin/main", {path}, packages,
                                       LIBRARIES, DEPENDENCIES)
@@ -331,25 +331,25 @@ class PrReadyTests(unittest.TestCase):
 
     def test_tests_get_the_features_ci_s_workspace_run_gives_them(self):
         self.assertEqual(pr_ready.mod_features(["horizon-world"]), "")
-        self.assertEqual(pr_ready.mod_features(["horizon-client"]), "")
+        self.assertEqual(pr_ready.mod_features(["myriade-engine"]), "")
         self.assertEqual(pr_ready.mod_features(["horizon-mod-package"]),
                          " --features horizon-mod-package/index")
         self.assertEqual(pr_ready.mod_features(None), MODS)
 
     def test_mod_api_data_inputs_build_and_test_the_consuming_crates(self):
-        packages = {**PACKAGES, "horizon-client-render": "crates/horizon-client-render",
+        packages = {**PACKAGES, "myriade-level": "crates/myriade-level",
                     "horizon-mod-api-gen": "crates/horizon-mod-api-gen"}
         for path in ("crates/horizon-mod-vocab/src/hooks/player.rs",):
             with self.subTest(path=path), mock.patch.object(pr_ready, "affected_here", return_value=[]):
                 steps = pr_ready.plan(args(quick=True), "origin/main", {path}, packages,
-                                      LIBRARIES | {"horizon-client-render", "horizon-mod-api-gen"}, DEPENDENCIES)
+                                      LIBRARIES | {"myriade-level", "horizon-mod-api-gen"}, DEPENDENCIES)
                 by_name = {step.name: step for step in steps}
                 self.assertIsNone(by_name["clippy"].skip)
                 self.assertIsNone(by_name["rustfmt"].skip)
                 self.assertEqual(by_name["rustfmt"].command, "python3 tools/ci/format_scan.py")
                 tests = next(step for step in steps if step.name.startswith("tests:"))
                 self.assertIsNone(tests.skip)
-                self.assertEqual(tests.command, "cargo test --locked -p horizon-client -p horizon-client-render "
+                self.assertEqual(tests.command, "cargo test --locked -p myriade-engine -p myriade-level "
                                                "-p horizon-mod-api-gen --tests")
 
     def test_a_windows_check_ends_what_it_left_running(self):
@@ -380,10 +380,10 @@ class PrReadyTests(unittest.TestCase):
     def test_multiple_touched_crates_share_the_same_check_scope(self):
         with mock.patch.object(pr_ready, "affected_here", return_value=[]):
             steps = pr_ready.plan(args(), "origin/main",
-                                  {"crates/horizon-core/src/lib.rs", "crates/horizon-client/examples/probe.rs"}, PACKAGES, LIBRARIES, DEPENDENCIES)
+                                  {"crates/horizon-core/src/lib.rs", "crates/myriade-engine/examples/probe.rs"}, PACKAGES, LIBRARIES, DEPENDENCIES)
         for step in steps:
-            if step.name in ("tests: horizon-client, horizon-core", "doc tests"):
-                self.assertIn("-p horizon-client -p horizon-core", step.command)
+            if step.name in ("tests: myriade-engine, horizon-core", "doc tests"):
+                self.assertIn("-p myriade-engine -p horizon-core", step.command)
                 self.assertIsNone(step.status)
 
     def test_binary_only_crates_skip_doc_tests(self):
@@ -400,8 +400,8 @@ class PrReadyTests(unittest.TestCase):
         self.assertEqual(by_name["doc tests"].command, "cargo test --locked -p horizon-core --doc")
 
     def test_clippy_is_ci_s_and_the_server_build_when_the_game_is_affected(self):
-        packages = {name: f"crates/{name}" for name in ("core", "world", "horizon-client", "unrelated")}
-        dependencies = {"world": {"core"}, "horizon-client": {"world"}, "unrelated": set()}
+        packages = {name: f"crates/{name}" for name in ("core", "world", "myriade-engine", "unrelated")}
+        dependencies = {"world": {"core"}, "myriade-engine": {"world"}, "unrelated": set()}
         with mock.patch.object(pr_ready, "affected_here", return_value=[]):
             steps = pr_ready.plan(args(), "origin/main", {"crates/core/src/lib.rs"},
                                   packages, set(packages), dependencies)
@@ -444,10 +444,10 @@ class PrReadyTests(unittest.TestCase):
         self.assertEqual(pr_ready.dependent_crates(["core"], dependencies), ["build", "core", "dev", "optional"])
 
     def test_scope_warns_on_size_and_mixed_areas(self):
-        self.assertEqual(pr_ready.scope_warnings({"crates/horizon-client/src/game.rs", "tools/test_food_parity.py",
+        self.assertEqual(pr_ready.scope_warnings({"crates/myriade-engine/src/game.rs", "tools/test_food_parity.py",
                                                   "mods/horizon/src/test/java/dev/horizonlab/parity/X.java",
                                                   "docs/native-client.md"}, 120), [])
-        warnings = pr_ready.scope_warnings({"crates/horizon-client/src/game.rs",
+        warnings = pr_ready.scope_warnings({"crates/myriade-engine/src/game.rs",
                                             ".github/workflows/ci.yml"}, 3200)
         self.assertEqual(len(warnings), 2)
         self.assertIn("3200 lines of code: over 3000", warnings[0])
@@ -455,7 +455,7 @@ class PrReadyTests(unittest.TestCase):
 
     def test_documentation_and_tests_are_not_counted_in_the_size(self):
         self.assertTrue(pr_ready.reviewed("tools/pr_ready.py"))
-        self.assertTrue(pr_ready.reviewed("crates/horizon-client/src/game.rs"))
+        self.assertTrue(pr_ready.reviewed("crates/myriade-engine/src/game.rs"))
         self.assertFalse(pr_ready.reviewed("CONTRIBUTING.md"))
         self.assertFalse(pr_ready.reviewed("tests/test_pr_ready.py"))
         self.assertFalse(pr_ready.reviewed("tools/test_food_parity.py"))
@@ -514,14 +514,14 @@ class PrReadyTests(unittest.TestCase):
 
     def test_cargo_lock_changes_only_with_a_manifest(self):
         self.assertIsNone(pr_ready.lock_problem({"crates/horizon-core/src/lib.rs"}))
-        self.assertIsNone(pr_ready.lock_problem({"Cargo.lock", "crates/horizon-client/Cargo.toml"}))
+        self.assertIsNone(pr_ready.lock_problem({"Cargo.lock", "crates/myriade-engine/Cargo.toml"}))
         self.assertIsNone(pr_ready.lock_problem({"crates/horizon-telemetry-server/Cargo.lock", "crates/horizon-theme/Cargo.toml"}))
         self.assertIn("Cargo.lock", pr_ready.lock_problem({"Cargo.lock", "crates/horizon-core/src/lib.rs"}))
 
     def test_label_follows_what_players_get(self):
         self.assertEqual(pr_ready.suggested_label({"tools/pr_ready.py", "CONTRIBUTING.md"}), "`skip-release`")
         self.assertEqual(pr_ready.suggested_label({"crates/horizon-world/examples/probe.rs"}), "`skip-release`")
-        self.assertIn("feature", pr_ready.suggested_label({"crates/horizon-client/src/game.rs"}))
+        self.assertIn("feature", pr_ready.suggested_label({"crates/myriade-engine/src/game.rs"}))
 
     def test_affected_harnesses_come_from_the_parity_runner(self):
         found = {"food": "tools/test_food_parity.py", "datafix#1": "tools/test_datafix_parity.py",
@@ -596,7 +596,7 @@ class PrReadyTests(unittest.TestCase):
         self.assertFalse(pr_ready.runs_parity(code))
         for path in ("tools/test_food_parity.py", "tools/parity.py", "tools/lab.py", "tools/parity_hosts.json",
                      "mods/horizon/src/test/java/dev/horizonlab/parity/VanillaFoodOracle.java",
-                     "crates/horizon-world/examples/food_probe.rs", "crates/horizon-client/src/game/sculk_fixture.rs",
+                     "crates/horizon-world/examples/food_probe.rs", "crates/myriade-engine/src/game/sculk_fixture.rs",
                      ".github/workflows/parity-main.yml"):
             with self.subTest(path=path):
                 self.assertTrue(pr_ready.runs_parity(code | {path}))

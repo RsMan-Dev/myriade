@@ -15,15 +15,15 @@ The owner's guide is [hosting.md](hosting.md); every command, `server.toml` key 
 ### How it runs
 
 The dedicated server is the game itself, run headless:
-`horizon-client --resources <prepared> --dedicated [--nogui] [--port N] [--world NAME] [--universe DIR]
-[--initSettings]`, started in the server folder (`crates/horizon-client/src/game/interface/dedicated/mod.rs`).
+`myriade-engine --resources <prepared> --dedicated [--nogui] [--port N] [--world NAME] [--universe DIR]
+[--initSettings]`, started in the server folder (`crates/myriade-engine/src/game/interface/dedicated/mod.rs`).
 
 - **Startup.** It follows vanilla's `Main.main` and `DedicatedServer.initServer`. It reads `server.properties`
-  and writes it straight back with vanilla's defaults filled in (`horizon_client::server`, byte-exact with
+  and writes it straight back with vanilla's defaults filled in (`myriade_engine::server`, byte-exact with
   vanilla's `Properties.store`), and refuses to start until `eula.txt` says `eula=true`. It then loads the
   operator, whitelist and ban lists in vanilla's order and format, and opens `<universe>/<level-name>` with
   the same `Game` as single player, minus the local player.
-- **Network.** Players join through the play-state hub that Open to LAN uses (`crates/horizon-client/src/lan`).
+- **Network.** Players join through the play-state hub that Open to LAN uses (`crates/myriade-engine/src/lan`).
   Status ping, legacy ping, compression, login gate (bans, whitelist, IP bans), operator permission levels,
   the player limit with `bypassesPlayerLimit`, MOTD and `server-icon.png` all follow `server.properties`.
 - **Main loop.** It ticks at 20 TPS on one thread, with chunk generation and lighting on the worker pool.
@@ -61,7 +61,7 @@ secure_chat server_dimension_players server_player_combat server_player_damage`.
                   backups, updates, crash restart       │ ──► stdin: console commands
                                                         │ ◄─► engine endpoint: status, TPS/MSPT, players
                                                         ▼
-                                   the engine: horizon-client --dedicated   (the game, headless)
+                                   the engine: myriade-engine --dedicated   (the game, headless)
 ```
 
 `horizon-server` is a new crate and binary (`crates/horizon-server`). It is the only program an owner runs.
@@ -81,7 +81,7 @@ The supervisor/engine split stays even after the engine becomes headless, for th
 - **No conflicts.** The supervisor touches none of the game code that the tick and integrated-server work
   (perf-server-1, perf-ticks-2) are changing.
 
-**The engine today** is `horizon-client --dedicated`. It needs one small, additive change: a status endpoint.
+**The engine today** is `myriade-engine --dedicated`. It needs one small, additive change: a status endpoint.
 With `--control-socket <dir>/.horizon/engine.json` (the existing control protocol: TCP on 127.0.0.1 plus a token, on
 every OS), the dedicated loop answers `server-status` with TPS, MSPT (average, P50/P95/P99 from the tick
 clock `/tick query` uses), players (name, UUID, address, ping, position), loaded chunks and uptime. It answers
@@ -429,15 +429,15 @@ game built in `Game::new`, the integrated server on its own thread. On that base
 
 ## 3. Packaging
 
-**Binaries.** The release archives hold `horizon-client`, `horizon-prepare` and
+**Binaries.** The release archives hold `myriade-engine`, `horizon-prepare` and
 `horizon-server`. On Linux the release also has `horizon-server-linux-x86_64.tar.gz`: `horizon-server`,
 `horizon-prepare` and `horizon-engine`, the game built with `--no-default-features` (no sound, no
 controllers, no Play with Friends: the `friends` feature; nor Discord presence or the "I'm playing" ping, which
 only the official executable has), which links neither `libasound.so.2` nor `libudev.so.1`. `release.yml` builds it after the
 client archive (`xtask package-server`) and fails if `tools/check_imports.py --server` finds either library;
 CI lints the same build. `horizon-server` runs `horizon-engine` when it is beside it or on the PATH, else
-`horizon-client`. Build it yourself with `cargo build --release -p horizon-game --no-default-features`
-and copy `target/release/horizon-client` as `horizon-engine`. macOS and Windows have no such libraries to
+`myriade-engine`. Build it yourself with `cargo build --release -p horizon-game --no-default-features`
+and copy `target/release/myriade-engine` as `horizon-engine`. macOS and Windows have no such libraries to
 avoid, so they keep the one archive.
 
 **Game files: the owner's own copy, as with `prepare`.** Nothing of Mojang's is redistributed and nothing is
@@ -445,7 +445,7 @@ downloaded on the owner's behalf. `horizon-server` looks for prepared resources 
 
 1. `[engine] resources` in `server.toml`;
 2. `resources/` in the server folder;
-3. `.local/horizon-client/26.3` beside the engine or up to four folders above it: a release folder, the
+3. `.local/myriade-engine/26.3` beside the engine or up to four folders above it: a release folder, the
    installer's `game-files` (below), or a checkout.
 
 If none is found, `init` says where it looked. Today the owner runs `horizon-prepare --prepare --server-jar
@@ -460,8 +460,8 @@ prepared on their own computer to the server (`scp -r`). Planned wrappers:
   aren't empty; otherwise it lists what is wrong and changes nothing. It copies next to the destination and
   renames the copy in, so a failure partway keeps the old copy. The destination is the first place the server
   reads: `[engine] resources` when set, else `resources/` in the server folder when it exists or the server
-  wasn't installed by `install.sh`, else the installer's `game-files/horizon-client/26.3` (where the release's
-  `.local/horizon-client` points). It ends by saying to start or restart the server.
+  wasn't installed by `install.sh`, else the installer's `game-files/myriade-engine/26.3` (where the release's
+  `.local/myriade-engine` points). It ends by saying to start or restart the server.
 
 A server-only `prepare` (from `server.jar` alone, without the client jar or a JDK) is the follow-up that
 removes the last Java step. It needs a list of which prepared files the server really reads, and that list
@@ -489,14 +489,14 @@ comes out of the headless-engine work.
   Windows to check the signature.
 - **Layout.** Each release goes to `<dir>/releases/<tag>` and `<dir>/current` points at the one in use, so an
   update or a rollback is one link. `<bin>/horizon-server` and `<bin>/horizon-prepare` are two-line launchers
-  that run `current`. The prepared game files live in `<dir>/game-files/horizon-client` and each release's
-  `.local/horizon-client` links there, so updates keep them. The script then prints the next steps
+  that run `current`. The prepared game files live in `<dir>/game-files/myriade-engine` and each release's
+  `.local/myriade-engine` links there, so updates keep them. The script then prints the next steps
   (`horizon-prepare`, `horizon-server init`).
 
 **Docker** (`packaging/server/Dockerfile`, built the same way as the relay's image): a multi-stage build that
 ends on `debian:bookworm-slim` as user `horizon`, with the server build as `horizon-engine`, so the image needs
 no ALSA or udev. It uses volume `/data` for the server folder, takes the owner's prepared game files as a read-only
-mount on `/opt/horizon/.local/horizon-client/26.3`, exposes port `25565/tcp`, and keeps the control API and
+mount on `/opt/horizon/.local/myriade-engine/26.3`, exposes port `25565/tcp`, and keeps the control API and
 the panel on 127.0.0.1 inside the container: `docker exec <name> horizon-server status|cmd|backup`.
 On the first start, `HORIZON_EULA=true` and `HORIZON_WORLD`, `HORIZON_SEED`, `HORIZON_PORT`,
 `HORIZON_WHITELIST`, `HORIZON_PLAYERS` and `HORIZON_OP` answer `init`'s questions; without the EULA answer

@@ -5,8 +5,8 @@
         server.command('gamerule doDaylightCycle false')
         server.wait_ticks(20)
 
-The server is `horizon-client --dedicated --nogui --control-socket <folder>/.horizon/engine.json`, as
-tools/server_transfer_e2e.py starts it. Requests go to the socket (crates/horizon-client/src/game/interface/
+The server is `myriade-engine --dedicated --nogui --control-socket <folder>/.horizon/engine.json`, as
+tools/server_transfer_e2e.py starts it. Requests go to the socket (crates/myriade-engine/src/game/interface/
 dedicated/status.rs:45-90): `server-status`, `console <line>` (a vanilla command; its feedback comes back as
 `output`), `rcon <line>`. Ticks are counted by `time query gametime` (horizon-gameplay/src/commands/time.rs:42-45):
 the game time rises by one each tick.
@@ -40,7 +40,7 @@ def write_folder(folder, properties):
 
 def launch_command(bins, resources, endpoint, extra=()):
     """The command that starts the dedicated server, with its control endpoint at `endpoint`."""
-    return [bins / f'horizon-client{EXE}', '--resources', resources, '--control-socket', endpoint,
+    return [bins / f'myriade-engine{EXE}', '--resources', resources, '--control-socket', endpoint,
             '--dedicated', '--nogui', *extra]
 
 

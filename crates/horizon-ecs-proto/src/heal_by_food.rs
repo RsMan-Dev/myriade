@@ -6,7 +6,7 @@ use crate::cow::*;
 use crate::goals::Events;
 use crate::rules::{no_attrs, params, Rule};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 #[derive(Clone, Copy, Debug)]
 pub struct HealParams {

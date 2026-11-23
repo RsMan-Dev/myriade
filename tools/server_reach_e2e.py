@@ -22,7 +22,7 @@ ServerboundAttackPacket at its victim twice a second (`--attack`) from:
 
 A hit shows in the victim's health (SetHealth, in the bots' report). The server runs in a fresh folder with
 fresh HORIZON_HOME and XDG folders (lab.game_env), on a free port. Build first:
-    cargo build --profile fast -p horizon-game --bin horizon-client
+    cargo build --profile fast -p horizon-game --bin myriade-engine
     cargo build --profile fast -p myriade-bot
 """
 import argparse
@@ -84,7 +84,7 @@ def run(bins, folder, out):
     props = dict(PROPERTIES, **{'server-port': str(port)})
     (folder / 'server.properties').write_text(''.join(f'{k}={v}\n' for k, v in props.items()))
     (folder / 'eula.txt').write_text('eula=true\n')
-    command = [bins / f'horizon-client{EXE}', '--resources', lab.RESOURCES, '--dedicated', '--nogui']
+    command = [bins / f'myriade-engine{EXE}', '--resources', lab.RESOURCES, '--dedicated', '--nogui']
     server = Server(command, folder, out / 'server.log')
     try:
         server.wait_for(DONE, 300)

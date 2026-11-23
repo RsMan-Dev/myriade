@@ -7,7 +7,7 @@ use crate::behaviours::Cap;
 use crate::brain::*;
 use crate::cow::{FluidState, Level, Pos};
 use crate::rules::find_liquid::{self as rules, RADIUS, SEARCH_GAP, UNTIL_GAP};
-use horizon_client_lib::blocks::Fluid;
+use myriade_engine_lib::blocks::Fluid;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:find_liquid",
@@ -92,10 +92,10 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
 #[derive(Default)]
 struct Column {
     key: Option<(i32, i32)>,
-    chunk: Option<std::sync::Arc<horizon_client_render::chunk::Chunk>>,
+    chunk: Option<std::sync::Arc<myriade_level::chunk::Chunk>>,
 }
 impl Column {
-    fn at(&mut self, mw: &horizon_client_lib::mobs::MobWorld, q: [i32; 3]) -> Fluid {
+    fn at(&mut self, mw: &myriade_engine_lib::mobs::MobWorld, q: [i32; 3]) -> Fluid {
         let key = (q[0] >> 4, q[2] >> 4);
         if self.key != Some(key) {
             self.key = Some(key);

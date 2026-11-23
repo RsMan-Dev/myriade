@@ -20,7 +20,7 @@ fn witnesses_use_sensor_candidates_radius_invisibility_and_cached_results() {
 
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::villager;
+use myriade_engine_lib::mobs::villager;
 use horizon_ecs_proto::{
     behaviours::{
         poi_claim::{self, ClaimIndex},
@@ -87,7 +87,7 @@ fn job_points_held_and_acquirable_follow_the_profession_table() {
     if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
         return;
     }
-    use horizon_client_lib::mobs::villager;
+    use myriade_engine_lib::mobs::villager;
     use horizon_world::poi::{PoiIdentity, PoiType};
     let (_, _, trades) = crate::common::registries();
     let table = trades.professions.clone();

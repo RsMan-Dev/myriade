@@ -2,9 +2,9 @@
 use crate::IFloor as _;
 use crate::rules::pathsearch::type_on_below;
 use horizon_world::registry::BlockStateId;
-use horizon_client_lib::mobs::{MobWorld, data::{self, PathComputationType}, path::{Evaluator, Path, PathMob, PathNode, PathType}};
-use horizon_client_lib::blocks::{BlockFacts, Fluid};
-use horizon_client_lib::fast_hash::FxHashMap;
+use myriade_engine_lib::mobs::{MobWorld, data::{self, PathComputationType}, path::{Evaluator, Path, PathMob, PathNode, PathType}};
+use myriade_engine_lib::blocks::{BlockFacts, Fluid};
+use myriade_engine_lib::fast_hash::FxHashMap;
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::position::BlockPos;
 
@@ -120,7 +120,7 @@ pub fn check_neighbours_cached(w: &MobWorld, x: i32, y: i32, z: i32, t: PathType
             return t;
         }
         probe!(bump(18));
-        let mut column: ((i32, i32), Option<&horizon_client_render::chunk::Chunk>) = ((i32::MIN, i32::MIN), None);
+        let mut column: ((i32, i32), Option<&myriade_level::chunk::Chunk>) = ((i32::MIN, i32::MIN), None);
         for dx in -1..=1 {
             for dy in -1..=1 {
                 for dz in -1..=1 {
@@ -829,7 +829,7 @@ impl<'a, 'w> Finder<'a, 'w> {
         }
         probe!(bump(21));
         let v = match self.occ {
-            Some(o) => !o.no_collision(horizon_client_render::collisions::SceneCollisions { world: self.w.world, binding: self.w.collision, subject: None }, b),
+            Some(o) => !o.no_collision(myriade_level::collisions::SceneCollisions { world: self.w.world, binding: self.w.collision, subject: None }, b),
             None => !self.w.no_collision(b),
         };
         self.collisions.insert(key, v);

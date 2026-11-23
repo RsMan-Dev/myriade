@@ -1,7 +1,7 @@
 //! What the custom spawners (`CustomSpawner`: cats, the wandering trader, the
 //! village siege) call on `ServerLevel`. They run once a tick at most; their
 //! code is compiled here over this trait, which the game implements once.
-use horizon_client::{
+use myriade_engine::{
     blocks::BlockFacts,
     mobs::{Species, raider, spawn_rules},
     world::World,

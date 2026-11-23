@@ -1,7 +1,7 @@
 use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
-use horizon_client_lib::mobs::villager;
+use myriade_engine_lib::mobs::villager;
 use horizon_ecs_proto::{
     behaviours::trade_offers::Merchant,
     brain::{sensors::secondary_job_site::{self, SECONDARY_JOB_SITE}, *},

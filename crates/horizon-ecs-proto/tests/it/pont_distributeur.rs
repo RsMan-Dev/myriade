@@ -1,7 +1,7 @@
 //! The dispenser's effects through the bridge: shearing, the TNT fuse of a dispensed flame, brushing and an egg's name.
 use crate::common::*;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_core::nbt::Tag;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::cow::now_of;

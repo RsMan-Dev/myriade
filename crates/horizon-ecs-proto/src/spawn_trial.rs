@@ -13,7 +13,7 @@ use crate::rules::spawn_spawner::attempt_position;
 use crate::rules::spawn_trial::{aligned, center, next_aligned, wave_target};
 use crate::spawn_spawner::{nearest_sqr, weighted, weighted_index, Block3, SpawnerRng, Valid};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use horizon_core::position::BlockPos;
 use horizon_core::random::{LegacyRandom, RandomSource};

@@ -509,7 +509,7 @@ pub fn download(install: &Install, release: &Release) -> Result<PathBuf, String>
     result.map(|()| path)
 }
 
-/// Unpacks a release archive into `<root>/releases/<tag>`, with its `.local/horizon-client` linked to the
+/// Unpacks a release archive into `<root>/releases/<tag>`, with its `.local/myriade-engine` linked to the
 /// install's prepared game files (which updates keep), as the installers do. It doesn't switch to it.
 pub fn unpack(install: &Install, archive: &Path, tag: &str) -> Result<PathBuf, String> {
     if tag.is_empty() || tag.contains(['/', '\\']) || tag.starts_with('.') {
@@ -564,7 +564,7 @@ pub fn unpack(install: &Install, archive: &Path, tag: &str) -> Result<PathBuf, S
         for name in [
             "horizon-server",
             "horizon-engine",
-            "horizon-client",
+            "myriade-engine",
             "horizon-prepare",
         ] {
             use std::os::unix::fs::PermissionsExt;
@@ -577,11 +577,11 @@ pub fn unpack(install: &Install, archive: &Path, tag: &str) -> Result<PathBuf, S
             std::fs::remove_dir_all(&target).map_err(|e| format!("{}: {e}", target.display()))?;
         }
         std::fs::rename(&source, &target).map_err(|e| format!("{}: {e}", target.display()))?;
-        let game_files = install.root.join("game-files/horizon-client");
+        let game_files = install.root.join("game-files/myriade-engine");
         std::fs::create_dir_all(&game_files).map_err(|e| e.to_string())?;
         let local = target.join(".local");
         std::fs::create_dir_all(&local).map_err(|e| e.to_string())?;
-        let link = local.join("horizon-client");
+        let link = local.join("myriade-engine");
         if link.symlink_metadata().is_err() {
             point(&link, &game_files).map_err(|e| format!("{}: {e}", link.display()))?;
         }
@@ -1319,8 +1319,8 @@ mod tests {
             assert_eq!(mode & 0o111, 0o111);
         }
         assert_eq!(
-            std::fs::canonicalize(release.join(".local/horizon-client")).unwrap(),
-            std::fs::canonicalize(install.root.join("game-files/horizon-client")).unwrap()
+            std::fs::canonicalize(release.join(".local/myriade-engine")).unwrap(),
+            std::fs::canonicalize(install.root.join("game-files/myriade-engine")).unwrap()
         );
         // Not switched yet; nothing left behind; the release in use can't be unpacked over.
         assert_eq!(install.current().as_deref(), Some("v1"));

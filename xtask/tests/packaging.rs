@@ -52,7 +52,7 @@ fn server_layouts_require_and_ship_std() {
     for target in ["linux", "linux-musl"] {
         let source = root.join(target);
         fs::create_dir_all(&source).unwrap();
-        for name in ["horizon-client", "horizon-prepare", "horizon-server"] {
+        for name in ["myriade-engine", "horizon-prepare", "horizon-server"] {
             fs::write(source.join(name), b"program").unwrap();
         }
         for task in ["package-server", "package"] {
@@ -60,7 +60,7 @@ fn server_layouts_require_and_ship_std() {
             let run = || {
                 Command::new(env!("CARGO_BIN_EXE_xtask"))
                     .arg(task)
-                    .arg(source.join("horizon-client"))
+                    .arg(source.join("myriade-engine"))
                     .arg(&out)
                     .current_dir(&root)
                     .output()

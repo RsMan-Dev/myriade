@@ -11,7 +11,7 @@ use crate::rules::firework::{detonation_damage, exposure};
 use crate::species::lists::FIREWORK_ROCKET;
 use crate::targeting::player_box;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::{Compound, Tag};
 use horizon_items::item_nbt::{item_from_nbt, item_to_nbt};

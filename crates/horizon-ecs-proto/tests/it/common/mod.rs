@@ -1,7 +1,7 @@
 //! Helpers of the ECS tests: the herd world (`Herd`), its players and creatures, and the vanilla registries the tests read.
 #![allow(dead_code)]
 use bevy_ecs::prelude::*;
-use horizon_client_lib::{items::Items, merchant::Trades, mobs::{MobWorld, PlayerView}};
+use myriade_engine_lib::{items::Items, merchant::Trades, mobs::{MobWorld, PlayerView}};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_ecs_proto::{
     cow::*,
@@ -128,11 +128,11 @@ pub fn health(h: &Herd, e: Entity) -> f32 {
 
 /// A chest in the block entities of a world (`*h.world.resource::<Level>()`) with these slots: the block entity the
 /// golems read. The block itself is placed by `Herd::set_block`.
-pub fn set_chest(level: Level, x: i32, y: i32, z: i32, slots: Vec<Option<horizon_client_lib::items::ItemStack>>) {
+pub fn set_chest(level: Level, x: i32, y: i32, z: i32, slots: Vec<Option<myriade_engine_lib::items::ItemStack>>) {
     // SAFETY: the test thread owns the world between two steps; no reference to its block entities is alive.
     unsafe {
         let world = &mut *level.blocks.0;
-        world.block_entities.insert((x, y, z), horizon_client_render::chunk::block_entity::BlockEntity::Chest(slots));
+        world.block_entities.insert((x, y, z), myriade_level::chunk::block_entity::BlockEntity::Chest(slots));
     }
 }
 pub fn xz(a: Vec3, b: Vec3) -> f64 {
@@ -174,10 +174,10 @@ pub fn insert_trade_data(h: &mut Herd) {
 
 /// A host world whose zone ticks around the origin: a player there and two steps, so what is spawned next is awake (a
 /// creature outside a ticking chunk sleeps and reads as absent).
-pub fn awake_host_with(setup: &horizon_ecs_proto::bridge::host::HostSetup, build: impl FnOnce(&mut horizon_client_lib::world::World, &horizon_world::registry::BlockRegistry)) -> (&'static MobWorld<'static>, horizon_ecs_proto::bridge::host::EcsWorld) {
+pub fn awake_host_with(setup: &horizon_ecs_proto::bridge::host::HostSetup, build: impl FnOnce(&mut myriade_engine_lib::world::World, &horizon_world::registry::BlockRegistry)) -> (&'static MobWorld<'static>, horizon_ecs_proto::bridge::host::EcsWorld) {
     use horizon_ecs_proto::bridge::host::{EcsWorld, PlayerFact};
     let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, build).expect("a prepared world");
+    let (mw, types, _) = myriade_engine_lib::mobs::world::leaked_test_world_mut(true, build).expect("a prepared world");
     let mut h = EcsWorld::new(setup, mw, types, &tags);
     h.set_player(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None });
     // The players' chunks reach the zone one step after the player is set.
@@ -190,10 +190,10 @@ pub fn awake_host_with(setup: &horizon_ecs_proto::bridge::host::HostSetup, build
 pub fn awake_host_in_border(setup: &horizon_ecs_proto::bridge::host::HostSetup, border: horizon_core::geometry::border::BorderGeometry) -> (&'static MobWorld<'static>, horizon_ecs_proto::bridge::host::EcsWorld) {
     use horizon_ecs_proto::bridge::host::{EcsWorld, PlayerFact};
     let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let build = |blocks: &mut horizon_client_lib::world::World, registry: &horizon_world::registry::BlockRegistry| {
+    let build = |blocks: &mut myriade_engine_lib::world::World, registry: &horizon_world::registry::BlockRegistry| {
         for cx in -2..2 {
             for cz in -2..2 {
-                blocks.chunks.insert((cx, cz), std::sync::Arc::new(horizon_client_render::chunk::Chunk::empty(cx, cz)));
+                blocks.chunks.insert((cx, cz), std::sync::Arc::new(myriade_level::chunk::Chunk::empty(cx, cz)));
             }
         }
         let stone = registry.default_state("minecraft:stone").unwrap();
@@ -203,7 +203,7 @@ pub fn awake_host_in_border(setup: &horizon_ecs_proto::bridge::host::HostSetup, 
             }
         }
     };
-    let (mw, types, _) = horizon_client_lib::mobs::world::leaked_test_world_bordered(true, Some(border), build).expect("a prepared world");
+    let (mw, types, _) = myriade_engine_lib::mobs::world::leaked_test_world_bordered(true, Some(border), build).expect("a prepared world");
     let mut h = EcsWorld::new(setup, mw, types, &tags);
     h.set_player(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None });
     h.step(mw);
@@ -220,7 +220,7 @@ pub fn awake_host_on_stone(setup: &horizon_ecs_proto::bridge::host::HostSetup) -
     awake_host_with(setup, |blocks, registry| {
         for cx in -2..2 {
             for cz in -2..2 {
-                blocks.chunks.insert((cx, cz), std::sync::Arc::new(horizon_client_render::chunk::Chunk::empty(cx, cz)));
+                blocks.chunks.insert((cx, cz), std::sync::Arc::new(myriade_level::chunk::Chunk::empty(cx, cz)));
             }
         }
         let stone = registry.default_state("minecraft:stone").unwrap();

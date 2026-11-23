@@ -5,7 +5,7 @@
 use super::schedule::Times;
 use crate::cow::{now_of, Pos};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::{
+use myriade_engine_lib::{
     entity_nbt::{offers_from_nbt, offers_to_nbt},
     items::Items,
     merchant::{self, MerchantOffer, Trader, TradeContext, Trades},

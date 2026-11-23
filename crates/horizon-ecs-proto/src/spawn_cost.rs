@@ -4,8 +4,8 @@ use crate::cow::{Pos, SpeciesId, SpeciesTable};
 use crate::spawn_biome::{biome_at, zoom_of};
 use crate::spawning::Spawner;
 use bevy_ecs::{lifecycle::HookContext, prelude::*, world::DeferredWorld};
-use horizon_client_lib::biome::SpawnCost;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::biome::SpawnCost;
+use myriade_engine_lib::mobs::MobWorld;
 
 /// A mob that charges the potential of its place (`SpawnState.afterSpawn` adds it). Sparse: only the mobs born in a biome with a cost
 /// for their species carry it.

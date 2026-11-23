@@ -8,13 +8,13 @@ program for you; read this page when you start it yourself.
 
 | | |
 | --- | --- |
-| Version | 0.2.0, printed by `horizon-client --launch-api` and `horizon-prepare --launch-api` |
+| Version | 0.2.0, printed by `myriade-engine --launch-api` and `horizon-prepare --launch-api` |
 | Level | experimental ([stability.md](stability.md)) |
-| Covers | starting `horizon-client --dedicated`: its options, the exit codes and the crash report's path |
+| Covers | starting `myriade-engine --dedicated`: its options, the exit codes and the crash report's path |
 
 ## Ask first
 
-`horizon-client --launch-api` prints one JSON object on stdout and exits 0, before anything else runs:
+`myriade-engine --launch-api` prints one JSON object on stdout and exits 0, before anything else runs:
 
 - `launch_api`: this API's version; `horizon`: the build's version; `minecraft`: the Minecraft version it runs.
 - `options`: each option as `{"name", "value"}` (`value` is the placeholder, `null` for a flag).
@@ -28,14 +28,14 @@ them), but only `options` is promised: any option it doesn't know is refused wit
 ## Start
 
 ```sh
-horizon-client --resources PREPARED --game-dir INSTANCE --home INSTANCE --dedicated --nogui
+myriade-engine --resources PREPARED --game-dir INSTANCE --home INSTANCE --dedicated --nogui
 ```
 
 ## Options
 
 | Option | What it does |
 | --- | --- |
-| `--resources DIR` | The prepared resources (`horizon-prepare`'s output). Default: `resources` beside the executable, else `.local/horizon-client/26.3`. |
+| `--resources DIR` | The prepared resources (`horizon-prepare`'s output). Default: `resources` beside the executable, else `.local/myriade-engine/26.3`. |
 | `--game-dir DIR` | The game folder: `saves/`, `server.properties`, `resourcepacks/`, `horizon-mods/`, `screenshots/`. Created when missing. Default: the working directory. `--gameDir` is the same. |
 | `--home DIR` | Logs (`logs/latest.log`) and crash reports (`crash-reports/`). Default: `HORIZON_HOME`, else `horizon` in the platform data folder. |
 | `--launch-api` | Prints the reply above and exits 0. |
@@ -66,7 +66,7 @@ report is a file `crash-<yyyy-MM-dd_HH.mm.ss>-<side>.txt` in `crash-reports/` un
 
 ## Reference
 
-[launch-reference.md](launch-reference.md) is generated from `crates/horizon-client/src/game/runtime/launch_api.rs`:
+[launch-reference.md](launch-reference.md) is generated from `crates/myriade-engine/src/game/runtime/launch_api.rs`:
 every option, the `--launch-api` reply and the exit codes.
 
 ## Preparing

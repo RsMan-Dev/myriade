@@ -39,7 +39,7 @@ native mod once those hooks exist.
 
 horizon-server checks the section before every start: with a wrong one, `horizon-server start` and `run` don't
 start and print the error, which names the key. The game reads it from `server.toml` when it starts
-(`horizon-client --dedicated` run by hand reads the same file from its folder, if there is one); a wrong section
+(`myriade-engine --dedicated` run by hand reads the same file from its folder, if there is one); a wrong section
 there turns the anticheat off, with an error in the log.
 
 ## How a check acts
@@ -94,7 +94,7 @@ ones in this version.
 ## Writing a check
 
 - The rules are in `crates/horizon-anticheat` (no game state: unit-test them there); the hub runs them
-  where it handles the packet (`crates/horizon-client/src/lan/`) and calls `Hub::flag`, which carries out
+  where it handles the packet (`crates/myriade-engine/src/lan/`) and calls `Hub::flag`, which carries out
   setback, alert and kick (`lan/anticheat.rs`).
 - A check is one entry in the `checks!` table of `horizon-anticheat/src/lib.rs`: its name in
   `server.toml`, its default thresholds and its own settings.
@@ -111,7 +111,7 @@ ones in this version.
   flagged, and nothing happens with the anticheat off.
 
 ```sh
-cargo build --profile fast -p horizon-game --bin horizon-client
+cargo build --profile fast -p horizon-game --bin myriade-engine
 cargo build --profile fast -p myriade-bot
 python3 tools/anticheat_e2e.py --bin-dir target/fast
 python3 tools/server_bench.py --servers horizon --bots 60 --behaviour walk --anticheat   # its cost

@@ -7,8 +7,8 @@ use crate::brain::*;
 use crate::cow::{FluidState, Level, Pos};
 use crate::rules::swim_stroll::{self as rules, SCALE};
 use crate::spots::{pick_for, Pick};
-use horizon_client_lib::blocks::Fluid;
-use horizon_client_lib::mobs::data::PathComputationType;
+use myriade_engine_lib::blocks::Fluid;
+use myriade_engine_lib::mobs::data::PathComputationType;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:swim_stroll",
@@ -122,7 +122,7 @@ mod tests {
         h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
         h.teleport(e, Vec3::new(x, y, z));
         // A swimmer's own path maluses: water costs nothing (the species' navigation, not this module's).
-        h.world.get_mut::<NavParams>(e).unwrap().malus[horizon_client_lib::mobs::path::PathType::Water as usize] = Some(0.0);
+        h.world.get_mut::<NavParams>(e).unwrap().malus[myriade_engine_lib::mobs::path::PathType::Water as usize] = Some(0.0);
         // The tadpole swims: its active mode is the water's (its navigation is a swimmer's, its stable destination is not a walker's).
         h.world.entity_mut(e).remove::<crate::locomotion::WalkMode>().insert(crate::locomotion::SwimMode);
         h.world.entity_mut(e).insert(bundle(plan));

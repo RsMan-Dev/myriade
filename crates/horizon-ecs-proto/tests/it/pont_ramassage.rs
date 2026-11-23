@@ -1,9 +1,9 @@
 //! The pickups through the bridge (`bridge/host_pickup.rs`): a player takes the stacks and the orbs in its box as the host accepts them,
 //! a stack waits for its pickup delay, the end of life of a stack can be held for the host and extended.
 use crate::common::*;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup, PlayerFact};
 use horizon_ecs_proto::cow::Clock;

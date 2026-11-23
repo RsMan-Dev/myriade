@@ -129,7 +129,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
 /// `water_pos`: the water block nearest to the cow among the blocks within `range` on each side and one up or down,
 /// unless the cow stands in a block with a collision shape.
 fn water_spot(w: &World, pos: Vec3, range: i32) -> Option<(f64, i32, f64)> {
-    use horizon_client_lib::blocks::Fluid;
+    use myriade_engine_lib::blocks::Fluid;
     let mw = w.resource::<Level>().mw.0;
     let at = [pos.x.floor() as i32, pos.y.floor() as i32, pos.z.floor() as i32];
     if mw.data.state(mw.world.block(at[0], at[1], at[2])).top != 0.0 {

@@ -33,7 +33,7 @@ except ImportError:
 # runner time per harness, nearly all of it in the vanilla oracle. other: probes nothing recorded names.
 GROUPS = ("game", "client", "world", "other")
 SHARD_SIZES = {"game": 50, "client": 100, "world": 150, "other": 50}
-GAME_PACKAGES = {"horizon-game", "horizon-client", "horizon-client-lib"}
+GAME_PACKAGES = {"horizon-game", "myriade-engine", "myriade-engine-lib"}
 # GitHub starts at most 256 jobs from one matrix.
 MATRIX_LIMIT = 256
 # The lines parity.py --list prints for what it leaves out (a test pins them to parity.py's own wording).
@@ -81,7 +81,7 @@ def probe_group(built):
         return "game"
     names = {artifact[1] for artifact in built}
     every = set().union(*map(packages, built)) if built else set()
-    if "client_probe" in names or every & {"horizon-client", "horizon-client-lib"}:
+    if "client_probe" in names or every & {"myriade-engine", "myriade-engine-lib"}:
         return "client"
     if "world_probe" in names or "horizon-world" in every:
         return "world"

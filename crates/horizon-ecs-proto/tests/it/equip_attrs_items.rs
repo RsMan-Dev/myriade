@@ -1,6 +1,6 @@
 //! The modifiers of the worn items come with the slot change (put on, swapped, taken off) and go with it; nothing runs per tick.
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_ecs_proto::attr_mod::{Modifier, Operation};
 use horizon_ecs_proto::equip_attrs::{of_attribute, ItemModifiers, WornModifiers};
 use horizon_ecs_proto::equip_stack;

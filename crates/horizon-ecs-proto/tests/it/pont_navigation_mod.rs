@@ -1,7 +1,7 @@
 //! The navigation a mod drives on a creature (greffe lot 81): a supplied path followed from the next step, the flags and the path
 //! maluses, with no tweak stored until a mod writes one. The fixtures are those of `pont_lectures_ia`.
 use crate::common::*;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_ecs_proto::{
     behaviours::restrict_sun::AvoidSun,
     bridge::host::{EcsWorld, HostSetup},
@@ -67,5 +67,5 @@ fn flag_write_lands_on_the_creature_navigation() {
     assert!(h.set_nav_malus(e, "FENCE", 3.0));
     let n = h.world().get::<NavParams>(e).expect("a navigation");
     assert!(n.can_pass_doors);
-    assert_eq!(n.malus[horizon_client_lib::mobs::path::PathType::Fence as usize], Some(3.0));
+    assert_eq!(n.malus[myriade_engine_lib::mobs::path::PathType::Fence as usize], Some(3.0));
 }

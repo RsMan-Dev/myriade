@@ -1,7 +1,7 @@
 //! The block factors of `block_factor`: soul sand slows, honey halves the jump, and a `BlockSpeed` cart is slowed on soul sand as
 //! `Entity.move` scales its horizontal velocity. The expected values are vanilla's (soul sand 0.4, honey jump 0.5, the others 1.0).
 use bevy_ecs::prelude::Entity;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::block_factor::{self, BlockSpeed};
 use horizon_ecs_proto::cart_move::{self, TrackRead};

@@ -1,6 +1,6 @@
 //! The numbers of a firework rocket (`FireworkRocketEntity`): its box, its glide, its blast and its rise.
-use horizon_client_lib::arrows::clip_block_hit;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::arrows::clip_block_hit;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// The box of a rocket: 0.25 wide and high.

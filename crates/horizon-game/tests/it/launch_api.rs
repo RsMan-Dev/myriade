@@ -1,4 +1,4 @@
-//! The Launch API's promises about how `horizon-client` ends (docs/api/launch.md), checked on
+//! The Launch API's promises about how `myriade-engine` ends (docs/api/launch.md), checked on
 //! the real program: `--launch-api` prints JSON and exits 0, a refused command line exits 2
 //! without a crash report, and an error exits 1 with the report's path as the last stderr line,
 //! with `--home` and `--game-dir` taken relative to where the game was started.
@@ -16,7 +16,7 @@ fn scratch(name: &str) -> PathBuf {
 
 /// The game started in `cwd` with `args`, its homes kept inside `cwd`.
 fn run(cwd: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_horizon-client"))
+    Command::new(env!("CARGO_BIN_EXE_myriade-engine"))
         .args(args)
         .current_dir(cwd)
         .env("HORIZON_HOME", cwd.join("env home"))

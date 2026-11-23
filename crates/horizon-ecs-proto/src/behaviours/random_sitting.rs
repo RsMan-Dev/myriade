@@ -1,4 +1,4 @@
-//! Fiche 101, `RandomSitting` (`horizon-client/src/mobs/camel.rs:386-420`) : un chameau libre, 400 ticks après son dernier
+//! Fiche 101, `RandomSitting` (`myriade-engine/src/mobs/camel.rs:386-420`) : un chameau libre, 400 ticks après son dernier
 //! changement de pose, change de pose. Le tirage `nextInt(4) == 0` par demande devient UN délai géométrique (`idle_wait`)
 //! armé dès que les conditions tiennent. Un événement (sol, eau quittée, cavalier parti) qui les rend vraies arme le délai ;
 //! à son échéance, `can_use` revérifie les conditions et, si l'une est fausse, n'arme rien : on attend l'événement.

@@ -175,7 +175,7 @@ or declarations. A mod with no declared internals needs no catalogs to update. Q
 Rust lifetimes or other shell metacharacters, for example:
 
 ```sh
-cargo horizon-mod internals add 'horizon_client::game::Game' "horizon_client::game::maps::Game<'_>::dimension_id"
+cargo horizon-mod internals add 'myriade_engine::game::Game' "myriade_engine::game::maps::Game<'_>::dimension_id"
 cargo horizon-mod internals sync
 cargo horizon-mod update
 ```

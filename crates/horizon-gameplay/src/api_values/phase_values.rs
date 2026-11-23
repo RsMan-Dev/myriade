@@ -1,5 +1,5 @@
 //! Phase vocabulary enters through the same game-local conversion boundary.
-//! The two mappings repeat `horizon_client_render::api_context::{load_origin, loop_side}`,
+//! The two mappings repeat `myriade_level::api_context::{load_origin, loop_side}`,
 //! which this crate cannot call.
 use super::TryIntoApi;
 use horizon_world::native_load_context::{DataLoadOrigin, LoopSide};

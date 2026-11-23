@@ -2,7 +2,7 @@
 //! listens, `ExpiryPolicy`). Not in `host_out.rs`: at fusion this enum becomes `HostEvent::Item(ItemEvent)`; `ItemEvents` is the queue
 //! that `EcsWorld::drain_item_events` empties.
 use bevy_ecs::{entity::Entity, prelude::Resource};
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ItemEvent {

@@ -17,7 +17,7 @@ project = lab.LOCAL / 'paper-parity/engine-project'
 quote = lambda value: json.dumps(str(value).replace('\\', '/'))
 cargo = '[package]\nname="paper-trace-engine"\nversion="0.1.0"\nedition="2024"\n[workspace]\n'
 cargo += '[profile.release]\nlto=false\ncodegen-units=16\n[dependencies]\n'
-for name, path in [('horizon-client', ROOT / 'crates/horizon-client'),
+for name, path in [('myriade-engine', ROOT / 'crates/myriade-engine'),
                    ('horizon-mod-api', ROOT / 'crates/horizon-mod-api'),
                    ('horizon-mod-package', ROOT / 'crates/horizon-mod-package'), ('paper-trace-mod', fixture)]:
     cargo += f'{name}={{path={quote(path)},default-features=false}}\n'
@@ -29,7 +29,7 @@ for name, patch in tomllib.loads((ROOT / 'Cargo.toml').read_text())['patch']['cr
 (project / 'build.rs').write_text('fn main() { if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {'
     'let arg = if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") '
     '{"/STACK:8388608"} else {"-Wl,--stack,8388608"}; println!("cargo:rustc-link-arg={arg}"); }}')
-main = (ROOT / 'crates/horizon-client/src/native_main.rs.template').read_text()
+main = (ROOT / 'crates/myriade-engine/src/native_main.rs.template').read_text()
 main = main.replace('/* MOD_ENTRIES */', f'{quote(manifest["id"])} => paper_trace_mod::hooks,')
 main = main.replace('/* MOD_SLOTS */', '')
 main = main.replace('/* BUILT_MODS */', 'mod_api::__private::native::BuiltMod {'

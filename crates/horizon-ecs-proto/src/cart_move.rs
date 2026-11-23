@@ -10,8 +10,8 @@ use crate::host_out_cart_move::{CartMoveEvent, CartMoveOut};
 use crate::minecart::{along_track, can_park, container_slowdown, fall_step, furnace_slowdown, off_track_drag, off_track_velocity, rail_point, settle, slowdown, Fall, Furnace, Kind, Rail, Track, GRAVITY, MAX_LAND, MAX_WATER};
 use crate::seat;
 use bevy_ecs::{entity_disabling::Disabled, prelude::*};
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 /// A cart that moves, has a rider or sits on a lit powered rail: `cart_step` visits only these.

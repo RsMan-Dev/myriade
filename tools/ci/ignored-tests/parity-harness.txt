@@ -1,9 +1,9 @@
 # Parity harness steps: each harness runs its test with the environment it sets (REFERENCE names
 # the harness or the variable); the ignored-tests job skips them.
-horizon-client-lib mobs::villager_brain::poi_classification_tests::vanilla_bed_poi_states tools/test_bed_poi_parity.py harness
-horizon-client-lib save::loot_tests::opened_loot_parity_fixture tools/test_opened_loot_parity.py harness
-horizon-client-lib entity_nbt::equipment_tests::write_fixtures HORIZON_WRITE_FIXTURES harness
-horizon-client-lib save::far_census::far_floating_cells_per_level HORIZON_FAR_SAVE harness
-horizon-client game::maps::save_tests::saved_map_codec_fixture tools/test_map_saved_data_parity.py harness
-horizon-client-lib mobs::villager_brain::farming_tests::vanilla_farming_classification_matches_the_oracle tools/test_villager_farming_parity.py harness
-horizon-client-lib mobs::villager_brain::reputation_witness_tests::witnesses_use_sensor_candidates_radius_invisibility_and_cached_results tools/test_villager_witness_parity.py harness
+myriade-engine-lib mobs::villager_brain::poi_classification_tests::vanilla_bed_poi_states tools/test_bed_poi_parity.py harness
+myriade-engine-lib save::loot_tests::opened_loot_parity_fixture tools/test_opened_loot_parity.py harness
+myriade-engine-lib entity_nbt::equipment_tests::write_fixtures HORIZON_WRITE_FIXTURES harness
+myriade-engine-lib save::far_census::far_floating_cells_per_level HORIZON_FAR_SAVE harness
+myriade-engine game::maps::save_tests::saved_map_codec_fixture tools/test_map_saved_data_parity.py harness
+myriade-engine-lib mobs::villager_brain::farming_tests::vanilla_farming_classification_matches_the_oracle tools/test_villager_farming_parity.py harness
+myriade-engine-lib mobs::villager_brain::reputation_witness_tests::witnesses_use_sensor_candidates_radius_invisibility_and_cached_results tools/test_villager_witness_parity.py harness

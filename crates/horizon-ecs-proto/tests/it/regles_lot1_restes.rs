@@ -1,8 +1,8 @@
 //! Restes du lot 1 (`suivi/ecs-portage/phase1-listes/regles-mob-vers-ecs-1.md`) : pendants ECS des tests de l'ancien Mob qui n'en avaient pas.
 //! Valeurs vanilla 26.3 relues dans le jar, pas dans l'ancien Mob.
 use crate::common::*;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::merchant::{ItemCost, MerchantOffer};
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::merchant::{ItemCost, MerchantOffer};
 use bevy_ecs::prelude::World;
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use horizon_ecs_proto::behaviours::stroll;
@@ -10,7 +10,7 @@ use horizon_ecs_proto::cow::{Rng, Stroll};
 use horizon_ecs_proto::goals::Slot;
 use horizon_ecs_proto::behaviours::food_inventory;
 use horizon_ecs_proto::host_out::HostEvent;
-use horizon_client_lib::mobs::villager;
+use myriade_engine_lib::mobs::villager;
 use horizon_ecs_proto::behaviours::trade_offers::TradeData;
 use horizon_ecs_proto::gliding::{self, FallFlying};
 use horizon_ecs_proto::behaviours::trade_offers::{profession_name, Merchant, UnresolvedProfession, UNRESOLVED};

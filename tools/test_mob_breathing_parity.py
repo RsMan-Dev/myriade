@@ -53,7 +53,7 @@ def main():
                lab.ROOT / 'tools/oracle_harness.py', lab.ROOT / 'tools/test_rust_parity.py',
                lab.ROOT / 'tools/server_lab.py',
                lab.ROOT / 'Cargo.toml', lab.ROOT / 'Cargo.lock',
-               lab.ROOT / 'crates/horizon-client/src/game/interface/dedicated/command_ops_air_fall.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game/interface/dedicated/command_ops_air_fall.rs',
                lab.ROOT / 'crates/horizon-ecs-proto/src/cow/fluids.rs',
                lab.ROOT / 'crates/horizon-ecs-proto/src/effects.rs',
                java_root / 'dev/horizonlab/parity/ParityData.java',
@@ -69,7 +69,7 @@ def main():
                         str(classes) + os.pathsep + dependencies,
                         'dev.horizonlab.parity.VanillaMobBreathingOracle', build / 'server.txt'],
                        build, 'server')
-    subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client', '--bin', 'horizon-client'],
+    subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'myriade-engine', '--bin', 'myriade-engine'],
                    cwd=lab.ROOT, check=True, timeout=900,
                    stdout=(build / 'compile-rust.log').open('w'), stderr=subprocess.STDOUT)
     bins = Path(lab.cargo_target()) / 'fast'

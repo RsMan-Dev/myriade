@@ -13,7 +13,7 @@ A new overworld's spawn comes from two steps (MinecraftServer.setInitialSpawn):
 Origins: VanillaWorldSpawnOracle calls NoiseSpawnFinder.findSpawnPosition and
 getOrigin for every seed; the spawn_origin example asks Horizon's generator.
 World spawns: the pinned vanilla dedicated server creates each world and
-stops; Horizon's (`horizon-client --dedicated --nogui`) creates its own from
+stops; Horizon's (`myriade-engine --dedicated --nogui`) creates its own from
 the same server.properties and stops; the `spawn` position of both
 level.dat files is compared.
 
@@ -164,9 +164,9 @@ def main():
     if args.origins_only:
         sys.exit(1 if origin_diffs else 0)
 
-    oh.run_logged(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'horizon-client'], build,
+    oh.run_logged(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'myriade-engine'], build,
                   'compile-rust', timeout=3600)
-    binary = target_dir('fast') / ('horizon-client.exe' if os.name == 'nt' else 'horizon-client')
+    binary = target_dir('fast') / ('myriade-engine.exe' if os.name == 'nt' else 'myriade-engine')
     # One worker thread: the chunks decorated in a fixed order (see above).
     vanilla_server = ['java', '-Xmx2g', '-Dmax.bg.threads=1', '-cp', dependencies, 'net.minecraft.server.Main', 'nogui']
     horizon_server = [binary, '--resources', RESOURCES, '--dedicated', '--nogui']

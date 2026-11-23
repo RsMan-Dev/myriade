@@ -23,7 +23,7 @@ TEST = 'game::end::cooldown_tests::gateway_counters_match_actual_vanilla_methods
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--work-dir', type=Path)
-    parser.add_argument('--resources', type=Path, default=lab.LOCAL / 'horizon-client/26.3')
+    parser.add_argument('--resources', type=Path, default=lab.LOCAL / 'myriade-engine/26.3')
     parser.add_argument('--reference-only', action='store_true')
     args = parser.parse_args()
     build = (args.work_dir or lab.LOCAL / 'rust-gateway-cooldown-parity').resolve()
@@ -54,7 +54,7 @@ def main():
     env = lab.game_env(inherited, HORIZON_TELEMETRY_URL="off", HORIZON_PORTAL_REFERENCE=reference.resolve(),
                        HORIZON_PORTAL_REPORT=(build / 'native.json').resolve(),
                        HORIZON_TEST_RESOURCES=args.resources.resolve(strict=True))
-    run(['cargo', 'test', '-p', 'horizon-client', '--lib', '--no-run',
+    run(['cargo', 'test', '-p', 'myriade-engine', '--lib', '--no-run',
          '--message-format=json'], 'build-native', env)
     records = (json.loads(line) for line in (build / 'build-native.log').read_text(encoding='utf-8').splitlines()
                if line.startswith('{'))

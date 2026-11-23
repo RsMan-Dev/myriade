@@ -28,7 +28,7 @@ any such contract. No NeoForge source, patches or other project's source was rea
 ## Current owners and proposed shared boundary
 
 References verified at worktree HEAD `1d1de8d42b`; client paths below are relative
-to `crates/horizon-client/src/`. These are current owners, not existing hook sites.
+to `crates/myriade-engine/src/`. These are current owners, not existing hook sites.
 
 | Route | Owner | Required integration |
 | --- | --- | --- |

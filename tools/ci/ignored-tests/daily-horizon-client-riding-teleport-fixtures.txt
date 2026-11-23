@@ -1,1 +1,1 @@
-horizon-client game::commands::teleport_level_tests::a_mod_sends_an_armor_stand_to_another_level lib daily resources
+myriade-engine game::commands::teleport_level_tests::a_mod_sends_an_armor_stand_to_another_level lib daily resources

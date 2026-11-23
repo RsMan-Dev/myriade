@@ -1,7 +1,7 @@
 //! The breeze's shot, slide and long jump (`brain/behaviours/breeze.rs`): the firing point, the aim, the wind charge's spread, the point
 //! behind a target, the middle circle, the jump's reach and landing. The draws are passed in, in the order the behaviour takes them.
-use horizon_client_lib::blocks::Fluid;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::blocks::Fluid;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 /// The wind charge's speed (`BreezeUtil`'s wind charge) and the spread of its aim, in degrees.

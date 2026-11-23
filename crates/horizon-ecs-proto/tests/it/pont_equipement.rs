@@ -1,8 +1,8 @@
 //! The equipment stacks through the bridge (greffe lot 76): a whole stack per slot, read back as written, an event on a change only, the
 //! component gone with the last piece, and a piece that wears to zero leaves its slot. Needs `HORIZON_TEST_RESOURCES`, as the other bridge tests.
 use crate::common::*;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_core::nbt::Tag;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::equip_stack::{self, Equipment};
@@ -10,7 +10,7 @@ use horizon_ecs_proto::host_out::HostEvent;
 use horizon_ecs_proto::host_out_equipment::EquipmentEvent;
 
 /// The slot changes the channel carries since the last step: (entity, slot, from, to).
-fn changes(h: &mut EcsWorld, mw: &horizon_client_lib::mobs::MobWorld<'_>) -> (Vec<(bevy_ecs::entity::Entity, usize, Option<ItemStack>, Option<ItemStack>)>, Vec<(bevy_ecs::entity::Entity, usize)>) {
+fn changes(h: &mut EcsWorld, mw: &myriade_engine_lib::mobs::MobWorld<'_>) -> (Vec<(bevy_ecs::entity::Entity, usize, Option<ItemStack>, Option<ItemStack>)>, Vec<(bevy_ecs::entity::Entity, usize)>) {
     let (mut changed, mut broke) = (Vec::new(), Vec::new());
     for ev in h.step(mw) {
         match ev {

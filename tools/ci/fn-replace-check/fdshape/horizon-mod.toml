@@ -15,7 +15,7 @@ mixins = "MIXINS"
 [[native.mixin]]
 id = "ported_block_entity_tick"
 kind = "HEAD"
-target = "horizon_client::game::block_entity_tick_reply::Game<'_>::api_block_entity_tick"
+target = "myriade_engine::game::block_entity_tick_reply::Game<'_>::api_block_entity_tick"
 helper = "src/mixins/tick.rs"
 bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
@@ -25,7 +25,7 @@ bindings = [
 [[native.mixin]]
 id = "knockback_0"
 kind = "MODIFY_VARIABLE"
-target = "horizon_client::game::creatures::knockback::Game<'_>::knock_back_player"
+target = "myriade_engine::game::creatures::knockback::Game<'_>::knock_back_player"
 variable = { name = "power", ordinal = 0, at = "LOAD", parameter = true }
 require = 1
 ordinal = 0
@@ -37,7 +37,7 @@ bindings = [{ name = "value", ty = "f64", value = "$value" }]
 [[native.mixin]]
 id = "sign_sprite"
 kind = "WRAP_OPERATION"
-target = "horizon_client::game::sign_edit::Game<'_>::draw_sign_editor"
+target = "myriade_engine::game::sign_edit::Game<'_>::draw_sign_editor"
 selector = "editor_sprite"
 require = 2
 ordinal = 0
@@ -50,7 +50,7 @@ bindings = [
 [[native.mixin]]
 id = "native_server_started"
 kind = "HEAD"
-target = "horizon_client::game::native_hooks::base::Game<'_>::native_server_started"
+target = "myriade_engine::game::native_hooks::base::Game<'_>::native_server_started"
 helper = "src/mixins/server_started.rs"
 bindings = [{ name = "dedicated", ty = "bool", value = "dedicated" }]
 
@@ -60,5 +60,5 @@ bindings = [{ name = "dedicated", ty = "bool", value = "dedicated" }]
 [[native.mixin]]
 id = "trait_block_state"
 kind = "HEAD"
-target = "horizon_client::game::level_access::<GameLevel<'_> as LevelAccess>::block_state"
+target = "myriade_engine::game::level_access::<GameLevel<'_> as LevelAccess>::block_state"
 helper = "src/mixins/trait.rs"

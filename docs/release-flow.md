@@ -57,7 +57,7 @@ alone, with a warning. The check is still reported on the head.
    the machine has it.
 2. `tools/ci/vanilla-data.sh` links `.local/` to the runner's copy of the vanilla data, cloned once from
    `~/code/horizon-parity/shared-local` into `~/.actions-runners/horizon/_work/horizon/shared-local`, and
-   prepares `.local/horizon-client` with the pull request's own `horizon-prepare` once per preparer version
+   prepares `.local/myriade-engine` with the pull request's own `horizon-prepare` once per preparer version
    (its sources, the exporters in `mods/horizon/src/test/java` and `research-lock.json`). The game's sounds, which
    depend only on the Minecraft version, are kept once in `shared-local/sounds/<version>/` (copied from a folder
    `horizon-prepare sounds` made from the maintainer's own game)
@@ -298,7 +298,7 @@ have no SDK; consumers must report that rather than rebuilding the game per mod.
 The game workflow also builds `horizon-wasm-std.wasm` once with the pinned Rust toolchain, `rust-src` and
 `wasm32-unknown-unknown`, without credentials or shared caches. Every client archive (including musl) and the Linux
 server archive take that same member beside the executable through xtask's required-input preflight.
-The dedicated executable is built from `horizon-game --no-default-features --bin horizon-client`.
+The dedicated executable is built from `horizon-game --no-default-features --bin myriade-engine`.
 
 For `[[native.mixin]]`, delivery currently uses the existing pinned-source tool build when no matching prebuilt
 exists. Building that small tool once per pin/patch/platform does not rebuild any game crate. The former unsigned
@@ -335,7 +335,7 @@ There is no daily run: `daily.yml` and the workflows it called (`ignored-tests.y
 |---|---|---|
 | `ci.yml` (`verify (Rust tests)`) | A pull request that `tools/ci/rust_changes.py` selects (any change except `docs/`, Markdown, and Python under `tools/` and `tests/`; `rust_changes.py` and `release_train.py` themselves count); every merge-queue entry, manual dispatch and push to main (a push only builds when a merge-queue run already passed on its commit) | On Linux: the workspace's unit, binary, integration and doc tests, and the `#[ignore]`d `mod_content::tests::` (they pass at once without the vanilla data, which no GitHub runner holds) |
 | `ci.yml` (`verify (mod points)`) | A pull request that `rust_changes.py` selects for the mod points (see `needs_mod_points`: crate manifests count, for example); every merge-queue entry, manual dispatch and push to main | On Linux: `horizon-mod-points`' wire loopback test |
-| `game-build.yml`, from `nightly-build.yml` | Each Nightly build | On Windows x64, in release, in its own job (`polytone windows`) beside the Windows build, which `sign` and `publish` wait for as for the builds: `horizon-client-render`'s `particles::polytone::tests::` |
+| `game-build.yml`, from `nightly-build.yml` | Each Nightly build | On Windows x64, in release, in its own job (`polytone windows`) beside the Windows build, which `sign` and `publish` wait for as for the builds: `myriade-level`'s `particles::polytone::tests::` |
 | `perf-wasm.yml` | Pull requests and pushes to main that change `crates/horizon-perf/`, `crates/horizon-perf-format/`, `crates/horizon-bench/`, `xtask/`, `Cargo.lock`, `Cargo.toml` or the workflow itself; manual dispatch | On Linux: `horizon-perf`'s `wasm` test |
 | `mod-registry.yml` | Pull requests and pushes to main that change `crates/horizon-mod-package/`, `crates/horizon-mod-registry/` or the workflow itself | On Linux: `horizon-mod-registry`'s tests |
 | `telemetry-server.yml` | Pull requests and pushes to main that change `crates/horizon-telemetry/`, `crates/horizon-telemetry-server/` or the workflow itself | On Linux: `horizon-telemetry-server`'s tests |
@@ -429,7 +429,7 @@ the notes.
 | `horizon-macos-arm64.zip` | The Mac mini's runner (`vars.MAC_RUNNER=macos-latest` sends it to GitHub) | system libraries only (`otool -L`); a 1500-frame offscreen run of a new world (about 12 s; 300 frames end before the world has loaded) with resources prepared from the runner's own Minecraft (`--offscreen --world smoke --frames 1500 --smoke-report`: frames drawn, chunks generated and meshed, a player, no error) |
 | `horizon-macos-x64.zip` | The same runner, cross-built for `x86_64-apple-darwin` (#1161) | as `horizon-macos-arm64.zip`, every program and the 1500-frame run under Rosetta 2; only the arm64 build's `smoke-test.json` is published |
 
-Each builds `horizon-client`, `horizon-prepare` and `horizon-server` in release mode, checks they
+Each builds `myriade-engine`, `horizon-prepare` and `horizon-server` in release mode, checks they
 exist, verifies Windows PE architectures, checks the `--help` and `--version` entry points, packages the folder with
 `cargo run -p xtask -- package` and archives it. The
 GitHub jobs keep their Cargo caches (`Swatinem/rust-cache`); the Mac mini keeps its `target/`. Only the Mac

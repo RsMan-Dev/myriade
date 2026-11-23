@@ -2,7 +2,7 @@
 //! for the host to apply; here a module writes one at the moment of the act (an event, never a scan) and the host reads them all
 //! once per tick with `drain`. One queue (a field of `goals::Events`, `events.host`), empty at rest: no allocation and no byte per entity. Fire and forget, as
 //! the `Mob`'s: the host's refusal of a block is not reported back.
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_world::registry::BlockStateId;
 use std::borrow::Cow;
 use crate::targeting::Who;

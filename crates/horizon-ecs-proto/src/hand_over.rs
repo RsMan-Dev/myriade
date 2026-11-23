@@ -5,7 +5,7 @@ use crate::cow::*;
 use crate::goals::*;
 use crate::rules::{no_attrs, params, Rule};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]

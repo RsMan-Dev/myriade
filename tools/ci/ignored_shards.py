@@ -11,7 +11,7 @@ The ignored-tests check is a matrix with one package per shard; this file is the
 place that names them. A shard is selected when a changed crate is its package or a
 transitive dependency of it. Workspace-wide files, and any path no crate owns, select
 every shard; pushes to main always run everything (the `changes` job passes --all).
-crates/horizon-client holds horizon-client-lib's sources too (its [lib] path reaches
+crates/myriade-engine holds myriade-engine-lib's sources too (its [lib] path reaches
 into that tree), so that directory counts for both packages.
 """
 
@@ -29,10 +29,10 @@ from tools.ci import rust_changes  # noqa: E402
 ROOT = Path(__file__).resolve().parents[2]
 
 # One package per shard, balanced on the measured test times of the single-job run this
-# plan replaced (CI run #952, e8752e146f: horizon-client 380s, horizon-client-render
-# 279s, horizon-client-lib 189s, 16m53s wall); horizon-world and horizon-items joined when every library
+# plan replaced (CI run #952, e8752e146f: myriade-engine 380s, myriade-level
+# 279s, myriade-engine-lib 189s, 16m53s wall); horizon-world and horizon-items joined when every library
 # test started running with the data, not only the #[ignore]d ones. Rebalance by editing this tuple only.
-SHARDS = ("horizon-client", "horizon-client-lib", "horizon-client-render", "horizon-world", "horizon-items")
+SHARDS = ("myriade-engine", "myriade-engine-lib", "myriade-level", "horizon-world", "horizon-items")
 # The leg that runs the daily rows (tools/ci/ignored-tests/daily-*.txt) that no package shard above runs: the moved
 # tests of every other package, and of the shard packages' targets their shard does not build (tools/ci/ignored_tests.py
 # daily_rows_groups). Coverage, not speed: without it those tests would run nowhere. Main's full matrix only.
@@ -47,13 +47,13 @@ PREPARE = {
                             "--features", "runtime-process", "--example", "holder_actor"],
 }
 # A package too big for one test process's memory runs as several legs, `PACKAGE#NofM` (tools/ci/ignored_tests.py
-# gives each test to exactly one leg). horizon-client's single process was killed (signal 9) on three main runs.
-LEGS = {"horizon-client": 2}
+# gives each test to exactly one leg). myriade-engine's single process was killed (signal 9) on three main runs.
+LEGS = {"myriade-engine": 2}
 
 # Files at the repository root that every package's build reads.
 ROOT_WIDE_FILES = {"Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rustfmt.toml", "clippy.toml"}
 # The crates directory whose sources build more than one of the shard packages.
-SHARED_SOURCES = {"horizon-client": ("horizon-client", "horizon-client-lib")}
+SHARED_SOURCES = {"myriade-engine": ("myriade-engine", "myriade-engine-lib")}
 # Every Cargo workspace whose tests the daily rows may name, by folder: the game's.
 WORKSPACES = (".",)
 

@@ -1,7 +1,7 @@
 //! Calculations of the turtle-egg hunt (`ZombieAttackTurtleEggGoal`): the delay of a search, the hop of a stamp, the egg under a
 //! mob, the cells that are an egg.
 use crate::rules::nearest_target::reduced;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 /// The ticks before the next search, from the draw `draw` of `nextInt(200)`: `reduced(200 + draw)` asks, two ticks each.
 pub fn search_ticks(draw: i32) -> i32 {

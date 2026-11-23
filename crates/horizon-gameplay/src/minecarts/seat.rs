@@ -1,6 +1,6 @@
 //! `AbstractMinecart`'s rider seat and the side it sets a rider down on:
 //! `getPassengerAttachmentPoint` and `getDismountLocationForPassenger`.
-use horizon_client::mobs::Species;
+use myriade_engine::mobs::Species;
 
 /// AbstractMinecart passenger attachment Y (EntityAttachments).
 pub const PASSENGER_Y: f64 = 0.1875;

@@ -1,7 +1,7 @@
 //! What villager code calls on its level beyond [`MobLevel`]: the shared tables, the
 //! few services of the game that stay behind, and the spawns and events a villager causes.
 use crate::mob_level::MobLevel;
-use horizon_client::{
+use myriade_engine::{
     items::{ItemStack, Items},
     mobs::{MobType, MobWorld, Seen, spawning::BiomeFacts},
     stations::StationData,

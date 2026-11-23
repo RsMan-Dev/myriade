@@ -2,7 +2,7 @@
 //! `Mob.finalizeSpawn` does for its reason, then told to the host (`addFreshEntityWithPassengers`). The group is the caller's: one per
 //! group of a pack (`SpawnGroupData`, null again at each of `spawnCategoryForPosition`'s three groups).
 use crate::cow::{Pos, Species};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use crate::spawn_finalize::{Group, Outcome};
 use crate::spawn_mod_host::Verdict;
 use crate::spawn_reason::SpawnReason;
@@ -57,7 +57,7 @@ pub fn born_finalized_with(w: &mut World, mw: &MobWorld<'_>, sp: &Species, at: [
         }
         Verdict::Skipped => {}
         Verdict::Done(special) => {
-            let special = special.unwrap_or_else(|| horizon_client_lib::mobs::spawning::LocalDifficulty::at(mw.world, at).special());
+            let special = special.unwrap_or_else(|| myriade_engine_lib::mobs::spawning::LocalDifficulty::at(mw.world, at).special());
             let out = finalize_in(w, mw, e, reason, special, group.take(), random);
             *group = out.group;
         }

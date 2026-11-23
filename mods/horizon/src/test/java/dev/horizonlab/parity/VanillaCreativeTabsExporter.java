@@ -105,7 +105,7 @@ public final class VanillaCreativeTabsExporter {
             .toList();
     }
 
-    /** ItemStack.CODEC as SNBT (the form horizon_client::item_data::parse_stack reads). */
+    /** ItemStack.CODEC as SNBT (the form myriade_engine::item_data::parse_stack reads). */
     public static String snbt(ItemStack stack) {
         if (stack.isEmpty()) return "-";
         return ItemStack.CODEC.encodeStart(ParityData.ops, stack).getOrThrow().toString();

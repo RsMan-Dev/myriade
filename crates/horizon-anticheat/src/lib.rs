@@ -1,6 +1,6 @@
 //! The dedicated server's anticheat (docs/anticheat.md), without the game: the `[anticheat]` section of
 //! `server.toml`, each player's violation levels, and the rules of the checks. The server's hub
-//! (`horizon_client::lan`) feeds it what players send and carries out what it decides.
+//! (`myriade_engine::lan`) feeds it what players send and carries out what it decides.
 //!
 //! It is on by default, and so is every check, but only the checks that have shown no false positive
 //! act on their own: `combat`, which a vanilla client can't trip, and `ground`, which players who
@@ -163,7 +163,7 @@ checks! {
 
     /// Prediction: each move played again from the client's own inputs with vanilla's movement code,
     /// and compared (speed, step, fly, jesus...). Each player's client ticks are recorded
-    /// (horizon-client's `lan::prediction::record`), with a ping a tick to place what the server changes,
+    /// (myriade-engine's `lan::prediction::record`), with a ping a tick to place what the server changes,
     /// and played again (`lan::prediction`). A move that lands farther than `tolerance` from the
     /// replay flags, by how far it lands (one `tolerance` off weighs 1, at most 5 a tick), and the
     /// setback puts the player back where its moves last agreed. A tick near what the replay can't

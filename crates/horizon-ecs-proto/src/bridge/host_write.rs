@@ -8,7 +8,7 @@ use crate::goals::{self, Head};
 use crate::level;
 use crate::rules::regen;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 
 /// The bound of a write on health: the maximum the entity has (its component, else its species'), none without a species.

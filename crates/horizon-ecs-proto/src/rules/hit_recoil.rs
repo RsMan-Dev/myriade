@@ -1,5 +1,5 @@
 //! Knock of a sulfur cube holding a block when it is hit (`SulfurCube.knockback` and its `launch`, `sulfur_cube.rs` 1100-1210).
-use horizon_client_lib::mobs::sulfur_cube::Archetype;
+use myriade_engine_lib::mobs::sulfur_cube::Archetype;
 
 /// `launch` without the aim and without the feet: the knock of one blow, as a velocity delta.
 pub fn launch(a: &Archetype, damage: f32, (xd, zd): (f64, f64), effect_scale: f32) -> [f64; 3] {

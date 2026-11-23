@@ -93,14 +93,14 @@ invalidation and publication rules above apply to every row.
 
 | Route | Current file:line owner | Required extension |
 | --- | --- | --- |
-| Initial mesh and remesh admission | `horizon-client-render/src/streaming.rs:2237` | Freeze one shared plan before dispatch |
-| Worker execution | `horizon-client-render/src/streaming.rs:1142`; `horizon-client-render/src/mesher.rs:1751` | Batch once; include empty sections |
-| Block writes and border edits | `horizon-client-render/src/world.rs:385` | Invalidate shared halo dependencies |
-| Remote chunk arrival | `horizon-client-render/src/streaming.rs:1302` | Capture replacement section and neighbour revisions |
-| Biome/light replacement | `horizon-client-render/src/streaming.rs:3455`, `:1342` | Rebuild dependent plans |
-| Resource and visibility refresh | `horizon-client-render/src/streaming.rs:1277`; `horizon-client/src/game/modding/native_render_visibility.rs:13` | Replace context and invalidate through one route |
-| Unload | `horizon-client-render/src/streaming.rs:516` | New lifetime on reload; remove mesh, cancel old jobs |
-| Abandoned/stale completion | `horizon-client-render/src/streaming.rs:1887` | Extend current sequence/column refusal with shared epoch token through upload |
+| Initial mesh and remesh admission | `myriade-level/src/streaming.rs:2237` | Freeze one shared plan before dispatch |
+| Worker execution | `myriade-level/src/streaming.rs:1142`; `myriade-level/src/mesher.rs:1751` | Batch once; include empty sections |
+| Block writes and border edits | `myriade-level/src/world.rs:385` | Invalidate shared halo dependencies |
+| Remote chunk arrival | `myriade-level/src/streaming.rs:1302` | Capture replacement section and neighbour revisions |
+| Biome/light replacement | `myriade-level/src/streaming.rs:3455`, `:1342` | Rebuild dependent plans |
+| Resource and visibility refresh | `myriade-level/src/streaming.rs:1277`; `myriade-engine/src/game/modding/native_render_visibility.rs:13` | Replace context and invalidate through one route |
+| Unload | `myriade-level/src/streaming.rs:516` | New lifetime on reload; remove mesh, cancel old jobs |
+| Abandoned/stale completion | `myriade-level/src/streaming.rs:1887` | Extend current sequence/column refusal with shared epoch token through upload |
 
 ## Acceptance matrix
 

@@ -13,7 +13,7 @@ use crate::no_gravity::{self, NoGravity};
 use bevy_ecs::prelude::*;
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use horizon_items::item_nbt::{item_from_nbt, item_to_nbt};
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use std::borrow::Cow;
 
 /// No key of this module applies to an entity holding a component: every key poses its own.

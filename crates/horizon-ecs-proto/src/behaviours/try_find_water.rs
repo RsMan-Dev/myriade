@@ -9,7 +9,7 @@ use crate::hostile::Daylight;
 use crate::rules::teleport_on::cell_of;
 use crate::rules::try_find_water::{aim_point, box_point, clear_of_water};
 use crate::{cow::*, goals::*};
-use horizon_client_lib::blocks::Fluid;
+use myriade_engine_lib::blocks::Fluid;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {

@@ -26,7 +26,7 @@ glint overrides; every removal; and cached wire bytes. Item defaults apply inste
 
 ### Trying the icon surfaces
 
-The runnable datapack `crates/horizon-client/tests/fixtures/advancement-icons`
+The runnable datapack `crates/myriade-engine/tests/fixtures/advancement-icons`
 contains two root advancements with wooden-pickaxe icons, count 3 and damage 7:
 `horizon_test:glint` explicitly enables glint; `horizon_test:plain` disables it.
 Its titles and descriptions use vanilla translations.

@@ -2,7 +2,7 @@
 //! absent. The free functions take the world, so the client's level reads the same components by id.
 use super::host::EcsWorld;
 use crate::cow::{Bounds, Contact, FluidState, Health, MaxHealth, Pos, PushFree, SpeciesTable, TYPES, TypeName, Vel, Yaw, now_of};
-use horizon_client_lib::mobs::MobTypes;
+use myriade_engine_lib::mobs::MobTypes;
 use crate::goals::Carriers;
 use crate::targeting::Eye;
 use crate::type_tags;

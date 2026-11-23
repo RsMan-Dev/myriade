@@ -24,7 +24,7 @@ engine_read = [
 engine_new = "horizon_core::geometry::Aabb::new(horizon_core::geometry::Vec3::new({min_x}, {min_y}, {min_z}), horizon_core::geometry::Vec3::new({max_x}, {max_y}, {max_z}))"
 
 [[type]]
-engine = "horizon_client::game::entities::boats::Boat"
+engine = "myriade_engine::game::entities::boats::Boat"
 kind = "handle"
 domain = "entity"
 topic = "boat"
@@ -34,7 +34,7 @@ methods = [
 ]
 
 [[type]]
-engine = "horizon_client::game::blocks::maps::MapData"
+engine = "myriade_engine::game::blocks::maps::MapData"
 kind = "handle"
 domain = "world"
 topic = "map_data"

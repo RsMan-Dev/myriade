@@ -1,6 +1,6 @@
 //! `NaturalSpawner.spawnMobsForChunkGeneration`: a chunk of plains the generator has made gets creature packs, each creature of plains'
 //! creature list (by the biome data), standing on the top of its column (the world's surface, the level's heightmap).
-use horizon_client_lib::mobs::spawn_rules::SpawnLevel;
+use myriade_engine_lib::mobs::spawn_rules::SpawnLevel;
 use horizon_core::random::LegacyRandom;
 use horizon_ecs_proto::cow::*;
 use horizon_ecs_proto::spawn_generation::spawn_chunk_packs;

@@ -55,15 +55,15 @@ HashOps.mergeToList	skip:java		DynamicOps merge into a hashed list; Horizon buil
 HashOps.mergeToMap	skip:java		DynamicOps merge into a hashed map; Horizon builds no hashed data incrementally
 HashOps.ListHashBuilder.build	skip:java		DynamicOps builder for hashed lists; not needed without component hashing
 HashOps.MapHashBuilder.build	skip:java		DynamicOps builder for hashed maps; not needed without component hashing
-HttpUtil.updateModificationTime	port	crates/horizon-client/src/server_packs/download.rs::touch
-HttpUtil.hashFile	port	crates/horizon-client/src/server_packs/download.rs::sha1_of
-HttpUtil.checkExistingFile	port	crates/horizon-client/src/server_packs/download.rs::matches
-HttpUtil.downloadAndHash	port	crates/horizon-client/src/server_packs/download.rs::download_file
-HttpUtil.isPortAvailable	port	crates/horizon-client/src/lan/mod.rs::Lan::bind	gap: minor: returns the bind error, not a bool; no 0..65535 range check
-InclusiveRange.codec	port	crates/horizon-client/src/mobs/spawner.rs::light_limit	gap: minor: only 0..15 light limits in integer, two-element or min/max form; no generic range codec
-InclusiveRange.create	inline	crates/horizon-client/src/mobs/spawner.rs::light_limit	the min <= max check
+HttpUtil.updateModificationTime	port	crates/myriade-engine/src/server_packs/download.rs::touch
+HttpUtil.hashFile	port	crates/myriade-engine/src/server_packs/download.rs::sha1_of
+HttpUtil.checkExistingFile	port	crates/myriade-engine/src/server_packs/download.rs::matches
+HttpUtil.downloadAndHash	port	crates/myriade-engine/src/server_packs/download.rs::download_file
+HttpUtil.isPortAvailable	port	crates/myriade-engine/src/lan/mod.rs::Lan::bind	gap: minor: returns the bind error, not a bool; no 0..65535 range check
+InclusiveRange.codec	port	crates/myriade-engine/src/mobs/spawner.rs::light_limit	gap: minor: only 0..15 light limits in integer, two-element or min/max form; no generic range codec
+InclusiveRange.create	inline	crates/myriade-engine/src/mobs/spawner.rs::light_limit	the min <= max check
 InclusiveRange.map	skip:java		Java generic element mapper; Horizon ranges are concrete integers
-InclusiveRange.isValueInRange	inline	crates/horizon-client/src/mobs/spawner.rs::SpawnData::valid_position	the light test is written inline
+InclusiveRange.isValueInRange	inline	crates/myriade-engine/src/mobs/spawner.rs::SpawnData::valid_position	the light test is written inline
 InclusiveRange.contains	missing		minor: no subrange check; Horizon reads only single light ranges (spawner.rs light_limit)
 Interval.sub	port	crates/horizon-core/src/density/interval.rs::Interval::subtract_range
 Interval.mul	port	crates/horizon-core/src/density/interval.rs::Interval::multiply_range
@@ -87,7 +87,7 @@ KeyframeTrackSampler.bakeSegments	port	crates/horizon-world/src/environment_time
 KeyframeTrackSampler.addSegmentsFromKeyframes	inline	crates/horizon-world/src/environment_timeline.rs::Track::add_segments_from_keyframes	one segment per consecutive pair, each carrying the track's easing
 KeyframeTrackSampler.getSegmentAt	inline	crates/horizon-world/src/environment_timeline.rs::TrackSampler::sample	the first segment whose end tick is after the sampled tick, else the last; the ends clamp and the middle lerps
 KeyframeTrackSampler.loopTicks	inline	crates/horizon-world/src/environment_timeline.rs::TrackSampler::sample	the period wrap is rem_euclid against the track's period, Java's floor modulo
-LightCoordsUtil.addSmoothBlockEmission	port	crates/horizon-client-render/src/particles.rs::Particle::light_coords	the age-emission arms add the emitted block light capped at 240
+LightCoordsUtil.addSmoothBlockEmission	port	crates/myriade-level/src/particles.rs::Particle::light_coords	the age-emission arms add the emitted block light capped at 240
 LinearCongruentialGenerator.next	inline	crates/horizon-core/src/biome.rs::BiomeZoom::quart_at_block	the g closure is the LCG step; the coordinate is added separately
 MemoryReserve.release	skip:other		frees a JVM heap reserve for OutOfMemoryError; Horizon is native code
 ModCheck.identify	skip:other		brand and jar-signature check for crash reports; Horizon has no such check
@@ -95,14 +95,14 @@ ModCheck.merge	skip:other		brand and jar-signature check for crash reports; Hori
 Mth.absMax	skip:java		pure math helper; Rust abs and max at each use
 Mth.nextFloat	inline	crates/horizon-world/src/loot.rs::Context::float	the float range formula; one copy inlined here, others may inline it too
 Mth.smallestEncompassingPowerOfTwo	skip:java		Rust next_power_of_two at each use; differs only for 0 (vanilla 0, Rust 1)
-Mth.smallestSquareSide	port	crates/horizon-client-render/src/gfx/pack_atlas.rs::PackAtlas::new	gap: minor: the shader-pack block atlas grid; vanilla's caller is the GUI item atlas, with no Horizon counterpart found
+Mth.smallestSquareSide	port	crates/myriade-level/src/gfx/pack_atlas.rs::PackAtlas::new	gap: minor: the shader-pack block atlas grid; vanilla's caller is the GUI item atlas, with no Horizon counterpart found
 Mth.isPowerOfTwo	skip:java		Rust is_power_of_two at each use
 Mth.rayIntersectsAABB	skip:other		minor: no caller in 26.3 (dead helper)
 Mth.fastInvCubeRoot	skip:other		minor: no caller in 26.3 (dead helper)
 Mth.murmurHash3Mixer	skip:java		JVM identity-hash bucketing in CrudeIncrementalIntIdentityHashBiMap; Horizon has no identity-hash maps
 Mth.sign	skip:java		pure math helper; sign is written inline at each use
-Mth.clampedMap	inline	crates/horizon-client/src/title/onboarding.rs::Onboarding::widget_alpha	the inverse lerp clamped to 0..1 then lerped to the new range, folded into the caller
-Mth.map	inline	crates/horizon-client/src/mobs/sulfur_cube.rs::vertical_hit_angle_power_transfer	(value - from) / (to - from) scaled into the new range, inlined at the call site
+Mth.clampedMap	inline	crates/myriade-engine/src/title/onboarding.rs::Onboarding::widget_alpha	the inverse lerp clamped to 0..1 then lerped to the new range, folded into the caller
+Mth.map	inline	crates/myriade-engine/src/mobs/sulfur_cube.rs::vertical_hit_angle_power_transfer	(value - from) / (to - from) scaled into the new range, inlined at the call site
 Mth.wobble	skip:other		minor: no caller in 26.3 (dead helper)
 Mth.lengthSquared	skip:java		2-D squared length; Rust arithmetic at each use
 NativeModuleLister.listModules	skip:other		Windows module list for crash reports; Horizon has no such report
@@ -113,14 +113,14 @@ NativeModuleLister.queryVersionValue	skip:other		Windows module list for crash r
 NativeModuleLister.queryVersionString	skip:other		Windows module list for crash reports; Horizon has no such report
 NativeModuleLister.addCrashSection	skip:other		Windows module list for crash reports; Horizon has no such report
 NativeModuleLister.NativeModuleInfo.toString	skip:other		Windows module list for crash reports; Horizon has no such report
-ParticleUtils.spawnParticlesOnBlockFace	inline	crates/horizon-client-render/src/particles.rs::on_block_faces_between	the per-face count and emission fold into the six-face loop
-ParticleUtils.getRandomSpeedRanges	inline	crates/horizon-client-render/src/particles.rs::on_block_faces_between	the speed draw is written inline in the loop
-ParticleUtils.spawnParticleBelow	inline	crates/horizon-client/src/animate_tick.rs::block_animate_tick	the leaves drip and falling-dust arms place a particle at y - 0.05 with zero velocity
+ParticleUtils.spawnParticlesOnBlockFace	inline	crates/myriade-level/src/particles.rs::on_block_faces_between	the per-face count and emission fold into the six-face loop
+ParticleUtils.getRandomSpeedRanges	inline	crates/myriade-level/src/particles.rs::on_block_faces_between	the speed draw is written inline in the loop
+ParticleUtils.spawnParticleBelow	inline	crates/myriade-engine/src/animate_tick.rs::block_animate_tick	the leaves drip and falling-dust arms place a particle at y - 0.05 with zero velocity
 PlaceholderLookupProvider.hasRegisteredPlaceholders	skip:data		datagen placeholder lookup for data-driven registries
 PlaceholderLookupProvider.UniversalLookup.get	skip:data		datagen placeholder lookup for data-driven registries
 PlaceholderLookupProvider.UniversalLookup.getOrCreate	skip:data		datagen placeholder lookup for data-driven registries
-PngInfo.fromStream	inline	crates/horizon-client-render/src/hud.rs::png_size	the signature and IHDR type are checked and width/height read from the header, as the file-size probes do; bit depth and colour type are not read
-PngInfo.validateHeader	inline	crates/horizon-client-render/src/hud.rs::png_size	the eight signature bytes and the IHDR chunk type are checked; the IHDR length field is not
+PngInfo.fromStream	inline	crates/myriade-level/src/hud.rs::png_size	the signature and IHDR type are checked and width/height read from the header, as the file-size probes do; bit depth and colour type are not read
+PngInfo.validateHeader	inline	crates/myriade-level/src/hud.rs::png_size	the eight signature bytes and the IHDR chunk type are checked; the IHDR length field is not
 PngInfo.validateBounds	missing		minor: no 16-bit buffer bound check in crates; the image decoder enforces its own limits
 ProblemReporter.Collector.hasFatalProblems	skip:other		log text for load problems; Horizon's loaders report errors through their own results
 ProblemReporter.Collector.forEach	skip:other		log text for load problems; Horizon's loaders report errors through their own results
@@ -128,10 +128,10 @@ ProblemReporter.Collector.getReport	skip:other		log text for load problems; Hori
 ProblemReporter.Collector.getTreeReport	skip:other		log text for load problems; Horizon's loaders report errors through their own results
 ProblemReporter.Collector.ProblemTreeNode.getLines	skip:other		log text for load problems; Horizon's loaders report errors through their own results
 ProblemReporter.ScopedCollector.close	skip:other		log text for load problems; Horizon's loaders report errors through their own results
-RandomSource.createThreadLocalInstance	port	crates/horizon-client-render/src/random_source.rs::entity	gap: minor: seeds from a uniquifier and the clock, not ThreadLocalRandom
+RandomSource.createThreadLocalInstance	port	crates/myriade-level/src/random_source.rs::entity	gap: minor: seeds from a uniquifier and the clock, not ThreadLocalRandom
 SegmentedAnglePrecision.isSameAxis	skip:other		minor: no caller in 26.3 (dead helper)
 SegmentedAnglePrecision.fromDirection	port	crates/horizon-world/src/level/place.rs::rotation_segment_of
-SegmentedAnglePrecision.toDegrees	inline	crates/horizon-client-render/src/block_entity_render.rs::classify	the segment-to-angle step (segment * 22.5); minor: no wrap to -180..180, same rotation
+SegmentedAnglePrecision.toDegrees	inline	crates/myriade-level/src/block_entity_render.rs::classify	the segment-to-angle step (segment * 22.5); minor: no wrap to -180..180, same rotation
 SequencedPriorityIterator.add	inline	crates/horizon-world/src/worldgen/structure/jigsaw.rs::Placer::children	the priority queue insert is inside children
 SequencedPriorityIterator.computeNext	port	crates/horizon-world/src/worldgen/structure/jigsaw.rs::Placer::next	gap: minor: the queue is a BTreeMap, not a cache that switches queues
 SequencedPriorityIterator.switchCacheToNextHighestPrioQueue	inline	crates/horizon-world/src/worldgen/structure/jigsaw.rs::Placer::next	BTreeMap last_entry finds the highest priority queue

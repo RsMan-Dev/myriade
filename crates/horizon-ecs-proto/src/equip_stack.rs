@@ -5,7 +5,7 @@ use crate::equipment_items::durability_of;
 use crate::host_out_equipment::{EquipmentEvent, EquipmentOut};
 use crate::items::item_id;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 /// The slots, in the order of `EquipmentSlot`: main, off, head, chest, legs, feet, body, saddle.
 pub const SLOTS: usize = 8;

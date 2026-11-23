@@ -72,7 +72,7 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
 fn in_water(w: &World, e: Entity) -> bool {
     w.get::<FluidState>(e).is_some_and(|f| f.in_water)
 }
-fn loaded(mw: &horizon_client_lib::mobs::MobWorld, n: [f64; 3]) -> bool {
+fn loaded(mw: &myriade_engine_lib::mobs::MobWorld, n: [f64; 3]) -> bool {
     let (xc, zc) = (n[0].floor() as i32, n[2].floor() as i32);
     ((xc - 34) >> 4..=(xc + 34) >> 4).all(|cx| ((zc - 34) >> 4..=(zc + 34) >> 4).all(|cz| mw.world.chunks.contains_key(&(cx, cz))))
 }

@@ -73,13 +73,13 @@ class CheckTests(unittest.TestCase):
 
     def test_home_vanilla_not_addresses_and_allowed_pass(self):
         found = [("crates/horizon-addresses/src/lib.rs", "cosmetics.playhorizon.dev"),
-                 ("crates/horizon-client-render/src/skins.rs", "textures.minecraft.net"),
-                 ("crates/horizon-client-render/src/bluemap_detect.rs", "ddns.net"),
+                 ("crates/myriade-level/src/skins.rs", "textures.minecraft.net"),
+                 ("crates/myriade-level/src/bluemap_detect.rs", "ddns.net"),
                  ("crates/horizon-telemetry/src/lib.rs", "telemetry.playhorizon.dev")]
         self.assertEqual(self.run_check(found), ([], []))
 
     def test_a_new_address_outside_the_home_fails_and_names_the_doc(self):
-        problems, _ = self.run_check([("crates/horizon-client/src/net.rs", "relay.playhorizon.dev")])
+        problems, _ = self.run_check([("crates/myriade-engine/src/net.rs", "relay.playhorizon.dev")])
         self.assertIn("relay.playhorizon.dev", problems[0])
         self.assertIn("docs/layers.md#built-in-addresses", problems[0])
 

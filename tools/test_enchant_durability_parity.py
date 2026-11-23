@@ -64,14 +64,14 @@ def main():
     if args.prepare:
         lab.prepare()
     lock, jars, libraries = base.verify_artifacts()
-    resources = lab.LOCAL / 'horizon-client' / lock['minecraft']['version']
+    resources = lab.LOCAL / 'myriade-engine' / lock['minecraft']['version']
     all_cases = list(cases(not args.no_mending))
     inputs = build / 'cases.jsonl'
     inputs.write_text(f'#resources {resources}\n' + ''.join(json.dumps(c) + '\n' for c in all_cases),
                       encoding='utf-8')
     oracle = lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaEnchantDurabilityOracle.java'
     sources = [oracle, Path(__file__), lab.ROOT / 'tools/test_rust_parity.py', lab.ROOT / 'tools/lab.py',
-               lab.ROOT / 'crates/horizon-client/examples/probe/enchant_durability_fixture.rs',
+               lab.ROOT / 'crates/myriade-engine/examples/probe/enchant_durability_fixture.rs',
                lab.ROOT / 'crates/horizon-items/src/enchant.rs',
                lab.ROOT / 'crates/horizon-items/src/items.rs',
                lab.ROOT / 'crates/horizon-items/src/item_data.rs']
@@ -90,7 +90,7 @@ def main():
          '-cp', dependencies, '-d', classes, oracle], 'compile-java')
     run(['java', '-Xmx2g', '-cp', str(classes) + os.pathsep + dependencies,
          'dev.horizonlab.parity.VanillaEnchantDurabilityOracle', inputs, build / 'client.txt'], 'client')
-    run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client-lib', '--example', 'client_probe'],
+    run(['cargo', 'build', '--profile', 'fast', '-p', 'myriade-engine-lib', '--example', 'client_probe'],
         'compile-rust', timeout=3600)
     metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'],
                                                   cwd=lab.ROOT, text=True))

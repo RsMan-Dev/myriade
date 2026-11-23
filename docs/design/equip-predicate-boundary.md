@@ -6,10 +6,10 @@ explains why the engine stack and API stack remain distinct owned types.
 ## Can we just borrow the existing stack?
 
 **Not through the existing boundary.** The menus already borrow an engine stack,
-not an API stack: `crates/horizon-client/src/menu.rs:615–636` and
-`crates/horizon-client/src/lan/menu.rs:460–501`. Both belong to client-lib (whose
+not an API stack: `crates/myriade-engine/src/menu.rs:615–636` and
+`crates/myriade-engine/src/lan/menu.rs:460–501`. Both belong to client-lib (whose
 manifest uses these source paths). `Game::menu_ops` delegates through `menu_session`
-(`crates/horizon-client/src/game.rs:9506–9585`); its `Env` lends only loop context
+(`crates/myriade-engine/src/game.rs:9506–9585`); its `Env` lends only loop context
 and player identities (`menu.rs:88–97`). `LoopContext` contains registry/settings
 snapshots, not entity storage (`crates/horizon-world/src/native_load_context.rs:193–215`).
 

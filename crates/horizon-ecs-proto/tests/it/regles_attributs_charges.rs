@@ -10,7 +10,7 @@ use horizon_ecs_proto::{
     tame,
     targeting::Who,
 };
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_ecs_proto::{
     behaviours::Interaction,
     cow::{Entered, GrowAt, Online, Player},

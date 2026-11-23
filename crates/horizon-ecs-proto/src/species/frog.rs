@@ -1,4 +1,4 @@
-//! `Frog` (`horizon-client/src/mobs/frog.rs:104-140`): the goals in the `Mob`'s order. Float 0, panic (2.0) 1, breed 2 (the birth is a pregnancy:
+//! `Frog` (`myriade-engine/src/mobs/frog.rs:104-140`): the goals in the `Mob`'s order. Float 0, panic (2.0) 1, breed 2 (the birth is a pregnancy:
 //! `carries`), tempt with slime balls 3, shoot the tongue 2, lay spawn 2, the long jump 3, croak 4, stroll 5 (it avoids water), look 6 and 7.
 //! Water: the amphibious smooth swimming control (`reset_pitch`: its look control resets xRot each tick). The temptation and the long jump stand aside while pregnant.
 //! Left out (`suivi/ecs-ecarts.md`): the poses (croak, tongue, jump) and their animations, the frog variants; no swim activity (the `Mob` has none).

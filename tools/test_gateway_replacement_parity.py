@@ -37,9 +37,9 @@ def main():
     lock, jars, libraries = base.verify_artifacts()
     source = lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaGatewayReplacementOracle.java'
     sources = [Path(__file__), source, source.parent / 'ParityData.java', lab.ROOT / 'Cargo.lock',
-               lab.ROOT / 'crates/horizon-client/src/game.rs',
-               lab.ROOT / 'crates/horizon-client/src/game/blocks/block_entity_anims.rs',
-               lab.ROOT / 'crates/horizon-client/src/game/blocks/spill.rs']
+               lab.ROOT / 'crates/myriade-engine/src/game.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game/blocks/block_entity_anims.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game/blocks/spill.rs']
     hashes = base.source_hashes(sources)
 
     def run(command, label, **kwargs):
@@ -68,7 +68,7 @@ def main():
         assert vanilla.read_text().splitlines() == [
             'fresh false', 'entered true', 'removed true', 'replacement false', 'untouched true',
         ], 'vanilla lifecycle contract changed'
-        compiled = run(['cargo', 'test', '--locked', '-p', 'horizon-client', '--lib', '--no-run',
+        compiled = run(['cargo', 'test', '--locked', '-p', 'myriade-engine', '--lib', '--no-run',
                         '--message-format=json'], 'compile', cwd=lab.ROOT, env=env)
         binaries = []
         for line in compiled.read_text(encoding='utf-8').splitlines():
@@ -76,7 +76,7 @@ def main():
                 continue
             row = json.loads(line)
             if (row.get('reason') == 'compiler-artifact' and row.get('executable')
-                    and row.get('target', {}).get('name') == 'horizon_client'
+                    and row.get('target', {}).get('name') == 'myriade_engine'
                     and row.get('profile', {}).get('test')):
                 binaries.append(Path(row['executable']))
         assert len(binaries) == 1, 'expected one actual Game test binary'

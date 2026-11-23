@@ -1,10 +1,10 @@
 //! Copper golem chest trips (`brain/behaviours/transport_items.rs`): the search box, the reach, the double chests, the openers' box,
 //! the visit's steps, the stack moves and the chest kinds. Values in, values out: the system reads the world and writes the result.
-use horizon_client_lib::containers::BlockEntity;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::copper_golem as cg;
-use horizon_client_lib::mobs::data::REDSTONE_CONDUCTOR;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::containers::BlockEntity;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::copper_golem as cg;
+use myriade_engine_lib::mobs::data::REDSTONE_CONDUCTOR;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::java_hash_map::JavaKey;
 

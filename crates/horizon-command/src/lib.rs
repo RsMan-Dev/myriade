@@ -6,7 +6,7 @@
 //! not part of the pinned 26.3 sources, so a comment naming its classes
 //! describes the library this module ports.
 #![forbid(unsafe_code)]
-pub use horizon_client_core::suggestion::{Range, Suggestion};
+pub use myriade_data::suggestion::{Range, Suggestion};
 pub mod args;
 pub mod block;
 pub mod codec;
@@ -29,7 +29,7 @@ pub use args::{
     Arg, ArgType, CustomArgument, CustomArgumentKind, CustomCompletionAction, CustomSuggestion,
     Registries, modify_custom_completions,
 };
-use horizon_client_core::text::Text;
+use myriade_data::text::Text;
 
 /// The command id of a mod's command (`Dispatcher::with_mod_commands`).
 pub const MOD_COMMAND: &str = "mod";
@@ -756,7 +756,7 @@ impl Suggests {
                 for id in &reg.summonable {
                     if args::resource_matches(&contents, id) {
                         let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
-                        let name = horizon_client_core::lang::get(&format!(
+                        let name = myriade_data::lang::get(&format!(
                             "entity.{ns}.{}",
                             path.replace('/', ".")
                         ));

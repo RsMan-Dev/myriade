@@ -2,7 +2,7 @@
 //! equipment's bonus, the projectile as the direct entity of the loot context, and the tadpole that leaves none.
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_ecs_proto::bridge::host::PlayerFact;
 use horizon_ecs_proto::bridge::players::set_player;
 use horizon_ecs_proto::cow::*;

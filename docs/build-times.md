@@ -14,8 +14,8 @@ Every build is the one a developer runs, `cargo build --locked -p horizon-game -
   time of each crate and the critical path: the chain of units, each one waiting for the one before it, that
   ended last. Shortening any other unit does not shorten the build.
 - **Nothing changed:** the same build again. This is the least any build costs.
-- **Incremental:** a one-line change in one file of `horizon-world`, `horizon-client-render`,
-  `horizon-client` (`game.rs`, the game binary) and `horizon-items` (a small crate low in the tree), then
+- **Incremental:** a one-line change in one file of `horizon-world`, `myriade-level`,
+  `myriade-engine` (`game.rs`, the game binary) and `horizon-items` (a small crate low in the tree), then
   the build. The report lists the crates cargo recompiled and the slowest of them.
 
 ## Run it
@@ -100,34 +100,34 @@ and of 2 (Windows) or 1 (Linux) for `fast`.
 | Cold | 106.6 | 99.9 | 235.6 | 184.7 |
 | Nothing changed | 0.4 | 0.2 | 0.4 | 0.2 |
 | Edit in `horizon-world` (`level/mod.rs`) | 21.4 | 22.0 | 29.5 | 60.5 |
-| Edit in `horizon-client-render` (`gfx.rs`) | 15.8 | 12.2 | 78.3 | 51.6 |
-| Edit in `horizon-client` (`game.rs`) | 14.4 | 10.6 | 92.3 | 60.6 |
+| Edit in `myriade-level` (`gfx.rs`) | 15.8 | 12.2 | 78.3 | 51.6 |
+| Edit in `myriade-engine` (`game.rs`) | 14.4 | 10.6 | 92.3 | 60.6 |
 | Edit in `horizon-items` (`items.rs`) | 23.1 | 19.0 | 127.5 | 83.8 |
 | Crates recompiled by those four edits | 9, 2, 1, 3 | the same | the same | the same |
 
 Crates recompiled: an edit in `horizon-world` recompiles `horizon-world` and the eight crates above it
-(`horizon-items`, `horizon-protocol`, `horizon-command`, `horizon-client-core`, `horizon-client-input`,
-`horizon-server-files`, `horizon-client-render` and `horizon-client`); one in `horizon-items` recompiles it,
-`horizon-client-render` and `horizon-client`; one in `horizon-client-render` recompiles it and `horizon-client`;
-one in `game.rs` only `horizon-client`.
+(`horizon-items`, `horizon-protocol`, `horizon-command`, `myriade-data`, `horizon-client-input`,
+`horizon-server-files`, `myriade-level` and `myriade-engine`); one in `horizon-items` recompiles it,
+`myriade-level` and `myriade-engine`; one in `myriade-level` recompiles it and `myriade-engine`;
+one in `game.rs` only `myriade-engine`.
 
 What the cold build's timings page shows (`dev`, Windows):
 
 - 361 units. The critical path starts with `proc-macro2`, `quote` and `syn`, goes through the `windows` crates
-  (`windows` itself 20 s), `wgpu-hal` (7 s), `wgpu-core` (7 s) and `horizon-client-render` (14 s), and ends with
-  `horizon-client` the library (21 s, from second 50 to 72) and then `horizon-client` the binary (35 s, from 72
-  to 107). Beside the library only `horizon-client-render` runs, for its last 4 s; beside the binary nothing runs
+  (`windows` itself 20 s), `wgpu-hal` (7 s), `wgpu-core` (7 s) and `myriade-level` (14 s), and ends with
+  `myriade-engine` the library (21 s, from second 50 to 72) and then `myriade-engine` the binary (35 s, from 72
+  to 107). Beside the library only `myriade-level` runs, for its last 4 s; beside the binary nothing runs
   but `the control socket` for 3 s. A third of the build is one rustc on one crate.
-- The crates that cost most compiler time added up: `horizon-client` 60 s, `windows` 35 s, `horizon-world` 27 s,
-  `naga` 17 s, `windows-sys` 15 s, `ash` 15 s, `horizon-client-render` 14 s.
-- In `fast`, `horizon-client` costs 160 s added up, `horizon-world` 67 s, `windows` 57 s, `naga` 54 s,
-  `horizon-client-render` 34 s. The critical path is nearly the same chain, longer: `windows` 33 s, `wgpu-hal` 31 s,
-  `wgpu-core` 27 s, `horizon-client-render` 34 s, the library 43 s, the binary 114 s.
+- The crates that cost most compiler time added up: `myriade-engine` 60 s, `windows` 35 s, `horizon-world` 27 s,
+  `naga` 17 s, `windows-sys` 15 s, `ash` 15 s, `myriade-level` 14 s.
+- In `fast`, `myriade-engine` costs 160 s added up, `horizon-world` 67 s, `windows` 57 s, `naga` 54 s,
+  `myriade-level` 34 s. The critical path is nearly the same chain, longer: `windows` 33 s, `wgpu-hal` 31 s,
+  `wgpu-core` 27 s, `myriade-level` 34 s, the library 43 s, the binary 114 s.
 
 Which edit is used changes the incremental numbers (`dev`, Windows, 2 runs each, 3 for `middle`; in `items.rs`
 `middle` is the `top` edit, see above):
 
-| Edit | `horizon-world` | `horizon-client-render` | `horizon-client` | `horizon-items` |
+| Edit | `horizon-world` | `myriade-level` | `myriade-engine` | `horizon-items` |
 |---|---|---|---|---|
 | `touch` (no change to the bytes) | 19.2 | 14.6 | 8.7 | 14.9 |
 | `append` (comment on the last line) | 19.2 | 14.9 | 9.0 | 15.1 |

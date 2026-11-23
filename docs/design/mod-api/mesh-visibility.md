@@ -77,15 +77,15 @@ below are integration points, not claims that the proposed epochs already exist.
 
 | Route | Verified file:line | Required behavior |
 | --- | --- | --- |
-| Initial mesh and remesh | `horizon-client-render/src/streaming.rs:2237`, `:1142` | Prepare before scheduling, use frozen input in worker |
-| State write and neighbour borders | `horizon-client-render/src/world.rs:385` | Dirty all radius-one dependent sections, including diagonals and vertical borders |
-| Column replacement, biome/light changes | `horizon-client-render/src/streaming.rs:3455`, `:3476` | Invalidate halo dependencies even if centre state is unchanged |
-| Visibility toggle | `horizon-client/src/game/modding/native_render_visibility.rs:13` | Explicit refresh increments policy epoch and remeshes affected loaded sections; conservative all-loaded refresh initially |
-| Resource reload | `horizon-client-render/src/streaming.rs:1277`, `:1283` | Replace context, rebuild plans and sections |
-| Renderer recovery and pending uploads | `horizon-client/src/game.rs:14166`, `:14178` | Clear pending old uploads and use shared reload invalidation |
-| Unload | `horizon-client-render/src/streaming.rs:516`, `:1394` | Cancel queued jobs, invalidate lifetime, remove terrain, dirty surviving halo dependents |
-| Stale workers | `horizon-client-render/src/streaming.rs:1887` | Extend sequence/column checks to all captured generations and recycle refused output |
-| Existing mask consumption | `horizon-client-render/src/mesher.rs:1766` | Preserve built-in behavior and raw input separately |
+| Initial mesh and remesh | `myriade-level/src/streaming.rs:2237`, `:1142` | Prepare before scheduling, use frozen input in worker |
+| State write and neighbour borders | `myriade-level/src/world.rs:385` | Dirty all radius-one dependent sections, including diagonals and vertical borders |
+| Column replacement, biome/light changes | `myriade-level/src/streaming.rs:3455`, `:3476` | Invalidate halo dependencies even if centre state is unchanged |
+| Visibility toggle | `myriade-engine/src/game/modding/native_render_visibility.rs:13` | Explicit refresh increments policy epoch and remeshes affected loaded sections; conservative all-loaded refresh initially |
+| Resource reload | `myriade-level/src/streaming.rs:1277`, `:1283` | Replace context, rebuild plans and sections |
+| Renderer recovery and pending uploads | `myriade-engine/src/game.rs:14166`, `:14178` | Clear pending old uploads and use shared reload invalidation |
+| Unload | `myriade-level/src/streaming.rs:516`, `:1394` | Cancel queued jobs, invalidate lifetime, remove terrain, dirty surviving halo dependents |
+| Stale workers | `myriade-level/src/streaming.rs:1887` | Extend sequence/column checks to all captured generations and recycle refused output |
+| Existing mask consumption | `myriade-level/src/mesher.rs:1766` | Preserve built-in behavior and raw input separately |
 
 Chunk arrival also invalidates surviving sections that captured Missing; use
 the streaming column installation boundary shared with replacement. Every plan,

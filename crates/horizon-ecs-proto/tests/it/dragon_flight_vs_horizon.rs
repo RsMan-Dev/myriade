@@ -1,6 +1,6 @@
 //! The dragon's flight graph and flight against Horizon's `Dragon` (`game/mobs/dragon.rs`, `dragon_nodes`, `dragon_path`, `closest_node`,
 //! `tick_dragon`), on flat ground at 64, with imposed draws (`LegacyRandom` at fixed seeds). The golden lines come from the reconciler,
-//! which runs Horizon's side in a test of `horizon-client`; this file reads them from `tests/it/dragon_golden/flight.txt` and compares them
+//! which runs Horizon's side in a test of `myriade-engine`; this file reads them from `tests/it/dragon_golden/flight.txt` and compares them
 //! to the ECS side, to the bit. Lines: `node I X Y Z`, `path A B CRYSTALS X/Y/Z;...|none` (the node positions), `closest CRYSTALS X Y Z I`,
 //! `tick T POS_BITS YAW_BITS PHASE`.
 use horizon_core::geometry::Vec3;

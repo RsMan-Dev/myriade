@@ -3,7 +3,7 @@
 //! enchantments on the piece, `EnchantmentHelper.processDurabilityChange`, read through `Enchantments::modify_value`, never copied here).
 //! A piece with no durability (0) never wears, never breaks.
 use crate::items::item_name;
-use horizon_client_lib::items::{ItemStack, Items};
+use myriade_engine_lib::items::{ItemStack, Items};
 use horizon_core::random::LegacyRandom;
 use horizon_items::enchant::{EffectContext, Enchantments};
 use horizon_items::item_data::Levels;

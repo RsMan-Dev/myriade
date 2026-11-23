@@ -36,9 +36,9 @@ def main():
     if args.java_only:
         print(reference.read_text())
         return
-    resources = (args.resources or lab.LOCAL / 'horizon-client' / lock['minecraft']['version']).resolve()
+    resources = (args.resources or lab.LOCAL / 'myriade-engine' / lock['minecraft']['version']).resolve()
     env = lab.game_env(HORIZON_TEST_RESOURCES=resources, HORIZON_PERSISTENCE_ORACLE=reference)
-    result = subprocess.run(['cargo', 'test', '-p', 'horizon-client', '--lib', '--no-run',
+    result = subprocess.run(['cargo', 'test', '-p', 'myriade-engine', '--lib', '--no-run',
                              '--message-format=json'], cwd=lab.ROOT, env=env,
                             capture_output=True, text=True, timeout=3600)
     if result.returncode:

@@ -2,83 +2,83 @@ LinkFSPath	skip:other		Java path of the in-memory link filesystem; Horizon links
 LinkFSProvider	skip:other		Java NIO provider of the link filesystem; Horizon reads host folders and zips directly
 LinkFileSystem	skip:other		link filesystem and its getPath; Horizon builds overlay folders instead (packs.rs::build_overlay)
 LinkFileSystem.Builder	skip:other		builder of the link filesystem tree; no equivalent, see packs.rs::build_overlay
-PackFormat.fullCodec	port	crates/horizon-client-render/src/packs.rs::format_codec	supported_formats / pack_format as an int, or a list of 1 to 256 non-negative ints whose second is the minor
-PackFormat.validateHolderList	inline	crates/horizon-client-render/src/packs.rs::overlays_of	gap: minor: a broken overlay entry is dropped alone; vanilla rejects the whole overlays list
-PackFormat.lastPreMinorVersion	port	crates/horizon-client-render/src/packs.rs::last_pre_minor	the last major without a minor version, 81 for data packs and 64 for resource packs, which the old-format validator compares against
+PackFormat.fullCodec	port	crates/myriade-level/src/packs.rs::format_codec	supported_formats / pack_format as an int, or a list of 1 to 256 non-negative ints whose second is the minor
+PackFormat.validateHolderList	inline	crates/myriade-level/src/packs.rs::overlays_of	gap: minor: a broken overlay entry is dropped alone; vanilla rejects the whole overlays list
+PackFormat.lastPreMinorVersion	port	crates/myriade-level/src/packs.rs::last_pre_minor	the last major without a minor version, 81 for data packs and 64 for resource packs, which the old-format validator compares against
 PackFormat.packCodec	skip:java		codec wiring; the validation it runs is missing (IntermediaryFormat.validate)
 PackFormat.of	skip:java		constructor; Horizon keeps (major, minor) tuples (packs.rs::RESOURCE_FORMAT)
 PackFormat.compareTo	skip:java		ordering; Horizon compares the (major, minor) tuples directly (packs.rs::compatibility)
 PackFormat.toString	skip:debug		text form of a format, used in validation messages only
 PackFormat.IntermediaryFormat.fromRange	skip:java		encoder back to pack.mcmeta; Horizon never writes pack.mcmeta
-PackFormat.IntermediaryFormat.effectiveMinMajorVersion	inline	crates/horizon-client-render/src/packs.rs::validate_pack_format_for_range	feeds the range check
-PackFormat.IntermediaryFormat.validate	port	crates/horizon-client-render/src/packs.rs::validate_pack_range	pack.mcmeta format fields are checked against the supported range
-PackFormat.IntermediaryFormat.validateNewFormat	port	crates/horizon-client-render/src/packs.rs::validate_new_format	min above max and a missing supported_formats / pack_format are refused
-PackFormat.IntermediaryFormat.validateOldFormat	port	crates/horizon-client-render/src/packs.rs::validate_old_format	an old range above the last pre-minor version is refused
-PackFormat.IntermediaryFormat.validatePackFormatForRange	port	crates/horizon-client-render/src/packs.rs::validate_pack_format_for_range	a pack_format outside min to max is refused, and a multi-version pack may not support below format 15
+PackFormat.IntermediaryFormat.effectiveMinMajorVersion	inline	crates/myriade-level/src/packs.rs::validate_pack_format_for_range	feeds the range check
+PackFormat.IntermediaryFormat.validate	port	crates/myriade-level/src/packs.rs::validate_pack_range	pack.mcmeta format fields are checked against the supported range
+PackFormat.IntermediaryFormat.validateNewFormat	port	crates/myriade-level/src/packs.rs::validate_new_format	min above max and a missing supported_formats / pack_format are refused
+PackFormat.IntermediaryFormat.validateOldFormat	port	crates/myriade-level/src/packs.rs::validate_old_format	an old range above the last pre-minor version is refused
+PackFormat.IntermediaryFormat.validatePackFormatForRange	port	crates/myriade-level/src/packs.rs::validate_pack_format_for_range	a pack_format outside min to max is refused, and a multi-version pack may not support below format 15
 PackMetadataSection.codecForPackType	skip:java		codec for the pack section; packs.rs::pack reads the same fields
 PackMetadataSection.forPackType	skip:java		picks the section type per pack type; Horizon reads one pack section
-BuiltInPackSource.loadPacks	port	crates/horizon-client-render/src/packs.rs::discover	built-in Programmer Art and High Contrast packs; the vanilla pack is added by game/world/packs/mod.rs::pack_infos
-BuiltInPackSource.listBundledPacks	inline	crates/horizon-client-render/src/packs.rs::discover	the two bundled ids, found in the resources folder
-BuiltInPackSource.discoverPacksInPath	inline	crates/horizon-client-render/src/packs.rs::discover	bundled folder scan, folded into discover
-FolderRepositorySource.loadPacks	port	crates/horizon-client-render/src/packs.rs::discover	resourcepacks/ folder: folders and zips, sorted by id
-FolderRepositorySource.createDiscoveredFilePackInfo	inline	crates/horizon-client-render/src/packs.rs::discover	pack id file/<name> and the file name as its title
-FolderRepositorySource.discoverPacks	port	crates/horizon-client-render/src/packs.rs::discover	folder scan with pack detection
-FolderRepositorySource.FolderPackDetector.createZipPack	inline	crates/horizon-client-render/src/packs.rs::discover	zip packs by .zip name; the non-default filesystem check does not apply
-Pack.readMetaAndCreate	port	crates/horizon-client-render/src/packs.rs::pack	reads pack.mcmeta and makes the pack, none when it is missing
-Pack.readPackMetadata	inline	crates/horizon-client-render/src/packs.rs::pack	gap: minor: no required feature flags, no hidden flag, no fallback when the pack section fails to parse
+BuiltInPackSource.loadPacks	port	crates/myriade-level/src/packs.rs::discover	built-in Programmer Art and High Contrast packs; the vanilla pack is added by game/world/packs/mod.rs::pack_infos
+BuiltInPackSource.listBundledPacks	inline	crates/myriade-level/src/packs.rs::discover	the two bundled ids, found in the resources folder
+BuiltInPackSource.discoverPacksInPath	inline	crates/myriade-level/src/packs.rs::discover	bundled folder scan, folded into discover
+FolderRepositorySource.loadPacks	port	crates/myriade-level/src/packs.rs::discover	resourcepacks/ folder: folders and zips, sorted by id
+FolderRepositorySource.createDiscoveredFilePackInfo	inline	crates/myriade-level/src/packs.rs::discover	pack id file/<name> and the file name as its title
+FolderRepositorySource.discoverPacks	port	crates/myriade-level/src/packs.rs::discover	folder scan with pack detection
+FolderRepositorySource.FolderPackDetector.createZipPack	inline	crates/myriade-level/src/packs.rs::discover	zip packs by .zip name; the non-default filesystem check does not apply
+Pack.readMetaAndCreate	port	crates/myriade-level/src/packs.rs::pack	reads pack.mcmeta and makes the pack, none when it is missing
+Pack.readPackMetadata	inline	crates/myriade-level/src/packs.rs::pack	gap: minor: no required feature flags, no hidden flag, no fallback when the pack section fails to parse
 Pack.equals	skip:java		identity by pack id; the selection model compares ids
-PackDetector.detectPackResources	inline	crates/horizon-client-render/src/packs.rs::detected_pack_path	symlinks are validated against allowed_symlinks.txt (detected_pack_path, forbidden_links); a folder without pack.mcmeta is dropped by pack()
+PackDetector.detectPackResources	inline	crates/myriade-level/src/packs.rs::detected_pack_path	symlinks are validated against allowed_symlinks.txt (detected_pack_path, forbidden_links); a folder without pack.mcmeta is dropped by pack()
 PackRepository.displayPackList	skip:debug		pack ids for the system report (MinecraftServer)
-PackRepository.reload	port	crates/horizon-client/src/game/world/packs/mod.rs::Game::refresh_pack_lists	re-discovers the packs and resets the selection
-PackRepository.discoverAvailable	port	crates/horizon-client-render/src/packs.rs::discover	scans the sources for packs
-PackRepository.isAbleToClearAnyPack	port	crates/horizon-client-render/src/packs.rs::able_to_clear_any_pack	a failed reload drops every selected pack and toasts (game/world/packs/mod.rs::selection_reload_failed), as clearResourcePacksOnError does
-PackRepository.addPack	inline	crates/horizon-client-render/src/packs.rs::SelectionModel::activate	gap: minor: vanilla appends by id with no position rules
-PackRepository.removePack	inline	crates/horizon-client-render/src/packs.rs::SelectionModel::activate	gap: minor: vanilla removes by id even when the pack is required; the screen never offers that
-PackRepository.getAvailablePacks	inline	crates/horizon-client-render/src/packs.rs::SelectionModel::rebuild	rebuild also adds required packs (vanilla and active downloaded server packs from Game::pack_infos)
+PackRepository.reload	port	crates/myriade-engine/src/game/world/packs/mod.rs::Game::refresh_pack_lists	re-discovers the packs and resets the selection
+PackRepository.discoverAvailable	port	crates/myriade-level/src/packs.rs::discover	scans the sources for packs
+PackRepository.isAbleToClearAnyPack	port	crates/myriade-level/src/packs.rs::able_to_clear_any_pack	a failed reload drops every selected pack and toasts (game/world/packs/mod.rs::selection_reload_failed), as clearResourcePacksOnError does
+PackRepository.addPack	inline	crates/myriade-level/src/packs.rs::SelectionModel::activate	gap: minor: vanilla appends by id with no position rules
+PackRepository.removePack	inline	crates/myriade-level/src/packs.rs::SelectionModel::activate	gap: minor: vanilla removes by id even when the pack is required; the screen never offers that
+PackRepository.getAvailablePacks	inline	crates/myriade-level/src/packs.rs::SelectionModel::rebuild	rebuild also adds required packs (vanilla and active downloaded server packs from Game::pack_infos)
 PackRepository.getRequestedFeatureFlags	missing		no pack's `feature_flags` are read from its metadata: the only feature list is the world's own `enabled_features` (`world_loading.rs`), which the game rules, the datapack function filter and the command dispatcher read
-PackSource.decorateWithSource	port	crates/horizon-client-render/src/pack_screen.rs::PackInfo::extended_description	source label after the pack name (built-in, world, server)
-ServerPacksSource.createVanillaPackSource	port	crates/horizon-client-render/src/datapack.rs::DataPack::builtin	the built-in vanilla data source (id vanilla), used by functions.rs
-ServerPacksSource.createPackRepository	port	crates/horizon-client-render/src/datapack.rs::discover	gap: minor: finds world datapacks; the enable list is kept by functions.rs::reload_datapacks
+PackSource.decorateWithSource	port	crates/myriade-level/src/pack_screen.rs::PackInfo::extended_description	source label after the pack name (built-in, world, server)
+ServerPacksSource.createVanillaPackSource	port	crates/myriade-level/src/datapack.rs::DataPack::builtin	the built-in vanilla data source (id vanilla), used by functions.rs
+ServerPacksSource.createPackRepository	port	crates/myriade-level/src/datapack.rs::discover	gap: minor: finds world datapacks; the enable list is kept by functions.rs::reload_datapacks
 ServerPacksSource.createVanillaTrustedRepository	skip:other		known-packs reply: Horizon answers SelectKnownPacks with no packs (net.rs), so the server sends every registry entry
-FallbackResourceManager.push	inline	crates/horizon-client-render/src/packs.rs::build_overlay_uncached	packs layered in load order, last wins
-FallbackResourceManager.pushInternal	inline	crates/horizon-client-render/src/packs.rs::build_overlay_uncached	same layering, with an optional content filter
-FallbackResourceManager.getResource	inline	crates/horizon-client-render/src/packs.rs::build_overlay_uncached	the top file per path; a filter stops the search
+FallbackResourceManager.push	inline	crates/myriade-level/src/packs.rs::build_overlay_uncached	packs layered in load order, last wins
+FallbackResourceManager.pushInternal	inline	crates/myriade-level/src/packs.rs::build_overlay_uncached	same layering, with an optional content filter
+FallbackResourceManager.getResource	inline	crates/myriade-level/src/packs.rs::build_overlay_uncached	the top file per path; a filter stops the search
 FallbackResourceManager.wrapForDebug	skip:debug		leak warning on unclosed resource streams
-FallbackResourceManager.getResourceStack	inline	crates/horizon-client-render/src/packs.rs::build_overlay_uncached	gap: minor: stacks merge only for lang, font, atlases and sounds.json (merge_kind)
+FallbackResourceManager.getResourceStack	inline	crates/myriade-level/src/packs.rs::build_overlay_uncached	gap: minor: stacks merge only for lang, font, atlases and sounds.json (merge_kind)
 FallbackResourceManager.getIdentifierFromMetadata	skip:other		maps a .mcmeta sidecar to its resource; each feature strips the suffix itself (ui.rs)
-FallbackResourceManager.listResources	inline	crates/horizon-client-render/src/packs.rs::build_overlay_uncached	gap: minor: sidecar metadata is not attached; features read their own .png.mcmeta
+FallbackResourceManager.listResources	inline	crates/myriade-level/src/packs.rs::build_overlay_uncached	gap: minor: sidecar metadata is not attached; features read their own .png.mcmeta
 FallbackResourceManager.createStackMetadataFinder	skip:other		finds the top sidecar for a resource; each feature reads its own .png.mcmeta (locator_bar.rs)
 FallbackResourceManager.parseMetadata	skip:other		parses a sidecar; each feature parses its own (ui.rs, mipmap.rs); pack.mcmeta goes through packs.rs::read_meta
-FallbackResourceManager.applyPackFiltersToExistingResources	inline	crates/horizon-client-render/src/packs.rs::build_overlay_uncached	a pack's filter drops files of the packs below it
-FallbackResourceManager.listPackResources	inline	crates/horizon-client-render/src/packs.rs::build_overlay_uncached	pack_files lists each pack's assets, overlay folders included
-FallbackResourceManager.listResourceStacks	inline	crates/horizon-client-render/src/packs.rs::build_overlay_uncached	gap: minor: same merge limit as getResourceStack
+FallbackResourceManager.applyPackFiltersToExistingResources	inline	crates/myriade-level/src/packs.rs::build_overlay_uncached	a pack's filter drops files of the packs below it
+FallbackResourceManager.listPackResources	inline	crates/myriade-level/src/packs.rs::build_overlay_uncached	pack_files lists each pack's assets, overlay folders included
+FallbackResourceManager.listResourceStacks	inline	crates/myriade-level/src/packs.rs::build_overlay_uncached	gap: minor: same merge limit as getResourceStack
 FallbackResourceManager.listPacks	skip:java		stream of the pack list; Horizon passes the slice
 FallbackResourceManager.LeakedResourceWarningInputStream.finalize	skip:debug		leak warning when a stream is garbage collected unclosed
-FallbackResourceManager.PackEntry.filterAll	inline	crates/horizon-client-render/src/packs.rs::build_overlay_uncached	files and stacks are dropped when a filter blocks them
-FallbackResourceManager.PackEntry.isFiltered	port	crates/horizon-client-render/src/packs.rs::Filter::blocks	one pack's filter test
+FallbackResourceManager.PackEntry.filterAll	inline	crates/myriade-level/src/packs.rs::build_overlay_uncached	files and stacks are dropped when a filter blocks them
+FallbackResourceManager.PackEntry.isFiltered	port	crates/myriade-level/src/packs.rs::Filter::blocks	one pack's filter test
 IoSupplier.create	skip:java		lambda over Files.newInputStream; Horizon reads files directly
-MultiPackResourceManager.<init>	inline	crates/horizon-client-render/src/packs.rs::build_overlay_uncached	gap: minor: namespace-only filters are not kept; filters act on each file path
-MultiPackResourceManager.getPackFilterSection	port	crates/horizon-client-render/src/packs.rs::filter_of	reads the pack's filter section
+MultiPackResourceManager.<init>	inline	crates/myriade-level/src/packs.rs::build_overlay_uncached	gap: minor: namespace-only filters are not kept; filters act on each file path
+MultiPackResourceManager.getPackFilterSection	port	crates/myriade-level/src/packs.rs::filter_of	reads the pack's filter section
 MultiPackResourceManager.getResource	skip:other		lookups read the built overlay folder (packs.rs::resource_root); no manager object
 MultiPackResourceManager.getResourceStack	skip:other		same overlay folder lookup
 MultiPackResourceManager.listResources	skip:other		same overlay folder listing
 MultiPackResourceManager.listResourceStacks	skip:other		same overlay folder listing
 MultiPackResourceManager.checkTrailingDirectoryPath	skip:java		argument check for the resource listing API, which Horizon lacks
 ProfiledReloadInstance	skip:debug		reload timing log (profiler), which Horizon does not keep
-ReloadableResourceManager.createReload	port	crates/horizon-client/src/game/world/packs/mod.rs::Game::spawn_pack_reload	starts the reload worker; stage_pack builds the new overlay root and resources
+ReloadableResourceManager.createReload	port	crates/myriade-engine/src/game/world/packs/mod.rs::Game::spawn_pack_reload	starts the reload worker; stage_pack builds the new overlay root and resources
 Resource	skip:other		lazy stream and sidecar metadata; Horizon reads host files and each feature reads its own .png.mcmeta
-ResourceFilterSection.isNamespaceFiltered	inline	crates/horizon-client-render/src/packs.rs::Filter::blocks	gap: minor: no namespace-only test; blocks checks the namespace inside a file path
-ResourceFilterSection.isPathFiltered	port	crates/horizon-client-render/src/packs.rs::Filter::blocks	path test of a filter entry
-ResourceManagerReloadListener.reload	port	crates/horizon-client/src/game/world/packs/mod.rs::Game::apply_staged_pack	the render-thread apply of a reload
-ResourceMetadata.fromJsonStream	port	crates/horizon-client-render/src/packs.rs::read_meta	gap: minor: reads pack.mcmeta only; sections are read by key in pack()
+ResourceFilterSection.isNamespaceFiltered	inline	crates/myriade-level/src/packs.rs::Filter::blocks	gap: minor: no namespace-only test; blocks checks the namespace inside a file path
+ResourceFilterSection.isPathFiltered	port	crates/myriade-level/src/packs.rs::Filter::blocks	path test of a filter entry
+ResourceManagerReloadListener.reload	port	crates/myriade-engine/src/game/world/packs/mod.rs::Game::apply_staged_pack	the render-thread apply of a reload
+ResourceMetadata.fromJsonStream	port	crates/myriade-level/src/packs.rs::read_meta	gap: minor: reads pack.mcmeta only; sections are read by key in pack()
 ResourceMetadata.of	skip:java		map-backed metadata constructor
 ResourceMetadata.getTypedSections	skip:java		typed view over sections; Horizon reads sections by key
 ResourceProvider.getResourceOrThrow	skip:java		Option instead of a thrown FileNotFound
-SimpleJsonResourceReloadListener.prepare	port	crates/horizon-client-render/src/datapack.rs::DataStore::load	functions and function tags are parsed, and the content tables' files (recipe, recipe_filter, loot_table, advancement, trade_set, villager_trade, dialog, data_maps, tags) are kept by id in `files` for those tables to merge over the resource root
-SimplePreparableReloadListener.reload	port	crates/horizon-client/src/game/world/packs/mod.rs::stage_pack	gap: minor: the prepare half; apply_staged_pack does the apply
-SimpleReloadInstance.of	port	crates/horizon-client/src/game/world/packs/mod.rs::PackReload::spawn	stage then apply, in one call: the worker stages, drive_pack_reload applies
-SimpleReloadInstance.startTasks	inline	crates/horizon-client/src/game/world/packs/mod.rs::Game::reload_packs	defers while a world or rest loads; errors go to Options
-SimpleReloadInstance.prepareTasks	port	crates/horizon-client/src/game/world/packs/mod.rs::stage_pack	gap: minor: one staging pass, no per-listener barrier chain
+SimpleJsonResourceReloadListener.prepare	port	crates/myriade-level/src/datapack.rs::DataStore::load	functions and function tags are parsed, and the content tables' files (recipe, recipe_filter, loot_table, advancement, trade_set, villager_trade, dialog, data_maps, tags) are kept by id in `files` for those tables to merge over the resource root
+SimplePreparableReloadListener.reload	port	crates/myriade-engine/src/game/world/packs/mod.rs::stage_pack	gap: minor: the prepare half; apply_staged_pack does the apply
+SimpleReloadInstance.of	port	crates/myriade-engine/src/game/world/packs/mod.rs::PackReload::spawn	stage then apply, in one call: the worker stages, drive_pack_reload applies
+SimpleReloadInstance.startTasks	inline	crates/myriade-engine/src/game/world/packs/mod.rs::Game::reload_packs	defers while a world or rest loads; errors go to Options
+SimpleReloadInstance.prepareTasks	port	crates/myriade-engine/src/game/world/packs/mod.rs::stage_pack	gap: minor: one staging pass, no per-listener barrier chain
 SimpleReloadInstance.getActualProgress	skip:ui		progress fraction of the reload screen
 SimpleReloadInstance.weightProgress	skip:ui		progress weights of the reload screen
 SimpleReloadInstance.create	skip:debug		chooses profiled or plain reload
@@ -98,10 +98,10 @@ CachedUserNameToIdResolver.lookupGameProfile	port	crates/horizon-server-files/sr
 CachedUserNameToIdResolver.getTopMRUProfiles	inline	crates/horizon-server-files/src/user_cache.rs::UserCache::to_json	the 1000 most recently used entries
 CachedUserNameToIdResolver.writeGameProfile	inline	crates/horizon-server-files/src/user_cache.rs::UserCache::to_json	entry JSON with expiresOn
 CachedUserNameToIdResolver.readGameProfile	port	crates/horizon-server-files/src/user_cache.rs::UserCache::parse	reads entries with their expiry dates
-IpBanList.isBanned	port	crates/horizon-client/src/game/interface/dedicated/mod.rs::Lists::can_login	the IP ban branch of the login check
-IpBanList.getIpFromAddress	inline	crates/horizon-client/src/game/interface/dedicated/mod.rs::Lists::can_login	gap: minor: the address comes from IpAddr, not a cut of the text
-IpBanList.add	port	crates/horizon-client/src/game/interface/dedicated/mod.rs::Game::console_command	ban-ip: adds, replies, kicks matching players; gap: minor: no JSON-RPC ipBanned notice
-IpBanList.remove	port	crates/horizon-client/src/game/interface/dedicated/mod.rs::Game::console_command	pardon-ip: removes and replies; gap: minor: no JSON-RPC ipUnbanned notice
+IpBanList.isBanned	port	crates/myriade-engine/src/game/interface/dedicated/mod.rs::Lists::can_login	the IP ban branch of the login check
+IpBanList.getIpFromAddress	inline	crates/myriade-engine/src/game/interface/dedicated/mod.rs::Lists::can_login	gap: minor: the address comes from IpAddr, not a cut of the text
+IpBanList.add	port	crates/myriade-engine/src/game/interface/dedicated/mod.rs::Game::console_command	ban-ip: adds, replies, kicks matching players; gap: minor: no JSON-RPC ipBanned notice
+IpBanList.remove	port	crates/myriade-engine/src/game/interface/dedicated/mod.rs::Game::console_command	pardon-ip: removes and replies; gap: minor: no JSON-RPC ipUnbanned notice
 IpBanList.clear	skip:server		only the JSON-RPC ban API calls clear (MinecraftBanListServiceImpl); Horizon has no JSON-RPC server
 IpBanListEntry.createIpInfo	port	crates/horizon-server-files/src/user_lists.rs::BanEntry::from_json	reads the ip field of an entry
 IpBanListEntry.serialize	port	crates/horizon-server-files/src/user_lists.rs::BanEntry::serialize	writes the ip field and the ban fields

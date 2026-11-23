@@ -147,7 +147,7 @@ file in `crates/horizon-mod-vocab/behaviours/<name>.toml` (the file name is the 
 ```toml
 version = 1
 doc = "What the engine promises, stated so that a test could check it."
-tests = ["crates/horizon-client/src/some_tests.rs::the_test_that_pins_it"]
+tests = ["crates/myriade-engine/src/some_tests.rs::the_test_that_pins_it"]
 ```
 
 `version` starts at 1 and goes up when a mod that relies on the behaviour can see a different meaning. `tests` lists

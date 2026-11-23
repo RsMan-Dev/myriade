@@ -141,7 +141,7 @@ fn lacks_languages(resources: &Path) -> bool {
     !resources.join("assets/pack.mcmeta").is_file()
 }
 
-/// What the game's sound registry reads (horizon-client sound_events.rs).
+/// What the game's sound registry reads (myriade-engine sound_events.rs).
 fn lacks_sounds(resources: &Path) -> bool {
     !resources.join("assets/minecraft/sounds.json").is_file()
 }

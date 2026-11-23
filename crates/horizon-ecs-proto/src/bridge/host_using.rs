@@ -4,7 +4,7 @@ use crate::bridge::host::EcsWorld;
 use crate::equip_stack;
 use crate::using::{self, OFF};
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 impl EcsWorld {
     /// A float drawn for `e` this tick; None when `e` is gone.

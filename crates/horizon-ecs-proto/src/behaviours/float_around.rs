@@ -53,7 +53,7 @@ fn good(w: &World, blocks: i32, t: [f64; 3]) -> bool {
     }
     let mw = w.resource::<Level>().mw.0;
     let at = [t[0].ifloor(), t[1].ifloor(), t[2].ifloor()];
-    let mut cursor = horizon_client_render::world::BlockCursor::new(mw.world);
+    let mut cursor = myriade_level::world::BlockCursor::new(mw.world);
     if !mw.facts.is_air(cursor.block(at[0], at[1], at[2])) {
         return false;
     }

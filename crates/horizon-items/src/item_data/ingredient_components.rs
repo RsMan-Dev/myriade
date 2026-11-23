@@ -574,7 +574,7 @@ fn identifier_equal(a: Option<&Tag>, b: Option<&Tag>) -> bool {
 /// Registry references are resolved against the load context, never a built-in whitelist.
 pub fn decode_mob_visibility(
     value: &Tag,
-    registry: &horizon_client_core::registries::Registries,
+    registry: &myriade_data::registries::Registries,
 ) -> Result<Tag, String> {
     let parsed = MobVisibility::parse(value)
         .ok_or("Invalid mob_visibility fields or visibility outside [0;10]")?;

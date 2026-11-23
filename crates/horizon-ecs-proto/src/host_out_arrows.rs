@@ -3,7 +3,7 @@
 //! drains them with `arrow_more::drain`.
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ArrowEvent {

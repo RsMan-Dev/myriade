@@ -31,7 +31,7 @@ fn sweep_cost(herd: &Herd, c: &Counter, boxes: &[(Aabb, Vec3, f32, bool)]) -> (u
     let level = herd.world.resource::<Level>();
     let mut total = 0;
     for &(b, v, step, on_ground) in boxes {
-        let scene = horizon_client_render::collisions::SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject: None };
+        let scene = myriade_level::collisions::SceneCollisions { world: level.mw.0.world, binding: level.mw.0.collision, subject: None };
         let c0 = c.read();
         let r = level.occ.resolve(scene, b, v, step, on_ground);
         total += c.read() - c0;
@@ -70,12 +70,12 @@ fn main() {
                 for i in 0..calls {
                     let (x, z) = (-10.0 + (i % 100) as f64 * 0.2, -10.0 + (i / 100 % 100) as f64 * 0.2);
                     let b = Aabb::new(Vec3::new(x - w / 2.0, y, z - w / 2.0), Vec3::new(x + w / 2.0, y + h, z + w / 2.0));
-                    let scene = horizon_client_render::collisions::SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
+                    let scene = myriade_level::collisions::SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
                     let c0 = counter.read();
                     let r = occ.resolve(scene, b, mv, step, ground);
                     total += counter.read() - c0;
                     std::hint::black_box(r.ok());
-                    let scene = horizon_client_render::collisions::SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
+                    let scene = myriade_level::collisions::SceneCollisions { world: mw.world, binding: mw.collision, subject: None };
                     let c0 = counter.read();
                     let r2 = scene.resolve_in_border_with(b, mv, step, ground, None, &[]);
                     total_ref += counter.read() - c0;
@@ -88,7 +88,7 @@ fn main() {
                 let (x, z) = (-10.0 + (i % 100) as f64 * 0.2, -10.0 + (i / 100 % 100) as f64 * 0.2);
                 let b = Aabb::new(Vec3::new(x - 0.25, 20.0, z - 0.25), Vec3::new(x + 0.25, 20.5, z + 0.25));
                 let c0 = counter.read();
-                std::hint::black_box(occ.no_collision(horizon_client_render::collisions::SceneCollisions { world: mw.world, binding: mw.collision, subject: None }, b));
+                std::hint::black_box(occ.no_collision(myriade_level::collisions::SceneCollisions { world: mw.world, binding: mw.collision, subject: None }, b));
                 total += counter.read() - c0;
             }
             println!("micro no_collision(orb box, free air): {:.0} instr per call", total as f64 / 20_000.0);

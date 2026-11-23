@@ -211,7 +211,7 @@ pub fn teleport_to_owner(w: &mut World, e: Entity) {
 fn can_teleport_to(w: &World, e: Entity, p: [i32; 3]) -> bool {
     let mw = w.resource::<Level>().mw.0;
     let below = mw.facts.get(mw.world.block(p[0], p[1] - 1, p[2]));
-    let fluid = mw.facts.get(mw.world.block(p[0], p[1], p[2])).fluid != horizon_client_lib::blocks::Fluid::None;
+    let fluid = mw.facts.get(mw.world.block(p[0], p[1], p[2])).fluid != myriade_engine_lib::blocks::Fluid::None;
     if !can_stand_on(below.full_collision, &below.name, fluid) {
         return false;
     }

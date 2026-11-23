@@ -1,6 +1,6 @@
 //! `FindLiquid` (`brain/behaviours/find_liquid.rs`): the timers of the search, the reach of a water block, and the water scan's cut.
-use horizon_client_lib::blocks::Fluid;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::blocks::Fluid;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 /// The ticks added when a start happens before `until` (the search is not made again yet).

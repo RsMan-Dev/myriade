@@ -1,6 +1,6 @@
 //! What every command needs from the game: telling the command source what happened.
 //! A command family adds its own trait beside its logic, with this one as its supertrait.
-use horizon_client::{
+use myriade_engine::{
     command::{Arg, CommandError, Context},
     text::Text,
 };
@@ -18,7 +18,7 @@ pub fn int(ctx: &Context, name: &str) -> Option<i32> {
 
 /// The feedback calls of a command source. Commands take `&mut dyn` of a trait with this
 /// one as a supertrait, so a command's code is compiled here, in horizon-gameplay, and not
-/// instantiated in horizon-client: an edit to it still re-checks horizon-client, but
+/// instantiated in myriade-engine: an edit to it still re-checks myriade-engine, but
 /// incrementally, without generating the command's code there.
 pub trait CommandHost {
     /// A vanilla `CommandSyntaxException` with a translated message: the game's own `err`, so a

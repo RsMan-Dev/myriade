@@ -878,7 +878,7 @@ through the step-4 upgrader and compares only the mod's own ids and effects.
 
 ```
 python3 tools/neoforge_oracle.py export --jars <mods> --deps <their libraries> --out <work>/oracle/facts.json
-cargo run -p horizon-port-pack-cli -- carry <work> --resources .local/horizon-client/26.3
+cargo run -p horizon-port-pack-cli -- carry <work> --resources .local/myriade-engine/26.3
 python3 tools/mod_port_harness.py --work <work>      # or --jars/--deps to export first
 ```
 
@@ -892,7 +892,7 @@ python3 tools/mod_port_harness.py --work <work>      # or --jars/--deps to expor
   modifiers, enchantability and repair items; armour's slot, defense, toughness, knockback resistance,
   equip sound and texture layers), recipes (type, result, count, resolved ingredients) and tags. One run
   with the seven mods below takes about 30 s.
-- `crates/horizon-client/examples/mod_port_probe.rs` builds the content root from the carried
+- `crates/myriade-engine/examples/mod_port_probe.rs` builds the content root from the carried
   mods and dumps what Horizon's loaders make of the same blocks, drops, recipes and tags.
 - `tools/mod_port_harness.py` compares them per mod (blocks, properties, sounds, shapes, drops,
   placement against the template's in the oracle, vanilla tags, recipes, items) and writes
@@ -1057,7 +1057,7 @@ So the six mods cost about 0.5 GB of footprint, not 1.1-1.4 GB. ATM10's 42 mods 
 states) take the game to 7.7 GB RSS but 3.9 GB footprint. The rest is startup garbage the
 allocator keeps.
 
-`crates/horizon-client/examples/resource_memory.rs` breaks it down per loader: the live heap
+`crates/myriade-engine/examples/resource_memory.rs` breaks it down per loader: the live heap
 (a counting allocator), each step's peak, RSS and the footprint. Live heap after every loader,
 vanilla against ATM10's 42 mods:
 

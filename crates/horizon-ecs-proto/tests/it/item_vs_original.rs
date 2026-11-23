@@ -5,7 +5,7 @@
 use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::cow::*;
 use horizon_ecs_proto::item::*;

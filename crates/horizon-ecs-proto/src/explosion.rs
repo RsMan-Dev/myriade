@@ -61,7 +61,7 @@ fn exploded_positions(w: &mut World, c: Vec3, radius: f32, skull: bool) -> Vec<[
                         }
                     };
                     let f = mw.facts.get(state);
-                    let wet = f.fluid != horizon_client_lib::blocks::Fluid::None;
+                    let wet = f.fluid != myriade_engine_lib::blocks::Fluid::None;
                     let fluid = if wet { 100.0_f32 } else { 0.0 };
                     let air = mw.facts.is_air(state);
                     if !air || wet {

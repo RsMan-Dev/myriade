@@ -6,7 +6,7 @@
 //! spans stay enabled while the report or slow-tick ring needs them ([`want_spans`]).
 //! A server mod samples apart from the report (`mob_cost_sampling`), into sums of its own, so both
 //! can run.
-use horizon_client::{fast_hash::FxHashMap, mobs::MobType};
+use myriade_engine::{fast_hash::FxHashMap, mobs::MobType};
 use std::{
     cell::{Cell, RefCell},
     sync::{
@@ -57,10 +57,10 @@ pub fn want_spans(user: u8, on: bool) {
     } else {
         SPAN_USERS.fetch_and(!user, Ordering::Relaxed) & !user
     };
-    horizon_client::spans::enable(users != 0);
+    myriade_engine::spans::enable(users != 0);
 }
 
-/// Whether `user` has spans on (for horizon-client's tests, which now sit in another crate).
+/// Whether `user` has spans on (for myriade-engine's tests, which now sit in another crate).
 #[doc(hidden)]
 pub fn wanted(user: u8) -> bool {
     SPAN_USERS.load(Ordering::Relaxed) & user != 0
@@ -378,7 +378,7 @@ mod tests {
     fn spans_stay_on_while_anyone_wants_them() {
         // Only the mod's bit: other tests may want them as the report meanwhile.
         want_spans(SPANS_MOD, true);
-        assert!(horizon_client::spans::enabled());
+        assert!(myriade_engine::spans::enabled());
         assert_ne!(SPAN_USERS.load(Ordering::Relaxed) & SPANS_MOD, 0);
         want_spans(SPANS_MOD, false);
         assert_eq!(SPAN_USERS.load(Ordering::Relaxed) & SPANS_MOD, 0);

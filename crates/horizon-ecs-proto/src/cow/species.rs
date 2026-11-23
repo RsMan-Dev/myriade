@@ -13,13 +13,13 @@ use bevy_ecs::{
     schedule::{Schedule, ScheduleLabel, SingleThreadedExecutor},
 };
 #[allow(unused_imports)]
-use horizon_client_lib::mobs::{
+use myriade_engine_lib::mobs::{
     MobWorld,
     nav::Navigation,
     path::{Evaluator, Finder, Path, PathMob, PATH_TYPES},
 };
 #[allow(unused_imports)]
-use horizon_client_render::{chunk::Chunk, collisions::SceneCollisions};
+use myriade_level::{chunk::Chunk, collisions::SceneCollisions};
 #[allow(unused_imports)]
 use horizon_core::geometry::{Aabb, Vec3, trig};
 #[allow(unused_imports)]
@@ -229,7 +229,7 @@ pub struct TypeName(pub &'static str);
 
 fn joined(mut w: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
     if w.get::<crate::hanging::JoinedAt>(ctx.entity).is_none() && w.get::<crate::hanging::Attached>(ctx.entity).is_none() {
-        let at = crate::hanging::JoinedAt(horizon_client_lib::join_seq::JoinSeq::next());
+        let at = crate::hanging::JoinedAt(myriade_engine_lib::join_seq::JoinSeq::next());
         w.commands().entity(ctx.entity).insert(at);
     }
 }
@@ -238,9 +238,9 @@ fn joined(mut w: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookC
 pub struct CowTick;
 
 /// The prepared vanilla types of the process, for the species the tests compare with a `Mob`.
-pub(crate) static TYPES: std::sync::OnceLock<&'static horizon_client_lib::mobs::MobTypes> = std::sync::OnceLock::new();
+pub(crate) static TYPES: std::sync::OnceLock<&'static myriade_engine_lib::mobs::MobTypes> = std::sync::OnceLock::new();
 
-pub fn mob_kind(name: &str) -> Arc<horizon_client_lib::mobs::MobType> {
+pub fn mob_kind(name: &str) -> Arc<myriade_engine_lib::mobs::MobType> {
     Arc::new(TYPES.get().expect("a level was built").types.get(name).unwrap_or_else(|| panic!("no MobType {name}")).clone())
 }
 
@@ -294,8 +294,8 @@ pub fn process_species_name() -> String {
 
 pub(crate) fn species_size(name: &str) -> (f32, f32) {
     // The size of the type, read once from the real data of the process.
-    static TYPES_FOR_SIZE: std::sync::OnceLock<Option<horizon_client_lib::mobs::MobTypes>> = std::sync::OnceLock::new();
-    let t = TYPES_FOR_SIZE.get_or_init(|| horizon_client_lib::mobs::MobTypes::load(std::path::Path::new(&std::env::var("HORIZON_TEST_RESOURCES").unwrap_or_default())).ok());
+    static TYPES_FOR_SIZE: std::sync::OnceLock<Option<myriade_engine_lib::mobs::MobTypes>> = std::sync::OnceLock::new();
+    let t = TYPES_FOR_SIZE.get_or_init(|| myriade_engine_lib::mobs::MobTypes::load(std::path::Path::new(&std::env::var("HORIZON_TEST_RESOURCES").unwrap_or_default())).ok());
     t.as_ref().and_then(|t| t.types.get(name).map(|k| (k.width as f32, k.height as f32))).unwrap_or((0.9, 1.4))
 }
 

@@ -9,7 +9,7 @@ use crate::brain::*;
 use crate::cow::{Nav, Pos};
 use crate::rules::interact_with_door as rules;
 use bevy_ecs::prelude::Component;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_world::registry::BlockStateId;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
@@ -139,7 +139,7 @@ mod tests {
     use super::*;
     use horizon_core::geometry::Vec3;
     use crate::cow::{ActiveUntil, Herd, SpeciesTable, spawn_species};
-    use horizon_client_lib::mobs::path::{Path, PathNode, PathType};
+    use myriade_engine_lib::mobs::path::{Path, PathNode, PathType};
 
     const CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Locomotion, Cap::Targets, Cap::Goals, Cap::Brain];
     static ENTRIES: [BEntry; 1] = [BEntry { behaviour: &BEHAVIOUR, activity: "core", priority: 3, params: &Params::DEFAULT, needs: &[], duration: None, kids: &[] }];

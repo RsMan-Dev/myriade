@@ -8,8 +8,8 @@ use super::*;
 use crate::move_to_block::MoveToBlock;
 use crate::rules::{spear_use::halved_use, strider_go_to_lava as rules};
 use crate::{cow::*, goals::*};
-use horizon_client_lib::mobs::MobWorld;
-use horizon_client_lib::mobs::data::PathComputationType;
+use myriade_engine_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::data::PathComputationType;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {

@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 # Every `.rs` file under these folders, checked one file at a time (no child modules followed).
-TREES = ("crates/horizon-mod-api/src", "crates/horizon-mod-vocab/src", "crates/horizon-client/src/game")
+TREES = ("crates/horizon-mod-api/src", "crates/horizon-mod-vocab/src", "crates/myriade-engine/src/game")
 # Files no `mod` line reaches.
 DISCOVERED = ("crates/horizon-mod-api-gen/dispatch-tests/src/fixtures/*.rs",
               "crates/horizon-mod-api-gen/dispatch-tests/src/fixtures/*/*.rs",

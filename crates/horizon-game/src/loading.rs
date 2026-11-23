@@ -6,7 +6,7 @@ pub fn main_with(
     mods: Vec<mod_api::ModEntry>,
     slots: &[crate::SlotListener],
     built: &'static [mod_api::__private::native::BuiltMod],
-    startup: horizon_client::entry::Startup,
+    startup: myriade_engine::entry::Startup,
 ) {
     horizon_engine_slots::install_seal(mod_points::__private::seal)
         .expect("engine seal provider must be installed once before startup");
@@ -42,7 +42,7 @@ pub fn main_with(
             std::process::exit(1);
         }
     };
-    horizon_client::entry::start(
+    myriade_engine::entry::start(
         native,
         |native, launch| {
             let mut wasm = horizon_mod_wasm::load_installed(launch);
@@ -117,19 +117,19 @@ pub fn main_with(
             })
             .unwrap_or_else(|error| {
                 eprintln!("Horizon: mod load refused: {error}");
-                horizon_client::logging::flush();
+                myriade_engine::logging::flush();
                 std::process::exit(1);
             });
             for warning in &order.warnings {
                 log::warn!("Horizon: {warning}");
             }
             // What every level.dat this game saves records (`fml.LoadingModList`).
-            horizon_client::save::level_mods::set_loaded(Some(
+            myriade_engine::save::level_mods::set_loaded(Some(
                 order
                     .order
                     .iter()
                     .filter(|&&i| code_ids.contains(manifests[i].id.as_str()))
-                    .map(|&i| horizon_client::save::level_mods::ModRecord {
+                    .map(|&i| myriade_engine::save::level_mods::ModRecord {
                         id: manifests[i].id.clone(),
                         version: manifests[i].version.clone(),
                     })
@@ -151,18 +151,18 @@ pub fn main_with(
                 for slot in slots.iter().filter(|slot| slot.id() == id) {
                     if let Err(error) = mod_points::register(slot) {
                         log::error!("Horizon: {id}: {error}");
-                        horizon_client::logging::flush();
+                        myriade_engine::logging::flush();
                         std::process::exit(1);
                     }
                 }
             }
             (ids, wasm)
         },
-        horizon_client::entry::CodeRuntime {
+        myriade_engine::entry::CodeRuntime {
             initialize: horizon_mod_wasm::initialize,
             refusal: |id| {
                 horizon_mod_wasm::refusal(id).map(|reason| {
-                use horizon_client::text::Text;
+                use myriade_engine::text::Text;
                 match reason {
                     horizon_mod_wasm::Refusal::CompileTimeout { member, budget } => {
                         let source = match budget.threads {

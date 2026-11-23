@@ -1,4 +1,4 @@
-//! `Camel` (`horizon-client/src/mobs/camel.rs:26-45`): the goals of the camel in the `Mob`'s order. The posture is a rule
+//! `Camel` (`myriade-engine/src/mobs/camel.rs:26-45`): the goals of the camel in the `Mob`'s order. The posture is a rule
 //! (priority 255, no flag, never asked). The sitting camel refuses to move: `is_sitting` (the occupation the posture takes)
 //! stands for `refuseToMove` (the stand-up included). Camel food is the tag `#camel_food` (the jar: `minecraft:cactus` alone).
 use super::Def;

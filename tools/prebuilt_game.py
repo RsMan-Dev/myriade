@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The prebuilt game (arismoko/horizon#589): horizon-client as a Rust dylib plus every crate's metadata, so the installer builds
+"""The prebuilt game (arismoko/horizon#589): myriade-engine as a Rust dylib plus every crate's metadata, so the installer builds
 native trait mods against it with rustc alone, in seconds, without the game's source or a game build.
 
     python3 tools/prebuilt_game.py build OUT [--server]   # build and collect the folder, write horizon-prebuilt.json
@@ -47,7 +47,7 @@ LOCK = "Cargo.lock"
 SMOKE = "prebuilt-smoke"
 # Where `smoke` installs the same executable without selected mods, for `start`.
 SMOKE_API = "prebuilt-smoke-api"
-EXECUTABLE = "horizon-client.exe" if sys.platform == "win32" else "horizon-client"
+EXECUTABLE = "myriade-engine.exe" if sys.platform == "win32" else "myriade-engine"
 # The furthest a game started without its prepared files gets (game.rs `missing_resources`): past loading the
 # game's libraries and the mods' runtime environment (`entry::main_with`), where a split allocator aborts (arismoko/horizon#3877).
 NO_RESOURCES = "Horizon's prepared game files are missing"
@@ -58,7 +58,7 @@ DLL_NOT_FOUND = 0xC0000135
 # The installer's generated `main.rs` comes from the game it links against.
 TEMPLATE = "native_main.rs.template"
 NATIVE_MODS_TEMPLATE = "native_mod_entry.rs.template"
-API_MAIN = ROOT / "crates/horizon-client/src/native_main.rs.template"
+API_MAIN = ROOT / "crates/myriade-engine/src/native_main.rs.template"
 # The fixed executable folder in the runtime slice.
 RUNTIME = "bin"
 # The required inputs (`horizon_mod_package::sdk::Inputs`): `members` lists what each slice must hold.
@@ -68,9 +68,9 @@ API_ROOTS = ("horizon-mod-api", "horizon-mod-points")
 # The game libraries outside the API closure, in the runtime archive.
 GAME_LIBRARIES = ("horizon_game", "horizon_mod_wasm")
 # Source files the folder carries besides compiler outputs.
-CARRIED = {"Cargo.toml": None, IDENTITY: None, LOCK: ROOT / LOCK, TEMPLATE: ROOT / "crates/horizon-client/src" / TEMPLATE,
-           NATIVE_MODS_TEMPLATE: ROOT / "crates/horizon-client/src" / NATIVE_MODS_TEMPLATE}
-# What the game's build script asks the `horizon-client` executable's link for (Windows' 8 MB main stack).
+CARRIED = {"Cargo.toml": None, IDENTITY: None, LOCK: ROOT / LOCK, TEMPLATE: ROOT / "crates/myriade-engine/src" / TEMPLATE,
+           NATIVE_MODS_TEMPLATE: ROOT / "crates/myriade-engine/src" / NATIVE_MODS_TEMPLATE}
+# What the game's build script asks the `myriade-engine` executable's link for (Windows' 8 MB main stack).
 LINK_ARG = "cargo:horizon-executable-link-arg="
 # Native libraries the build scripts point the final link at (the `windows` crates' MinGW import libraries):
 # cargo passes their folders to rustc, a plain rustc gets them from here (`-L native=OUT/native`).
@@ -355,7 +355,7 @@ def api_route(out: Path, link_args: list[str]) -> list[str]:
     origin = {"linux": ["-Wl,-rpath,$ORIGIN"], "darwin": ["-Wl,-rpath,@executable_path"]}.get(sys.platform, [])
     run(["rustc", *common, "--crate-type", "bin", "--crate-name", "horizon_native_game",
          *(flag for arg in origin + link_args for flag in ("-C", f"link-arg={arg}")),
-         *extern_args(deps, "horizon_client"), *extern_args(deps, "mod_api"), *extern_args(deps, "horizon_mod_package"),
+         *extern_args(deps, "myriade_engine"), *extern_args(deps, "mod_api"), *extern_args(deps, "horizon_mod_package"),
          "--extern", f"{GAME_LIBRARIES[0]}={dylib(deps, GAME_LIBRARIES[0])}",
  "-o", str(folder / EXECUTABLE), str(API_MAIN)])
     built = sorted(path.relative_to(out).as_posix() for path in folder.iterdir())
@@ -537,7 +537,7 @@ def build(out: Path, server: bool) -> None:
     for name, path in carried.items():
         (out / name).write_bytes(blobs[path])
     patches = carry_patches(staged, out)
-    game = next(script for script in scripts if script["package_id"].split("#")[0].endswith("/horizon-client"))
+    game = next(script for script in scripts if script["package_id"].split("#")[0].endswith("/myriade-engine"))
     for manifest in BUILD_DATA:
         shutil.copy2(staged / manifest, out / manifest)
     output = Path(game["out_dir"]).parent / "output"
@@ -559,7 +559,7 @@ def build(out: Path, server: bool) -> None:
         "game_features": sorted(next(
             message["features"] for message in artifacts
             if message["reason"] == "compiler-artifact"
-            and message["package_id"].split("#")[0].endswith("/horizon-client")
+            and message["package_id"].split("#")[0].endswith("/myriade-engine")
             and "lib" in message["target"]["kind"]
         )),
         "registry_patches": patches,

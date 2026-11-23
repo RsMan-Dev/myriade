@@ -228,9 +228,9 @@ jobs:
         if: ${{ !matrix.musl }}
         run: |
           set -euo pipefail
-          cargo build --release --locked -p horizon-game --no-default-features --bin horizon-client
-          python3 tools/check_cpu_baseline.py "$BIN/horizon-client" "$BIN/horizon-prepare" "$BIN/horizon-server"
-          cargo run --locked -p xtask -- package-server "$BIN/horizon-client" "dist/${{ matrix.dir }}"
+          cargo build --release --locked -p horizon-game --no-default-features --bin myriade-engine
+          python3 tools/check_cpu_baseline.py "$BIN/myriade-engine" "$BIN/horizon-prepare" "$BIN/horizon-server"
+          cargo run --locked -p xtask -- package-server "$BIN/myriade-engine" "dist/${{ matrix.dir }}"
           folder="dist/${{ matrix.dir }}"
           python3 tools/check_imports.py --server "$folder/horizon-engine" "$folder/horizon-server" "$folder/horizon-prepare"
           "$folder/horizon-engine" --help | grep -q -- '--resources'

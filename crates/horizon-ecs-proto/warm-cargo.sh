@@ -11,7 +11,7 @@ dir="$CARGO_TARGET_DIR/${WARM_PROFILE_DIR:-ecsdev}/deps"
 limit=${BUILD_TIMEOUT:-300}
 rule="A cold build must be absolutely justified: use the warm target and its worktree in turn, or set COLD_BUILD_REASON='<why no warm target can serve>' and say so in the report."
 
-if ! ls "$dir"/libhorizon_client_render-*.rlib >/dev/null 2>&1; then
+if ! ls "$dir"/libmyriade_level-*.rlib >/dev/null 2>&1; then
   if [ -z "${COLD_BUILD_REASON:-}" ]; then
     echo "warm-cargo: REFUSED, '$dir' is cold. $rule" >&2
     exit 97

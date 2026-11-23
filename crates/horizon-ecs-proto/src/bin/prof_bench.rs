@@ -28,7 +28,7 @@ fn main() {
     // ITEMS: N full stacks (which never merge) dropped from 1.5 blocks over the slab: `items` lets them land and sleep, `itemfall` drops N/50
     // more each tick; `itemsref` runs Horizon's own `ItemEntity.tick` on every item every tick (the same scene, the cost to compare).
     let spot_of = |i: usize| (-14.0 + 28.0 * ((i * 37 % 101) as f64 / 101.0), -14.0 + 28.0 * ((i * 53 % 103) as f64 / 103.0));
-    let stack = || horizon_client_lib::items::ItemStack::new("minecraft:stone", 64);
+    let stack = || myriade_engine_lib::items::ItemStack::new("minecraft:stone", 64);
     if scene == "items" {
         for i in 0..n {
             let (x, z) = spot_of(i);
@@ -46,7 +46,7 @@ fn main() {
         let mut o = horizon_ecs_proto::item_reference::OrbsOriginal { mw, orbs: Vec::new(), players: Vec::new() };
         for i in 0..n {
             let (x, z) = spot_of(i);
-            o.orbs.push(horizon_client_lib::entities::ExperienceOrb::new(i as u32 + 1, horizon_core::geometry::Vec3::new(x, 1.5, z), horizon_core::geometry::Vec3::ZERO, 1 + (i % 11) as i32));
+            o.orbs.push(myriade_engine_lib::entities::ExperienceOrb::new(i as u32 + 1, horizon_core::geometry::Vec3::new(x, 1.5, z), horizon_core::geometry::Vec3::ZERO, 1 + (i % 11) as i32));
         }
         let counter = Counter::new();
         let warm = arg(5, 100).min(ticks / 2);

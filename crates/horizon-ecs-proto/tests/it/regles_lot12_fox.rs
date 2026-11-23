@@ -3,7 +3,7 @@
 //! `Fox` and `Fox$FoxBreedGoal`).
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_ecs_proto::behaviours::breed::{feed, set_love_cause};
 use horizon_ecs_proto::behaviours::defend_trusted;
 use horizon_ecs_proto::behaviours::eat_held;

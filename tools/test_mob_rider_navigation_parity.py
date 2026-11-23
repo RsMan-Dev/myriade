@@ -187,8 +187,8 @@ def main():
         if result.returncode:
             raise RuntimeError(f'{name}: {result.returncode}; see {out / (name+".log")}')
     if args.binary is None:
-        run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'horizon-client'], 'build', cwd=lab.ROOT)
-        binary = lab.cargo_target()/'fast'/('horizon-client.exe' if os.name == 'nt' else 'horizon-client')
+        run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'myriade-engine'], 'build', cwd=lab.ROOT)
+        binary = lab.cargo_target()/'fast'/('myriade-engine.exe' if os.name == 'nt' else 'myriade-engine')
     else:
         binary = args.binary.resolve(strict=True)
     if args.reference:

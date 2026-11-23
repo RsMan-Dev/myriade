@@ -1,6 +1,6 @@
 //! What mob code calls on `ServerLevel` and `Level`: the level's data as one
 //! borrow ([`MobParts`]) and its services, which the game implements once.
-use horizon_client::{
+use myriade_engine::{
     blocks::BlockFacts,
     entities::ItemEntity,
     fast_hash::FxHashSet,

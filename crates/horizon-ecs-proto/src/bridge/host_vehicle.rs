@@ -10,7 +10,7 @@ use crate::items::item_id;
 use crate::mount::{self, Mount, Riding};
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::{items::ItemStack, merchant::MerchantOffer};
+use myriade_engine_lib::{items::ItemStack, merchant::MerchantOffer};
 
 /// The columns of a mount's inventory. P keeps no inventory of a mount, so no mount has columns yet.
 pub struct MountColumns {
@@ -164,8 +164,8 @@ impl EcsWorld {
     /// `ResolvedProfessions` the host resolves ids with) and the sequences' seed.
     pub fn install_trades(
         &mut self,
-        trades: horizon_client_lib::merchant::Trades,
-        items: &'static horizon_client_lib::items::Items,
+        trades: myriade_engine_lib::merchant::Trades,
+        items: &'static myriade_engine_lib::items::Items,
         enchantments: &'static horizon_items::enchant::Enchantments,
         seed: i64,
     ) {
@@ -193,7 +193,7 @@ impl EcsWorld {
     }
 
     /// The merchant's side of the open screen of `e` (`Trading.session`); None while no screen is open.
-    pub fn trade_session(&self, e: Entity) -> Option<horizon_client_lib::merchant::Session> {
+    pub fn trade_session(&self, e: Entity) -> Option<myriade_engine_lib::merchant::Session> {
         self.world().get::<trade_session::Trading>(e).map(|t| t.session.clone())
     }
 

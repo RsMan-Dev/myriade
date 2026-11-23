@@ -2,7 +2,7 @@
 //! round trip, the refusal of a wrong type, and a sort the origin does not save (the bobber) having no NBT. The entities are made by
 //! their creation functions: `nbt::Saved` comes from the species declaration, never from the test.
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::{
     geometry::Vec3,
     nbt::{Compound, JavaString, Tag},

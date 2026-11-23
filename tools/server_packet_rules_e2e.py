@@ -16,7 +16,7 @@ A survival dedicated server in a flat world, a world border 20 blocks wide aroun
 
 myriade-bot stand in for the clients (`--attack`, `--raw`). The server runs in a fresh folder with fresh
 HORIZON_HOME and XDG folders (lab.game_env), on a free port. Build first:
-    cargo build --profile fast -p horizon-game --bin horizon-client
+    cargo build --profile fast -p horizon-game --bin myriade-engine
     cargo build --profile fast -p myriade-bot
 """
 import argparse
@@ -123,7 +123,7 @@ def run(bins, folder, out):
     (folder / 'eula.txt').write_text('eula=true\n')
     # Vanilla's rules only: Horizon's anticheat would drop the attacks the boats take without a swing.
     (folder / 'server.toml').write_text('[anticheat]\nenabled = false\n')
-    command = [bins / f'horizon-client{EXE}', '--resources', lab.RESOURCES, '--dedicated', '--nogui']
+    command = [bins / f'myriade-engine{EXE}', '--resources', lab.RESOURCES, '--dedicated', '--nogui']
     server = Server(command, folder, out / 'server.log')
     try:
         server.wait_for(DONE, 300)

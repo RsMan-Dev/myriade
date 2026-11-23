@@ -19,12 +19,12 @@ References are repository-relative at this worktree's HEAD. They identify curren
 | Route | Verified owner | Proposed treatment |
 | --- | --- | --- |
 | Native closure transaction, nested success/error and unwind | `crates/horizon-mod-vocab/src/item/transaction.rs:44` and :72; Drop at :82 | Preserve synchronous closure semantics and the guard; rollback must finish before a catcher observes state. |
-| Game-owned open/close and nested merge | `crates/horizon-client/src/game/runtime/transactions.rs:174`, :179, :192 | Extend this coordinator's Level (:34), never add a mod journal coordinator. |
-| Emergency abort | `crates/horizon-client/src/game/runtime/transactions.rs:239` | Restore participant values through the same rollback path. |
-| Root effects and rollback | `crates/horizon-client/src/game/runtime/transactions.rs:462`, :513 | Integrate participant lifetime and notification work here; no guest dispatch from rollback. |
-| First-write storage examples | `crates/horizon-client/src/game/runtime/transactions.rs:246`, :257, :290, :303, :325, :338, :357, :388 | Existing block entities, attachments, player/menu/entity inventories, equipment, item entities and blocks retain their existing snapshots. Participant limits must not constrain these vanilla stores. |
+| Game-owned open/close and nested merge | `crates/myriade-engine/src/game/runtime/transactions.rs:174`, :179, :192 | Extend this coordinator's Level (:34), never add a mod journal coordinator. |
+| Emergency abort | `crates/myriade-engine/src/game/runtime/transactions.rs:239` | Restore participant values through the same rollback path. |
+| Root effects and rollback | `crates/myriade-engine/src/game/runtime/transactions.rs:462`, :513 | Integrate participant lifetime and notification work here; no guest dispatch from rollback. |
+| First-write storage examples | `crates/myriade-engine/src/game/runtime/transactions.rs:246`, :257, :290, :303, :325, :338, :357, :388 | Existing block entities, attachments, player/menu/entity inventories, equipment, item entities and blocks retain their existing snapshots. Participant limits must not constrain these vanilla stores. |
 | Native/wasm handler dispatch while transaction remains active | `crates/horizon-mod-wasm/src/runtime.rs:536`, :547, :557 | Validate the same participant operations on both targets; never infer unwind support from ordinary resumed dispatch. |
-| Existing holder identity | `crates/horizon-mod-runtime/src/attachments.rs:66`; block-entity incarnation capture at `crates/horizon-client/src/game/runtime/transactions.rs:66` | Bind holder-backed participants to existing lifecycle identity; no second generation counter. |
+| Existing holder identity | `crates/horizon-mod-runtime/src/attachments.rs:66`; block-entity incarnation capture at `crates/myriade-engine/src/game/runtime/transactions.rs:66` | Bind holder-backed participants to existing lifecycle identity; no second generation counter. |
 
 These routes cover transaction closure entry/exit, nested merge, emergency abort and deferred effects. Individual transfer callers continue using those shared routes. A code stage must audit generated imports and all unwind/trap containment callers against the then-current runtime before claiming complete native/wasm coverage.
 

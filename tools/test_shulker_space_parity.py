@@ -27,7 +27,7 @@ def main():
                lab.ROOT / 'tools/test_rust_parity.py', lab.ROOT / 'tools/integration_env.py',
                lab.ROOT / 'tools/server_lab.py', lab.ROOT / 'tools/bot_lab.py',
                lab.ROOT / 'Cargo.toml', lab.ROOT / 'Cargo.lock',
-               lab.ROOT / 'crates/horizon-client/src/game/interface/dedicated/command_ops_leash_space.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game/interface/dedicated/command_ops_leash_space.rs',
                lab.ROOT / 'crates/horizon-ecs-proto/src/behaviours/teleport_on.rs',
                lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaShulkerSpaceOracle.java',
                lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaBlockUpdateOracle.java',
@@ -41,7 +41,7 @@ def main():
                                                      {'client': client}, libraries, lock['minecraft']['java_major'])
     harness.java_run(build, classes, dependencies, 'VanillaShulkerSpaceOracle',
                      [inputs, build / 'client.txt'], 'client')
-    harness.run_logged(['cargo', 'build', '--locked', '--profile', 'fast', '-p', 'horizon-client', '--bin', 'horizon-client'],
+    harness.run_logged(['cargo', 'build', '--locked', '--profile', 'fast', '-p', 'myriade-engine', '--bin', 'myriade-engine'],
                        build, 'compile-rust', timeout=900)
     bins = Path(lab.cargo_target()) / 'fast'
     with Server(bins, build / 'server', lab.RESOURCES.resolve(), {'level-seed': '42', 'view-distance': '4'}) as server, \

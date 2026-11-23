@@ -25,7 +25,7 @@ from test_save_roundtrip_parity import Vanilla  # noqa: E402
 from server_lab import Server  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-RESOURCES = ROOT / '.local' / 'horizon-client' / '26.3'
+RESOURCES = ROOT / '.local' / 'myriade-engine' / '26.3'
 RUN = ROOT / '.local' / 'spawn-loot'
 CHEST = (2, -60, 1)
 LOOT = '{LootTable:"minecraft:chests/simple_dungeon",LootTableSeed:42L}'
@@ -68,12 +68,12 @@ def chest_items(text):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--bin-dir', help='prebuilt horizon-client (default: build it with the fast profile)')
+    parser.add_argument('--bin-dir', help='prebuilt myriade-engine (default: build it with the fast profile)')
     parser.add_argument('--keep', action='store_true', help='keep the run folder')
     args = parser.parse_args()
     bin_dir = Path(args.bin_dir).resolve() if args.bin_dir else None
     if bin_dir is None:
-        subprocess.run(['cargo', 'build', '--locked', '--profile', 'fast', '-p', 'horizon-game', '-p', 'horizon-client-lib', '--bins'], cwd=ROOT, check=True)
+        subprocess.run(['cargo', 'build', '--locked', '--profile', 'fast', '-p', 'horizon-game', '-p', 'myriade-engine-lib', '--bins'], cwd=ROOT, check=True)
         bin_dir = ROOT / os.environ.get('CARGO_TARGET_DIR', 'target') / 'fast'
     shutil.rmtree(RUN, ignore_errors=True)
     RUN.mkdir(parents=True)

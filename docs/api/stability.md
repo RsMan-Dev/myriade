@@ -97,7 +97,7 @@ Deprecations and breaking changes are in bold. The release notes of the game rel
 | `horizon-server` commands, `server.toml` | stable | `horizon-server --version` |
 | Server control API | stable | `/api/v1` |
 | `horizon-launcher` commands and MCP tools | preview | none yet (unversioned) |
-| Launch API: `horizon-client`'s launch options, exit codes; `horizon-prepare`'s output and progress | experimental | 0.2.0, `horizon-client --launch-api`; 0.1.1, `horizon-prepare --launch-api` |
+| Launch API: `myriade-engine`'s launch options, exit codes; `horizon-prepare`'s output and progress | experimental | 0.2.0, `myriade-engine --launch-api`; 0.1.1, `horizon-prepare --launch-api` |
 | Benchmark report | stable | `"version": 1` |
 | `horizon-graphics.txt`, `horizon-extras.txt`, `horizon-mods.txt` | preview | none |
 | `SHA256SUMS` and `SHA256SUMS.sig` | stable | |

@@ -61,10 +61,10 @@ fn scan(w: &mut World, e: Entity, c: &Ctx) {
 }
 
 /// The path mob of an entity (the `Mob` fields the path search reads), with its follow range.
-pub(crate) fn path_mob(w: &World, e: Entity) -> Option<(horizon_client_lib::mobs::path::PathMob, f32)> {
+pub(crate) fn path_mob(w: &World, e: Entity) -> Option<(myriade_engine_lib::mobs::path::PathMob, f32)> {
     use crate::cow::{Body, Contact, FluidState, NavParams};
     let (pos, body, c, sp) = (w.get::<Pos>(e)?, w.get::<Body>(e)?, w.get::<Contact>(e)?, w.get::<NavParams>(e)?);
-    let pm = horizon_client_lib::mobs::path::PathMob {
+    let pm = myriade_engine_lib::mobs::path::PathMob {
         position: pos.0,
         width: body.width,
         height: body.height,
@@ -84,7 +84,7 @@ pub(crate) fn path_mob(w: &World, e: Entity) -> Option<(horizon_client_lib::mobs
 
 /// The target of the path that reaches one of `targets` within 1 (`Mob.create_path_to_any(targets, 1).reached`), the search `pathfind` makes.
 fn reached_bed(w: &World, e: Entity, targets: &[[i32; 3]], follow_range: f32) -> Option<[i32; 3]> {
-    use horizon_client_lib::mobs::path::{Evaluator, Finder};
+    use myriade_engine_lib::mobs::path::{Evaluator, Finder};
     if targets.is_empty() {
         return None;
     }

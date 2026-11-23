@@ -1,7 +1,7 @@
 //! The creature states through the bridge (`bridge/host_state.rs`): a fresh creature holds none of the components, a neutral write
 //! takes the component away, and the reads answer what was written.
 use crate::common::*;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::{custom_name::CustomName, custom_name::NameVisible, gliding::FallFlying, left_handed::LeftHanded, pose_state::PoseOverride};
 use horizon_ecs_proto::{no_gravity::NoGravity, stuck::Stuck};
@@ -10,7 +10,7 @@ fn setup() -> HostSetup {
     HostSetup { seed: 7, dimension: "overworld", simulation_radius: 4 }
 }
 
-fn spawn_cow(h: &mut EcsWorld, mw: &horizon_client_lib::mobs::MobWorld<'_>) -> bevy_ecs::entity::Entity {
+fn spawn_cow(h: &mut EcsWorld, mw: &myriade_engine_lib::mobs::MobWorld<'_>) -> bevy_ecs::entity::Entity {
     h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species")
 }
 

@@ -11,7 +11,7 @@ use crate::goals::Online;
 use crate::hostile::PlayerState;
 use crate::targeting::{self, FollowRange};
 use bevy_ecs::{entity::Entity, prelude::*};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// `Creaking.homePos`: the heart this creaking protects, and the state its heart reads from it.

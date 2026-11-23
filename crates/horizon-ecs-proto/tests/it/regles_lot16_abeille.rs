@@ -3,7 +3,7 @@
 //! tests and vanilla 26.3 (`NeutralMob.updatePersistentAnger`, `BeeGrowCropGoal`, `Bee.doHurtTarget`, `NeutralMob.isAngryAtAllPlayers`).
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::nbt::{JavaString, Tag};
 use horizon_ecs_proto::behaviours::bee::Bee;
 use horizon_ecs_proto::behaviours::neutral_anger::{anger_at, is_angry, Anger};

@@ -107,7 +107,7 @@ fn step(w: &mut World, e: Entity) {
     let next = next_wait(cfg.wait_base, cfg.wait_step, with_rng(w, e, |r| r.next_int(cfg.wait_count)));
     w.get_mut::<Volley>(e).unwrap().wait = next;
     // `Entity.random` of the bullet: `RandomSource.create()`, unseeded; it draws nothing from the shooter's random.
-    let seed = horizon_client_render::random_source::unique_seed() as u64 | 1;
+    let seed = myriade_level::random_source::unique_seed() as u64 | 1;
     let axis = homing_projectile::axis_of(w.get::<Attached>(e).map_or(0, |a| a.face));
     homing_projectile::spawn(w, e, t.who, axis, seed, cfg.shot);
     let pitch = with_rng(w, e, |r| {

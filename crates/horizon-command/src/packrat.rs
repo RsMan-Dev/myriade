@@ -413,7 +413,7 @@ impl<'g, V: Value> State<'g, V> {
                 Reason::Error(e) => e.clone(),
             };
         }
-        CommandError::new(horizon_client_core::text::Text::literal("Failed to parse"))
+        CommandError::new(myriade_data::text::Text::literal("Failed to parse"))
     }
     /// CachedParseState.parse: a named rule, memoised per position.
     pub fn parse(&mut self, rule: RuleId) -> Option<V> {

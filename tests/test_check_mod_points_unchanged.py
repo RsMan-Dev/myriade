@@ -65,8 +65,8 @@ class DiffPointsTests(unittest.TestCase):
                 gate.load_points(path)
 
 
-GAME = "horizon_client::game::Game<'_>::"
-FREE = "horizon_client::game::helpers::"
+GAME = "myriade_engine::game::Game<'_>::"
+FREE = "myriade_engine::game::helpers::"
 
 
 class ClassifyTests(unittest.TestCase):
@@ -84,13 +84,13 @@ class ClassifyTests(unittest.TestCase):
         self.assertIn("not listed", bad["helper"])
 
     def test_a_game_method_fails_even_when_listed(self):
-        for target in (GAME + "tick", "horizon_client::game::Game::tick"):
+        for target in (GAME + "tick", "myriade_engine::game::Game::tick"):
             base = {"tick": point("tick", target)}
             _, bad, _, _ = self.classify(["tick"], base, {"tick": ("#1", "x")})
             self.assertIn("`Game` method", bad["tick"])
 
     def test_a_type_that_only_starts_with_game_is_not_game(self):
-        self.assertFalse(gate.is_game_method("horizon_client::game::GameRules::tick"))
+        self.assertFalse(gate.is_game_method("myriade_engine::game::GameRules::tick"))
 
     def test_a_loop_fails_even_when_listed(self):
         base = {"tick": point("tick", FREE + "tick_things")}
@@ -564,7 +564,7 @@ class SnapshotStoreTests(unittest.TestCase):
         out = self.tmp / name
         out.mkdir()
         (out / "points.json").write_text(json.dumps(points or [point("tick")]))
-        (out / "api.rs").write_text(f"// generated from {root}/crates/horizon-client/src/game.rs\n")
+        (out / "api.rs").write_text(f"// generated from {root}/crates/myriade-engine/src/game.rs\n")
         return out
 
     def stored(self, key=None):
@@ -676,7 +676,7 @@ class SnapshotStoreTests(unittest.TestCase):
             out.mkdir()
             points = base_points if side == "base" else [point("tick")]
             (out / "points.json").write_text(json.dumps(points))
-            (out / "api.rs").write_text(f"// generated from {root}/crates/horizon-client/src/game.rs\n")
+            (out / "api.rs").write_text(f"// generated from {root}/crates/myriade-engine/src/game.rs\n")
             return 1.0, 2.0
 
         def git(*args, cwd=gate.ROOT):

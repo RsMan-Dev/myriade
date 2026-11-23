@@ -22,11 +22,11 @@ What changes in that build:
 | Extra | Where it lives | The gate |
 |---|---|---|
 | Cosmetics, emotes and the emote wheel, "Show me as a Horizon player" | `game/cosmetics.rs` (+ `cosmetics/fx.rs`, `cosmetics/emotes.rs`, `cosmetics/emote_wheel.rs`) | `game::cosmetics::enabled()`: the service is never asked, nothing is drawn, B opens no wheel |
-| The official server added to the server list, the withdrawn partner server taken out; the "Start Horizon from the launcher" screen of a game without its prepared files, with its Download button (`get_the_game` hook) | the official executable's hooks | registered only by the official executable (`horizon-official`); horizon-client's own executable has none |
+| The official server added to the server list, the withdrawn partner server taken out; the "Start Horizon from the launcher" screen of a game without its prepared files, with its Download button (`get_the_game` hook) | the official executable's hooks | registered only by the official executable (`horizon-official`); myriade-engine's own executable has none |
 | Horizon Settings (Extras, PvP & HUD, Splitscreen, Studio, AI Agent) and Mods (with the registry browser) | `options_ui.rs` (`Page::Horizon` and below), `extras_ui.rs`, `extras.rs`, `pvp.rs`, `game/extras.rs` and `game/extras/`, `extras_hud.rs` | the Options screen shows vanilla's greyed Telemetry Data instead (`options_ui::HORIZON_EXTRAS`, set in `entry.rs`) |
-| Discord Rich Presence and its switch | the official executable's hooks | registered only by the official executable (`horizon-official`); horizon-client's own executable has none |
+| Discord Rich Presence and its switch | the official executable's hooks | registered only by the official executable (`horizon-official`); myriade-engine's own executable has none |
 | Play with Friends | hosting: `game/friends.rs`, `game/friends/screen.rs`; joining: `game` | hosting: the `friends` feature (`game/friends_off.rs` stands in); joining: only the official executable registers it ([layers.md](layers.md#how-a-horizon-crate-plugs-in)) |
-| The anonymous "I'm playing" ping | the official executable's hooks | not in horizon-client at all: only the official executable (`horizon-official`) registers it ([layers.md](layers.md#how-a-horizon-crate-plugs-in)) |
+| The anonymous "I'm playing" ping | the official executable's hooks | not in myriade-engine at all: only the official executable (`horizon-official`) registers it ([layers.md](layers.md#how-a-horizon-crate-plugs-in)) |
 
 Credits & Attribution then says where the official build is (`horizon.plain.official`).
 

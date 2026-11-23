@@ -1,6 +1,6 @@
 //! The numbers of a dropped stack (`ItemEntity`): its box, its life, its pickup delay, its merge rate and its throw.
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::random::RandomSource;
 

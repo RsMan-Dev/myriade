@@ -97,11 +97,11 @@ these are seams, not already implemented callbacks):
 
 | Route | Owner | Proposed integration |
 | --- | --- | --- |
-| Block library construction | `crates/horizon-client-render/src/model_library.rs:64`, `:82` | Produce candidate block view before modified cache publication |
-| Item library construction | `crates/horizon-client-render/src/model_library.rs:120` | Produce item view in same generation |
-| Standalone additions and block preparation | `crates/horizon-client-render/src/models.rs:37`, `:142` | Preserve additions; edit baked results after preparation |
-| Terrain model consumption | `crates/horizon-client-render/src/mesher.rs:1840` | Read frozen model parts; no provider calls |
-| Item bounds and draw submission | `crates/horizon-client/src/item_render.rs:229`, `:267`, `:299` | Consume prepared item geometry including skinned submission |
+| Block library construction | `crates/myriade-level/src/model_library.rs:64`, `:82` | Produce candidate block view before modified cache publication |
+| Item library construction | `crates/myriade-level/src/model_library.rs:120` | Produce item view in same generation |
+| Standalone additions and block preparation | `crates/myriade-level/src/models.rs:37`, `:142` | Preserve additions; edit baked results after preparation |
+| Terrain model consumption | `crates/myriade-level/src/mesher.rs:1840` | Read frozen model parts; no provider calls |
+| Item bounds and draw submission | `crates/myriade-engine/src/item_render.rs:229`, `:267`, `:299` | Consume prepared item geometry including skinned submission |
 
 Initial mesh, remesh, halo changes, unload, reload, cancellation and stale upload
 all use section meshing's route and token table, not a second invalidation system.

@@ -16,7 +16,7 @@ import lab
 def snapshot_tests(build):
     """Run the prepared-resource hurt, landing, world lifetime and wire cases."""
     run = subprocess.run(
-        ["cargo", "test", "--locked", "-p", "horizon-client", "-p", "horizon-client-lib",
+        ["cargo", "test", "--locked", "-p", "myriade-engine", "-p", "myriade-engine-lib",
          "--lib", "datapack_damage_", "--", "--include-ignored"],
         cwd=lab.ROOT, text=True, capture_output=True)
     output = run.stdout + run.stderr
@@ -74,10 +74,10 @@ def main():
                lab.ROOT / "crates/horizon-world/examples/damage_catalog_probe.rs",
                lab.ROOT / "crates/horizon-world/src/damage_source.rs",
                lab.ROOT / "crates/horizon-world/src/damage_source/resources.rs",
-               lab.ROOT / "crates/horizon-client/src/health/datapack_tests.rs",
-               lab.ROOT / "crates/horizon-client/src/landing.rs",
-               lab.ROOT / "crates/horizon-client/src/lan/data.rs",
-               lab.ROOT / "crates/horizon-client/src/game/network/lan/mod.rs"]
+               lab.ROOT / "crates/myriade-engine/src/health/datapack_tests.rs",
+               lab.ROOT / "crates/myriade-engine/src/landing.rs",
+               lab.ROOT / "crates/myriade-engine/src/lan/data.rs",
+               lab.ROOT / "crates/myriade-engine/src/game/network/lan/mod.rs"]
     hashes = {str(p.relative_to(lab.ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}
     libraries = sorted((args.game_dir / "libraries/server").rglob("*.jar"))
     jar = args.game_dir / "jars/server-game.jar"

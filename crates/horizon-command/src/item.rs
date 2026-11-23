@@ -481,7 +481,7 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
                     } else {
                         format!("minecraft:{id}")
                     };
-                    if horizon_client_core::block_entity_nbt::is_known_type(&id) {
+                    if myriade_data::block_entity_nbt::is_known_type(&id) {
                         Ok(())
                     } else {
                         Err(format!(
@@ -1870,7 +1870,7 @@ mod tests {
             );
             return;
         }
-        use horizon_client_core::block_entity_types::{self, BlockEntityTypes};
+        use myriade_data::block_entity_types::{self, BlockEntityTypes};
         block_entity_types::install(BlockEntityTypes::new(
             [("example:crate".into(), "example:crate".into())].into(),
             vec!["example:crate".into()],

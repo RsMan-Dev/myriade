@@ -9,7 +9,7 @@ use crate::cart_variants::{self, Lit};
 use crate::cart_move::TrackRead;
 use crate::minecart::{furnace_max_speed, tnt_primed_by, Fuse, Furnace, Kind, Track, MAX_LAND, MAX_WATER};
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Tag;
 

@@ -13,7 +13,7 @@ use crate::rules::item::max_stack;
 use crate::rules::minecart::{blast_power, bounds_at, command_due, container_signal, fuse_step, hopper_box, hopper_enabled_on_activator, tnt_primed_by};
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::{Aabb, Axis, Vec3};
 use horizon_core::nbt::{JavaString, Tag};
 
@@ -392,7 +392,7 @@ mod tests {
     use crate::cart_state;
     use crate::cow::Herd;
     use crate::minecart::FUSE;
-    use horizon_client_lib::items::ItemStack;
+    use myriade_engine_lib::items::ItemStack;
 
     fn world() -> Herd {
         let mut h = Herd::new(0, 1.0, true, false, 1);

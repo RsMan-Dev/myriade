@@ -128,7 +128,7 @@ class DatafixPaths(unittest.TestCase):
 
     def test_author_plan_requires_datafix_opt_in(self):
         (self.checkout / '.local/minecraft').mkdir(parents=True)
-        (self.checkout / '.local/horizon-client').mkdir()
+        (self.checkout / '.local/myriade-engine').mkdir()
         for opt_in in (False, True):
             args = argparse.Namespace(host='local', quick=False, harnesses=True, datafix=opt_in)
             output = io.StringIO()

@@ -1,6 +1,6 @@
 //! `/data merge`, `get`, `remove` and `modify`, over one data accessor (entity, block or storage).
 use super::host::{CommandHost, R};
-use horizon_client::{
+use myriade_engine::{
     command::{Arg, Context},
     data_cmd::{self, Op, path_error},
     nbt_path::NbtPath,
@@ -45,9 +45,9 @@ pub fn data_in(host: &mut dyn DataHost, id: &str, ctx: &Context) -> R<i32> {
             let Some(Arg::Str(nbt)) = ctx.get("nbt") else {
                 return Ok(0);
             };
-            let nbt = horizon_client::command::snbt::parse_fully(nbt)?;
+            let nbt = myriade_engine::command::snbt::parse_fully(nbt)?;
             let old = host.data_of()?;
-            if horizon_client::nbt_path::too_deep(&nbt, 0) {
+            if myriade_engine::nbt_path::too_deep(&nbt, 0) {
                 return Err(host.error("arguments.nbtpath.too_deep", &[]));
             }
             let result = data_cmd::merged(&old, &nbt);
@@ -123,7 +123,7 @@ pub fn data_modify(host: &mut dyn DataHost, ctx: &Context) -> R<i32> {
         let Some(Arg::Str(text)) = ctx.get("value") else {
             return Ok(0);
         };
-        vec![horizon_client::command::snbt::parse_fully(text)?]
+        vec![myriade_engine::command::snbt::parse_fully(text)?]
     } else if ctx.get("provider").is_some() {
         let integer = ctx.literals.iter().any(|l| l == "integer");
         vec![host.compute_source(ctx, integer)?]

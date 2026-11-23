@@ -664,7 +664,7 @@ fn sun_eval(
     }
 }
 /// `Mob.isSunBurnTick`'s other wet cases: rain at the feet or at the top of the box (`Entity.isInRain`), or the box in powder snow.
-fn wet_by_weather(mw: &horizon_client_lib::mobs::MobWorld, p: Vec3, bd: &Body) -> bool {
+fn wet_by_weather(mw: &myriade_engine_lib::mobs::MobWorld, p: Vec3, bd: &Body) -> bool {
     let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
     if mw.raining_at(x, y, z) || mw.raining_at(x, (p.y + f64::from(bd.height)).floor() as i32, z) {
         return true;

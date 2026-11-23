@@ -54,26 +54,26 @@ class ScanTest(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.root = Path(self.dir.name).resolve()
         files = {
-            "crates/horizon-client/Cargo.toml": "[package]\nname = \"horizon-client\"\n\n[dependencies]\n"
+            "crates/myriade-engine/Cargo.toml": "[package]\nname = \"myriade-engine\"\n\n[dependencies]\n"
                                                 "horizon-mod-api = { path = \"x\" }\nhorizon-mod-runtime = 1\n",
-            "crates/horizon-client/src/lib.rs": LIB,
-            "crates/horizon-client/src/more_tests.rs": "fn t() { mod_api::Flow::Continue; }\n",
-            "crates/horizon-client/src/game.rs": "impl Game<'_> { fn private_helper(&self) {} }\n",
-            "crates/horizon-client/src/game/modding/drops.rs": MODDING,
+            "crates/myriade-engine/src/lib.rs": LIB,
+            "crates/myriade-engine/src/more_tests.rs": "fn t() { mod_api::Flow::Continue; }\n",
+            "crates/myriade-engine/src/game.rs": "impl Game<'_> { fn private_helper(&self) {} }\n",
+            "crates/myriade-engine/src/game/modding/drops.rs": MODDING,
             "crates/horizon-mod-api/Cargo.toml": "[package]\nname = \"horizon-mod-api\"\n",
             "crates/horizon-mod-api/build.rs": "fn main() {}\n",
             "crates/horizon-mod-api/src/lib.rs": "pub struct Flow;\nstatic TABLE: Vec<u8> = Vec::new();\n"
                                                  "include!(concat!(env!(\"OUT_DIR\"), \"/mod_api_generated.rs\"));\n",
             "crates/horizon-mod-api/src/types.rs": "pub struct BlockPos(pub i32);\n",
-            "tools/layers.json": json.dumps({"crates": {"horizon-client": "engine", "horizon-mod-api": "platform",
+            "tools/layers.json": json.dumps({"crates": {"myriade-engine": "engine", "horizon-mod-api": "platform",
                                                         "horizon-mod-runtime": "engine"},
-                                             "allowed": ["horizon-client -> horizon-mod-api"]}),
+                                             "allowed": ["myriade-engine -> horizon-mod-api"]}),
         }
         for path, text in files.items():
             (self.root / path).parent.mkdir(parents=True, exist_ok=True)
             (self.root / path).write_text(text)
         packages = [
-            package("horizon-client", self.root / "crates/horizon-client",
+            package("myriade-engine", self.root / "crates/myriade-engine",
                     [("horizon-mod-api", None), ("horizon-mod-runtime", None)]),
             package("horizon-mod-api", self.root / "crates/horizon-mod-api", [("horizon-core", None)], "mod_api"),
             package("horizon-mod-runtime", self.root / "crates/horizon-mod-runtime"),
@@ -90,7 +90,7 @@ class ScanTest(unittest.TestCase):
 
     def edges(self, file):
         return [(e["line"], e["kind"], e["path"], e["test"]) for e in self.result["edges"]
-                if e["file"] == f"crates/horizon-client/src/{file}"]
+                if e["file"] == f"crates/myriade-engine/src/{file}"]
 
     def test_finds_uses_impls_calls_and_skips_comments_and_strings(self):
         found = self.edges("lib.rs")
@@ -116,7 +116,7 @@ class ScanTest(unittest.TestCase):
         self.assertEqual([("horizon-mod-api", 5, True), ("horizon-mod-runtime", 6, False)], rows)
 
     def test_move_set_reports_impls_inbound_and_private_items(self):
-        drops = self.result["move_set"]["crates/horizon-client/src/game/modding/drops.rs"]
+        drops = self.result["move_set"]["crates/myriade-engine/src/game/modding/drops.rs"]
         self.assertEqual((1, "loading"), (drops["inherent_impls"], drops["strand"]))
         self.assertIn("fn:private_helper", drops["outbound"])
         inbound = [(e["file"], e["name"]) for e in self.result["inbound"]]

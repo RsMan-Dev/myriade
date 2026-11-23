@@ -23,7 +23,7 @@ def row(package, test, target="lib"):
 
 class DailyRowsCoverage(unittest.TestCase):
     TARGETS = {"horizon-world": {"lib", "test:integration"}, "horizon-server": {"lib", "test:tunnel"},
-               "horizon-client": {"lib", "bin:horizon-client", "test:lan_bot"}}
+               "myriade-engine": {"lib", "bin:myriade-engine", "test:lan_bot"}}
 
     def test_the_committed_rows_all_run_in_the_full_daily_matrix(self):
         rows = ignored_tests.daily_rows()
@@ -55,7 +55,7 @@ class DailyRowsCoverage(unittest.TestCase):
 
     def test_each_row_runs_in_exactly_one_place(self):
         rows = [row("horizon-world", "a"), row("horizon-world", "b", "test:integration"),
-                row("horizon-client", "c", "test:lan_bot"), row("horizon-server", "d")]
+                row("myriade-engine", "c", "test:lan_bot"), row("horizon-server", "d")]
         groups = ignored_tests.daily_rows_groups(rows)
         for entry in rows:
             in_shard = ignored_tests.shard_runs(entry.package, entry.reference)
@@ -71,7 +71,7 @@ class DailyRowsCoverage(unittest.TestCase):
 
 class DailyRowsMatchTheSource(unittest.TestCase):
     """The rows and the `#[ignore = "daily"]` attributes agree both ways, by package and function name."""
-    CLIENT = {"horizon-client", "horizon-client-lib"}
+    CLIENT = {"myriade-engine", "myriade-engine-lib"}
 
     def test_the_committed_rows_and_attributes_agree(self):
         functions = check.daily_functions()
@@ -91,16 +91,16 @@ class DailyRowsMatchTheSource(unittest.TestCase):
         self.assertIn("restore the attribute", problems[0])
 
     def test_a_function_built_into_two_targets_has_one_attribute_and_a_row_per_target(self):
-        functions = [("crates/horizon-client-render/src/gfx/sunrise_fan.rs", 186, "angular", {"horizon-client-render"})]
-        rows = [row("horizon-client-render", "gfx::sunrise_fan::tests::angular"),
-                row("horizon-client-render", "sunrise_fan::tests::angular", "test:sunrise_shader")]
+        functions = [("crates/myriade-level/src/gfx/sunrise_fan.rs", 186, "angular", {"myriade-level"})]
+        rows = [row("myriade-level", "gfx::sunrise_fan::tests::angular"),
+                row("myriade-level", "sunrise_fan::tests::angular", "test:sunrise_shader")]
         self.assertEqual(check.source_problems(rows, functions), [])
 
     def test_a_shared_source_folder_belongs_to_both_packages(self):
         owners = check.source_packages()
-        self.assertEqual(owners["crates/horizon-client"], self.CLIENT)
-        functions = [("crates/horizon-client/src/save.rs", 3, "slow", self.CLIENT)]
-        self.assertEqual(check.source_problems([row("horizon-client-lib", "save::tests::slow")], functions), [])
+        self.assertEqual(owners["crates/myriade-engine"], self.CLIENT)
+        functions = [("crates/myriade-engine/src/save.rs", 3, "slow", self.CLIENT)]
+        self.assertEqual(check.source_problems([row("myriade-engine-lib", "save::tests::slow")], functions), [])
         self.assertEqual(len(check.source_problems([row("horizon-world", "save::tests::slow")], functions)), 2)
 
 
@@ -113,7 +113,7 @@ class RowlessIgnores(unittest.TestCase):
 
     def test_only_tests_no_shard_runs_need_a_row(self):
         functions = [self.ignored("crates/horizon-world/src/a.rs", {"horizon-world"}, "lib"),
-                     self.ignored("crates/horizon-client/src/game/b.rs", {"horizon-client"}, "lib"),
+                     self.ignored("crates/myriade-engine/src/game/b.rs", {"myriade-engine"}, "lib"),
                      self.ignored("crates/horizon-world/tests/c.rs", {"horizon-world"}, "test"),
                      self.ignored("crates/horizon-core/src/d.rs", {"horizon-core"}, "lib")]
         problems = check.rowless_problems([], functions)
@@ -126,15 +126,15 @@ class RowlessIgnores(unittest.TestCase):
         self.assertEqual(check.rowless_problems(rows, functions), [])
 
     def test_integration_package_examples_and_benches_need_a_row(self):
-        uncovered = [self.ignored("crates/horizon-client/examples/a.rs", {"horizon-client"}, "example"),
-                     self.ignored("crates/horizon-client/benches/b.rs", {"horizon-client"}, "bench")]
+        uncovered = [self.ignored("crates/myriade-engine/examples/a.rs", {"myriade-engine"}, "example"),
+                     self.ignored("crates/myriade-engine/benches/b.rs", {"myriade-engine"}, "bench")]
         problems = check.rowless_problems([], uncovered)
         self.assertEqual([problem.split(":", 1)[0] for problem in problems],
-                         ["crates/horizon-client/examples/a.rs", "crates/horizon-client/benches/b.rs"])
+                         ["crates/myriade-engine/examples/a.rs", "crates/myriade-engine/benches/b.rs"])
 
-        covered = [self.ignored("crates/horizon-client/src/lib.rs", {"horizon-client"}, "lib"),
-                   self.ignored("crates/horizon-client/src/bin/a.rs", {"horizon-client"}, "bin"),
-                   self.ignored("crates/horizon-client/tests/b.rs", {"horizon-client"}, "test")]
+        covered = [self.ignored("crates/myriade-engine/src/lib.rs", {"myriade-engine"}, "lib"),
+                   self.ignored("crates/myriade-engine/src/bin/a.rs", {"myriade-engine"}, "bin"),
+                   self.ignored("crates/myriade-engine/tests/b.rs", {"myriade-engine"}, "test")]
         self.assertEqual(check.rowless_problems([], covered), [])
 
     def test_where_a_source_file_builds(self):

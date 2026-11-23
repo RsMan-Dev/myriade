@@ -67,7 +67,7 @@ def main():
                                                   cwd=lab.ROOT, text=True))
     binary = Path(metadata['target_directory']) / 'release/examples' / (
         'world_probe.exe' if os.name == 'nt' else 'world_probe')
-    resources = lab.LOCAL / 'horizon-client' / lock['minecraft']['version']
+    resources = lab.LOCAL / 'myriade-engine' / lock['minecraft']['version']
     groups = collections.defaultdict(list)
     for seed, dimension, cx, cz in CASES:
         groups[(seed, dimension)].append((cx, cz))

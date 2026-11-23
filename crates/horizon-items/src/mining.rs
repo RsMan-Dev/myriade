@@ -6,7 +6,7 @@
 //! A tick's progress is
 //! `destroy_progress(hardness, harvest, destroy_speed(tool_speed, &player))`,
 //! with `tool_speed` from [`Items::mining_speed`] and `harvest` from
-//! [`Items::has_correct_tool_for_drops`]. horizon-client lets native mods
+//! [`Items::has_correct_tool_for_drops`]. myriade-engine lets native mods
 //! change the speed between the last two steps, where vanilla's
 //! `getDestroySpeed` ends.
 use crate::items::{ItemStack, Items};

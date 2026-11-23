@@ -4,7 +4,7 @@ use crate::bridge::host::EcsWorld;
 use crate::cow::{Nav, NavParams};
 use crate::nav_supplied;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 impl EcsWorld {
     /// `PathNavigation.moveTo(Path, speed)` for a path a mod supplies; false for a creature that walks no path or no node is left.

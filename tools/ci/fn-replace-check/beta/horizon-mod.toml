@@ -14,7 +14,7 @@ mixins = "MIXINS"
 
 [[native.mixin]]
 id = "plus_one"
-target = "horizon_client::game::autosave::Game<'_>::next_autosave_interval"
+target = "myriade_engine::game::autosave::Game<'_>::next_autosave_interval"
 kind = "MODIFY_EXPRESSION_VALUE"
 selector = "autosave_interval(rate)"
 require = 1
@@ -25,7 +25,7 @@ bindings = [{ name = "value", ty = "i64", value = "$value" }]
 
 [[native.mixin]]
 id = "wrapped"
-target = "horizon_client::game::autosave::Game<'_>::next_autosave_interval"
+target = "myriade_engine::game::autosave::Game<'_>::next_autosave_interval"
 kind = "WRAP_OPERATION"
 selector = "autosave_interval"
 require = 1
@@ -38,7 +38,7 @@ bindings = [
 
 [[native.mixin]]
 id = "before"
-target = "horizon_client::game::autosave::Game<'_>::on_tick_rate_changed"
+target = "myriade_engine::game::autosave::Game<'_>::on_tick_rate_changed"
 kind = "BEFORE_CALL"
 selector = "self.next_autosave_interval"
 require = 1

@@ -1,2 +1,2 @@
-horizon-client game::dispense_container_tests::a_bucket_like_container_fills_from_a_source_and_empties_into_the_air lib daily resources
-horizon-client game::dispense_container_tests::a_stack_of_custom_containers_gives_their_handler_one_at_a_time lib daily resources
+myriade-engine game::dispense_container_tests::a_bucket_like_container_fills_from_a_source_and_empties_into_the_air lib daily resources
+myriade-engine game::dispense_container_tests::a_stack_of_custom_containers_gives_their_handler_one_at_a_time lib daily resources

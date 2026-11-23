@@ -5,7 +5,7 @@
 or scaffolding, the block it stands in; a spider's own climbing flag): a mob in waterlogged scaffolding moving into
 a wall climbs out, where without the climbable block it would sink.
 
-A vanilla dedicated server and Horizon's (`horizon-client --dedicated --nogui`) each load a copy of one flat world
+A vanilla dedicated server and Horizon's (`myriade-engine --dedicated --nogui`) each load a copy of one flat world
 vanilla generated first. Ticking is frozen, the cases are built (mobs with no movement speed, so no random goal
 moves them; each in a sealed cell), and
 the server steps one tick at a time; after each step every case mob's exact Pos and Motion are read with

@@ -3,7 +3,7 @@
 use crate::behaviours::food_stock::{self as stock, Food};
 use bevy_ecs::prelude::*;
 use crate::rules::food_inventory as rule;
-use horizon_client_lib::{items::Items, mobs::villager::food_points};
+use myriade_engine_lib::{items::Items, mobs::villager::food_points};
 
 pub const SLOTS: usize = 8;
 

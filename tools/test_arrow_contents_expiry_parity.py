@@ -25,9 +25,9 @@ except ImportError:
 TEST = 'game::potions::arrow_contents::actual_arrow_contents_match_pinned_methods'
 ORACLE = 'VanillaArrowContentsExpiryOracle'
 PRODUCTION = [
-    'crates/horizon-client-render/src/brewing.rs',
-    'crates/horizon-client/src/arrows.rs',
-    'crates/horizon-client/src/game/items/potions.rs',
+    'crates/myriade-level/src/brewing.rs',
+    'crates/myriade-engine/src/arrows.rs',
+    'crates/myriade-engine/src/game/items/potions.rs',
 ]
 
 
@@ -56,7 +56,7 @@ def main():
     p.add_argument('--resources', type=Path, default=lab.RESOURCES)
     a=p.parse_args()
     root=lab.ROOT
-    if a.resources.resolve()!=lab.RESOURCES.resolve() and (root/'.local/horizon-client').exists():
+    if a.resources.resolve()!=lab.RESOURCES.resolve() and (root/'.local/myriade-engine').exists():
         p.error('default prepared resources must remain absent for this explicit fixture')
     build=a.work_dir.resolve(); build.mkdir(parents=True,exist_ok=True)
     if a.lab_root:
@@ -68,7 +68,7 @@ def main():
         p.error('input changed since the pinned Java oracle run')
     inputs.write_bytes(input_bytes)
     source=root/f'mods/horizon/src/test/java/dev/horizonlab/parity/{ORACLE}.java'
-    native=root/'crates/horizon-client/src/game/items/potions.rs'
+    native=root/'crates/myriade-engine/src/game/items/potions.rs'
     provenance=dict(source_head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
                     phase=a.phase,rows=len(rows),input_sha256=sha(input_bytes),
                     oracle_source_sha256=sha(source.read_bytes()),native_source_sha256=sha(native.read_bytes()),
@@ -114,7 +114,7 @@ def main():
         def native_run(label):
             (build/(label+'.log')).unlink(missing_ok=True)
             provenance['production_source_sha256']={path:sha((root/path).read_bytes()) for path in PRODUCTION}
-            command=['cargo','test','-p','horizon-client','--lib','--no-run','--message-format=json']
+            command=['cargo','test','-p','myriade-engine','--lib','--no-run','--message-format=json']
             run(command,label+'-build',env)
             artifacts=[]
             for line in (build/(label+'-build.log')).read_text(encoding='utf-8',errors='replace').splitlines():
@@ -122,7 +122,7 @@ def main():
                     continue
                 message=json.loads(line)
                 target=message.get('target',{})
-                if message.get('reason')=='compiler-artifact' and message.get('executable') and Path(target.get('src_path','')).resolve()==(root/'crates/horizon-client/src/lib.rs').resolve():
+                if message.get('reason')=='compiler-artifact' and message.get('executable') and Path(target.get('src_path','')).resolve()==(root/'crates/myriade-engine/src/lib.rs').resolve():
                     artifacts.append(Path(message['executable']).resolve())
             assert len(set(artifacts))==1, ('expected exactly one gameplay library test artifact',artifacts)
             binary=artifacts[0]

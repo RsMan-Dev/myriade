@@ -2,7 +2,7 @@
 //! They queue in `TridentOut` as they happen (an event, never a scan) and the host drains them with `bridge::trident::drain_events`.
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TridentEvent {

@@ -1,7 +1,7 @@
 //! The game side of piglins (`PiglinAi`): spotting and picking up gold,
 //! bartering when the admiring is over, and the hand-over of currency.
 use crate::piglin_level::PiglinLevel;
-use horizon_client::{
+use myriade_engine::{
     mobs::ai::SwingAnimation,
     items::ItemStack,
     mobs::{
@@ -269,7 +269,7 @@ pub fn start_admiring<L: PiglinLevel + ?Sized>(l: &mut L, index: usize, stack: I
     let m = &mut l.parts().mobs[index];
     // The memory is set again, for the item it holds now.
     m.extra.piglin.seen_admire = 0;
-    horizon_client::mobs::piglin::hold_in_offhand(m, stack);
+    myriade_engine::mobs::piglin::hold_in_offhand(m, stack);
     m.extra.using_item = ADMIRE;
     m.extra.point = None;
     m.nav_stop();

@@ -2,8 +2,8 @@
 //! 26.3 jar (`javap` of `Mob.asValidTarget`, `DamageSources.explosion`, `DamageSource`), not from the old Mob.
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::{JavaString, Tag};
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup, HurtSource, PlayerFact};

@@ -1,4 +1,4 @@
-//! Règles du lot 3 A, reprises des tests d'origine de `horizon-client` (valeurs vanilla 26.3 vérifiées au jar) : la portée de balade de
+//! Règles du lot 3 A, reprises des tests d'origine de `myriade-engine` (valeurs vanilla 26.3 vérifiées au jar) : la portée de balade de
 //! l'allay, le halo du calmar lumineux, les sons de gonflement du poisson-globe, l'absence de cri du poisson-globe, la portée d'accouplement
 //! des vaches et le tirage de taille des cubes.
 use common::*;

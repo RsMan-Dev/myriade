@@ -90,7 +90,7 @@ fn index_remove(mut world: DeferredWorld, ctx: HookContext) {
 /// A crystal at `at` (feet), with its save fields and its join. Its first tick is armed now: the fire under it is checked then.
 pub fn spawn(w: &mut World, at: Vec3, show_bottom: bool) -> Entity {
     insert_resources(w);
-    let joined = crate::hanging::JoinedAt(horizon_client_lib::join_seq::JoinSeq::next());
+    let joined = crate::hanging::JoinedAt(myriade_engine_lib::join_seq::JoinSeq::next());
     let e = w.spawn((Pos(at), Bounds(bounds(at)), OwnTime, EndCrystal { show_bottom }, joined)).id();
     crate::nbt::mark_saved(w, e, crate::species::lists::END_CRYSTAL);
     w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::END_CRYSTAL));

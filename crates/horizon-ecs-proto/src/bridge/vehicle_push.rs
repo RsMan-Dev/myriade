@@ -39,7 +39,7 @@ impl EcsWorld {
     /// its moved block meets, once for the whole block (`world_push::piston_push`); the host keeps the players.
     pub fn piston_push(
         &mut self,
-        mw: &horizon_client_lib::mobs::MobWorld<'_>,
+        mw: &myriade_engine_lib::mobs::MobWorld<'_>,
         pos: horizon_core::position::BlockPos,
         piston: horizon_world::piston_shape::MovingPistonState,
         new_progress: f32,

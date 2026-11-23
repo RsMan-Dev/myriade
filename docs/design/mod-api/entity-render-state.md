@@ -35,12 +35,12 @@ points, not existing extracted-state implementations.
 
 | Route | File:line owner | Required treatment |
 | --- | --- | --- |
-| Mob library rendering | `crates/horizon-client/src/mobs/render.rs:1487`, `:1503` | Split extraction from render/render_with; consume prepared values only |
-| Gameplay mob and remote-player geometry | `crates/horizon-client/src/game/mobs/creatures/mod.rs:8016`, `:8134`, `:8215` | Prepare before replacement hooks, body, layers and outlines; never fire separately per layer |
-| Own-player geometry | `crates/horizon-client/src/game/interface/perspective.rs:786` | Use the same operation before player replacement and built-in posing |
-| Existing replacement adapters | `crates/horizon-client/src/game/modding/native_mob_draw.rs:53`, `:71` | Read the prepared snapshot; do not redispatch modifiers |
-| Frame preparation and consumer | `crates/horizon-client/src/game.rs:15048`, `:15720`, `:15040` | Collect prepared records into the existing frame packet before freeze and consumption |
-| Frame owner | `crates/horizon-client-render/src/gfx.rs:1104` | Extend arismoko/horizon#2357 ownership and leases, not a parallel store |
+| Mob library rendering | `crates/myriade-engine/src/mobs/render.rs:1487`, `:1503` | Split extraction from render/render_with; consume prepared values only |
+| Gameplay mob and remote-player geometry | `crates/myriade-engine/src/game/mobs/creatures/mod.rs:8016`, `:8134`, `:8215` | Prepare before replacement hooks, body, layers and outlines; never fire separately per layer |
+| Own-player geometry | `crates/myriade-engine/src/game/interface/perspective.rs:786` | Use the same operation before player replacement and built-in posing |
+| Existing replacement adapters | `crates/myriade-engine/src/game/modding/native_mob_draw.rs:53`, `:71` | Read the prepared snapshot; do not redispatch modifiers |
+| Frame preparation and consumer | `crates/myriade-engine/src/game.rs:15048`, `:15720`, `:15040` | Collect prepared records into the existing frame packet before freeze and consumption |
+| Frame owner | `crates/myriade-level/src/gfx.rs:1104` | Extend arismoko/horizon#2357 ownership and leases, not a parallel store |
 
 First decide the view and candidate using existing visibility policy. Capture a
 complete API-owned base plus supported specialized record; fire the matching

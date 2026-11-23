@@ -118,8 +118,8 @@ impl Dim {
         }
     }
     /// The level's shape in a world of vanilla's dimension types.
-    pub fn shape(self) -> horizon_client::save::LevelShape {
-        use horizon_client::save::LevelShape;
+    pub fn shape(self) -> myriade_engine::save::LevelShape {
+        use myriade_engine::save::LevelShape;
         match self {
             Self::Overworld => LevelShape::OVERWORLD,
             Self::Nether => LevelShape::NETHER,

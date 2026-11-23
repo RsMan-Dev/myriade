@@ -3,7 +3,7 @@
 
 The game listens on a random localhost port and writes `{"transport":"tcp","port":N,"token":"..."}` to the
 file (`<folder>/.horizon/engine.json` under the supervisor). The first line sent must be `auth TOKEN`; then
-each command is one line and each reply one JSON line (crates/horizon-client/src/control.rs).
+each command is one line and each reply one JSON line (crates/myriade-engine/src/control.rs).
 
     with ControlClient(folder / '.horizon' / 'engine.json') as control:
         control.ask('server-status')

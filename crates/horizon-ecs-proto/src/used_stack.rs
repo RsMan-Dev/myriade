@@ -1,7 +1,7 @@
 //! The whole stack of the item a player uses on an entity (its data components, its wear), for the rules that carry it over: the host
 //! inserts it around one interaction (`EcsWorld::interact_with`); a rule reads it with `of`. Absent: only the item id is known.
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 #[derive(Resource, Clone, Debug)]
 pub struct UsedStack {

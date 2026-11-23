@@ -11,7 +11,7 @@ use crate::rules::{no_attrs, params, Rule};
 use crate::tame::Owner;
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 /// The body slot in `equip_stack::Equipment` (`EquipmentSlot.BODY`).
 const BODY: usize = 6;

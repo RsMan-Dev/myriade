@@ -13,7 +13,7 @@ use crate::{
     locomotion::FlyMode,
 };
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
+use myriade_engine_lib::mobs::path::{Evaluator, Finder, PathMob};
 use horizon_core::geometry::{trig, Vec3};
 use crate::rules::fly::{aim_push, air_velocity, bank, drag_velocity, face_motion, float_push, free_speed_drag, mean_size, noclip_drag, rest_vy, steer, EPSILON};
 use crate::rules::swim::{arrived, is_stuck, moved_sq, node_close, node_reach_xz};
@@ -208,7 +208,7 @@ fn follow(
                 let (xd, yd, zd) = ((pos.0.x - (f64::from(n.x) + 0.5)).abs(), (pos.0.y - f64::from(n.y)).abs(), (pos.0.z - (f64::from(n.z) + 0.5)).abs());
                 let close = node_close(xd, yd, zd, max, 1.0);
                 let direct = |from: Vec3, to: Vec3| mw.clear_between(from, Vec3::new(to.x, to.y + f64::from(body.height) * 0.5, to.z), true);
-                if close || (horizon_client_lib::mobs::nav::Navigation::can_cut_corner(n.kind) && crate::rules::swim::target_next_node(path, mob, &direct, width)) {
+                if close || (myriade_engine_lib::mobs::nav::Navigation::can_cut_corner(n.kind) && crate::rules::swim::target_next_node(path, mob, &direct, width)) {
                     path.advance();
                 }
                 let mut stuck = false;

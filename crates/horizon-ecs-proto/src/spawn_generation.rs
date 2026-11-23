@@ -8,10 +8,10 @@ use crate::spawn_natural::born_finalized_with;
 use crate::spawn_reason::SpawnReason;
 use crate::spawning::{obstructed, place_ok, rule_ok, spawn_def, Category, Entry, Spawner};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::data::{PathComputationType, Placement};
-use horizon_client_lib::mobs::spawn_rules::SpawnLevel;
-use horizon_client_lib::mobs::spawn_place::{heightmap_blocks, Heightmap};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::data::{PathComputationType, Placement};
+use myriade_engine_lib::mobs::spawn_rules::SpawnLevel;
+use myriade_engine_lib::mobs::spawn_place::{heightmap_blocks, Heightmap};
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 use horizon_core::random::{LegacyRandom, RandomSource, WorldgenRandom};
 

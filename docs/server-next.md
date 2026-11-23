@@ -27,7 +27,7 @@ rest of Horizon.
 ## 1. Baseline (measured 2026-10-29, Mac mini M4 Pro, 14 cores, 64 GB)
 
 **Servers.**
-- Horizon: `horizon-client --dedicated` at horizon `668419b92`, `fast` profile. This is main *before* the three
+- Horizon: `myriade-engine --dedicated` at horizon `668419b92`, `fast` profile. This is main *before* the three
   tick fixes still in review (#3815, #3834, #3847).
 - Vanilla: 26.3 `server.jar` on Temurin 25, `-Xms4G -Xmx4G`.
 - Pumpkin: release `0.2.1+26.3-26.51`, `pumpkin-ARM64-macOS`, SHA-256 checked against the release's
@@ -163,7 +163,7 @@ already the same binary.
 
 ### 3.2 `--dedicated`, the supervisor and the download repo
 
-- **`horizon-client --dedicated`** (the `horizon-engine` build without audio and controllers,
+- **`myriade-engine --dedicated`** (the `horizon-engine` build without audio and controllers,
   [server.md](server.md) §3) stays the server engine and the harnesses' server. With `HORIZON_SERIAL_TICK` it is also the serial
   reference every parallel phase is compared against (4.3).
 - **`horizon-server`** (the supervisor) stays the program owners run.
@@ -425,7 +425,7 @@ side by side. W3 waits for W0. W9 follows levzzz5154's plan.
 
 ### 9.2 The official server
 
-horizon.bunchy7s.dev already runs Horizon's own server, hosted by bunchy7s: `horizon-client --dedicated` from the
+horizon.bunchy7s.dev already runs Horizon's own server, hosted by bunchy7s: `myriade-engine --dedicated` from the
 current release, in online mode, without the `horizon-server` supervisor. It runs no plugins, and
 kira-pumpkin was never used on it (his answers, 2026-10-29). So each improvement above reaches it with a
 release, and its baseline is the Horizon row of section 1. What he asked for is a plugin API, which is W9.

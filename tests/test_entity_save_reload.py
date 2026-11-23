@@ -18,15 +18,15 @@ class HorizonBinaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as caller:
             os.chdir(caller)
             try:
-                found = binary_for('target/fast/horizon-client')
-                expected = Path(os.getcwd()) / 'target' / 'fast' / 'horizon-client'
+                found = binary_for('target/fast/myriade-engine')
+                expected = Path(os.getcwd()) / 'target' / 'fast' / 'myriade-engine'
             finally:
                 os.chdir(before)
         self.assertTrue(found.is_absolute())
         self.assertEqual(found, expected)
 
     def test_absolute_binary_is_kept(self):
-        binary = Path(os.path.abspath('horizon-client'))
+        binary = Path(os.path.abspath('myriade-engine'))
         self.assertEqual(binary_for(str(binary)), binary)
 
 

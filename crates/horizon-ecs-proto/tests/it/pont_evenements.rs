@@ -1,7 +1,7 @@
 //! The lot-46 outputs of the host: each one is written at its fact and read by the host's next `step`; nothing comes out of a world at rest.
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup, HurtSource, PlayerFact};
 use horizon_ecs_proto::cow::{Dying, Health};
 use horizon_ecs_proto::goals::Player;
@@ -140,7 +140,7 @@ fn a_dying_entity_is_looted_before_the_host_removes_it() {
 
 #[test]
 fn a_totem_saves_from_a_lethal_hit_unless_the_host_refuses() {
-    use horizon_client_lib::items::ItemStack;
+    use myriade_engine_lib::items::ItemStack;
     have_data();
     let (mw, mut h) = awake_host(&setup());
     h.set_player(player(1, 0.5, 0.5), fact());

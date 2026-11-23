@@ -68,25 +68,25 @@ class AreaTests(unittest.TestCase):
     def test_paths(self):
         cases = {
             "crates/horizon-world/src/worldgen/structure/mod.rs": "worldgen",
-            "crates/horizon-client/src/mobs/ai.rs": "mobs",
-            "crates/horizon-client/src/game/mobs/wither.rs": "mobs",
-            "crates/horizon-client-render/src/gfx/cull.rs": "rendering",
-            "crates/horizon-client-render/src/terrain.wgsl": "rendering",
-            "crates/horizon-client/src/game/interface/dedicated/status.rs": "server",
+            "crates/myriade-engine/src/mobs/ai.rs": "mobs",
+            "crates/myriade-engine/src/game/mobs/wither.rs": "mobs",
+            "crates/myriade-level/src/gfx/cull.rs": "rendering",
+            "crates/myriade-level/src/terrain.wgsl": "rendering",
+            "crates/myriade-engine/src/game/interface/dedicated/status.rs": "server",
             "crates/horizon-server-files/src/lib.rs": "server",
-            "crates/horizon-client/src/lan/hub.rs": "multiplayer",
-            "crates/horizon-client/src/game/network/remote_vehicles.rs": "multiplayer",
+            "crates/myriade-engine/src/lan/hub.rs": "multiplayer",
+            "crates/myriade-engine/src/game/network/remote_vehicles.rs": "multiplayer",
             "crates/horizon-protocol/src/packets/play.rs": "multiplayer",
             "crates/horizon-mod-package/src/lib.rs": "mods",
-            "crates/horizon-client/src/game/native_hooks/mod.rs": "mods",
+            "crates/myriade-engine/src/game/native_hooks/mod.rs": "mods",
             "crates/horizon-world/src/datafix/v3.rs": "saves",
-            "crates/horizon-client/src/game/administration/commands/admin.rs": "commands",
+            "crates/myriade-engine/src/game/administration/commands/admin.rs": "commands",
             "crates/horizon-command/src/args.rs": "commands",
-            "crates/horizon-client-render/src/sound_engine.rs": "audio",
-            "crates/horizon-client-render/src/streaming.rs": "chunks",
+            "crates/myriade-level/src/sound_engine.rs": "audio",
+            "crates/myriade-level/src/streaming.rs": "chunks",
             "crates/horizon-world/src/level/redstone.rs": "blocks",
-            "crates/horizon-client/src/title/worlds.rs": "ui",
-            "crates/horizon-client-render/src/options_ui.rs": "ui",
+            "crates/myriade-engine/src/title/worlds.rs": "ui",
+            "crates/myriade-level/src/options_ui.rs": "ui",
             "docs/api/shaders.md": "website",
             "roadmap/roadmap.toml": "website",
         }
@@ -94,14 +94,14 @@ class AreaTests(unittest.TestCase):
             self.assertEqual(pl.area_of(path), area, path)
 
     def test_no_area(self):
-        for path in ("tools/parity.py", "crates/horizon-client/src/game.rs", "Cargo.lock", "docs/README.md",
+        for path in ("tools/parity.py", "crates/myriade-engine/src/game.rs", "Cargo.lock", "docs/README.md",
                      "mods/horizon/src/test/java/dev/horizonlab/parity/VanillaMobOracle.java",
-                     "crates/horizon-client/examples/mob_ai_probe.rs"):
+                     "crates/myriade-engine/examples/mob_ai_probe.rs"):
             self.assertIsNone(pl.area_of(path), path)
 
     def test_biggest_three_with_a_tenth_each(self):
-        files = [("crates/horizon-world/src/worldgen/a.rs", 50), ("crates/horizon-client/src/mobs/a.rs", 30),
-                 ("crates/horizon-command/src/a.rs", 10), ("crates/horizon-client-render/src/audio.rs", 9),
+        files = [("crates/horizon-world/src/worldgen/a.rs", 50), ("crates/myriade-engine/src/mobs/a.rs", 30),
+                 ("crates/horizon-command/src/a.rs", 10), ("crates/myriade-level/src/audio.rs", 9),
                  ("tools/x.py", 1)]
         self.assertEqual(pl.areas(files), ["worldgen", "mobs", "commands"])
         self.assertEqual(pl.areas([("tools/x.py", 95), ("crates/horizon-world/src/worldgen/a.rs", 5)]), [])
@@ -118,8 +118,8 @@ class BackfillTests(unittest.TestCase):
         self.assertEqual(pl.guess_kind("x", body("extra"), []), "extra")
         self.assertEqual(pl.guess_kind("x", None, [("docs/a.md", 3), ("README.md", 1)]), "documentation")
         self.assertEqual(pl.guess_kind("x", None, [("tools/a.py", 3), ("tests/test_a.py", 1)]), "tooling")
-        self.assertEqual(pl.guess_kind("perf(client): less", None, [("crates/horizon-client/a.rs", 1)]), "perf")
-        self.assertEqual(pl.guess_kind("Fix a crash when", None, [("crates/horizon-client/a.rs", 1)]), "bug")
+        self.assertEqual(pl.guess_kind("perf(client): less", None, [("crates/myriade-engine/a.rs", 1)]), "perf")
+        self.assertEqual(pl.guess_kind("Fix a crash when", None, [("crates/myriade-engine/a.rs", 1)]), "bug")
         self.assertIsNone(pl.guess_kind("Mooshrooms keep their colour", None, [("crates/a.rs", 1)]))
         self.assertIsNone(pl.guess_kind("x", None, []))
 
@@ -157,7 +157,7 @@ class SizeTests(unittest.TestCase):
                             (3000, "L"), (3001, "XL")):
             self.assertEqual(pl.size_of([("crates/a/src/lib.rs", lines)]), f"size: {size}", lines)
         self.assertEqual(pl.size_of([]), "size: XS")
-        self.assertEqual(pl.size_of([("crates/a/src/lib.rs", 2000), ("crates/horizon-client/src/b.rs", 1001)]), "size: XL")
+        self.assertEqual(pl.size_of([("crates/a/src/lib.rs", 2000), ("crates/myriade-engine/src/b.rs", 1001)]), "size: XL")
 
     def test_docs_and_tests_dont_count(self):
         files = [("crates/a/src/lib.rs", 40), ("docs/a.md", 5000), ("README.md", 900), ("tests/test_a.py", 900),

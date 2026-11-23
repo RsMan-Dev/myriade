@@ -85,11 +85,11 @@ class TimingsTests(unittest.TestCase):
         self.assertEqual([p["unit"] for p in bt.critical_path(units)], ["fast_meta", "user"])
 
     def test_a_binary_named_like_its_package_is_labelled_by_its_kind(self):
-        self.assertEqual(bt.unit_label(unit(0, "horizon-client", 0, 1, target=' horizon-client "bin"')), "horizon-client (bin)")
-        self.assertEqual(bt.unit_label(unit(0, "horizon-client", 0, 1, target=' lan_bot "test"')), "horizon-client (test lan_bot)")
-        self.assertEqual(bt.unit_label(unit(0, "horizon-client", 0, 1)), "horizon-client")
+        self.assertEqual(bt.unit_label(unit(0, "myriade-engine", 0, 1, target=' myriade-engine "bin"')), "myriade-engine (bin)")
+        self.assertEqual(bt.unit_label(unit(0, "myriade-engine", 0, 1, target=' lan_bot "test"')), "myriade-engine (test lan_bot)")
+        self.assertEqual(bt.unit_label(unit(0, "myriade-engine", 0, 1)), "myriade-engine")
         # cargo before 1.99 puts the kind first
-        self.assertEqual(bt.unit_label(unit(0, "horizon-client", 0, 1, target=' bin "horizon-client"')), "horizon-client (bin)")
+        self.assertEqual(bt.unit_label(unit(0, "myriade-engine", 0, 1, target=' bin "myriade-engine"')), "myriade-engine (bin)")
 
     def test_pages_of_older_cargo_give_the_same_critical_path(self):
         # Up to 1.92 cargo writes unlocked_units / unlocked_rmeta_units, and rmeta_time instead of sections.
@@ -228,7 +228,7 @@ class RunTests(unittest.TestCase):
                 {"name": "horizon-items", "targets": [{"kind": ["lib"], "src_path": str(self.root / "crates/horizon-items/src/lib.rs")}]},
                 {"name": "horizon-world", "targets": [{"kind": ["lib"], "src_path": str(self.root / "crates/horizon-world/src/lib.rs")}]}]},
             "cold_units": REAL_UNITS,
-            "edit_units": [unit(0, "horizon-items", 0, 1.5, unblocks=[1]), unit(1, "horizon-client", 1.5, 2.0, target=' x "bin"')],
+            "edit_units": [unit(0, "horizon-items", 0, 1.5, unblocks=[1]), unit(1, "myriade-engine", 1.5, 2.0, target=' x "bin"')],
         }
         self.write_state()
         patches = [mock.patch.dict(os.environ, {"FAKE_CARGO_STATE": str(self.state_path)}),
@@ -279,7 +279,7 @@ class RunTests(unittest.TestCase):
         inc = report["incremental"]["dev"]
         self.assertEqual(set(inc), {"horizon-items", "horizon-world"})
         self.assertEqual(inc["horizon-items"]["file"], "crates/horizon-items/src/items.rs")
-        self.assertEqual(inc["horizon-items"]["rebuilt_crates"], ["horizon-client", "horizon-items"])
+        self.assertEqual(inc["horizon-items"]["rebuilt_crates"], ["myriade-engine", "horizon-items"])
         self.assertEqual(inc["horizon-items"]["rebuilt_units"], 2)
         self.assertIn("| dev | horizon-items |", out)
         self.assertTrue(Path(self.tmp.name, "out", "report.md").is_file())
@@ -551,7 +551,7 @@ class RunTests(unittest.TestCase):
                             for w in report["warnings"]))
 
     def test_an_edit_that_misses_its_own_crate_is_called_out(self):
-        self.state["edit_units"] = [unit(0, "horizon-client", 0, 1)]
+        self.state["edit_units"] = [unit(0, "myriade-engine", 0, 1)]
         self.write_state()
         _, report, _, _ = self.report("--profiles", "dev", "--only", "incremental", "--crates", "horizon-items")
         self.assertTrue(any("did not recompile horizon-items itself" in w for w in report["warnings"]))

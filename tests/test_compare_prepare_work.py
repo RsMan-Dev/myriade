@@ -25,7 +25,7 @@ TOOL = Path(__file__).resolve().parents[1] / "tools" / "compare_prepare.py"
 FAKE_PREPARER = '''#!/usr/bin/env python3
 import hashlib, json
 from pathlib import Path
-out = Path.cwd() / ".local" / "horizon-client" / "26.3"
+out = Path.cwd() / ".local" / "myriade-engine" / "26.3"
 out.mkdir(parents=True, exist_ok=True)
 data = b"fixed fixture bytes\\n"
 (out / "data.txt").write_bytes(data)
@@ -102,7 +102,7 @@ class WorkDirectoryTests(unittest.TestCase):
                 report = work / "report.json"
                 self.assertTrue(report.is_file(), "the report was not written to --work")
                 self.assertEqual(json.loads(report.read_text())["port_differences"], [])
-                self.assertTrue((work / "python-1" / ".local" / "horizon-client" / "26.3" /
+                self.assertTrue((work / "python-1" / ".local" / "myriade-engine" / "26.3" /
                                  "data.txt").is_file(), "--keep did not preserve the outputs")
 
     def test_fresh_work_without_keep_removes_only_the_owned_folders(self):

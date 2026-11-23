@@ -5,7 +5,7 @@
 //! DOUTE : `Tag::String` pour `Item` n'est pas vérifié dans le cadre (variante supposée) ; la liste de l'espèce est à remplir depuis le tag.
 use super::*;
 use crate::cow::*;
-use horizon_client_lib::mobs::sulfur_cube::Archetype;
+use myriade_engine_lib::mobs::sulfur_cube::Archetype;
 use crate::nbt::{owner, Field};
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use std::{borrow::Cow, sync::Arc};
@@ -54,7 +54,7 @@ fn write_item(w: &World, e: Entity, c: &mut Compound) {
 fn read_item(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::String(s) = t else { return false };
     let name = s.to_string_lossy();
-    let Some(archetype) = horizon_client_lib::mobs::sulfur_cube::archetype_of(&name) else { return false };
+    let Some(archetype) = myriade_engine_lib::mobs::sulfur_cube::archetype_of(&name) else { return false };
     hold(w, e, Arc::from(name.as_str()), archetype);
     true
 }

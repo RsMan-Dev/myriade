@@ -6,8 +6,8 @@
 use super::*;
 use crate::rules::breath_air::air_wait;
 use crate::{cow::*, goals::*};
-use horizon_client_lib::blocks::Fluid;
-use horizon_client_lib::mobs::data::PathComputationType;
+use myriade_engine_lib::blocks::Fluid;
+use myriade_engine_lib::mobs::data::PathComputationType;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {

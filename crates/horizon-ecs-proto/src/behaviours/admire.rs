@@ -77,7 +77,7 @@ fn interact(w: &mut World, e: Entity, _: Inst, i: &Interaction) -> bool {
         equipment::take_slot(w, e, Slot::Off);
         let at = w.get::<Pos>(e).map_or([0.0; 3], |q| [q.0.x, q.0.y, q.0.z]);
         if let Some(name) = crate::items::item_name(held) {
-            crate::behaviours::shear::drop_stacks(w, vec![horizon_client_lib::items::ItemStack::new(name, 1)], at);
+            crate::behaviours::shear::drop_stacks(w, vec![myriade_engine_lib::items::ItemStack::new(name, 1)], at);
         }
     }
     equipment::set_slot(w, e, Slot::Off, i.item);

@@ -69,15 +69,15 @@ def build_trench(server):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--bin-dir', default='target/fast', help='folder with horizon-client')
+    parser.add_argument('--bin-dir', default='target/fast', help='folder with myriade-engine')
     parser.add_argument('--resources', default=str(lab.RESOURCES), help='the prepared resources (default: .local)')
     parser.add_argument('--keep', action='store_true', help='keep the scratch game home')
     args = parser.parse_args()
     bindir = Path(args.bin_dir).resolve()
-    client = lab.binary(bindir, 'horizon-client')
+    client = lab.binary(bindir, 'myriade-engine')
     if not client.exists():
         raise Failed(f'{client} is missing; build it (cargo build --profile fast -p horizon-game '
-                     '-p horizon-client-lib --bins) or pass --bin-dir')
+                     '-p myriade-engine-lib --bins) or pass --bin-dir')
     resources = Path(args.resources).resolve()
     if not resources.exists():
         raise Failed(f'{resources} is missing; run tools/lab.py prepare')

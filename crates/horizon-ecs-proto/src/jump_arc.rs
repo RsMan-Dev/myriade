@@ -2,7 +2,7 @@
 //! `brain/behaviours/breeze.rs`): the velocity of the ballistic arc from a position to a target at a given launch angle, optionally with the
 //! arc's collision test (`isClearTransition`: the jumper's box fits at points no further apart than nine tenths of its smaller side), and the
 //! choice among angles drawn in a shuffled order. The species give the angles, the maximum velocity and whether the arc is tested.
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{trig, Aabb, Vec3};
 use crate::rules::jump_arc::launch_speed;
 use horizon_core::jmath;
@@ -81,7 +81,7 @@ fn clear_transition(mw: &MobWorld, foot: Footprint, from: Vec3, to: Vec3) -> boo
         p = if i == checks - 1 { to } else { p.add_vector(step) };
         let b = Aabb::new(Vec3::new(p.x - half, p.y, p.z - half), Vec3::new(p.x + half, p.y + height, p.z + half));
         match foot.occ {
-            Some(o) => o.no_collision(horizon_client_render::collisions::SceneCollisions { world: mw.world, binding: mw.collision, subject: None }, b),
+            Some(o) => o.no_collision(myriade_level::collisions::SceneCollisions { world: mw.world, binding: mw.collision, subject: None }, b),
             None => mw.no_collision(b),
         }
     })

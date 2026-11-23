@@ -2,7 +2,7 @@
 //! spared, water puts a fire out, and an indirect magic hit names its owner as the last attacker.
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::{MobTypes, MobWorld, world::leaked_test_world_mut};
+use myriade_engine_lib::mobs::{MobTypes, MobWorld, world::leaked_test_world_mut};
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup, HurtSource, PlayerFact};
 use horizon_ecs_proto::cow::{Burning, Health, LastHurtBy, set_on_fire};
@@ -35,7 +35,7 @@ fn stone_world() -> (&'static MobWorld<'static>, &'static MobTypes) {
         let stone = registry.default_state("minecraft:stone").unwrap();
         for cx in -4..4 {
             for cz in -4..4 {
-                blocks.chunks.insert((cx, cz), Arc::new(horizon_client_render::chunk::Chunk::empty(cx, cz)));
+                blocks.chunks.insert((cx, cz), Arc::new(myriade_level::chunk::Chunk::empty(cx, cz)));
             }
         }
         for x in -20..20 {

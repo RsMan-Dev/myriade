@@ -1,0 +1,340 @@
+//! Game modes beyond survival and creative (`GameType`): adventure players
+//! cannot build, spectators fly through blocks and only watch.
+use super::Game;
+use myriade_engine::{collisions::SceneCollisions, command::args::GameMode, items::ItemStack};
+use horizon_world::world_movement::in_range_of_ground;
+
+pub(super) fn mode_from_id(id: i32) -> GameMode {
+    GameMode::from_id(id).unwrap_or(GameMode::Survival)
+}
+/// `ChunkMap.skipPlayer`: a player is skipped when `player.isSpectator() &&
+/// !level.getGameRules().getBoolean(SPECTATORS_GENERATE_CHUNKS)`. A skipped
+/// player holds no distance-manager ticket and streams no chunks around
+/// itself, but still receives the chunks other players load (chunk sending
+/// is untouched).
+pub(super) fn loads_chunks(spectators_generate_chunks: bool, spectator: bool) -> bool {
+    !spectator || spectators_generate_chunks
+}
+
+
+impl Game<'_> {
+
+    pub(in crate::game) fn spectator(&self) -> bool {
+        self.mode == GameMode::Spectator
+    }
+    /// `Abilities.mayBuild`.
+    pub(super) fn may_build(&self) -> bool {
+        self.acting_abilities.map_or(
+            matches!(self.mode, GameMode::Survival | GameMode::Creative),
+            |a| a.may_build,
+        )
+    }
+    /// `Abilities.instabuild`. A client and the in-frame world derive it from the mode.
+    pub(super) fn instabuild(&self) -> bool {
+        self.acting_abilities
+            .map_or(self.creative, |a| a.instabuild)
+    }
+    pub(super) fn mode_id(&self) -> i32 {
+        self.mode.id()
+    }
+    pub(super) fn set_mode_id(&mut self, id: i32) {
+        self.set_mode(mode_from_id(id));
+    }
+    /// `ServerPlayer.setGameMode` and `GameType.updatePlayerAbilities`.
+    pub(super) fn set_mode(&mut self, mode: GameMode) {
+        let was_spectator = self.spectator();
+        let changed = mode != self.mode;
+        // MultiPlayerGameMode.setLocalMode: the mode it leaves.
+        if changed {
+            self.previous_mode = Some(self.mode);
+        }
+        self.mode = mode;
+        self.creative = mode == GameMode::Creative;
+        // GameType.updatePlayerAbilities applies at once.
+        if let Some(a) = self.acting_abilities.as_mut() {
+            a.update_for_mode(mode.id());
+        }
+        if let Some(p) = self.player.as_mut() {
+            p.invulnerable = mode == GameMode::Creative || mode == GameMode::Spectator;
+            p.may_fly = p.invulnerable;
+        }
+        if mode == GameMode::Spectator {
+            self.mining = None;
+            self.stop_active_item_use();
+            self.left = false;
+            self.dismount_for_spectator();
+            if let Some(p) = self.player.as_mut() {
+                p.flying = true;
+                p.spectator = true;
+            }
+        } else if let Some(p) = self.player.as_mut() {
+            p.spectator = false;
+            if was_spectator {
+                p.flying_speed = 0.05;
+            }
+            if !self.creative {
+                p.flying = false;
+            } else if was_spectator {
+                p.flying = true;
+            }
+        }
+        // ServerPlayerGameMode.changeGameModeForPlayer: a player left flying
+        // by the change lands when the ground is within a block.
+        let flying = self
+            .player
+            .as_ref()
+            .filter(|p| p.flying)
+            .map(|p| p.bounds());
+        if changed
+            && mode != GameMode::Spectator
+            && let Some(bounds) = flying
+        {
+            let mut scene = SceneCollisions {
+                world: &self.world,
+                binding: self.collision,
+                subject: None,
+            };
+            if in_range_of_ground(&mut scene, bounds)
+                && let Some(p) = self.player.as_mut()
+            {
+                p.flying = false;
+                if let Some(a) = self.acting_abilities.as_mut() {
+                    a.flying = false;
+                }
+            }
+        }
+    }
+}
+impl Game<'_> {
+    /// `ItemStack.canBreakBlockInAdventureMode` / `canPlaceOnBlockInAdventureMode`
+    /// for the main-hand stack: some predicate of its `can_break` or
+    /// `can_place_on` component (`AdventureModePredicate`: one block predicate
+    /// or a list) matches the block at `pos`, as `BlockPredicate.matches(BlockInWorld)`
+    /// tests it: the state, then `nbt` against the block entity's
+    /// `saveWithFullMetadata` (no block entity fails). `components` is not
+    /// looked at on this path.
+    fn adventure_predicate(&self, component: &str, pos: [i32; 3]) -> bool {
+        self.held()
+            .is_some_and(|stack| self.stack_adventure_predicate(stack, component, pos))
+    }
+    /// `adventure_predicate` for any `stack`, not only the main hand's.
+    fn stack_adventure_predicate(&self, stack: &ItemStack, component: &str, pos: [i32; 3]) -> bool {
+        let Some(tag) = stack.data().and_then(|d| d.other(component)) else {
+            return false;
+        };
+        self.adventure_predicate_at(tag, pos)
+    }
+    /// The existing supported block/state portion of `AdventureModePredicate.test`.
+    /// The held-item wrapper and the projectile caller supply their own live value.
+    pub(super) fn adventure_predicate_at(
+        &self,
+        tag: &horizon_core::nbt::Tag,
+        pos: [i32; 3],
+    ) -> bool {
+        use horizon_core::nbt::Tag;
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        let name = &self.res.facts().get(state).name;
+        let properties = self
+            .pack
+            .assets
+            .registry
+            .state(state)
+            .map(|s| &s.properties);
+        let matches = |p: &Tag| {
+            let block_ok = match p.get("blocks") {
+                None => true,
+                Some(Tag::String(id)) => self.block_in_holder_set(&id.to_string_lossy(), name),
+                Some(Tag::List(ids)) => ids.iter().any(|id| match id {
+                    Tag::String(id) => self.block_in_holder_set(&id.to_string_lossy(), name),
+                    _ => false,
+                }),
+                Some(_) => false,
+            };
+            // StatePropertiesPredicate: every property exact, or in a min/max range.
+            let state_ok = match p.get("state") {
+                None => true,
+                Some(Tag::Compound(want)) => want.iter().all(|(key, matcher)| {
+                    let Some(have) = properties.and_then(|p| p.get(&key.to_string_lossy())) else {
+                        return false;
+                    };
+                    match matcher {
+                        Tag::String(value) => *have == value.to_string_lossy(),
+                        Tag::Compound(_) => {
+                            let bound = |k: &str| match matcher.get(k) {
+                                Some(Tag::String(v)) => Some(v.to_string_lossy()),
+                                _ => None,
+                            };
+                            let in_range = |have: &str, v: Option<String>, above: bool| {
+                                v.is_none_or(|v| match (have.parse::<i64>(), v.parse::<i64>()) {
+                                    (Ok(h), Ok(b)) if above => h >= b,
+                                    (Ok(h), Ok(b)) => h <= b,
+                                    _ => false,
+                                })
+                            };
+                            in_range(have, bound("min"), true)
+                                && in_range(have, bound("max"), false)
+                        }
+                        _ => false,
+                    }
+                }),
+                Some(_) => false,
+            };
+            // NbtPredicate (TagParser.LENIENT_CODEC: SNBT or a compound),
+            // NbtUtils.compareNbt(pattern, data, true).
+            let nbt_ok = || match p.get("nbt") {
+                None => true,
+                Some(Tag::String(snbt)) => horizon_core::nbt::parse_snbt(&snbt.to_string_lossy())
+                    .is_ok_and(|(pattern, _)| {
+                        myriade_engine::nbt_path::compare_nbt(
+                            &pattern,
+                            self.block_entity_nbt(pos).as_ref(),
+                        )
+                    }),
+                Some(pattern @ Tag::Compound(_)) => myriade_engine::nbt_path::compare_nbt(
+                    pattern,
+                    self.block_entity_nbt(pos).as_ref(),
+                ),
+                Some(_) => false,
+            };
+            block_ok && state_ok && nbt_ok()
+        };
+        match tag {
+            Tag::List(list) => list.iter().any(matches),
+            single => matches(single),
+        }
+    }
+    /// A `HolderSet<Block>` entry: a block id or a `#tag`.
+    fn block_in_holder_set(&self, entry: &str, block: &str) -> bool {
+        let namespaced = |id: &str| {
+            if id.contains(':') {
+                id.to_owned()
+            } else {
+                format!("minecraft:{id}")
+            }
+        };
+        match entry.strip_prefix('#') {
+            Some(tag) => self.res.items().block_in_tag(&namespaced(tag), block),
+            None => namespaced(entry) == block,
+        }
+    }
+    /// `Player.blockActionRestricted` for the block at `pos`: spectators never
+    /// act on blocks, adventure players only with a main-hand item whose
+    /// `can_break` matches it.
+    pub(super) fn block_action_restricted(&self, pos: [i32; 3]) -> bool {
+        if self.spectator() {
+            return true;
+        }
+        !self.may_build() && !self.can_break_in_adventure(pos)
+    }
+    /// `ItemStack.canBreakBlockInAdventureMode`: an adventure player may break,
+    /// or prime TNT at, only a block their held stack's `can_break` matches.
+    pub(super) fn can_break_in_adventure(&self, pos: [i32; 3]) -> bool {
+        self.adventure_predicate("minecraft:can_break", pos)
+    }
+    /// `ItemStack.useOn` in adventure mode: the used item's `can_place_on`
+    /// matches the clicked block (`Player.mayUseItemAt`).
+    pub(super) fn can_place_on_in_adventure(&self, clicked: [i32; 3]) -> bool {
+        self.adventure_predicate("minecraft:can_place_on", clicked)
+    }
+    /// `Player.mayUseItemAt(pos, face, stack)` for a player who `may_build`
+    /// or not: builders always may, anyone else only when `stack`'s
+    /// `can_place_on` matches the block clicked, the one `pos` lies against.
+    pub(super) fn may_use_item_at(
+        &self,
+        may_build: bool,
+        pos: [i32; 3],
+        face: horizon_core::geometry::Direction,
+        stack: &ItemStack,
+    ) -> bool {
+        may_build
+            || self.stack_adventure_predicate(
+                stack,
+                "minecraft:can_place_on",
+                relative(pos, face.opposite()),
+            )
+    }
+    /// `ItemStack.useOn`'s gate before any item's own `useOn`: a player who
+    /// may build, or an adventure player whose held item's `can_place_on`
+    /// matches the clicked block.
+    pub(super) fn may_use_on(&self, clicked: [i32; 3]) -> bool {
+        self.may_build() || self.can_place_on_in_adventure(clicked)
+    }
+    /// `ServerPlayer.setGameMode(SPECTATOR)`: `stopRiding`.
+    fn dismount_for_spectator(&mut self) {
+        let Some(id) = self.riding else {
+            return;
+        };
+        if self.ecs.boat_status(id).is_some() {
+            self.dismount_boat(id);
+        } else if self.ecs.cart_kind(id).is_some() {
+            self.dismount_cart(id);
+        } else {
+            self.riding = None;
+        }
+    }
+}
+
+// BlockPos.relative uses Java's wrapping integer arithmetic, including for mod input.
+fn relative(pos: [i32; 3], face: horizon_core::geometry::Direction) -> [i32; 3] {
+    let [dx, dy, dz] = face.normal();
+    [
+        pos[0].wrapping_add(dx),
+        pos[1].wrapping_add(dy),
+        pos[2].wrapping_add(dz),
+    ]
+}
+
+#[cfg(test)]
+#[path = "tests/adventure_gate_tests.rs"]
+mod adventure_gate_tests;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn face_offsets_wrap_at_integer_boundaries() {
+        use horizon_core::geometry::Direction::*;
+        for (face, axis, positive) in [
+            (East, 0, true),
+            (West, 0, false),
+            (Up, 1, true),
+            (Down, 1, false),
+            (South, 2, true),
+            (North, 2, false),
+        ] {
+            for boundary in [i32::MIN, i32::MAX] {
+                let mut pos = [5; 3];
+                pos[axis] = boundary;
+                let mut expected = pos;
+                expected[axis] = match (positive, boundary) {
+                    (true, i32::MAX) => i32::MIN,
+                    (false, i32::MIN) => i32::MAX,
+                    (true, _) => i32::MIN + 1,
+                    (false, _) => i32::MAX - 1,
+                };
+                assert_eq!(
+                    super::relative(pos, face),
+                    expected,
+                    "{face:?} at {boundary}"
+                );
+            }
+        }
+    }
+
+    use super::loads_chunks;
+
+    /// `ChunkMap.skipPlayer`: only a spectator with `spectators_generate_chunks`
+    /// off stops loading chunks around itself.
+    #[test]
+    fn a_skipped_spectator_loads_no_chunks() {
+        assert!(!loads_chunks(false, true), "spectator, rule off");
+        assert!(loads_chunks(true, true), "spectator, rule on");
+        assert!(
+            loads_chunks(false, false),
+            "survival, creative or adventure"
+        );
+        assert!(
+            loads_chunks(true, false),
+            "survival, creative or adventure, rule on"
+        );
+    }
+}

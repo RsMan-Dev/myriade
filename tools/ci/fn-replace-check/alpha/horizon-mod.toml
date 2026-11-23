@@ -15,7 +15,7 @@ mixins = "MIXINS"
 # HEAD, cancellable, reaching a private field (`ticks_until_autosave`) and the clock.
 [[native.mixin]]
 id = "head"
-target = "horizon_client::game::autosave::Game<'_>::on_tick_rate_changed"
+target = "myriade_engine::game::autosave::Game<'_>::on_tick_rate_changed"
 kind = "HEAD"
 cancellable = true
 helper = "src/mixins/head.rs"
@@ -24,7 +24,7 @@ bindings = [{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" }]
 # The first of two mods' values at one call, by priority.
 [[native.mixin]]
 id = "doubled"
-target = "horizon_client::game::autosave::Game<'_>::next_autosave_interval"
+target = "myriade_engine::game::autosave::Game<'_>::next_autosave_interval"
 kind = "MODIFY_EXPRESSION_VALUE"
 selector = "autosave_interval(rate)"
 require = 1
@@ -35,14 +35,14 @@ bindings = [{ name = "value", ty = "i64", value = "$value" }]
 
 [[native.mixin]]
 id = "returned"
-target = "horizon_client::game::autosave_interval"
+target = "myriade_engine::game::autosave_interval"
 kind = "RETURN"
 helper = "src/mixins/returned.rs"
 bindings = [{ name = "value", ty = "i64", value = "$value" }]
 
 [[native.mixin]]
 id = "overwrite"
-target = "horizon_client::game::commands::misc::millis"
+target = "myriade_engine::game::commands::misc::millis"
 kind = "OVERWRITE"
 helper = "src/mixins/overwrite.rs"
 bindings = [{ name = "nanos", ty = "u64", value = "nanos" }]

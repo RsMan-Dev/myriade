@@ -7,7 +7,7 @@ use crate::dispense;
 use crate::targeting::Who;
 use crate::tnt::{self, Primed};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::nbt::Compound;
 
 impl EcsWorld {

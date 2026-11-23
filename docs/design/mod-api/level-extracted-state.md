@@ -33,15 +33,15 @@ Paths below are relative to the repository at `731b0cae68`.
 
 | Owner | Evidence | Implication |
 | --- | --- | --- |
-| Frame preparation | `crates/horizon-client/src/game.rs:15048`, `render_with` | Builds frame before consumer; proposed extraction/freeze integration belongs here |
-| Renderer consumer | `crates/horizon-client/src/game.rs:15040`, `render_frame` | Calls renderer with prepared frame |
-| Deferred submission | `crates/horizon-client/src/game.rs:15029` | Submit thread may retain a frame after presentation |
-| Frame fields | `crates/horizon-client-render/src/gfx.rs:1104`, `Frame` | Existing borrowed frame is not proof of owned extension storage |
-| Renderer entry and resize | `crates/horizon-client-render/src/gfx.rs:8024`, `:5640` | Submission and target replacement need explicit epoch checks |
-| Renderer replacement | `crates/horizon-client/src/game.rs:14236`, `adopt_renderer` | Rebuild must retire old extension/resource generations |
-| Fog extraction | `crates/horizon-client/src/game/interface/render_tick.rs:133` | Existing base preparation must precede extension freeze |
-| Block-screen visibility | `crates/horizon-client/src/game/interface/render_tick.rs:529` | Keep existing extraction/cancellation decisions; do not rerun in draw |
-| Draw adapter | `crates/horizon-client/src/game/host/draw.rs:6` | Currently contains `&Game`; cannot certify snapshot-only access |
+| Frame preparation | `crates/myriade-engine/src/game.rs:15048`, `render_with` | Builds frame before consumer; proposed extraction/freeze integration belongs here |
+| Renderer consumer | `crates/myriade-engine/src/game.rs:15040`, `render_frame` | Calls renderer with prepared frame |
+| Deferred submission | `crates/myriade-engine/src/game.rs:15029` | Submit thread may retain a frame after presentation |
+| Frame fields | `crates/myriade-level/src/gfx.rs:1104`, `Frame` | Existing borrowed frame is not proof of owned extension storage |
+| Renderer entry and resize | `crates/myriade-level/src/gfx.rs:8024`, `:5640` | Submission and target replacement need explicit epoch checks |
+| Renderer replacement | `crates/myriade-engine/src/game.rs:14236`, `adopt_renderer` | Rebuild must retire old extension/resource generations |
+| Fog extraction | `crates/myriade-engine/src/game/interface/render_tick.rs:133` | Existing base preparation must precede extension freeze |
+| Block-screen visibility | `crates/myriade-engine/src/game/interface/render_tick.rs:529` | Keep existing extraction/cancellation decisions; do not rerun in draw |
+| Draw adapter | `crates/myriade-engine/src/game/host/draw.rs:6` | Currently contains `&Game`; cannot certify snapshot-only access |
 
 This is a verified integration census, not a complete proof of every submission,
 reload or early-return route. Implementation must audit normal world rendering,

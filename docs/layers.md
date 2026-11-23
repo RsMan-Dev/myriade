@@ -79,17 +79,17 @@ Vanilla Minecraft: Java Edition 26.3, and nothing else.
 
 ### Portable crates
 
-`horizon-core`, `horizon-world`, `horizon-protocol`, `horizon-items`, `horizon-command`, `horizon-client-core`
+`horizon-core`, `horizon-world`, `horizon-protocol`, `horizon-items`, `horizon-command`, `myriade-data`
 and `horizon-assets` hold vanilla's rules and data with no desktop in them. `horizon-threads` and
 `horizon-guest-stack` provide the desktop-free execution plumbing: worker scheduling, sampling and stack
 reservations, and `horizon-java-properties` reads and writes Java-properties files with the standard library alone. These portable crates have no window, GPU, sound, gamepad or clipboard library, no HTTP client,
 and no engine crate outside the portable list. The platform sits on the desktop engine
 (`wgpu`, `winit`, `cpal`), which a handheld console or a browser can't run, so a port there builds on these crates
 instead. They stay that way: the layer check fails when one takes `winit`, `wgpu`, `cpal`, `gilrs`, `arboard` or
-`ureq`, or an engine crate outside the list (#13002). Gameplay itself still lives in `horizon-client`; step P of
+`ureq`, or an engine crate outside the list (#13002). Gameplay itself still lives in `myriade-engine`; step P of
 the [plan](#plan) moves it into `horizon-gameplay` (what the server jar holds) and `horizon-client-gameplay`
 (client only) over time. `horizon-gameplay` is not on the list yet: `portable.pending` in `tools/layers.json`
-lets it take `horizon-client-lib` until the types it needs move down, and only ever shrinks.
+lets it take `myriade-engine-lib` until the types it needs move down, and only ever shrinks.
 
 ## Platform
 
@@ -225,7 +225,7 @@ and Parts registration state; it is not yet a stateless or unsafe-free interface
 | A new crate | its layer | give it a layer in `tools/layers.json` in the same PR |
 
 Code that belongs to another layer than the crate it has to live in today (a Horizon extra in
-`horizon-client-render`, say) goes in its own module, never mixed into an engine module. Horizon code in the game
+`myriade-level`, say) goes in its own module, never mixed into an engine module. Horizon code in the game
 also goes behind `horizon-extras`. That keeps each later move a pure file move.
 
 ## The Horizon layer in its own repository
@@ -317,11 +317,11 @@ that belongs to one subsystem (an input source, the compositor) lives in the eng
 same shape: registered before the game runs, read-only after.
 
 **What players get.** The release builds (`game-build.yml`, so the nightly and the release; `tools/ci/build-musl.sh`)
-build `horizon-official` and ship it as `horizon-client`, the name the launcher and players know. The launcher's
+build `horizon-official` and ship it as `myriade-engine`, the name the launcher and players know. The launcher's
 native-mod builds of the game do the same, and its generated executable for trait mods calls
 `horizon_official::register()` (`launcher/src/native_mods/api.rs`). The dedicated server build (`horizon-engine`)
-stays horizon-client's, with no Horizon part. horizon-client's own executable, the one `cargo run -p
-horizon-client`, the harnesses and horizon-plain build, has none either. The first part that moved this way is the
+stays myriade-engine's, with no Horizon part. myriade-engine's own executable, the one `cargo run -p
+myriade-engine`, the harnesses and horizon-plain build, has none either. The first part that moved this way is the
 "I'm playing" ping (`horizon-heartbeat`).
 
 ## Platform registries
@@ -343,7 +343,7 @@ hook (#14081), `seat()` (#14096).
 - A registrant keeps its own state: statics in its own crate, never a field of an engine struct. The engine
   only calls it.
 - With nothing registered, the engine does no work: a load of an empty slice where it would dispatch. It makes
-  no allocation, no draw call and no file. A vanilla build (horizon-client, horizon-plain) is unchanged.
+  no allocation, no draw call and no file. A vanilla build (myriade-engine, horizon-plain) is unchanged.
 - Visible text is a translation key the registrant ships in its lang files ([Lang files](#lang-files-horizon_platformlang)),
   never English in code. Values a player typed (a name, a path) are the exception.
 - Splitscreen players are one process, one thread, each `Game` in turn (`game/split.rs`), so a crate's statics
@@ -593,7 +593,7 @@ left.
 
 ### Mod points stay put
 
-Every function under `horizon_client::game::` that the point generator admits is a mod injection point: the `&self` and
+Every function under `myriade_engine::game::` that the point generator admits is a mod injection point: the `&self` and
 `&mut self` methods of `Game`, its free functions and the methods of its other types. So is each function marked
 `#[horizon_mod_api_macros::replaceable]` in a lower crate. A point's name, module path and signature are part of the
 mod API ([agent rules](mod-api/agent-rules.md), rule 7), and a mod's `[[inject]]` row names it by that path and a hash
@@ -619,7 +619,7 @@ prints how many points were added, removed (accepted and failing) and changed. I
   are listed and pass: `cargo horizon-mod update` already reports signature-hash changes for declared internals.
   Becoming `shape_only`, or losing a `cfg` variant, counts as a removal.
 
-CI runs it, with `--allow-added`, on a pull request that can reach the points: a change to `crates/horizon-client/src/game/`
+CI runs it, with `--allow-added`, on a pull request that can reach the points: a change to `crates/myriade-engine/src/game/`
 or `game.rs`, to the generator's crates (`crates/horizon-mod-*`), to the check itself, to a `Cargo.toml` or `Cargo.lock`,
 or to a Rust file under `crates/` that mentions `replaceable` before or after (`needs_mod_points` in
 `tools/ci/rust_changes.py`). A new hook on purpose adds points and passes with that flag.
@@ -714,9 +714,9 @@ mechanical steps (checks, M1–M4) continue meanwhile. M5 and M6 started on 2026
 | 2b | The portable crates' rule in the layer check ([Portable crates](#portable-crates)) | | #13002 (NikitaMGrimm), merged |
 | M1 | `horizon-addresses`, the address list file; the Horizon crates read it | 7 address entries | #12993, merged |
 | M2 | `horizon-system` (engine): the hardware probes leave `horizon-telemetry`, and the crash report and GPU info read them there; `horizon-platform`, the platform's public API, re-exports them for the Horizon layer | prepares M3 | #13058, merged |
-| M3 | The renderer's telemetry module leaves `horizon-client-render` for `horizon-client-lib`, with Horizon's other in-game parts; the renderer offers the adapter (`gfx::adapter`) and a crash-report hook (`crash::on_report`) | render → telemetry, bench | #13060, merged |
-| M4 | Cosmetics leave `horizon-client-render`: the tab list's mark through a name-decoration callback (#13094); the settings lines leave with `extras.rs` and `extras_ui.rs` in M5, as clients of the UI page API | render → cosmetics | #13094, merged; the rest in M5 |
-| M5 | Horizon's in-game parts (extras, cosmetics, emotes, Discord, Friends, ping, benchmark upload, official server) leave `horizon-client` for Horizon crates linked into the official build through platform hooks | client, client-lib → cosmetics, friends, telemetry, bench | started 2026-11-09 |
+| M3 | The renderer's telemetry module leaves `myriade-level` for `myriade-engine-lib`, with Horizon's other in-game parts; the renderer offers the adapter (`gfx::adapter`) and a crash-report hook (`crash::on_report`) | render → telemetry, bench | #13060, merged |
+| M4 | Cosmetics leave `myriade-level`: the tab list's mark through a name-decoration callback (#13094); the settings lines leave with `extras.rs` and `extras_ui.rs` in M5, as clients of the UI page API | render → cosmetics | #13094, merged; the rest in M5 |
+| M5 | Horizon's in-game parts (extras, cosmetics, emotes, Discord, Friends, ping, benchmark upload, official server) leave `myriade-engine` for Horizon crates linked into the official build through platform hooks | client, client-lib → cosmetics, friends, telemetry, bench | started 2026-11-09 |
 | M6 | The engine crates stop depending on platform crates: the renderer's shader-pack, pack-format, HDR and theme code moves behind engine extension points; the mod host and agent control move to platform crates; controllers, splitscreen, replay recording and the UI page API move to platform crates on the engine's input-source, compositor and screen hooks; the launcher and `horizon-server` reach the engine through platform API (done, #13905) | the engine → platform and Horizon → engine exceptions | started 2026-11-09; HDR's part with NikitaMGrimm, below |
 | P | Optional, longer: gameplay into the portable crates. `Game` holds the world and its presentation (renderer, screens, particles, sound): split its state module by module, turn gameplay's direct particle and sound calls into level events as vanilla's server sends them, then move each clean module into `horizon-gameplay` (server side) or `horizon-client-gameplay` (client only) | | any time, small PRs |
 | R | The Horizon layer moves to its own repository and ships in every official download (the table above) | | after the split, Ludovic's call |

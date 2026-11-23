@@ -54,9 +54,9 @@ def main():
     lock, jars, libraries = base.verify_artifacts()
     java = lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity'
     sources = [Path(__file__), java / 'VanillaLavaCauldronItemOracle.java', java / 'ParityData.java',
-               lab.ROOT / 'crates/horizon-client/src/entities.rs',
-               lab.ROOT / 'crates/horizon-client/examples/probe/main.rs',
-               lab.ROOT / 'crates/horizon-client/examples/probe/lava_cauldron_item_fixture.rs',
+               lab.ROOT / 'crates/myriade-engine/src/entities.rs',
+               lab.ROOT / 'crates/myriade-engine/examples/probe/main.rs',
+               lab.ROOT / 'crates/myriade-engine/examples/probe/lava_cauldron_item_fixture.rs',
                lab.ROOT / 'Cargo.lock']
     hashes = base.source_hashes(sources)
     inputs = work / 'inputs.tsv'
@@ -87,7 +87,7 @@ def main():
         run(['java', '-Xmx512M', '-Djava.awt.headless=true', '-Duser.home=' + tmp,
              '-cp', str(classes) + os.pathsep + cp, 'dev.horizonlab.parity.VanillaLavaCauldronItemOracle',
              inputs, expected], 'java', cwd=scratch, env=env)
-        run(['cargo', 'build', '--locked', '-p', 'horizon-client-lib', '--example', 'client_probe',
+        run(['cargo', 'build', '--locked', '-p', 'myriade-engine-lib', '--example', 'client_probe',
              '--message-format=json'], 'compile', cwd=lab.ROOT, env=env)
         import json
         artifacts = [json.loads(line) for line in (work / 'compile.log').read_text(encoding='utf-8').splitlines()

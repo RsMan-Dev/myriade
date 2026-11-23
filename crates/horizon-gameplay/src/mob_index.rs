@@ -11,7 +11,7 @@
 //! (`spawn_entity` drops a mob with the same id before adding one), so the
 //! answer is always the linear search's.
 
-use horizon_client::fast_hash::FxHashMap;
+use myriade_engine::fast_hash::FxHashMap;
 
 #[derive(Default)]
 pub struct MobIndex {

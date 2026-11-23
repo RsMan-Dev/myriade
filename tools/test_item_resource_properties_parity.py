@@ -63,14 +63,14 @@ def main():
             assert values == expected, 'Vanilla client/server outcomes differ'
         expected = values
     # Parse Cargo's artifact stream instead of guessing its target directory or binary hash.
-    harness.run_logged(['cargo', 'test', '--locked', '-p', 'horizon-client',
+    harness.run_logged(['cargo', 'test', '--locked', '-p', 'myriade-engine',
         '--no-default-features', '--lib', '--no-run', '--message-format=json'],
         build, 'compile-rust', timeout=3600)
     artifacts = [json.loads(line) for line in (build / 'compile-rust.log').read_text().splitlines()
                  if line.startswith('{')]
     executables = {record['executable'] for record in artifacts
         if record.get('reason') == 'compiler-artifact' and record.get('executable')
-        and record.get('profile', {}).get('test') and record['target']['name'] == 'horizon_client'
+        and record.get('profile', {}).get('test') and record['target']['name'] == 'myriade_engine'
         and 'lib' in record['target']['kind']}
     assert len(executables) == 1, executables
     executable = executables.pop()

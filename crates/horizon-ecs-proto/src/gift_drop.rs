@@ -119,7 +119,7 @@ pub fn on_grown(w: &mut World, e: Entity) {
 
 /// `BehaviorUtils.throwItem`: the stack leaves `e` at its eye minus 0.3, at 0.3 blocks per tick toward `target` (taken from its feet),
 /// with the pickup delay of a fresh item (10 ticks).
-pub fn throw_toward(w: &mut World, e: Entity, stack: horizon_client_lib::items::ItemStack, target: horizon_core::geometry::Vec3) {
+pub fn throw_toward(w: &mut World, e: Entity, stack: myriade_engine_lib::items::ItemStack, target: horizon_core::geometry::Vec3) {
     let Some(me) = w.get::<Pos>(e).map(|p| p.0) else { return };
     let eye = w.get::<crate::goals::Look>(e).map_or(1.62, |l| l.eye);
     let from = horizon_core::geometry::Vec3::new(me.x, me.y + eye - 0.3, me.z);
@@ -128,7 +128,7 @@ pub fn throw_toward(w: &mut World, e: Entity, stack: horizon_client_lib::items::
 }
 /// `PiglinAi.throwItems`: the stacks go toward one block above the nearest player it can target within `sight` blocks, else toward a
 /// land spot `h` / `v` blocks about (`LandRandomPos.getPos`), else its own place; one swing of the off hand when there is anything.
-pub fn throw_toward_player_or_nearby(w: &mut World, e: Entity, stacks: Vec<horizon_client_lib::items::ItemStack>, sight: f64, h: i32, v: i32) {
+pub fn throw_toward_player_or_nearby(w: &mut World, e: Entity, stacks: Vec<myriade_engine_lib::items::ItemStack>, sight: f64, h: i32, v: i32) {
     use horizon_core::geometry::Vec3;
     if stacks.is_empty() {
         return;

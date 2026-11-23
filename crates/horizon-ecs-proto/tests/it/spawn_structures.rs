@@ -1,8 +1,8 @@
 //! The spawn lists at a position (`StructureHost::list_at`) against the expected names, written by hand from the jar:
 //! the structure's list, the piece or bounds flag, the first structure found, a category it does not cover, the fortress on
 //! nether bricks, the mods' hook.
-use horizon_client_lib::biome::SpawnEntry;
-use horizon_client_lib::mobs::spawn_place::{Override, StructureAt, StructureSpawns};
+use myriade_engine_lib::biome::SpawnEntry;
+use myriade_engine_lib::mobs::spawn_place::{Override, StructureAt, StructureSpawns};
 use horizon_core::fast_hash::FxHashMap;
 use horizon_ecs_proto::cow::*;
 use horizon_ecs_proto::spawn_structures::*;

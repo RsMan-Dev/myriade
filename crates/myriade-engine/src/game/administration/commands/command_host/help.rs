@@ -1,0 +1,16 @@
+use crate::game::Game;
+use myriade_engine::command::{Dispatcher, Registries};
+use horizon_gameplay::commands::help::HelpHost;
+use std::sync::Arc;
+
+impl HelpHost for Game<'_> {
+    fn dispatcher(&self) -> Arc<Dispatcher> {
+        self.session.dispatcher.0.clone()
+    }
+    fn registries(&self) -> &Registries {
+        &self.session.registries
+    }
+    fn permission_level(&self) -> u8 {
+        self.session.registries.permission
+    }
+}

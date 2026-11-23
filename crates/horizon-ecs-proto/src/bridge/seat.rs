@@ -4,7 +4,7 @@ use crate::bridge::host::EcsWorld;
 use crate::bridge::ids;
 use crate::seat;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 impl EcsWorld {
     /// `rider` takes a seat of `vehicle` (`slot`, or the first free one); false when it already sits or the seats are taken.

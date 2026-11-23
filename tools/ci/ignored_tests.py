@@ -7,7 +7,7 @@ Usage: ignored_tests.py [--without-data] SHARD...  (HORIZON_TEST_RESOURCES point
 A SHARD is a package, or one leg of it written `PACKAGE#NofM` (tools/ci/ignored_shards.py splits the biggest
 package so one process does not hold every test's memory). A leg runs the tests whose name hashes to its
 number, so every test runs in exactly one leg, and only judges the list's entries for those same tests.
-An unqualified horizon-client-lib runs two such selections consecutively on the same runner, releasing
+An unqualified myriade-engine-lib runs two such selections consecutively on the same runner, releasing
 retained fixture memory between processes without adding a matrix job.
 
 Each package's library tests run with `--include-ignored`: the #[ignore]d ones that need the data, and the
@@ -84,7 +84,7 @@ RETIRED = Path(__file__).with_name("ignored-tests-known-failures.txt")
 RESULT = re.compile(r"^test (\S+)(?: - should panic)? \.\.\. (ok|FAILED)$")
 SUMMARY = re.compile(r"^test result: \S+\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured;")
 # Cargo's line as a test executable starts: `Running unittests src/lib.rs (…)`, `Running tests/x.rs (…)`, or a
-# target whose source lives in another package's folder (`Running ../horizon-client/tests/lan_bot.rs (…)`).
+# target whose source lives in another package's folder (`Running ../myriade-engine/tests/lan_bot.rs (…)`).
 TARGET = re.compile(r"^\s+Running (?:unittests )?\S+ \(")
 COUNT = re.compile(r"^running (\d+) tests?$")
 PANIC = re.compile(r"^thread '([^']+)'.* panicked at (.+):$")
@@ -98,7 +98,7 @@ ABORTS = (
     (re.compile(r"^memory allocation of \d+ bytes failed$"), "a failed memory allocation"),
 )
 # Packages whose integration tests (`tests/*.rs`) run too, beside their library tests.
-INTEGRATION_TESTS = {"horizon-client"}
+INTEGRATION_TESTS = {"myriade-engine"}
 LEG = re.compile(r"^(?P<package>[^#]+)#(?P<number>\d+)of(?P<count>\d+)$")
 LISTED = re.compile(r"^(\S+): test$")
 # A daily row's TARGET: the library, or one binary or integration test (cargo's --bin NAME, --test NAME).
@@ -724,12 +724,12 @@ def run(package, skip, number=None, count=None, only=None):
             home.mkdir()
             homes[key] = home
         env = lab.game_env(**homes)
-        if package == "horizon-client-lib":
+        if package == "myriade-engine-lib":
             # Worldgen must meet its real-time deadlines without disabling test assertions.
             env["CARGO_PROFILE_TEST_OPT_LEVEL"] = "3"
         # --no-fail-fast: a target with accepted known failures must not stop the targets after it.
         # Owner-approved stopgap; arismoko/horizon#2944 removes this when the legs run under 15 minutes.
-        client_half = package == "horizon-client" and count == 2 and number in (1, 2)
+        client_half = package == "myriade-engine" and count == 2 and number in (1, 2)
         command = ["cargo", "test", "-p", package, "--lib", *(["--bins", "--tests"] if package in INTEGRATION_TESTS else []), "--no-fail-fast"]
         workspace = "."
         if only:
@@ -959,8 +959,8 @@ def main(shards, report=None, without_data=False):
         selection
         for shard in shards
         for selection in (
-            ("horizon-client-lib#1of2", "horizon-client-lib#2of2")
-            if shard == "horizon-client-lib" else
+            ("myriade-engine-lib#1of2", "myriade-engine-lib#2of2")
+            if shard == "myriade-engine-lib" else
             [f"{shard}:{package}:{target}" for package, target in groups
              if ignored_shards.daily_rows_leg(package) == shard]
             if shard in ignored_shards.DAILY_ROWS_LEGS.values() else (shard,)

@@ -5,7 +5,7 @@ use crate::bridge::ids::Removed;
 use crate::cow::{DeathPolicy, Dying, Health, enter_index};
 use crate::goals::Events;
 use bevy_ecs::{entity::Entity, prelude::*};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 impl EcsWorld {
     /// `DeathPolicy.vetoable`: a lethal hit leaves the entity as `Dying` until `resolve_death`, instead of removing it.

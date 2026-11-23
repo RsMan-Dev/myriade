@@ -1,4 +1,4 @@
-//! The instantaneous brews against the client's `instant` (`horizon-client-render/src/effects.rs`, `HealOrHarmMobEffect`): a splash that
+//! The instantaneous brews against the client's `instant` (`myriade-level/src/effects.rs`, `HealOrHarmMobEffect`): a splash that
 //! hits a creature harms it `6 << level` whole, and a lingering cloud harms at half strength. The origin's amounts are transcribed below
 //! for levels 0, 1 and 2 (the cloud takes its brew from `POTIONS`, which has level 0 only).
 use crate::common;

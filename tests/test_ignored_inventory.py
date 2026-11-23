@@ -16,14 +16,14 @@ class IgnoredInventory(unittest.TestCase):
                 file.parent.mkdir(parents=True, exist_ok=True)
                 file.write_text(text)
 
-            put("Cargo.toml", '[workspace]\nmembers = ["crates/horizon-client", "crates/horizon-relay"]\n')
-            put("crates/horizon-client/Cargo.toml", '[package]\nname = "horizon-client"\n')
-            put("crates/horizon-client/src/lib.rs", "mod game;\n")
-            put("crates/horizon-client/src/game.rs", 'include!(concat!(env!("OUT_DIR"), "/game_modules.rs"));\n')
-            put("crates/horizon-client/src/game/blocks/.game-area", "")
-            put("crates/horizon-client/src/game/blocks/widget.rs",
+            put("Cargo.toml", '[workspace]\nmembers = ["crates/myriade-engine", "crates/horizon-relay"]\n')
+            put("crates/myriade-engine/Cargo.toml", '[package]\nname = "myriade-engine"\n')
+            put("crates/myriade-engine/src/lib.rs", "mod game;\n")
+            put("crates/myriade-engine/src/game.rs", 'include!(concat!(env!("OUT_DIR"), "/game_modules.rs"));\n')
+            put("crates/myriade-engine/src/game/blocks/.game-area", "")
+            put("crates/myriade-engine/src/game/blocks/widget.rs",
                 'mod tests { include!("widget_parts/tests.rs"); }\n')
-            put("crates/horizon-client/src/game/blocks/widget_parts/tests.rs",
+            put("crates/myriade-engine/src/game/blocks/widget_parts/tests.rs",
                 '#[test] #[ignore = "daily"] fn daily_test() { assert_eq!(1, 1); }\n')
             put("crates/horizon-relay/Cargo.toml",
                 '[package]\nname = "horizon-relay"\n[lib]\npath = "../relay-shared/lib.rs"\n')
@@ -37,8 +37,8 @@ class IgnoredInventory(unittest.TestCase):
             # both include! forms, and fake tests in strings/comments. It never builds the game.
             functions = ignored_inventory.tests(root)
             self.assertEqual(len(functions), 2)
-            daily = ignored_tests.Row("horizon-client", "game::widget::tests::daily_test", "lib", "daily",
-                                      "daily-horizon-client.txt", "resources")
+            daily = ignored_tests.Row("myriade-engine", "game::widget::tests::daily_test", "lib", "daily",
+                                      "daily-myriade-engine.txt", "resources")
             failures = ignored_inventory.problems([daily], functions, {})
             self.assertEqual(len(failures), 1)
             self.assertIn("horizon-relay tests::otherwise_unselected", failures[0])

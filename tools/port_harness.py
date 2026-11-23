@@ -4,7 +4,7 @@ harness against the new version").
 
 Used through `version_port.py harnesses NEW` after `regen NEW`:
 
-1. horizon-prepare in the candidate (.local/horizon-client/NEW and its exporters' outputs), then its `sounds` and
+1. horizon-prepare in the candidate (.local/myriade-engine/NEW and its exporters' outputs), then its `sounds` and
    `panorama` steps from the version store's launcher-shaped copy, whose asset index and the objects those steps
    copy are downloaded once per version (sha1 checked);
 2. tools/parity.py there: every harness, or the ones named;

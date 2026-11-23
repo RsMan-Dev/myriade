@@ -4,7 +4,7 @@
 use crate::cow::{SpeciesId, SpeciesTable};
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 /// The numbers of a blow: the damage, the knockback (the attribute plus the enchantments; the extra push is half of it) and the seconds of
 /// fire the victim is set alight for.

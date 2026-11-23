@@ -10,7 +10,7 @@ use crate::cow::Pos;
 use crate::goals::with_rng;
 use crate::item::drop_item;
 use bevy_ecs::prelude::Resource;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use std::collections::BTreeSet;
 use crate::rules::food_gift::gift_spot;

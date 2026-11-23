@@ -5,8 +5,8 @@
 use crate::cow::Level;
 use crate::hostile::ChangedBlocks;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::containers::BlockEntity;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::containers::BlockEntity;
+use myriade_engine_lib::mobs::MobWorld;
 use std::collections::HashMap;
 
 #[derive(Resource, Default)]

@@ -96,8 +96,8 @@ def check_walk(server, host, guest, role):
 
 
 def main():
-    subprocess.run(['cargo', 'build', '--locked', '--profile', 'fast', '-p', 'horizon-game', '-p', 'horizon-client-lib',
-                    '--bin', 'horizon-client'], cwd=lab.ROOT, check=True)
+    subprocess.run(['cargo', 'build', '--locked', '--profile', 'fast', '-p', 'horizon-game', '-p', 'myriade-engine-lib',
+                    '--bin', 'myriade-engine'], cwd=lab.ROOT, check=True)
     bins = Path(lab.cargo_target()) / 'fast'
     out = lab.LOCAL / 'server-player-sculk-parity'
     out.mkdir(parents=True, exist_ok=True)

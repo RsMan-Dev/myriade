@@ -9,7 +9,7 @@ use crate::goals::Events;
 use crate::targeting::Who;
 use bevy_ecs::entity::Entity;
 use horizon_core::nbt::{Compound, JavaString, Tag};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 /// `LivingEntity.damageCooldownTime` after a hit; a hit inside the half above `HURT_WINDOW` counts only by its excess.
 const COOLDOWN_AFTER_HIT: u64 = 20;
@@ -91,7 +91,7 @@ impl EcsWorld {
 
     /// The player `player` hurt `e` with `weapon` in its main hand and `luck`: what its death reads of the killer (`loot::KillerKit`).
     /// Told with a player's hit, never with a fact of every player.
-    pub fn note_killer(&mut self, e: Entity, player: u32, luck: f32, weapon: Option<horizon_client_lib::items::ItemStack>) {
+    pub fn note_killer(&mut self, e: Entity, player: u32, luck: f32, weapon: Option<myriade_engine_lib::items::ItemStack>) {
         crate::loot::note_killer(self.world_mut(), e, player, luck, weapon);
     }
 

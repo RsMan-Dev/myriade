@@ -6,7 +6,7 @@ use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::cow::Pos;
 use crate::goals::with_rng;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 use crate::rules::block_reach::{block_of, centre, neighbourhood};
 pub use crate::rules::block_reach::no_blocks_above;

@@ -2,7 +2,7 @@
 //! block is `Fox.aiStep`): the expected values are the jar's (more than 600 ticks since the last meal, a refused meal asked again,
 //! one of the stack eaten, the clock restarted) with the delay shortened by the parameters.
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_ecs_proto::behaviours::eat_held::{self, EatDue, Eaten};
 use horizon_ecs_proto::behaviours::Entry;
 use horizon_ecs_proto::cow::*;

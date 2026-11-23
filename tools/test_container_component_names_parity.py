@@ -105,9 +105,9 @@ def both(args):
     run=(args.work_dir or runner.lab.LOCAL/'container-component-names'/f"{datetime.datetime.now(datetime.timezone.utc):%Y%m%dT%H%M%SZ}-{os.getpid()}").resolve()
     if args.binary:binary=args.binary.resolve(strict=True)
     else:
-        subprocess.run(['cargo','build','--profile','fast','-p','horizon-game','--bin','horizon-client'],cwd=runner.lab.ROOT,check=True)
+        subprocess.run(['cargo','build','--profile','fast','-p','horizon-game','--bin','myriade-engine'],cwd=runner.lab.ROOT,check=True)
         metadata=json.loads(subprocess.check_output(['cargo','metadata','--no-deps','--format-version','1'],cwd=runner.lab.ROOT,text=True))
-        binary=Path(metadata['target_directory'])/'fast'/('horizon-client.exe' if os.name=='nt' else 'horizon-client')
+        binary=Path(metadata['target_directory'])/'fast'/('myriade-engine.exe' if os.name=='nt' else 'myriade-engine')
     shared=['--overlay-restart'] if args.overlay_restart else []
     main(['--reference-only','--work-dir',str(run/'java'),*shared])
     return main(['--work-dir',str(run/'native'),'--reference-dir',str(run/'java'),'--binary',str(binary),*shared,

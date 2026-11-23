@@ -57,7 +57,7 @@ def main():
     if (len(rows) != 32 or sum(r['controlled'] for r in rows) != 4
             or sum(not r['server_simulates'] for r in rows) != 4):
         raise SystemExit('vanilla mount-control fixture did not cover 32 cases / four controllers')
-    run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client', '--bin', 'horizon-client'], 'compile-rust',
+    run(['cargo', 'build', '--profile', 'fast', '-p', 'myriade-engine', '--bin', 'myriade-engine'], 'compile-rust',
         cwd=lab.ROOT)
     bins = Path(lab.cargo_target()) / 'fast'
     with Server(bins, build / 'server', lab.RESOURCES.resolve(), {'level-seed': '42', 'view-distance': '4'}) as server, \

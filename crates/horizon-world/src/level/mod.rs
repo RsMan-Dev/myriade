@@ -1402,7 +1402,7 @@ impl Behaviours {
         &self.fluid_definitions
     }
 
-    /// Load from a prepared client resource directory (`.local/horizon-client/<version>`).
+    /// Load from a prepared client resource directory (`.local/myriade-engine/<version>`).
     pub fn load(registry: &BlockRegistry, resources_dir: &Path) -> io::Result<Self> {
         data::load(registry, resources_dir)
     }

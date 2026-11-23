@@ -7,7 +7,7 @@ use crate::goals::{d2, main_hand};
 use crate::mount::Riding;
 use crate::rules::spear_use as rules;
 use crate::targeting::{info, Who};
-use horizon_client_lib::spear::Kinetic;
+use myriade_engine_lib::spear::Kinetic;
 
 pub const APPROACH: i64 = 0;
 pub const CHARGING: i64 = 1;

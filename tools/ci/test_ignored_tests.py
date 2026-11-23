@@ -38,7 +38,7 @@ class IgnoredTestsHomeTest(unittest.TestCase):
             with patch.object(ignored_tests.lab, "game_env", wraps=lab.game_env) as sandbox:
                 with patch.object(ignored_tests.subprocess, "run", side_effect=execute):
                     for _ in range(2):
-                        self.assertEqual(ignored_tests.run("horizon-client", []), {"fixture": True})
+                        self.assertEqual(ignored_tests.run("myriade-engine", []), {"fixture": True})
                         self.assertEqual(os.environ["HORIZON_HOME"], "parent-home")
                 self.assertEqual(sandbox.call_count, 2)
             self.assertNotEqual(homes[0], homes[1])

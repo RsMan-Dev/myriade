@@ -9,8 +9,8 @@ use crate::move_to_block::MoveToBlock;
 use crate::hostile::Daylight;
 use crate::rules::drowned_go_to_beach as rule;
 use crate::{cow::*, goals::*};
-use horizon_client_lib::blocks::Fluid;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::blocks::Fluid;
+use myriade_engine_lib::mobs::MobWorld;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {

@@ -49,7 +49,7 @@ fn holding_scaffolding_changes_nothing_on_scaffolding() {
     h.set_block(3, 5, 0, "minecraft:scaffolding");
     let bare = spawn_on_snow(&mut h, "minecraft:zombie", 0.0, 7.0);
     let held = spawn_on_snow(&mut h, "minecraft:zombie", 3.0, 7.0);
-    let item = horizon_client_lib::items::ItemStack::new("minecraft:scaffolding", 1);
+    let item = myriade_engine_lib::items::ItemStack::new("minecraft:scaffolding", 1);
     horizon_ecs_proto::goals::set_main_hand(&mut h.world, held, Some(item));
     for _ in 0..20 {
         h.tick();

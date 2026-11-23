@@ -10,7 +10,7 @@ use crate::{
     locomotion::{SwimMode, WalkMode},
 };
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob};
+use myriade_engine_lib::mobs::path::{Evaluator, Finder, PathMob};
 use horizon_core::geometry::{trig, Vec3};
 use crate::rules::swim::{arrived, cycle_back, cycle_turned, ease_speed, flop_velocity, guardian_velocity, is_stuck, moved_sq, node_close, node_reach_xz, node_reach_y, sink_rate, squid_dry, squid_swim, swim_drag, target_next_node, tentacle_speed, turn_factor, turtle_ground_speed, wanted_speed, EPSILON};
 
@@ -230,7 +230,7 @@ fn follow(
                 let (xd, yd, zd) = ((pos.0.x - (f64::from(n.x) + 0.5)).abs(), (pos.0.y - f64::from(n.y)).abs(), (pos.0.z - (f64::from(n.z) + 0.5)).abs());
                 let close = node_close(xd, yd, zd, max, vertical);
                 let direct = |from: Vec3, to: Vec3| liquid && mw.clear_between(from, Vec3::new(to.x, to.y + f64::from(body.height) * 0.5, to.z), false);
-                if close || (horizon_client_lib::mobs::nav::Navigation::can_cut_corner(n.kind) && target_next_node(path, mob, &direct, width)) {
+                if close || (myriade_engine_lib::mobs::nav::Navigation::can_cut_corner(n.kind) && target_next_node(path, mob, &direct, width)) {
                     path.advance();
                 }
                 // `doStuckDetection`, as the walk's.
@@ -460,7 +460,7 @@ fn dry(
 ) {
     let cx = level.mw.0.loop_context;
     for (e, mut air, uid, tn, mut c, mut v, mut rng, moving, swp, at, silent) in &mut q {
-        if let Some(damage) = horizon_client_lib::breathing::own_air(cx, uid.0 as u32, tn.0, &mut air.0, false, 300) {
+        if let Some(damage) = myriade_engine_lib::breathing::own_air(cx, uid.0 as u32, tn.0, &mut air.0, false, 300) {
             queue.add(e, damage, Cause::Drown);
         }
         // The flop is `AbstractFish.aiStep`'s: a squid only suffocates.

@@ -15,10 +15,10 @@ use bevy_ecs::prelude::*;
 /// when the effects change and clears it with `set_modified_swirls`; sparse, since most creatures have none.
 #[derive(Component, Clone, Debug, PartialEq)]
 #[component(storage = "SparseSet")]
-pub struct ModifiedSwirls(pub horizon_client_render::effects::ModifiedEffectParticles);
+pub struct ModifiedSwirls(pub myriade_level::effects::ModifiedEffectParticles);
 
 /// Keeps `swirls` on `e`, or clears them with `None`.
-pub fn set_modified_swirls(w: &mut World, e: Entity, swirls: Option<horizon_client_render::effects::ModifiedEffectParticles>) {
+pub fn set_modified_swirls(w: &mut World, e: Entity, swirls: Option<myriade_level::effects::ModifiedEffectParticles>) {
     match swirls {
         Some(s) => {
             w.entity_mut(e).insert(ModifiedSwirls(s));
@@ -32,7 +32,7 @@ pub fn set_modified_swirls(w: &mut World, e: Entity, swirls: Option<horizon_clie
 #[cfg(test)]
 mod swirl_tests {
     use super::*;
-    use horizon_client_render::effects::{ModifiedEffectParticles, ShownEffect};
+    use myriade_level::effects::{ModifiedEffectParticles, ShownEffect};
 
     #[test]
     fn the_mods_swirls_stay_on_the_creature_until_they_are_cleared() {
@@ -490,7 +490,7 @@ pub enum Span {
 pub fn effective_difficulty(w: &World, e: Entity) -> f32 {
     let at = w.get::<Pos>(e).map(|p| [p.0.x, p.0.y, p.0.z]);
     match (w.get_resource::<Level>(), at) {
-        (Some(level), Some(at)) => horizon_client_lib::mobs::spawning::LocalDifficulty::at(level.mw.0.world, at).effective,
+        (Some(level), Some(at)) => myriade_engine_lib::mobs::spawning::LocalDifficulty::at(level.mw.0.world, at).effective,
         _ => if difficulty(w) == 0 { 0.0 } else { f32::from(difficulty(w)) * 0.75 },
     }
 }
@@ -498,7 +498,7 @@ pub fn effective_difficulty(w: &World, e: Entity) -> f32 {
 pub fn special_difficulty(w: &World, e: Entity) -> f32 {
     let at = w.get::<Pos>(e).map(|p| [p.0.x, p.0.y, p.0.z]);
     match (w.get_resource::<Level>(), at) {
-        (Some(level), Some(at)) => horizon_client_lib::mobs::spawning::LocalDifficulty::at(level.mw.0.world, at).special(),
+        (Some(level), Some(at)) => myriade_engine_lib::mobs::spawning::LocalDifficulty::at(level.mw.0.world, at).special(),
         _ => w.get_resource::<crate::spawn_finalize::Special>().map_or(0.0, |s| s.0),
     }
 }
@@ -636,7 +636,7 @@ pub fn kind_of(name: &str) -> Option<Kind> {
 }
 
 /// The jar's `custom_effects` of a potion item, one timed brew each; an id the mob effects do not know is skipped.
-pub fn custom_brews(stack: &horizon_client_lib::items::ItemStack) -> Vec<Brew> {
+pub fn custom_brews(stack: &myriade_engine_lib::items::ItemStack) -> Vec<Brew> {
     let Some((_, horizon_core::nbt::Tag::List(list))) = stack.data().and_then(|d| d.potion_extra.iter().find(|(k, _)| k == "custom_effects")) else {
         return Vec::new();
     };
@@ -658,14 +658,14 @@ pub fn custom_brews(stack: &horizon_client_lib::items::ItemStack) -> Vec<Brew> {
 }
 
 /// All the brews a potion item gives: its named potion's, then its custom effects.
-pub fn contents_brews(stack: &horizon_client_lib::items::ItemStack) -> Vec<Brew> {
+pub fn contents_brews(stack: &myriade_engine_lib::items::ItemStack) -> Vec<Brew> {
     let mut brews = stack.potion().and_then(potion_brews).map_or_else(Vec::new, <[Brew]>::to_vec);
     brews.extend(custom_brews(stack));
     brews
 }
 
 /// The `custom_color` of a potion item, when it has one.
-pub fn custom_color(stack: &horizon_client_lib::items::ItemStack) -> Option<i32> {
+pub fn custom_color(stack: &myriade_engine_lib::items::ItemStack) -> Option<i32> {
     stack.data()?.potion_extra.iter().find(|(k, _)| k == "custom_color").and_then(|(_, t)| match t {
         horizon_core::nbt::Tag::Int(c) => Some(*c),
         _ => None,

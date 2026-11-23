@@ -9,8 +9,8 @@ use crate::hostile::{ChangedBlocks, PlayerState};
 use crate::projectile::{entity_hit, Projectile};
 use crate::targeting::{player_box, Who};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::arrows::{back_off, clip_block_hit};
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::arrows::{back_off, clip_block_hit};
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use std::collections::HashMap;
 

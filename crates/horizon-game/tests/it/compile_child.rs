@@ -8,7 +8,7 @@ fn real_executable_refuses_malformed_hidden_requests() {
         vec!["--compile-wasm-module", "missing", "key", "extra"],
     ] {
         let scratch = tempfile::tempdir().unwrap();
-        let status = std::process::Command::new(env!("CARGO_BIN_EXE_horizon-client"))
+        let status = std::process::Command::new(env!("CARGO_BIN_EXE_myriade-engine"))
             .args(args)
             .current_dir(scratch.path())
             .env_clear()

@@ -2,7 +2,7 @@
 //! (`Mob.aiStep`, `Panda.pickUpItem`), the bamboo a player gives them
 //! (`Panda.mobInteract`) and the start a sneeze gives the grown pandas about.
 use crate::panda_level::PandaLevel;
-use horizon_client::{
+use myriade_engine::{
     entities::ItemEntity,
     items::ItemStack,
     join_seq::RestoreOrder,
@@ -86,12 +86,12 @@ pub fn interact_panda<L: PandaLevel + ?Sized>(l: &mut L, index: usize, item: &st
     let mut loved = false;
     if m.is_baby() {
         // Panda.mobInteract: a baby an age lock holds back passes.
-        if !horizon_client::mobs::ai::can_age_up(m) {
+        if !myriade_engine::mobs::ai::can_age_up(m) {
             return false;
         }
         // ageUp((int) (-getAge() / 20 * 0.1F), true).
         let seconds = ((-m.extra.age / 20) as f32 * 0.1) as i32;
-        horizon_client::mobs::ai::age_up(m, seconds, true);
+        myriade_engine::mobs::ai::age_up(m, seconds, true);
     } else if m.extra.age == 0 && m.extra.in_love <= 0 {
         m.extra.in_love = 600;
         m.extra.love_player = true;

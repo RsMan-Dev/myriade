@@ -9,8 +9,8 @@ use crate::hostile::PlayerState;
 use crate::targeting::Who;
 use crate::trident::{forget, HitBonus, Pickup, Planted, Trident, BLOW};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::spawn_rules::SpawnLevel;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::spawn_rules::SpawnLevel;
 use horizon_core::geometry::Vec3;
 
 /// What a blow does: the damage the flight deals (base plus the enchantment bonus), and whether Channeling strikes the victim.

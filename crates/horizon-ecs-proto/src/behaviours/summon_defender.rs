@@ -6,7 +6,7 @@ use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::cow::*;
 use crate::goals::{self, Events};
-use horizon_client_lib::mobs::{
+use myriade_engine_lib::mobs::{
     data::{SOLID, STURDY_TOP},
     spawn_rules::{is_valid_empty_spawn, SpawnLevel},
     Species,

@@ -1,6 +1,6 @@
 //! `/weather`.
 use super::host::{CommandHost, R, int};
-use horizon_client::{command::Context, text::Text};
+use myriade_engine::{command::Context, text::Text};
 use horizon_core::random::{LevelRandom, RandomSource};
 
 /// What `/weather` needs from the game.

@@ -83,7 +83,7 @@ fn drop_carried(w: &mut World, e: Entity) {
         let id = crate::goals::equipped(w, e, crate::goals::Slot::Off);
         if let Some(name) = crate::items::item_name(id) {
             crate::equipment::take_slot(w, e, crate::goals::Slot::Off);
-            crate::behaviours::shear::drop_stacks(w, vec![horizon_client_lib::items::ItemStack::new(name, 1)], at);
+            crate::behaviours::shear::drop_stacks(w, vec![myriade_engine_lib::items::ItemStack::new(name, 1)], at);
         }
     }
     let stacks = crate::item_store::death_stacks(w, e);

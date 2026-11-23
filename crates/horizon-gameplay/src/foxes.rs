@@ -2,7 +2,7 @@
 //! `Fox.canHoldItem`, `Dolphin.pickUpItem`) and where `FoxSearchForItemsGoal` and
 //! `Dolphin.MoveToItemGoal` walk to.
 use crate::{item_areas::ItemAreas, mob_level::MobLevel};
-use horizon_client::{
+use myriade_engine::{
     items::Items,
     mobs::{
         Species, dolphin,
@@ -131,7 +131,7 @@ pub fn tick_dolphins<L: MobLevel + ?Sized>(l: &mut L) {
                                 e.position.z.floor() as i32,
                             ))
                             .fluid
-                            == horizon_client::blocks::Fluid::Water
+                            == myriade_engine::blocks::Fluid::Water
                 })
                 .map(|e| [e.position.x, e.position.y, e.position.z])
         } else {

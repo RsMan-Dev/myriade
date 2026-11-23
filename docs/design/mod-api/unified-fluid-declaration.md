@@ -111,12 +111,12 @@ Verified current owners (line numbers describe this checkout):
 | Route | Owner and required change |
 | --- | --- |
 | File declarations, generated blocks/buckets | `crates/horizon-mod-package/src/content.rs:509`, `:521`, `:565`, `:877`: replace FluidFile/FluidLook split with one validated Fluid |
-| Code declaration ingress | `crates/horizon-mod-vocab/src/parts/fluids.rs:589`, `:634`; `crates/horizon-client/src/game/modding/api_values/content_declarations.rs:448`: replace world-only registrar and conversion with unified input |
-| Registration and merge | `crates/horizon-client/src/mod_content.rs:95`, `:131`, `:157`: remove independent merging/override semantics; one owner, one publication pass |
+| Code declaration ingress | `crates/horizon-mod-vocab/src/parts/fluids.rs:589`, `:634`; `crates/myriade-engine/src/game/modding/api_values/content_declarations.rs:448`: replace world-only registrar and conversion with unified input |
+| Registration and merge | `crates/myriade-engine/src/mod_content.rs:95`, `:131`, `:157`: remove independent merging/override semantics; one owner, one publication pass |
 | Runtime identity and ticks | `crates/horizon-world/src/fluid.rs:150`, `:210`; `crates/horizon-world/src/level/tick.rs:1815`, `:1864`: retain kinds and tick matching |
 | Flow, bucket placement and pickup | `crates/horizon-world/src/level/fluids.rs:184`, `:312`, `:365`: consume resolved template/rules and preserve own block |
-| Client appearance | `crates/horizon-client-render/src/fluid_models.rs:32`, `:53`: index shared declaration appearance, retain model overrides |
-| Save/cache/worldgen ticks | `crates/horizon-client/src/save.rs:627`; `crates/horizon-world/src/level/data/cache.rs:629`; `crates/horizon-world/src/worldgen/generator_decoration.rs:874`: retain name/tick conversions |
+| Client appearance | `crates/myriade-level/src/fluid_models.rs:32`, `:53`: index shared declaration appearance, retain model overrides |
+| Save/cache/worldgen ticks | `crates/myriade-engine/src/save.rs:627`; `crates/horizon-world/src/level/data/cache.rs:629`; `crates/horizon-world/src/worldgen/generator_decoration.rs:874`: retain name/tick conversions |
 
 Single player, LAN and dedicated use the server simulation; remote clients only
 resolve synchronized content and render, never run authoritative flow callbacks.
@@ -165,7 +165,7 @@ API exists today. Current reference routes are
 `crates/horizon-world/src/level/fluids.rs:77` (timing), `:189` (drop-off),
 `:199` (slope), `:209` (conversion), `:101` (replacement), `:312` (container liquid
 placement), `:365` (source pickup), `:750` (mixing), and
-`crates/horizon-client-render/src/fluid_models.rs:32` (appearance collection).
+`crates/myriade-level/src/fluid_models.rs:32` (appearance collection).
 
 Port upstream's world-physics fixtures through the fork API: own-block spreading,
 source/flowing resolution, replacement and mixing, configurable timing/drop-off,
@@ -200,9 +200,9 @@ Only a newly created world records the validated initial schema before chunk
 publication or saves. Rebuilding mods does not migrate saved data. Implement an explicit saved-schema
 check in the implementation stage; this is not an existing loader guarantee.
 Current scheduled-fluid ticks serialize names and resolve them on load
-(`crates/horizon-client/src/save.rs:625`, `:632`, `:1982`), so renaming cannot be
+(`crates/myriade-engine/src/save.rs:625`, `:632`, `:1982`), so renaming cannot be
 treated as a process-index change. In particular, `read_ticks` uses
-`filter_map` and drops unresolved names (`crates/horizon-client/src/save.rs:605`,
+`filter_map` and drops unresolved names (`crates/myriade-engine/src/save.rs:605`,
 `:606`); accepting a new baseline could therefore silently lose old ticks. Add acceptance fixtures for both mode changes
 and name changes: refusal leaves the original save untouched. Add no alias,
 fallback parser or automatic remapping.

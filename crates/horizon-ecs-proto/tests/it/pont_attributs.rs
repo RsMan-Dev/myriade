@@ -1,7 +1,7 @@
 //! The host's writes of absorption and attribute modifiers (lot 75): the components are sparse and the value follows vanilla's order.
 use crate::common::*;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_ecs_proto::absorption::{self, Absorption};
 use horizon_ecs_proto::attr_mod::{AttrMods, Modifier, Operation, value};
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};

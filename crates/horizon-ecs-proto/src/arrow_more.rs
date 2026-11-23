@@ -13,8 +13,8 @@ use crate::targeting::{player_box, Who};
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::DeferredWorld;
-use horizon_client_lib::arrows::Pickup;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::arrows::Pickup;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// The end effects of a shot arrow, computed by the host at the launch (the enchantments, the potion of its item and the spectral glow):

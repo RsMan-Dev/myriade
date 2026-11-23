@@ -2,7 +2,7 @@
 //! client jar, libraries and version JSON from their official launcher install and the server
 //! jar they downloaded (each checked against research-lock.json), copies the game's assets and
 //! data, and runs the vanilla exporters (mods/horizon/src/test/java/dev/horizonlab/parity), which
-//! call Mojang's own code and so stay Java. The result, `.local/horizon-client/<version>` with its
+//! call Mojang's own code and so stay Java. The result, `.local/myriade-engine/<version>` with its
 //! `horizon-resources.json` manifest, is what the game's `--resources` and the launcher read.
 //!
 //! This is the Rust port of the Python preparer (tools/prepare_native_client.py and the helpers
@@ -110,16 +110,16 @@ pub struct Options {
     /// Files named one by one instead of found in `minecraft_dir` (`--version-json`,
     /// `--client-jar`, `--libraries-dir`, `--assets-dir`).
     pub inputs: artifacts::Inputs,
-    /// Where the resources go (`--output`); None for `root`'s `.local/horizon-client/<version>`.
+    /// Where the resources go (`--output`); None for `root`'s `.local/myriade-engine/<version>`.
     /// The exporters' scratch files stay in `root`'s `.local/` either way.
     pub output: Option<PathBuf>,
 }
 
-/// The prepared resources' folder: `output`, else `root`'s `.local/horizon-client/<version>`.
+/// The prepared resources' folder: `output`, else `root`'s `.local/myriade-engine/<version>`.
 pub fn resources_dir(root: &Path, version: &str, output: Option<&Path>) -> PathBuf {
     match output {
         Some(output) => output.to_path_buf(),
-        None => root.join(".local/horizon-client").join(version),
+        None => root.join(".local/myriade-engine").join(version),
     }
 }
 
@@ -1007,7 +1007,7 @@ fn steps(
             && run.previous("block_tags_sha256") == Some(&run.file_hash("block-tags.json")?)
             && run.files_unchanged("render_files_sha256", &render_files)?)
         {
-            let export = run.local.join("horizon-client-render");
+            let export = run.local.join("myriade-level");
             mkdir(&export)?;
             write_json(&export.join("tags.json"), tags)?;
             run.export(
@@ -1719,7 +1719,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("horizon-prepare-same-{}", std::process::id()));
         let local = dir.join(".local");
         assert!(same_dir(&local, &dir.join("x").join("..").join(".local")).unwrap());
-        assert!(!same_dir(&local, &local.join("horizon-client")).unwrap());
+        assert!(!same_dir(&local, &local.join("myriade-engine")).unwrap());
         // The lock it would have taken twice: once, then the output skips it.
         let _held = hold_lock(&local, &|_| {}).unwrap();
         let _ = fs::remove_dir_all(&dir);

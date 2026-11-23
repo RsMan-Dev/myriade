@@ -18,7 +18,7 @@
 //! hard cells met. The whole kernel runs only when the box is too big or not finite (`Err` from `collect`); nothing else is left to it
 //! (a world border and entity colliders do not go through here).
 mod fast;
-use horizon_client_render::collisions::SceneCollisions;
+use myriade_level::collisions::SceneCollisions;
 use horizon_core::{position::BlockPos, random::position_seed};
 use horizon_world::{collision_context::{CollisionContext, CollisionEntity, CollisionItem, EntityContextKind}, entity_obstruction::EntityIdentity};
 use horizon_core::geometry::{try_resolve_step_movement_in, Aabb, Axis, Collider, ShapeOp, Vec3, VoxelShape};
@@ -33,7 +33,7 @@ use std::{
 };
 
 type Binding<'a> = horizon_world::block_collision::BlockCollisionRegistry<'a>;
-type World = horizon_client_render::world::World;
+type World = myriade_level::world::World;
 
 pub struct Section {
     full: [u16; 256],

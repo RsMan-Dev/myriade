@@ -39,11 +39,11 @@ def main():
     report.unlink(missing_ok=True)
     sources = [Path(__file__), lab.ROOT / "research-lock.json", lab.ROOT / "Cargo.toml",
                lab.ROOT / "Cargo.lock", lab.ROOT / "tools/lab.py",
-               *sorted((lab.ROOT / "crates/horizon-client/src").rglob("*.rs")),
-               *sorted((lab.ROOT / "crates/horizon-client-render/src").rglob("*.rs"))]
+               *sorted((lab.ROOT / "crates/myriade-engine/src").rglob("*.rs")),
+               *sorted((lab.ROOT / "crates/myriade-level/src").rglob("*.rs"))]
     hashes = base.source_hashes(sources)
     with tempfile.TemporaryDirectory(prefix="horizon-tnt-state-build-") as directory:
-        command = ["cargo", "test", "--locked", "-p", "horizon-client", "--lib",
+        command = ["cargo", "test", "--locked", "-p", "myriade-engine", "--lib",
                    "--no-run", "--message-format=json"]
         with (build / "compile.jsonl").open("w", encoding="utf-8") as output:
             result = subprocess.run(command, cwd=lab.ROOT,
@@ -57,7 +57,7 @@ def main():
         if result.returncode and row.get("reason") == "compiler-message":
             print(row.get("message", {}).get("rendered", ""), file=sys.stderr, end="")
         if row.get("reason") == "compiler-artifact" and row.get("executable") \
-                and row.get("target", {}).get("name") == "horizon_client" \
+                and row.get("target", {}).get("name") == "myriade_engine" \
                 and row.get("profile", {}).get("test"):
             artifacts.append(Path(row["executable"]))
     result.check_returncode()

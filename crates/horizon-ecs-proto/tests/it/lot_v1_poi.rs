@@ -13,7 +13,7 @@ use horizon_ecs_proto::{
     poi::PoiRegistry,
     species::villager::{JOB_SITE, POTENTIAL_JOB_SITE},
 };
-use horizon_client_lib::mobs::villager;
+use myriade_engine_lib::mobs::villager;
 
 /// Mid-morning: the villager works (by night it rests).
 const DAY: i64 = 4000;

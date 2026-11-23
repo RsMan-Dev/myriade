@@ -1,7 +1,7 @@
 //! The portals through the bridge (lot 73): a forced death, the entries of the portals that moved, the rule of `NoPortal`, and the size event. Written, not run.
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::{JavaString, Tag};
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};

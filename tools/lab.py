@@ -42,7 +42,7 @@ VERSION = pinned_version()
 # The pinned version's imported jars, libraries and sources (tools/lab.py prepare), and the resources
 # horizon-prepare made from them.
 GAME = LOCAL / "minecraft" / VERSION
-RESOURCES = LOCAL / "horizon-client" / VERSION
+RESOURCES = LOCAL / "myriade-engine" / VERSION
 
 
 def version_info(client_jar=None):

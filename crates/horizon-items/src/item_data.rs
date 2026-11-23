@@ -45,7 +45,7 @@ impl ModifierRow {
 /// list (`type`, `id`, `amount`, `operation`, `slot` defaulting to `any`).
 /// An entry missing a field is skipped.
 pub fn modifier_rows(tag: &Tag) -> Vec<ModifierRow> {
-    use horizon_client_core::nbt_value::{float, text};
+    use myriade_data::nbt_value::{float, text};
     let Tag::List(entries) = tag else {
         return Vec::new();
     };
@@ -331,7 +331,7 @@ struct ConsumableComponent {
 impl ConsumableComponent {
     fn new(raw: Tag) -> Option<Arc<Self>> {
         let mut value =
-            crate::items::parse_consumable(&horizon_client_core::scoreboard::tag_to_json(&raw))
+            crate::items::parse_consumable(&myriade_data::scoreboard::tag_to_json(&raw))
                 .ok()?;
         value.seconds = raw
             .get("consume_seconds")
@@ -468,7 +468,7 @@ impl StackData {
     }
     /// `SetNameFunction.run`: retain a loot name as its original component.
     pub fn set_loot_name(&mut self, id: &str, text: &serde_json::Value) {
-        let tag = horizon_client_core::scoreboard::json_to_tag(text);
+        let tag = myriade_data::scoreboard::json_to_tag(text);
         self.set_other(id, Some(tag));
     }
     /// Apply an ordered loot component patch without changing its NBT type.
@@ -525,7 +525,7 @@ impl StackData {
         if id == "minecraft:death_protection" {
             let replacement = match value.as_ref() {
                 Some(raw) => match crate::items::parse_death_effects(
-                    &horizon_client_core::scoreboard::tag_to_json(raw),
+                    &myriade_data::scoreboard::tag_to_json(raw),
                 ) {
                     Ok(effects) => Some(Arc::new(effects)),
                     Err(_) => return,
@@ -648,7 +648,7 @@ pub fn destroyed_container(stack: &mut ItemStack) -> Vec<ItemStack> {
 /// `NbtOps.getBooleanValue`, used by boolean component codecs: every numeric tag
 /// is true unless its double value is zero. In particular, fractions stay true.
 pub fn component_bool(value: &Tag) -> Option<bool> {
-    horizon_client_core::component_codec::nbt_bool(value)
+    myriade_data::component_codec::nbt_bool(value)
 }
 
 /// `FoodProperties.DIRECT_CODEC`: required numeric nutrition/saturation and an
@@ -945,9 +945,9 @@ impl ItemStack {
     }
     /// `getItemName`'s component as text: the stack's own `minecraft:item_name`, else the
     /// item's default where it is not its description id's ([`default_names`]).
-    pub fn item_name_text(&self) -> Option<horizon_client_core::text::Text> {
+    pub fn item_name_text(&self) -> Option<myriade_data::text::Text> {
         match self.data().and_then(|d| d.other("minecraft:item_name")) {
-            Some(name) => Some(horizon_client_core::component::name_text(name)),
+            Some(name) => Some(myriade_data::component::name_text(name)),
             None => default_names::of(&self.item),
         }
     }
@@ -1231,7 +1231,7 @@ impl WrittenBook {
         let mut tags = Vec::with_capacity(self.page_tags.len());
         for tag in &self.page_tags {
             let resolved = resolve_page_tag(tag, &mut text);
-            let plain = horizon_client_core::component::name_text(&resolved).plain();
+            let plain = myriade_data::component::name_text(&resolved).plain();
             if plain.chars().count() > 32767 {
                 return false;
             }
@@ -1259,7 +1259,7 @@ fn read_text(t: &Tag) -> Option<String> {
         // ComponentSerialization.CODEC also takes a list (its first element
         // styling the rest), as servers behind ViaVersion send book pages.
         Tag::Compound(_) | Tag::List(_) => {
-            Some(horizon_client_core::component::name_text(t).plain())
+            Some(myriade_data::component::name_text(t).plain())
         }
         _ => None,
     }
@@ -1363,7 +1363,7 @@ fn template_from(tag: &Tag) -> Option<ItemStack> {
 /// The stack a `show_item` hover event holds (`HoverEvent.ShowItem`): its
 /// `{id, count?, components?}` object.
 pub fn stack_from_hover(event: &serde_json::Value) -> Option<ItemStack> {
-    template_from(&horizon_client_core::scoreboard::json_to_tag(event))
+    template_from(&myriade_data::scoreboard::json_to_tag(event))
 }
 /// Sorted-key, type-annotated text of a tag (the differential harnesses
 /// print the same form from the vanilla side).
@@ -1890,7 +1890,7 @@ pub fn decode_components(components: Option<&Tag>) -> (u32, Option<Box<StackData
         death_protection: c
             .get("minecraft:death_protection")
             .and_then(|raw| {
-                crate::items::parse_death_effects(&horizon_client_core::scoreboard::tag_to_json(
+                crate::items::parse_death_effects(&myriade_data::scoreboard::tag_to_json(
                     raw,
                 ))
                 .ok()
@@ -3059,7 +3059,7 @@ mod tests {
             encode_components(&stack)
                 .unwrap()
                 .get("minecraft:custom_name"),
-            Some(&horizon_client_core::scoreboard::json_to_tag(&styled))
+            Some(&myriade_data::scoreboard::json_to_tag(&styled))
         );
     }
 
@@ -3072,7 +3072,7 @@ mod tests {
             &Some(horizon_core::json_nbt::json_to_tag(&name).unwrap()),
         );
         assert_eq!(stack.custom_name().as_deref(), Some("Prize"));
-        let expected = horizon_client_core::scoreboard::json_to_tag(&name);
+        let expected = myriade_data::scoreboard::json_to_tag(&name);
         assert_eq!(
             encode_components(&stack)
                 .unwrap()
@@ -3322,7 +3322,7 @@ mod tests {
                 .get("minecraft:death_protection")
                 .and_then(|raw| {
                     crate::items::parse_death_effects(
-                        &horizon_client_core::scoreboard::tag_to_json(raw),
+                        &myriade_data::scoreboard::tag_to_json(raw),
                     )
                     .ok()
                 })

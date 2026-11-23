@@ -11,7 +11,7 @@ use horizon_ecs_proto::goals::*;
 fn births(drops: bool) -> (bool, u32) {
     let mut h = Herd::with_slab_awake(60, true, false);
     let mut level = *h.world.resource::<Level>();
-    let rule: &'static horizon_client_lib::mobs::MobWorld<'static> = Box::leak(Box::new(horizon_client_lib::mobs::MobWorld { mob_drops: drops, ..level.mw.0.clone() }));
+    let rule: &'static myriade_engine_lib::mobs::MobWorld<'static> = Box::leak(Box::new(myriade_engine_lib::mobs::MobWorld { mob_drops: drops, ..level.mw.0.clone() }));
     level.mw = Mw(rule);
     *h.world.resource_mut::<Level>() = level;
     let mut sp = *h.world.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:cow").unwrap();

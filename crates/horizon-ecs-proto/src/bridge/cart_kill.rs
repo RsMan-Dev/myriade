@@ -12,8 +12,8 @@ use crate::loot::LevelRandom;
 use crate::minecart::{Fuse, Kind};
 use crate::seat;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 impl EcsWorld {

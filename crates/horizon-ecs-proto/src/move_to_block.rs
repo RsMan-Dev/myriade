@@ -5,7 +5,7 @@
 //! search is a deadline, not a poll) and asks `invalid_after_change` when blocks changed in its zone.
 use bevy_ecs::prelude::*;
 use crate::rules::move_to_block::{any_in_box, can_continue_ticks, first_valid, is_far, reach_point, search_zone, target_point};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 #[derive(Component, Clone, Debug, Default)]
 pub struct MoveToBlock {

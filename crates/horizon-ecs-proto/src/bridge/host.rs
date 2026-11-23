@@ -19,7 +19,7 @@ use crate::nbt::{self, Saved};
 use crate::targeting::Who;
 use crate::zone;
 use bevy_ecs::{entity::Entity, entity_disabling::Disabled, prelude::*, query::Allow};
-use horizon_client_lib::mobs::{MobTypes, MobWorld};
+use myriade_engine_lib::mobs::{MobTypes, MobWorld};
 use horizon_core::{geometry::{Aabb, Vec3}, nbt::Compound, random::LegacyRandom};
 use std::{
     collections::HashMap,
@@ -439,7 +439,7 @@ impl EcsWorld {
     }
 
     /// `interact`, the rules being given the whole stack used (`used_stack::UsedStack`) for the length of the call.
-    pub fn interact_with(&mut self, mw: &MobWorld<'_>, e: Entity, player: u32, hand: u8, stack: horizon_client_lib::items::ItemStack, creative: bool) -> bool {
+    pub fn interact_with(&mut self, mw: &MobWorld<'_>, e: Entity, player: u32, hand: u8, stack: myriade_engine_lib::items::ItemStack, creative: bool) -> bool {
         self.world.insert_resource(crate::used_stack::UsedStack { stack, creative });
         let used = self.interact(mw, e, player, hand);
         self.world.remove_resource::<crate::used_stack::UsedStack>();

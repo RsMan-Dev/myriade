@@ -2,8 +2,8 @@
 //! is taken once, a ray enters the cart in its path and misses the one beside it, and a box returns only the carts inside it.
 use crate::common::*;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Tag;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
@@ -37,7 +37,7 @@ fn a_slot_reads_back_and_an_absent_slot_is_refused() {
 #[test]
 fn the_loot_is_taken_once() {
     let (mut h, e, _) = fixture();
-    h.world_mut().get_mut::<Contents>(e).expect("a chest cart has contents").loot = Some(horizon_client_render::chunk::PendingContainerLoot {
+    h.world_mut().get_mut::<Contents>(e).expect("a chest cart has contents").loot = Some(myriade_level::chunk::PendingContainerLoot {
         table: Tag::String("minecraft:chests/simple_dungeon".into()),
         seed: Some(Tag::Long(42)),
     });

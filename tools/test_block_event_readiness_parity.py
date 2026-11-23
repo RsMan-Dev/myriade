@@ -38,7 +38,7 @@ def main():
     lock, jars, libraries = base.verify_artifacts()
     source = lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaBlockEventReadinessOracle.java'
     sources = [Path(__file__), source, lab.ROOT / 'Cargo.lock',
-               lab.ROOT / 'crates/horizon-client/src/game.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game.rs',
                lab.ROOT / 'crates/horizon-world/src/level/mod.rs',
                lab.ROOT / 'crates/horizon-world/src/level/pistons.rs',
                lab.ROOT / 'crates/horizon-world/src/level/sculk.rs',

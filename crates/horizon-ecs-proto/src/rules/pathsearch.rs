@@ -1,4 +1,4 @@
-use horizon_client_lib::mobs::path::PathType;
+use myriade_engine_lib::mobs::path::PathType;
 
 /// `WalkNodeEvaluator.getPathTypeStatic` on an open cell: the type it takes from the block below (`None`: the neighbours decide it).
 pub fn type_on_below(below: PathType) -> Option<PathType> {

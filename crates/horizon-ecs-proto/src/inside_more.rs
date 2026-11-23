@@ -22,7 +22,7 @@ use crate::projectile::{Flight, Flying};
 use crate::trident::{Trident, TridentFlying};
 use crate::tnt::Primed;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_items::blocks::Fluid;
 use horizon_world::registry::BlockStateId;

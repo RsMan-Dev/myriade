@@ -100,7 +100,7 @@ fn flee_tick(w: &mut World) {
         let at = [(p.x + f[0]).floor() as i32, (p.y + f[1]).floor() as i32, (p.z + f[2]).floor() as i32];
         let mw = w.resource::<Level>().mw.0;
         let air = mw.facts.is_air(mw.world.block(at[0], at[1], at[2]));
-        if mw.fluid(at[0], at[1], at[2]) == horizon_client_lib::blocks::Fluid::Water || air {
+        if mw.fluid(at[0], at[1], at[2]) == myriade_engine_lib::blocks::Fluid::Water || air {
             if let Some(mut st) = w.get_mut::<SquidState>(e) {
                 st.vector = rules::flee_vector(f, air);
             }

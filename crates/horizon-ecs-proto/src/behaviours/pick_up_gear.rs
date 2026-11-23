@@ -11,7 +11,7 @@ use super::*;
 use crate::items::{self, worn_in};
 use crate::rules::pick_up_gear::{drop_chance, drops_old};
 use crate::{cow::*, goals::*, item};
-use horizon_client_lib::mobs::equip::{can_replace_current_item, Facts, Slot as MSlot};
+use myriade_engine_lib::mobs::equip::{can_replace_current_item, Facts, Slot as MSlot};
 use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
@@ -141,7 +141,7 @@ pub fn look(w: &mut World, e: Entity) {
         }
         w.entity_mut(e).insert(Looted(looted | slot_bit(slot)));
         if drop_old && let (Some(at), Some(stack)) = (w.get::<Pos>(e).map(|p| p.0), items::item_name(old)) {
-            item::drop_item(w, horizon_client_lib::items::ItemStack::new(stack, 1), at, Vec3::ZERO, 10);
+            item::drop_item(w, myriade_engine_lib::items::ItemStack::new(stack, 1), at, Vec3::ZERO, 10);
         }
     }
 }

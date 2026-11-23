@@ -9,7 +9,7 @@ fn tagged_fixture(stone: bool) -> Fixture {
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
             std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../.local/horizon-client")
+                .join("../../.local/myriade-engine")
                 .join(horizon_core::VANILLA_VERSION)
         });
     let root = root.as_path();

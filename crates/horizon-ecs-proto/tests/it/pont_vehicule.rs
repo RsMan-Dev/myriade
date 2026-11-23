@@ -2,8 +2,8 @@
 //! offers of a merchant, read and written by entity through the host world.
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_ecs_proto::behaviours::trade_offers::Merchant;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup, PlayerFact};
 use horizon_ecs_proto::cow::now_of;

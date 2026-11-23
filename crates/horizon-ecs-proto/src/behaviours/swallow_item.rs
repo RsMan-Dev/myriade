@@ -67,7 +67,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
 fn start(w: &mut World, e: Entity, inst: Inst) {
     let Some(t) = w.get::<Taking>(e).cloned() else { return };
     w.entity_mut(e).remove::<Taking>();
-    let archetype = horizon_client_lib::mobs::sulfur_cube::archetype_of(&t.name);
+    let archetype = myriade_engine_lib::mobs::sulfur_cube::archetype_of(&t.name);
     if let Some(a) = archetype {
         hold(w, e, t.name.clone(), a);
     }

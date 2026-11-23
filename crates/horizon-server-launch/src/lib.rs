@@ -16,7 +16,7 @@ use std::{
 /// The game's program names, most specific first: the server build (the game without sound or
 /// controllers, so it needs neither ALSA nor udev on Linux; `horizon-server-linux-x86_64.tar.gz` holds it),
 /// else the full game.
-const PROGRAMS: [&str; 2] = ["horizon-engine", "horizon-client"];
+const PROGRAMS: [&str; 2] = ["horizon-engine", "myriade-engine"];
 
 fn exe(name: &str) -> String {
     format!("{name}{}", std::env::consts::EXE_SUFFIX)
@@ -68,7 +68,7 @@ fn program_near(
         })
         .find(|p| p.is_file())
         .ok_or_else(|| {
-            "the game program (horizon-client) is neither beside horizon-server nor on the PATH: \
+            "the game program (myriade-engine) is neither beside horizon-server nor on the PATH: \
              install it there, or set engine.path in server.toml"
                 .into()
         })
@@ -137,10 +137,10 @@ pub fn resource_candidates(config: &Config, dir: &Path, program: Option<&Path>) 
     }
     let version = GAME_VERSION;
     let mut out = vec![dir.join("resources")];
-    // A release folder or a checkout: .local/horizon-client/<version> beside the program or above it.
+    // A release folder or a checkout: .local/myriade-engine/<version> beside the program or above it.
     if let Some(program) = program {
         for ancestor in program.ancestors().skip(1).take(4) {
-            out.push(ancestor.join(".local/horizon-client").join(version));
+            out.push(ancestor.join(".local/myriade-engine").join(version));
         }
     }
     out
@@ -246,7 +246,7 @@ mod tests {
         std::fs::create_dir_all(&server).unwrap();
         let supervisor = bin.join(format!("horizon-server{}", std::env::consts::EXE_SUFFIX));
         let game = bin.join(format!("horizon-engine{}", std::env::consts::EXE_SUFFIX));
-        let client = bin.join(format!("horizon-client{}", std::env::consts::EXE_SUFFIX));
+        let client = bin.join(format!("myriade-engine{}", std::env::consts::EXE_SUFFIX));
         // Invalid executables prove description does not spawn or preflight any program.
         for path in [&supervisor, &game, &client] {
             std::fs::write(path, "not executable").unwrap();
@@ -338,7 +338,7 @@ mod tests {
     fn low_memory_turns_huge_pages_off_for_the_game() {
         let thp = |low_memory| {
             let dir = std::env::temp_dir();
-            let command = command(Path::new("horizon-client"), &dir, &dir, low_memory).unwrap();
+            let command = command(Path::new("myriade-engine"), &dir, &dir, low_memory).unwrap();
             command
                 .get_envs()
                 .find(|(k, _)| *k == "MIMALLOC_ALLOW_THP")
@@ -352,10 +352,10 @@ mod tests {
     fn resources_are_searched_in_order() {
         let mut config = Config::default();
         let dir = Path::new("/srv/mc");
-        let program = Path::new("/opt/horizon/target/release/horizon-client");
+        let program = Path::new("/opt/horizon/target/release/myriade-engine");
         let found = resource_candidates(&config, dir, Some(program));
         assert_eq!(found[0], Path::new("/srv/mc/resources"));
-        assert!(found.contains(&PathBuf::from("/opt/horizon/.local/horizon-client/26.3")));
+        assert!(found.contains(&PathBuf::from("/opt/horizon/.local/myriade-engine/26.3")));
         config.engine.resources = "/data/res".into();
         assert_eq!(
             resource_candidates(&config, dir, Some(program)),
@@ -366,9 +366,9 @@ mod tests {
     #[test]
     fn resources_prepared_without_sounds_are_found() {
         let root = std::env::temp_dir().join(format!("horizon-server-res-{}", std::process::id()));
-        let prepared = root.join(".local/horizon-client/26.3");
+        let prepared = root.join(".local/myriade-engine/26.3");
         std::fs::create_dir_all(&prepared).unwrap();
-        let program = root.join("horizon-client");
+        let program = root.join("myriade-engine");
         let config = Config::default();
         let server = root.join("server");
         assert!(resources(&config, &server, Some(&program)).is_err());

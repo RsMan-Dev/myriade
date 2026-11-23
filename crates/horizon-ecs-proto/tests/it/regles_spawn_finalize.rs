@@ -37,7 +37,7 @@ fn kit(w: &World, e: Entity) -> (bool, bool, Vec<u32>) {
 /// The same birth as `born_finalized`, finalized by hand with the seed's draws, in `h`'s world.
 fn by_hand(h: &mut Herd, sp: &Species, seed: u64, reason: SpawnReason) -> (bool, bool, Vec<u32>) {
     let mw = h.world.resource::<Level>().mw.0;
-    let special = horizon_client_lib::mobs::spawning::LocalDifficulty::at(mw.world, AT).special();
+    let special = myriade_engine_lib::mobs::spawning::LocalDifficulty::at(mw.world, AT).special();
     let e = born(&mut h.world, sp, AT, seed, f64::MAX);
     finalize_in(&mut h.world, mw, e, reason, special, None, &mut LegacyRandom::new(seed as i64));
     kit(&h.world, e)

@@ -2,8 +2,8 @@
 //! lead of a player are written by it and read back; an owner read before its player joined waits for the connection. Written, not run.
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::nbt::{Compound, Tag};
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::nbt;

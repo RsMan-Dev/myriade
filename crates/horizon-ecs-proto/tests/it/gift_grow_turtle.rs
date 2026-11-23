@@ -35,7 +35,7 @@ fn with_mob_drops_off_the_growth_drops_nothing() {
     }
     let mut h = Herd::with_slab_awake(60, true, false);
     let mut level = *h.world.resource::<Level>();
-    let off: &'static horizon_client_lib::mobs::MobWorld<'static> = Box::leak(Box::new(horizon_client_lib::mobs::MobWorld { mob_drops: false, ..level.mw.0.clone() }));
+    let off: &'static myriade_engine_lib::mobs::MobWorld<'static> = Box::leak(Box::new(myriade_engine_lib::mobs::MobWorld { mob_drops: false, ..level.mw.0.clone() }));
     level.mw = Mw(off);
     *h.world.resource_mut::<Level>() = level;
     let sp = named(&h, "minecraft:turtle");

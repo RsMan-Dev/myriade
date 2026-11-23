@@ -5,7 +5,7 @@ use crate::cow::{Cell, DeathPolicy, Dying, GrowAt, Index, Moving, Pos, Sizes, Ya
 use crate::goals::{Events, Head};
 use crate::portal;
 use bevy_ecs::{entity::Entity, prelude::*};
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 
 impl EcsWorld {
     /// `Entity.kill`: a lethal hit of cause `generic_kill`, which a totem does not stop (`#bypasses_invulnerability`). Under

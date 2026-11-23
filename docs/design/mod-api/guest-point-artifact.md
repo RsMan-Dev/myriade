@@ -178,7 +178,7 @@ inventory; then agree manifest/authentication and limits with SDK staging owners
 then implement artifact production/admission using existing validation/emission;
 finally run equivalence, corruption and actual-mod measurements before deciding
 whether to enable the route. Put future logic/tests in separate modules; no
-growth of the over-limit `crates/horizon-client/src/game.rs` for instrumentation.
+growth of the over-limit `crates/myriade-engine/src/game.rs` for instrumentation.
 
 - **Trust anchor and packaging:** recommend a sibling artifact authenticated by
   the engine SDK manifest; agree its manifest owner and local-source verification

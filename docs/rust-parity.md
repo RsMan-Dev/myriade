@@ -1329,7 +1329,7 @@ separate phase from `tickEffects`.
 ## Scoreboards, teams and subtitles
 
 `tools/test_scoreboard_parity.py` runs vanilla's own `Scoreboard` (what
-`ServerScoreboard` extends) and `horizon_client::scoreboard` on 500 scripted
+`ServerScoreboard` extends) and `myriade_engine::scoreboard` on 500 scripted
 cases, about 81,000 operations: objectives with every kind of criteria (custom,
 team kill, and statistics in every spelling `ObjectiveCriteria.byName` accepts,
 which resolve to their canonical names), display names, render types,
@@ -1385,7 +1385,7 @@ which the client does not handle yet.
 The loom, the crafter and the recipe book run on code checked against
 vanilla's own classes, and the game uses that code:
 
-- **Menus.** `horizon_client::menu` runs `LoomMenu` (selectable patterns,
+- **Menus.** `myriade_engine::menu` runs `LoomMenu` (selectable patterns,
   `clickMenuButton`, the six-layer limit, quick moves, the result's `onTake`)
   and the server's `CrafterMenu` over the block entity (the result following
   the grid, `setSlotState`, a filled disabled slot enabling itself) besides the
@@ -1399,7 +1399,7 @@ vanilla's own classes, and the game uses that code:
   with disabled slots and containers, other crafters or air in front, comparing
   block changes, container contents, the animation ticks, triggered flag,
   comparator signal, shot items, level events and the level random.
-- **Recipe placement.** `horizon_client::menu::place` ports `ServerPlaceRecipe`
+- **Recipe placement.** `myriade_engine::menu::place` ports `ServerPlaceRecipe`
   with `StackedContents`' recipe picker for the inventory, crafting table and
   furnaces. Vanilla counts the available items in a hash map ordered by
   identity hash codes, an order that changes between runs and decides which
@@ -1449,7 +1449,7 @@ output is taken, and the limited crafting game rule. Tooltips in general lack
 the lines `item_tooltip` writes for recipe results (the game's hover tooltips
 do not show attribute modifiers yet).
 
-`horizon_client::hotbar` reads the creative toolbars of an older `hotbar.nbt`
+`myriade_engine::hotbar` reads the creative toolbars of an older `hotbar.nbt`
 through the `HOTBAR` data fixers (`EmptyItemInHotbarFix`, every item stack
 fixer): `tools/test_hotbar_parity.py` loads generated files of 34 versions with
 the real `HotbarManager`. The creative screen's Saved Hotbars tab shows its
@@ -1458,7 +1458,7 @@ rows, and the save and load keys write and read it
 
 ## Player list and world border rendering
 
-`horizon_client::tab_list` lays out vanilla's `PlayerTabOverlay` as draw calls:
+`myriade_engine::tab_list` lays out vanilla's `PlayerTabOverlay` as draw calls:
 the listed players in `PLAYER_COMPARATOR` order (higher list order first,
 spectators last, team name, profile name ignoring case), at most 80 of them in
 columns of 20 rows; heads with the default skin for the UUID, flipped for
@@ -1484,7 +1484,7 @@ its default skin. Horizon has no "chat background only" option, so the row
 background is vanilla's default.
 
 The client `WorldBorder` wraps `horizon_core::geometry::border` (checked by
-`test_world_border_parity.py`) and `horizon_client::border_render` ports
+`test_world_border_parity.py`) and `myriade_engine::border_render` ports
 `WorldBorderRenderer`: `extract`'s fade (`(1 - distance / render distance)^4`)
 and status colour (growing, shrinking, stationary), the wall buffer that is only
 rebuilt when the border moves, the model offset and the texture scroll of
@@ -1501,7 +1501,7 @@ dimensions.
 
 ## Resource pack screen and chat input
 
-`horizon_client::pack_screen` is `PackSelectionScreen` as a state machine: the
+`myriade_engine::pack_screen` is `PackSelectionScreen` as a state machine: the
 header, the two `TransferableSelectionList`s (rows, header entries, scroll,
 selection outline, focus, the hover overlay and its arrows, incompatible packs'
 tint and text), the search box filtering both lists, the footer buttons and
@@ -1513,7 +1513,7 @@ the break). `tools/test_pack_screen_parity.py` drives a real
 `PackSelectionScreen` (`VanillaPackScreenOracle`) through 3,000 random sessions
 of clicks, typing and the mouse wheel and compares every call.
 
-`horizon_client::chat::ChatScreen` ports `ChatScreen`, its `EditBox` and
+`myriade_engine::chat::ChatScreen` ports `ChatScreen`, its `EditBox` and
 `CommandSuggestions`: argument colouring, usage lines and parse errors, the
 suggestion list (sorting, hover, Tab and Shift+Tab, clicks), history and the
 input's editing keys. `tools/test_chat_screen_parity.py` runs a real
@@ -1524,7 +1524,7 @@ suggestions the server's dispatcher answers as
 input's state and every call. Not compared: the mouse wheel over the
 suggestion list and clipboard keys.
 
-`horizon_client::creative` is the creative inventory. Its tabs come from
+`myriade_engine::creative` is the creative inventory. Its tabs come from
 `creative-inventory.json`, which `VanillaCreativeTabsExporter` writes from
 vanilla's own `CreativeModeTabs.tryRebuildTabContents` over the vanilla data
 pack's registries: every stack with its components, and for each stack of the
@@ -1546,7 +1546,7 @@ search stacks, 6,845 searches). Not compared: the saved hotbars tab.
 
 ## Pillager patrols and raids
 
-`horizon_client::patrol` ports `PatrolSpawner` and `horizon_client::raid` ports
+`myriade_engine::patrol` ports `PatrolSpawner` and `myriade_engine::raid` ports
 `Raid` and `Raids`; the game runs both through them. `tools/test_raid_parity.py`
 runs vanilla's own classes in `VanillaRaidOracle`, on a stand-in `ServerLevel`
 built from boxes of blocks and light, a biome, village sections, village points

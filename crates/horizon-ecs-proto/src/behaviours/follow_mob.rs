@@ -5,7 +5,7 @@
 //! change, its arrival in the active zone. A goal that ends asks for itself again (the selector's phase), as the `Mob` asks `canUse` again.
 use super::*;
 use crate::{cow::*, goals::*};
-use horizon_client_lib::mobs::path::PathType;
+use myriade_engine_lib::mobs::path::PathType;
 use horizon_core::geometry::Vec3;
 use crate::rules::follow_mob::{recalc_after, scan_reach, step_back};
 

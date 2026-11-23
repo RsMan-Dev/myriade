@@ -22,7 +22,7 @@ Wasm packages use API hooks and API injection points, not engine internals. Inst
 enable their `.hmod` packages in the server game folder's `horizon-mods/`. A plain engine
 build refuses API listeners by name; listeners require the staged SDK engine.
 
-A mod's crate depends on `horizon-mod-api` and never on the game: a `horizon-client` dependency,
+A mod's crate depends on `horizon-mod-api` and never on the game: a `myriade-engine` dependency,
 under any name or target, is refused naming the mod and the key, before toolchain work. The mod API
 has no sound or controller features, so server and client builds stage the same crate.
 

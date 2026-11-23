@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Entities other than mobs and items, tracked to a vanilla client, against vanilla's dedicated server.
 
-A vanilla dedicated server and Horizon's (`horizon-client --dedicated --nogui`) each serve a copy of one flat
+A vanilla dedicated server and Horizon's (`myriade-engine --dedicated --nogui`) each serve a copy of one flat
 world vanilla generated first, with the same server.properties (offline, view distance 4). A vanilla-codec
 client (VanillaProtocolClient in its entity mode) joins, and once its chunks are in it asks for the scene: the
 console freezes the ticks, builds a wall and a rail and summons, around the spawn, every kind of minecart (one
@@ -176,14 +176,14 @@ def main():
     # SERVER_ENTITIES_SIDES=vanilla (or horizon) runs one side and reads the other's last transcript.
     sides = [s for s in os.environ.get('SERVER_ENTITIES_SIDES', 'vanilla,horizon').split(',') if s]
     if 'horizon' in sides:
-        subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'horizon-client'], cwd=lab.ROOT,
+        subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'myriade-engine'], cwd=lab.ROOT,
                        check=True, capture_output=True)
     import json
     metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'],
                                                   cwd=lab.ROOT, text=True))
-    binary = Path(metadata['target_directory']) / 'fast' / ('horizon-client.exe' if os.name == 'nt' else 'horizon-client')
+    binary = Path(metadata['target_directory']) / 'fast' / ('myriade-engine.exe' if os.name == 'nt' else 'myriade-engine')
     vanilla_server = ['java', '-Xmx2g', '-Duser.timezone=UTC', '-cp', dependencies, 'net.minecraft.server.Main', 'nogui']
-    horizon_server = [binary, '--resources', lab.LOCAL / 'horizon-client/26.3', '--dedicated', '--nogui']
+    horizon_server = [binary, '--resources', lab.LOCAL / 'myriade-engine/26.3', '--dedicated', '--nogui']
     client = ['java', '-Xmx1g', '-Duser.timezone=UTC', '-cp', str(classes) + os.pathsep + dependencies,
               'dev.horizonlab.parity.VanillaProtocolClient']
 

@@ -9,7 +9,7 @@ use crate::goals::Events;
 use crate::nbt::{owner, Field};
 use crate::rules::{no_attrs, Rule};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use std::borrow::Cow;
 use std::sync::Mutex;

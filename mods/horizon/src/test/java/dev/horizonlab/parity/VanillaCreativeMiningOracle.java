@@ -22,7 +22,7 @@ public final class VanillaCreativeMiningOracle {
         net.minecraft.SharedConstants.tryDetectVersion();
         net.minecraft.server.Bootstrap.bootStrap();
         var defaults = JsonParser.parseString(Files.readString(Path.of(args[0]).getParent()
-            .getParent().resolve("horizon-client/26.3/items.json"))).getAsJsonObject();
+            .getParent().resolve("myriade-engine/26.3/items.json"))).getAsJsonObject();
         for (var entry : defaults.entrySet()) {
             var item = BuiltInRegistries.ITEM.getValue(Identifier.parse(entry.getKey()));
             var components = DataComponentMap.builder();

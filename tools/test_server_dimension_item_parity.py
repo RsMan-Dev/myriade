@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """An item teleported into another level from a dedicated server's console, against vanilla's.
 
-A vanilla dedicated server and Horizon's (`horizon-client --dedicated --nogui`) each serve a copy of one flat
+A vanilla dedicated server and Horizon's (`myriade-engine --dedicated --nogui`) each serve a copy of one flat
 world vanilla generated first. With no player online, the console force-loads the chunk at 0, 0 of the Overworld
 and of the Nether, clears the air there, and summons a floating stick item (a fixed UUID, no gravity, moving) in
 the Overworld. It then runs `execute in minecraft:the_nether run tp @e[type=minecraft:item] 0.5 100 0.5`:
@@ -91,11 +91,11 @@ def main():
     report = build / 'report.json'
     report.unlink(missing_ok=True)
     dependencies = os.pathsep.join(map(str, [jars['server'], *libraries]))
-    subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'horizon-client'],
+    subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'myriade-engine'],
                    cwd=lab.ROOT, check=True, capture_output=True)
-    binary = lab.cargo_target() / 'fast' / ('horizon-client.exe' if os.name == 'nt' else 'horizon-client')
+    binary = lab.cargo_target() / 'fast' / ('myriade-engine.exe' if os.name == 'nt' else 'myriade-engine')
     vanilla_server = ['java', '-Xmx2g', '-Duser.timezone=UTC', '-cp', dependencies, 'net.minecraft.server.Main', 'nogui']
-    horizon_server = [binary, '--resources', lab.LOCAL / 'horizon-client/26.3', '--dedicated', '--nogui']
+    horizon_server = [binary, '--resources', lab.LOCAL / 'myriade-engine/26.3', '--dedicated', '--nogui']
     world = generate_world(vanilla_server, build)
     vanilla = run_side('vanilla', vanilla_server, build, world)
     horizon = run_side('horizon', horizon_server, build, world)

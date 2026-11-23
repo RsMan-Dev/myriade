@@ -4,7 +4,7 @@
 //! item meets no item, so its scan, which would find nothing, is skipped; a
 //! reach near an item scans as before, in the same order, with the same tests,
 //! jumping over the items of the cells it doesn't meet ([`ItemScan`]).
-use horizon_client::{entities::ItemEntity, fast_hash::FxHashMap, join_seq::JoinSeq};
+use myriade_engine::{entities::ItemEntity, fast_hash::FxHashMap, join_seq::JoinSeq};
 use horizon_core::geometry::Aabb;
 
 /// Cells of 8 blocks on each axis.
@@ -199,7 +199,7 @@ mod tests {
             health: 5,
             fire_ticks: 0,
             id: 1,
-            stack: horizon_client::items::ItemStack::new("minecraft:egg", 1),
+            stack: myriade_engine::items::ItemStack::new("minecraft:egg", 1),
             thrower: None,
             target: None,
             position: p,

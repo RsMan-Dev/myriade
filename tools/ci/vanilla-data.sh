@@ -4,7 +4,7 @@
 # ~/code/horizon-parity/shared-local; tools/ci/linux-runner.sh sets it on Linux). It is cloned once into the runner's
 # work folder ($RUNNER_WORKSPACE/shared-local; APFS clones, or reflinks where the file system has them, so no second
 # copy of the bytes), and .local/ links to it as in a parity worktree.
-# .local/horizon-client and the exporter outputs beside it, what horizon-prepare makes, are prepared by this
+# .local/myriade-engine and the exporter outputs beside it, what horizon-prepare makes, are prepared by this
 # checkout's own preparer once per preparer version (its sources, the exporters and research-lock.json), so a
 # change to the preparer is checked with what it prepares; the four newest preparations are kept on legacy runners.
 # A runner pool that keeps HORIZON_PREPARED_CACHE between jobs (HORIZON_PERSISTENT_CACHE=true) reads a read-only
@@ -28,7 +28,7 @@ prepared="$shared/prepared/$key"
 export HORIZON_DIAGNOSTIC_EXPECTED_KEY="$key"
 export HORIZON_DIAGNOSTIC_CACHE_STATE=missing-entry-list
 if [ -f "$prepared/.entries" ]; then
-  export HORIZON_DIAGNOSTIC_CACHE_STATE=missing-horizon-client
+  export HORIZON_DIAGNOSTIC_CACHE_STATE=missing-myriade-engine
 fi
 report_prepared() {
   echo "prepared cache footprint KiB: $(du -sk "$prepared" | cut -f1)"
@@ -61,7 +61,7 @@ use_private_copy() {
   while read -r name; do ln -sfn "$work/$name" ".local/$name"; done < "$work/.entries"
   echo "prepared key $key: private copy for this job ($(find "$work" -type f | wc -l) files)"
 }
-if [ "$persistent" = true ] && [ -f "$prepared/.entries" ] && grep -qx horizon-client "$prepared/.entries"; then
+if [ "$persistent" = true ] && [ -f "$prepared/.entries" ] && grep -qx myriade-engine "$prepared/.entries"; then
   expected=$(cat "$prepared/.manifest" 2>/dev/null || echo none)
   found=$(digest "$prepared")
   if [ "$found" = "$expected" ]; then
@@ -88,13 +88,13 @@ if [ "$persistent" = true ]; then
   # The preparer owns its scratch data; never let it write through the source mount.
   for name in minecraft tools; do ln -sfn "$source/$name" ".local/$name"; done
   # A killed preparation may have left private scratch that must not enter the next key.
-  for name in datagen command-registries horizon-client horizon-client-motion horizon-client-health horizon-client-collision horizon-client-render; do
+  for name in datagen command-registries myriade-engine horizon-client-motion horizon-client-health horizon-client-collision myriade-level; do
     if [ ! -L ".local/$name" ]; then rm -rf ".local/$name"; fi
   done
 else
   for entry in "$source"/*; do
     name=$(basename "$entry")
-    [ "$name" = horizon-client ] || [ -e "$shared/$name" ] && continue
+    [ "$name" = myriade-engine ] || [ -e "$shared/$name" ] && continue
     if [ "$(uname)" = Darwin ]; then cp -cR "$entry" "$shared/"; else cp -R --reflink=auto "$entry" "$shared/"; fi
   done
   for entry in "$shared"/*; do
@@ -103,20 +103,20 @@ else
     if [ -L ".local/$name" ] || [ ! -e ".local/$name" ]; then ln -sfn "$entry" ".local/$name"; fi
   done
 fi
-# horizon-prepare writes .local/horizon-client and its exporters' outputs beside it: all of them live in
+# horizon-prepare writes .local/myriade-engine and its exporters' outputs beside it: all of them live in
 # $prepared, listed in $prepared/.entries, and .local/ links to them. A real folder of that kind in .local/ is
 # what an older failed preparation left: it would hide the preparations (and a new one would not count it as its
 # own output), so it goes.
-outputs=$({ cat "$shared"/prepared/*/.entries; cd .local && ls -d horizon-client*; } 2>/dev/null || true)
+outputs=$({ cat "$shared"/prepared/*/.entries; cd .local && ls -d myriade-engine*; } 2>/dev/null || true)
 for name in $(echo "$outputs" | LC_ALL=C sort -u); do
   if [ -e ".local/$name" ] && [ ! -L ".local/$name" ]; then
     rm -rf ".local/${name:?}"
     echo "Removed .local/$name, left by a failed preparation"
   fi
 done
-# A preparation made while such a folder was there did not list it (horizon-client above all), so it is made again.
-if [ -f "$prepared/.entries" ] && ! grep -qx horizon-client "$prepared/.entries"; then
-  echo "Preparation $key lacks horizon-client: preparing again"
+# A preparation made while such a folder was there did not list it (myriade-engine above all), so it is made again.
+if [ -f "$prepared/.entries" ] && ! grep -qx myriade-engine "$prepared/.entries"; then
+  echo "Preparation $key lacks myriade-engine: preparing again"
   rm -rf "$prepared"
 fi
 if [ ! -f "$prepared/.entries" ]; then
@@ -151,10 +151,10 @@ if [ ! -f "$prepared/.entries" ]; then
   if [ "$persistent" = true ]; then
     # Optional dispatch-only measurement before shared extras can affect the output.
     if [ -n "${HORIZON_PREPARE_EXPORT_DIGEST:-}" ]; then
-      python3 tools/prepare_output.py digest "$prepared/horizon-client/$version" > "$HORIZON_PREPARE_EXPORT_DIGEST" 2> "$RUNNER_TEMP/export-digest.log" || { echo "::error::export digest unavailable"; exit 1; }
+      python3 tools/prepare_output.py digest "$prepared/myriade-engine/$version" > "$HORIZON_PREPARE_EXPORT_DIGEST" 2> "$RUNNER_TEMP/export-digest.log" || { echo "::error::export digest unavailable"; exit 1; }
     fi
     # Only sounds, languages and their metadata may come from the shared preparation.
-    python3 tools/ci/preparation_step.py seed-extras "$RUNNER_TEMP/seed-extras.log" python3 -m tools.ci.seed_prepared_extras "$source/horizon-client/$version" "$prepared/horizon-client/$version/"
+    python3 tools/ci/preparation_step.py seed-extras "$RUNNER_TEMP/seed-extras.log" python3 -m tools.ci.seed_prepared_extras "$source/myriade-engine/$version" "$prepared/myriade-engine/$version/"
   fi
   mv "$RUNNER_TEMP/prepared-entries" "$prepared/.entries"
   if [ "$persistent" != true ]; then echo "Prepared in $((SECONDS - started)) s: $(tr '\n' ' ' < "$prepared/.entries")"; fi
@@ -178,7 +178,7 @@ done < "$prepared/.entries"
 # Minecraft version: kept once in $shared/sounds/<version>/ (sounds.json and sounds/) and copied into each preparation
 # as clones (APFS, or reflinks on Linux: no second copy of the bytes). Not links: vanilla's resource packs refuse
 # symbolic links inside a pack, so its sound oracles would find no sound files.
-assets="$prepared/horizon-client/$version/assets/minecraft"
+assets="$prepared/myriade-engine/$version/assets/minecraft"
 if [ -f "$shared/sounds/$version/sounds.json" ] && [ -d "$assets" ]; then
   for entry in sounds.json sounds; do
     [ -L "$assets/$entry" ] && rm "$assets/$entry"

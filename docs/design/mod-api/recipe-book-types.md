@@ -74,7 +74,7 @@ implemented on the typed player handle.
 
 Keep `Settings.open` and `Settings.filtering` as `[bool; 4]`. Add a custom map
 from validated key to a value `{ open: bool, filtering: bool }` alongside them in
-`crates/horizon-client/src/recipe_book.rs`. Missing keys read as `(false,false)`.
+`crates/myriade-engine/src/recipe_book.rs`. Missing keys read as `(false,false)`.
 There is no fifth vanilla index. Use one shared map implementation for local,
 host and guest players, persistence and payload application.
 
@@ -170,7 +170,7 @@ Use these independent expectations in implementation tests:
 ## Current routes to update
 
 References below are verified against this worktree at `84e57e6a79`; paths are
-relative to `crates/horizon-client/src/`. Implementation must keep each route
+relative to `crates/myriade-engine/src/`. Implementation must keep each route
 on the shared settings operations rather than duplicate custom-map handling.
 
 | Route | Current file:line | Required handling |

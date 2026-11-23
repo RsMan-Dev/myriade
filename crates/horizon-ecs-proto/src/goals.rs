@@ -6,7 +6,7 @@ use crate::IFloor as _;
 use crate::behaviours::{Change, Entry, Inst, Module};
 use crate::cow::*;
 use bevy_ecs::{prelude::*, schedule::Schedule};
-use horizon_client_lib::neoforge_mob_maps::NeoForgeMobMaps;
+use myriade_engine_lib::neoforge_mob_maps::NeoForgeMobMaps;
 use horizon_core::geometry::{Vec3, trig};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -413,9 +413,9 @@ pub struct Equipment {
 /// The whole stack held in the main hand (`LivingEntity.getMainHandItem`), when an item of the ground was picked up or put there; `Equipment.main`
 /// mirrors its item id for the goals that read ids.
 #[derive(Component, Clone, Debug, Default)]
-pub struct HandStack(pub Option<horizon_client_lib::items::ItemStack>);
+pub struct HandStack(pub Option<myriade_engine_lib::items::ItemStack>);
 /// `LivingEntity.setItemSlot(MAINHAND, stack)`: the stack in the hand, its id in `Equipment` (created if the entity wore nothing).
-pub fn set_main_hand(w: &mut World, e: Entity, stack: Option<horizon_client_lib::items::ItemStack>) {
+pub fn set_main_hand(w: &mut World, e: Entity, stack: Option<myriade_engine_lib::items::ItemStack>) {
     let id = stack.as_ref().map_or(0, |s| item_id(&s.item));
     if let Some(mut q) = w.get_mut::<Equipment>(e) {
         q.main = id;
@@ -425,7 +425,7 @@ pub fn set_main_hand(w: &mut World, e: Entity, stack: Option<horizon_client_lib:
     w.entity_mut(e).insert(HandStack(stack));
 }
 /// The stack in the main hand.
-pub fn main_hand(w: &World, e: Entity) -> Option<&horizon_client_lib::items::ItemStack> {
+pub fn main_hand(w: &World, e: Entity) -> Option<&myriade_engine_lib::items::ItemStack> {
     w.get::<HandStack>(e)?.0.as_ref()
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

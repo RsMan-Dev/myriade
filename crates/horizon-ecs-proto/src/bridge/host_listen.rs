@@ -6,7 +6,7 @@ use crate::brain::{set, Brain, MemValue};
 use crate::cow::now_of;
 use crate::goals::Events;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 
 impl EcsWorld {

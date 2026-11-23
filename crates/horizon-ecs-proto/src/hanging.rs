@@ -58,10 +58,10 @@ pub struct Walls(pub fn(&World, [i32; 3], u8, (u8, u8)) -> bool);
 
 /// When an entity joined the level (`JoinSeq`): taken as it is hung, or else when it is made (`cow::TypeName`). The host tells the mods of it in that order.
 #[derive(Component, Clone, Copy, Debug)]
-pub struct JoinedAt(pub horizon_client_lib::join_seq::JoinSeq);
+pub struct JoinedAt(pub myriade_engine_lib::join_seq::JoinSeq);
 
 fn arrived(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
-    let at = JoinedAt(horizon_client_lib::join_seq::JoinSeq::next());
+    let at = JoinedAt(myriade_engine_lib::join_seq::JoinSeq::next());
     world.commands().entity(ctx.entity).insert(at);
 }
 

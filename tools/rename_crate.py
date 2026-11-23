@@ -30,7 +30,7 @@ def destination(path):
 
 
 def rewrite(path, source):
-    if path in OWN_FILES or path.startswith("crates/horizon-client/assets/horizon/lang/"):
+    if path in OWN_FILES or path.startswith("crates/myriade-engine/assets/horizon/lang/"):
         return source
     source = re.sub(re.escape(OLD_PATH) + r"(?=[^a-zA-Z0-9_-]|$)", NEW_PATH, source)
     source = re.sub(r"\bhorizon_mods\b", "horizon_mod_package", source)

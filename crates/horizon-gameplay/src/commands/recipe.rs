@@ -1,7 +1,7 @@
 //! `/recipe`.
 use super::entity::{EntityHost, holder, num};
 use super::host::R;
-use horizon_client::{
+use myriade_engine::{
     command::{Arg, Context},
     scoreboard_cmd::Tracker,
     text::Text,

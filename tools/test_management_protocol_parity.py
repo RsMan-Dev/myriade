@@ -543,7 +543,7 @@ def main():
     build = lab.LOCAL / NAME
     shutil.rmtree(build, ignore_errors=True)
     build.mkdir(parents=True)
-    oh.run_logged(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'horizon-client',
+    oh.run_logged(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'myriade-engine',
                    '-p', 'horizon-server', '--bin', 'horizon-server'], build, 'compile-rust')
     target = lab.cargo_target() / 'fast'
     work = Path(tempfile.mkdtemp(prefix='hz-management-'))
@@ -572,7 +572,7 @@ def main():
                 (folder / 'server.toml').write_text(
                     f'[server]\nport = {port}\nonline_mode = false\nview_distance = 3\nsimulation_distance = 3\n\n'
                     f'[properties]\n{toml}\n'
-                    f'[engine]\npath = {json.dumps(str(target / f"horizon-client{EXE}"))}\n'
+                    f'[engine]\npath = {json.dumps(str(target / f"myriade-engine{EXE}"))}\n'
                     f'resources = {json.dumps(str(lab.RESOURCES.resolve()))}\nrestart_on_crash = false\n\n'
                     '[backups]\nevery = "0"\n\n[panel]\nbind = ""\n')
                 command = [target / f'horizon-server{EXE}', '--dir', folder, 'run']

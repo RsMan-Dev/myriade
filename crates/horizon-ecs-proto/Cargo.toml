@@ -12,8 +12,8 @@ description = "Prototype: a cow as a bevy_ecs herd (data components, batch syste
 bevy_ecs = { version = "0.20.1", default-features = false, features = ["std", "multi_threaded", "debug"] }
 bevy_tasks = { version = "0.20.1", default-features = false, features = ["multi_threaded"] }
 bevy_utils = { version = "0.20.1", default-features = false, features = ["std", "parallel"] }
-horizon-client-lib = { path = "../horizon-client-lib", features = ["proto"] }
-horizon-client-render = { path = "../horizon-client-render" }
+myriade-engine-lib = { path = "../myriade-engine-lib", features = ["proto"] }
+myriade-level = { path = "../myriade-level" }
 horizon-core = { path = "../horizon-core" }
 horizon-items = { path = "../horizon-items" }
 horizon-protocol = { path = "../horizon-protocol" }

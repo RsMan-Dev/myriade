@@ -6,7 +6,7 @@
 //! names the player who spent the most of it. Kinds are packet names and players are the
 //! server's guests, so the groups stay as few as those, and only while timing is recorded.
 
-use horizon_client::lan::hub::HostEvent;
+use myriade_engine::lan::hub::HostEvent;
 use std::sync::Arc;
 
 pub struct Burst<W, D> {

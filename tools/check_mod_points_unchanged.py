@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check that a change leaves the mod point catalog and the generated mod API as they were (docs/layers.md#mod-points-stay-put).
 
-Every function under `horizon_client::game::` that the point generator admits is a point (the `&self` and `&mut self`
+Every function under `myriade_engine::game::` that the point generator admits is a point (the `&self` and `&mut self`
 methods of `Game`, and its free functions and other types' methods), and so is each `#[horizon_mod_api_macros::replaceable]`
 function in a lower crate. A point's name, target and signature are part of the mod API. This tool builds and runs the
 `hook_snapshot` example of `horizon-mod-api-gen` on the base and on the working tree, then compares what it wrote

@@ -32,15 +32,15 @@ Paths and line numbers are inspected Horizon owners at this note's base. Vanilla
 
 | Route | Owner and treatment |
 | --- | --- |
-| Slime, magma cube, sulfur cube death | `crates/horizon-client/src/game/mobs/creatures/mod.rs:1745` split_dead_cube explicitly covers all three; replace count loop at 1754 with constructed collection. Reference AbstractCubeMob.remove. Size 1 and primed sulfur producing zero children do not dispatch. |
-| Split child initialization | `crates/horizon-client/src/mobs/cube.rs:90` specializes sulfur size/baby state; yaw draws follow at 96. Preserve these draws and list order even on veto. |
-| Live animal breeding | `crates/horizon-client/src/game/mobs/creatures/mod.rs:3948` breed is the common owner, reached at 3614; inheritance construction precedes finalization at 4226 and insertion at 4231/4237. Move the existing early callback after actual child construction. Include horse/donkey mule, equine inheritance, fox trust, color and variant paths in this common owner. Reference Animal.spawnChildFromBreeding and species getBreedOffspring overrides. |
+| Slime, magma cube, sulfur cube death | `crates/myriade-engine/src/game/mobs/creatures/mod.rs:1745` split_dead_cube explicitly covers all three; replace count loop at 1754 with constructed collection. Reference AbstractCubeMob.remove. Size 1 and primed sulfur producing zero children do not dispatch. |
+| Split child initialization | `crates/myriade-engine/src/mobs/cube.rs:90` specializes sulfur size/baby state; yaw draws follow at 96. Preserve these draws and list order even on veto. |
+| Live animal breeding | `crates/myriade-engine/src/game/mobs/creatures/mod.rs:3948` breed is the common owner, reached at 3614; inheritance construction precedes finalization at 4226 and insertion at 4231/4237. Move the existing early callback after actual child construction. Include horse/donkey mule, equine inheritance, fox trust, color and variant paths in this common owner. Reference Animal.spawnChildFromBreeding and species getBreedOffspring overrides. |
 | Turtle/frog eggs | Same file:4006–4015 excludes live children and preserves finalization/XP. References TurtleBreedGoal.breed and frog breeding behavior; exact vanilla frog method unverified. No baby callback for egg laying. |
 | Sniffer egg | Same file:4004–4008 finalizes then lays an egg. Reference Sniffer.spawnChildFromBreeding; no live-child callback. |
 | Turtle hatch | Same file:3789 hatch_turtles, reference TurtleEggBlock.randomTick. Hatching is independent spawning, outside breeding callback. |
 | Spawn egg offspring | Same file:7696 spawn_egg_offspring, reference SpawnEggItem spawning behavior. Excluded from this breeding moment. |
 | Villager/armadillo | Existing baby_entity_spawn declaration explicitly excludes their own paths. Exact owners and vanilla methods remain unverified; implementation must trace these before claiming full live-breeding coverage. Recommend include only if public counterpart and vanilla moment agree, otherwise document the distinct moment. |
-| Native pending lend | `crates/horizon-client/src/game/modding/native_unspawned_mob.rs:107` lend_unspawned already owns scoped lending and unwind restoration. Extend its ownership discipline; do not treat the stand-in clone as a child. |
+| Native pending lend | `crates/myriade-engine/src/game/modding/native_unspawned_mob.rs:107` lend_unspawned already owns scoped lending and unwind restoration. Extend its ownership discipline; do not treat the stand-in clone as a child. |
 
 Change mob_split and baby_entity_spawn in place, once per vanilla moment. Delete count/kind-only transport, obsolete helpers and the stale “handle does not exist” prose in both declarations, hook notes, generated native/wasm bindings and samples together. Retain parent/player metadata. Do not add parallel legacy hooks or a second post-construction hook.
 

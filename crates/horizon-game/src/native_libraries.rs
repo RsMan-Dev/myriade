@@ -139,7 +139,7 @@ fn load(folder: &Path) -> Result<Vec<&'static mod_api::__private::native::Native
 pub fn native_main() {
     horizon_guest_stack::run_main(|| {
         crate::exit_if_compile_child();
-        let startup = horizon_client::entry::prepare();
+        let startup = myriade_engine::entry::prepare();
         let result = std::env::current_exe()
             .map_err(|e| e.to_string())
             .and_then(|exe| load(exe.parent().expect("executable parent")));
@@ -157,7 +157,7 @@ pub fn native_main() {
         for library in &libraries {
             installs.extend((library.installs)());
         }
-        horizon_client::entry::installed(&installs);
+        myriade_engine::entry::installed(&installs);
         for library in libraries {
             entries.extend((library.entries)());
             slots.extend((library.slots)());

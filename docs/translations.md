@@ -1,7 +1,7 @@
 # Translations
 
 The server speaks English only. Its own messages (chat moderation, mod checks, `/tempban`, `/modprofile`, the
-world-opening refusal) come from `crates/horizon-client/assets/horizon/lang/en_us.json`, whose keys are `horizon.*`.
+world-opening refusal) come from `crates/myriade-engine/assets/horizon/lang/en_us.json`, whose keys are `horizon.*`.
 The server does not translate them: it sends each message as a `translate` text component with its English as the
 fallback, and every client resolves the key in its own selected language with its own lang files. Vanilla's text
 comes from the player's own Minecraft install and is not translated here.
@@ -10,7 +10,7 @@ comes from the player's own Minecraft install and is not translated here.
 
 | | Files | Keys | Read by |
 |---|---|---|---|
-| Server and Horizon client | `crates/horizon-client/assets/horizon/lang/en_us.json` | `horizon.<group>.<name>` | `crates/horizon-client-core/src/lang.rs` (`Bundled`, `Text::tr`, `lang::get`) |
+| Server and Horizon client | `crates/myriade-engine/assets/horizon/lang/en_us.json` | `horizon.<group>.<name>` | `crates/myriade-data/src/lang.rs` (`Bundled`, `Text::tr`, `lang::get`) |
 | A crate's own text | `crates/<name>/assets/lang/<code>.json`, the same shape | the crate's own keys, never one of the engine's | the same, once the crate registers them ([layers.md](layers.md#lang-files-horizon_platformlang)) |
 
 ## Adding a message

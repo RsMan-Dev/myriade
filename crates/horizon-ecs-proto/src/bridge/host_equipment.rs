@@ -3,7 +3,7 @@
 use crate::bridge::host::EcsWorld;
 use crate::equip_stack::{self, EQUIP_GENERIC, SLOTS};
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 impl EcsWorld {
     /// The stacks of every slot of `e`, empty ones included; None when `e` is gone.

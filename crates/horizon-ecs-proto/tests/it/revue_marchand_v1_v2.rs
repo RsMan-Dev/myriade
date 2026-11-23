@@ -3,7 +3,7 @@
 use crate::common;
 use bevy_ecs::prelude::*;
 use common::*;
-use horizon_client_lib::mobs::villager;
+use myriade_engine_lib::mobs::villager;
 use horizon_ecs_proto::{
     behaviours::{
         food_gift::Heroes,

@@ -217,7 +217,7 @@ def main():
     args = parser.parse_args()
     shard, shards = parity_shard.parse(os.environ.get('PARITY_SHARD', '1/1'))
     lock, jars, libraries = base.verify_artifacts()
-    resources = lab.LOCAL / 'horizon-client' / lock['minecraft']['version']
+    resources = lab.LOCAL / 'myriade-engine' / lock['minecraft']['version']
     work = lab.LOCAL / 'redstone-catalog-parity' / (f'shard-{shard}' if shards > 1 else 'all')
     work.mkdir(parents=True, exist_ok=True)
     entries = load_catalog()

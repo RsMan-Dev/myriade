@@ -201,7 +201,7 @@ impl Stats {
     /// [`Self::write`], reporting why it failed. The old file is left as it was then.
     pub fn try_write(&self, path: &Path) -> std::io::Result<()> {
         let text = serde_json::to_string_pretty(&self.to_json()).map_err(std::io::Error::other)?;
-        horizon_client::save::write_durable_io(path, text.as_bytes())
+        myriade_engine::save::write_durable_io(path, text.as_bytes())
     }
     /// The counters of a snapshot a mod hands over (`player_set_statistics`), read strictly: a JSON
     /// object with a `stats` object of type objects of whole numbers that fit an `i32`. Anything else is
@@ -225,7 +225,7 @@ impl Stats {
 /// during the write leaves the old file, and a failure names the file.
 pub fn write_player_json(path: &Path, json: &serde_json::Value) -> Result<(), String> {
     let text = serde_json::to_string_pretty(json).map_err(|e| e.to_string())?;
-    horizon_client::save::write_durable(path, text.as_bytes())
+    myriade_engine::save::write_durable(path, text.as_bytes())
         .map_err(|e| format!("{} is not saved: {e}", path.display()))
 }
 /// `players/<dir>/<uuid>.json` of a world (advancements, stats).

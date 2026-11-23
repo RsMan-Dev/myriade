@@ -1,7 +1,7 @@
 //! The AI reads of the host bridge (greffe L0, lot 41): the target, the last attacker, the owner, the restriction and the walk, read
 //! by entity from the ECS world. The fixtures are those of `bridge_host`.
 use crate::common::*;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_ecs_proto::{
     behaviours::move_towards_restriction::Restriction,
     bridge::host::{EcsWorld, HostSetup, HurtSource, PlayerFact},

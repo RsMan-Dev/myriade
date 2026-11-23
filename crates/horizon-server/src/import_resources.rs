@@ -16,7 +16,7 @@ use std::{
 /// Where the prepared files go: the first place the server reads them from
 /// (`horizon_server_launch::resource_candidates`). That is `[engine] resources` when `server.toml` sets it, else
 /// `resources/` in the server folder when it exists or there is no installer, else the installer's
-/// `game-files/horizon-client/<version>` (what the release's `.local/horizon-client` links to).
+/// `game-files/myriade-engine/<version>` (what the release's `.local/myriade-engine` links to).
 pub fn destination(dir: &Path) -> PathBuf {
     let configured = config::Config::load(dir)
         .map(|c| c.engine.resources)
@@ -30,7 +30,7 @@ fn destination_for(dir: &Path, configured: &str, installer: Option<PathBuf>) -> 
     }
     let here = dir.join("resources");
     match installer {
-        Some(root) if !here.exists() => root.join("game-files/horizon-client").join(GAME_VERSION),
+        Some(root) if !here.exists() => root.join("game-files/myriade-engine").join(GAME_VERSION),
         _ => here,
     }
 }
@@ -236,7 +236,7 @@ mod tests {
         let root = scratch("destination");
         let installer = Some(root.join("install"));
         let installed = root
-            .join("install/game-files/horizon-client")
+            .join("install/game-files/myriade-engine")
             .join(GAME_VERSION);
         assert_eq!(destination_for(&root, "", installer.clone()), installed);
         assert_eq!(destination_for(&root, "", None), root.join("resources"));
@@ -256,7 +256,7 @@ mod tests {
     fn a_good_folder_is_copied_whole_and_replaces_the_old_one() {
         let root = scratch("good");
         let source = prepared(&root, GAME_VERSION, "new");
-        let target = root.join("game-files/horizon-client").join(GAME_VERSION);
+        let target = root.join("game-files/myriade-engine").join(GAME_VERSION);
         put(&target.join("stale.txt"), b"old");
         import(&source, &target, &mut || Ok(())).unwrap();
         assert_eq!(tag(&target), "new");

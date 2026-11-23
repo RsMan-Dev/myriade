@@ -6,7 +6,7 @@ use super::*;
 use crate::cow::*;
 use crate::goals::*;
 use crate::rules::water_jump::{jump_impulse, motion_step, next_pitch};
-use horizon_client_lib::blocks::Fluid;
+use myriade_engine_lib::blocks::Fluid;
 use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]

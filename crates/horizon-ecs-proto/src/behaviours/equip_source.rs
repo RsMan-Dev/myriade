@@ -9,7 +9,7 @@ use crate::goals::{equipped, set_main_hand, Slot};
 use crate::item;
 use crate::items;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::{
+use myriade_engine_lib::mobs::{
     equip::{wants_to_pick_up, ItemTags},
     Species,
 };

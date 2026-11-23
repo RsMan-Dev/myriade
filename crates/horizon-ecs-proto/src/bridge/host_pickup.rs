@@ -9,9 +9,9 @@ use crate::item::{self, Item};
 use crate::orb::{self, Orb, OrbIndex};
 use crate::targeting::Who;
 use bevy_ecs::{entity::Entity, prelude::*};
-use horizon_client_lib::entities::ExperienceOrb;
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::entities::ExperienceOrb;
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// The box of a player standing at `feet`, grown by `reach` sideways and 0.5 up and down.

@@ -61,9 +61,9 @@ def main():
         'the cap of 3). Level.loadedAndEntityCanStandOn(pos, bullet), the test that turns a bullet in flight, over '
         'forty block states with full, partial, hollow, empty and context-dependent collision shapes, with the '
         'bullet below, level with, on and above the block. The bullet\'s own random flight path is not compared.',
-        sources=[lab.ROOT / 'crates/horizon-client/src/mobs/shulker.rs',
-                 lab.ROOT / 'crates/horizon-client/src/projectiles.rs',
-                 lab.ROOT / 'crates/horizon-client-render/src/collisions.rs',
+        sources=[lab.ROOT / 'crates/myriade-engine/src/mobs/shulker.rs',
+                 lab.ROOT / 'crates/myriade-engine/src/projectiles.rs',
+                 lab.ROOT / 'crates/myriade-level/src/collisions.rs',
                  lab.ROOT / 'crates/horizon-world/src/block_collision.rs',
                  lab.ROOT / 'crates/horizon-world/src/collision_context.rs',
                  lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaBlockUpdateOracle.java',

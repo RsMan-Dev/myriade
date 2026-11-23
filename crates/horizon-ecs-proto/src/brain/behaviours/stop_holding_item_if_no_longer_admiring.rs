@@ -29,7 +29,7 @@ fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
 fn start(w: &mut World, e: Entity, _: &Ctx) {
     let id = equipment::take_slot(w, e, Slot::Off);
     let Some(name) = crate::items::item_name(id) else { return };
-    let stack = horizon_client_lib::items::ItemStack::new(name, 1);
+    let stack = myriade_engine_lib::items::ItemStack::new(name, 1);
     crate::gift_drop::throw_toward_player_or_nearby(w, e, vec![stack], 16.0, 4, 2);
 }
 

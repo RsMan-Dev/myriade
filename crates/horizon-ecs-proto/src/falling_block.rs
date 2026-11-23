@@ -12,7 +12,7 @@ use crate::host_out_falling::FallingEvent;
 use crate::item::drop_item;
 use crate::tnt::SIZE;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Compound;
 use horizon_world::registry::BlockStateId;

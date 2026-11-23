@@ -258,7 +258,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
         let ground = |x: i32, z: i32| {
             (0..256).rev().find(|&y| {
                 let f = mw.facts.get(mw.world.block(x, y, z));
-                (f.full_collision || f.legacy_solid || f.fluid != horizon_client_lib::blocks::Fluid::None) && !f.name.ends_with("_leaves")
+                (f.full_collision || f.legacy_solid || f.fluid != myriade_engine_lib::blocks::Fluid::None) && !f.name.ends_with("_leaves")
             }).map_or(0, |y| y + 1)
         };
         w.insert_resource(nodes::FlightNodes::build(&nodes::LAYOUT, ground));

@@ -11,7 +11,7 @@ use crate::behaviours::breed::Resting;
 use crate::behaviours::Cap;
 use crate::rules::breed_love::{birth_delay, too_far_to_mate};
 use crate::targeting::Who;
-use horizon_client_lib::items::Items;
+use myriade_engine_lib::items::Items;
 
 /// Le couple : partenaire et temps de naissance.
 #[derive(Component, Clone, Copy, Debug)]

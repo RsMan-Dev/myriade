@@ -725,14 +725,14 @@ fn audited_guest_workers_use_the_stack_policy() {
     for file in [
         "crates/horizon-threads/src/jobs.rs",
         "crates/horizon-threads/src/lib.rs",
-        "crates/horizon-client/src/lan/io_pool.rs",
-        "crates/horizon-client/src/vanillagen.rs",
-        "crates/horizon-client/src/vanillagen/lod.rs",
-        "crates/horizon-client/src/game/runtime/resource_load.rs",
-        "crates/horizon-client/src/game/interface/startup_menu.rs",
-        "crates/horizon-client/src/game/world/world_loading.rs",
-        "crates/horizon-client/src/game/world/world_entry.rs",
-        "crates/horizon-client/src/game/world/packs/mod.rs",
+        "crates/myriade-engine/src/lan/io_pool.rs",
+        "crates/myriade-engine/src/vanillagen.rs",
+        "crates/myriade-engine/src/vanillagen/lod.rs",
+        "crates/myriade-engine/src/game/runtime/resource_load.rs",
+        "crates/myriade-engine/src/game/interface/startup_menu.rs",
+        "crates/myriade-engine/src/game/world/world_loading.rs",
+        "crates/myriade-engine/src/game/world/world_entry.rs",
+        "crates/myriade-engine/src/game/world/packs/mod.rs",
     ] {
         let source = std::fs::read_to_string(root.join(file)).unwrap();
         let source = source.split("\n#[cfg(test)]").next().unwrap();
@@ -749,7 +749,7 @@ fn audited_guest_workers_use_the_stack_policy() {
         );
     }
     let server =
-        std::fs::read_to_string(root.join("crates/horizon-client/src/game/world/integrated.rs"))
+        std::fs::read_to_string(root.join("crates/myriade-engine/src/game/world/integrated.rs"))
             .unwrap();
     // Production code only: a test may start its own server thread with the same policy.
     let server = server.split("\n#[cfg(test)]").next().unwrap();

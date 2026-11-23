@@ -20,8 +20,8 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = {
-    "horizon_world", "horizon_client", "horizon_client_lib",
-    "horizon_client_core", "horizon_client_render", "horizon_items",
+    "horizon_world", "myriade_engine", "myriade_engine_lib",
+    "myriade_data", "myriade_level", "horizon_items",
     "horizon_assets", "horizon_mod_package", "horizon_mods", "horizon_core",
 }
 # Shared Minecraft vocabulary: plain, engine-independent values, parity RNG,
@@ -309,7 +309,7 @@ def generated_findings(target: Path):
 NEGATIVE = '''
 use horizon_items::items::ItemStack as Borrowed;
 pub use horizon_world::fluid::FluidState as Innocent;
-pub use horizon_client_core::text::*;
+pub use myriade_data::text::*;
 pub fn stack() -> Borrowed { todo!() }
 pub fn json() -> serde_json::Value { todo!() }
 pub mod __private { pub use horizon_world::fluid::FluidState; }

@@ -59,7 +59,7 @@ def main():
     expected_path = build / 'java.txt'
     run(['java', '-Xmx1G', '-cp', str(classes) + os.pathsep + cp,
          'dev.horizonlab.parity.VanillaMobAirOracle', inputs, expected_path], 'java')
-    run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client', '--bin', 'horizon-client'], 'compile-rust',
+    run(['cargo', 'build', '--profile', 'fast', '-p', 'myriade-engine', '--bin', 'myriade-engine'], 'compile-rust',
         cwd=lab.ROOT)
     bins = Path(lab.cargo_target()) / 'fast'
     with Server(bins, build / 'server', lab.RESOURCES.resolve(), {'level-seed': '42', 'view-distance': '4'}) as server, \

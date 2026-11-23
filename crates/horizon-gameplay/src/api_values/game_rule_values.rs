@@ -1,6 +1,6 @@
 //! A mod's game rule declaration as the engine's rule: its type, default and range.
 use super::TryIntoEngine;
-use horizon_client_core::gamerules::{Rule, Value};
+use myriade_data::gamerules::{Rule, Value};
 
 impl TryIntoEngine<()> for mod_api::GameRuleDecl {
     type Engine = Rule;

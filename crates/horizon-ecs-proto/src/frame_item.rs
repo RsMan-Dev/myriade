@@ -9,7 +9,7 @@ use crate::host_out_frames::{FrameEvent, Spot};
 use crate::rules::hanging::step;
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use horizon_items::item_nbt::{item_from_nbt, item_to_nbt};
 

@@ -19,15 +19,15 @@ class PreparedCacheTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "target") as directory:
             root = Path(directory)
             source, cache, work, tmp = [root / x for x in ("source", "cache", "work", "temp")]
-            for path in (source / "minecraft/26.3", source / "horizon-client/26.3", source / "tools", cache, work, tmp):
+            for path in (source / "minecraft/26.3", source / "myriade-engine/26.3", source / "tools", cache, work, tmp):
                 path.mkdir(parents=True)
             (source / "minecraft/26.3/prepared.json").write_text("{}")
-            (source / "horizon-client/26.3/extra").write_text("shared")
-            (source / "horizon-client/26.3/generated").write_text("old")
-            sounds = source / "horizon-client/26.3/assets/minecraft/sounds"
+            (source / "myriade-engine/26.3/extra").write_text("shared")
+            (source / "myriade-engine/26.3/generated").write_text("old")
+            sounds = source / "myriade-engine/26.3/assets/minecraft/sounds"
             sounds.mkdir(parents=True)
             (sounds / "fixture.ogg").write_bytes(b"sound fixture")
-            (source / "horizon-client/26.3/horizon-data.bin").write_bytes(b"stale runtime cache")
+            (source / "myriade-engine/26.3/horizon-data.bin").write_bytes(b"stale runtime cache")
             (work / "research-lock.json").write_text('{"version": "26.3"}')
             (work / "tools/ci").mkdir(parents=True)
             shutil.copyfile(ROOT / "tools/prepare_output.py", work / "tools/prepare_output.py")
@@ -36,7 +36,7 @@ class PreparedCacheTest(unittest.TestCase):
             target = work / "target/release"
             target.mkdir(parents=True)
             prepare = target / "horizon-prepare"
-            prepare.write_text('#!/bin/sh\nmkdir -p .local/horizon-client/26.3 .local/datagen\nprintf new > .local/horizon-client/26.3/generated\nprintf "{}" > .local/horizon-client/26.3/horizon-resources.json\n')
+            prepare.write_text('#!/bin/sh\nmkdir -p .local/myriade-engine/26.3 .local/datagen\nprintf new > .local/myriade-engine/26.3/generated\nprintf "{}" > .local/myriade-engine/26.3/horizon-resources.json\n')
             prepare.chmod(0o755)
             binary = work / "bin"
             binary.mkdir()
@@ -51,12 +51,12 @@ class PreparedCacheTest(unittest.TestCase):
                 return subprocess.run(["bash", SCRIPT], cwd=work, env=env, text=True,
                                       capture_output=True, check=True).stdout
             self.assertIn("prepared key fixture stale", run())
-            self.assertFalse((work / ".local/horizon-client/26.3/extra").exists())
-            self.assertFalse((work / ".local/horizon-client/26.3/horizon-data.bin").exists())
-            self.assertEqual((work / ".local/horizon-client/26.3/assets/minecraft/sounds/fixture.ogg").read_bytes(), b"sound fixture")
-            self.assertEqual((work / ".local/horizon-client/26.3/generated").read_text(), "new")
+            self.assertFalse((work / ".local/myriade-engine/26.3/extra").exists())
+            self.assertFalse((work / ".local/myriade-engine/26.3/horizon-data.bin").exists())
+            self.assertEqual((work / ".local/myriade-engine/26.3/assets/minecraft/sounds/fixture.ogg").read_bytes(), b"sound fixture")
+            self.assertEqual((work / ".local/myriade-engine/26.3/generated").read_text(), "new")
             seeded = subprocess.check_output(["python3", ROOT / "tools/prepare_output.py", "digest",
-                                              work / ".local/horizon-client/26.3"], text=True).strip()
+                                              work / ".local/myriade-engine/26.3"], text=True).strip()
             self.assertEqual((tmp / "export.digest").read_text().strip(), seeded)
             self.assertTrue(run().startswith("prepared key fixture fresh (manifest "))
             lock = cache / "prepared/.lock-file"

@@ -7,7 +7,7 @@ use crate::hook_extract::{retrieve, Retrieve};
 use crate::hook_wait::HookIndex;
 use crate::targeting::Who;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 use horizon_core::random::RandomSource;
 

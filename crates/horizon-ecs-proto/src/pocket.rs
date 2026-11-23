@@ -1,7 +1,7 @@
 //! A pocket: one slot holding one kind of item, the `SimpleContainer(1)` of the allay. A plain data component: the module that carries
 //! one inserts it on its creatures, and the event that uses it writes it. Nothing here names a species.
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 /// The largest count a slot takes (`SimpleContainer`'s cap).
 pub const MAX_STACK: u32 = 99;

@@ -1,11 +1,11 @@
 //! Argument types (Brigadier's and Minecraft's `ArgumentType`s): parsing with
 //! the vanilla error messages and completion suggestions.
 use super::{CmdResult, CommandError, Context, Reader, SuggestionsBuilder};
-use horizon_client_core::text::Text;
+use myriade_data::text::Text;
 use horizon_core::nbt::Tag;
 use std::{fmt, sync::Arc};
 
-pub use horizon_client_core::registries::{
+pub use myriade_data::registries::{
     CustomCompletionAction, Registries, RegistryIds, modify_custom_completions,
 };
 pub use horizon_core::game_mode::GameMode;
@@ -548,7 +548,7 @@ pub fn read_identifier(reader: &mut Reader) -> CmdResult<String> {
         }
     }
 }
-pub use horizon_client_core::identifier::parse_identifier;
+pub use myriade_data::identifier::parse_identifier;
 pub fn normalize(id: &str) -> String {
     normalized(id).into_owned()
 }
@@ -1672,7 +1672,7 @@ impl ArgType {
                     return Err(CommandError::tr_at(key, &[&m], reader));
                 }
                 let text = &reader.string[start..reader.cursor];
-                match horizon_client_core::component::parse_snbt(text) {
+                match myriade_data::component::parse_snbt(text) {
                     Ok((v, _)) => Arg::Str(v.to_string()),
                     Err(_) => Arg::Str(text.to_owned()),
                 }
@@ -1720,7 +1720,7 @@ impl ArgType {
                 }
                 let id = &reader.string[start..reader.cursor];
                 // ObjectiveCriteria.byName: statistics resolve to their canonical name.
-                match horizon_client_core::scoreboard::criteria_by_name(id, reg) {
+                match myriade_data::scoreboard::criteria_by_name(id, reg) {
                     Ok(Some(canonical)) => Arg::Str(canonical),
                     Ok(None) => {
                         reader.cursor = start;
@@ -1742,7 +1742,7 @@ impl ArgType {
             }
             ArgType::ScoreboardSlot => {
                 let name = reader.read_unquoted_string();
-                if !horizon_client_core::scoreboard::display_slot_valid(name) {
+                if !myriade_data::scoreboard::display_slot_valid(name) {
                     return Err(CommandError::tr_at(
                         "argument.scoreboardDisplaySlot.invalid",
                         &[&name],
@@ -1770,7 +1770,7 @@ impl ArgType {
             }
             ArgType::TeamColor => {
                 let name = reader.read_unquoted_string();
-                if horizon_client_core::scoreboard::team_color_rgb(name).is_none() {
+                if myriade_data::scoreboard::team_color_rgb(name).is_none() {
                     return Err(CommandError::tr_at(
                         "argument.color.invalid",
                         &[&name],
@@ -1818,7 +1818,7 @@ impl ArgType {
                 let id = read_identifier(reader)?;
                 let known = reg.ids("minecraft:particle_type");
                 let exists = if known.is_empty() {
-                    horizon_client_core::particle_type::ParticleType::from_name(&id).is_some()
+                    myriade_data::particle_type::ParticleType::from_name(&id).is_some()
                 } else {
                     known.contains(&id)
                 };
@@ -2031,16 +2031,16 @@ impl ArgType {
             }
             ArgType::Team => builder.suggest_matching(reg.teams.iter().map(String::as_str)),
             ArgType::Criteria => {
-                let mut ids: Vec<String> = horizon_client_core::scoreboard::CUSTOM_CRITERIA
+                let mut ids: Vec<String> = myriade_data::scoreboard::CUSTOM_CRITERIA
                     .iter()
                     .map(|s| (*s).to_owned())
                     .collect();
-                for c in horizon_client_core::scoreboard::team_colors() {
+                for c in myriade_data::scoreboard::team_colors() {
                     ids.push(format!("teamkill.{c}"));
                     ids.push(format!("killedByTeam.{c}"));
                 }
                 let stat =
-                    |ty: &str, key: &str| horizon_client_core::scoreboard::stat_criteria(ty, key);
+                    |ty: &str, key: &str| myriade_data::scoreboard::stat_criteria(ty, key);
                 ids.extend(reg.blocks.keys().map(|b| stat("mined", b)));
                 for ty in ["crafted", "used", "broken", "picked_up", "dropped"] {
                     ids.extend(reg.items.iter().map(|i| stat(ty, i)));
@@ -2049,14 +2049,14 @@ impl ArgType {
                     ids.extend(reg.entity_types.iter().map(|e| stat(ty, e)));
                 }
                 ids.extend(
-                    horizon_client_core::scoreboard::CUSTOM_STATS
+                    myriade_data::scoreboard::CUSTOM_STATS
                         .iter()
                         .map(|c| stat("custom", &format!("minecraft:{c}"))),
                 );
                 builder.suggest_matching(ids.iter().map(String::as_str));
             }
             ArgType::ScoreboardSlot => {
-                let slots = horizon_client_core::scoreboard::display_slots();
+                let slots = myriade_data::scoreboard::display_slots();
                 builder.suggest_matching(slots.iter().map(String::as_str));
             }
             ArgType::Operation => builder.suggest_matching(OPERATIONS),
@@ -2064,7 +2064,7 @@ impl ArgType {
             ArgType::Particle => {
                 let known = reg.ids("minecraft:particle_type");
                 if known.is_empty() {
-                    let names: Vec<String> = horizon_client_core::particle_type::ParticleType::ALL
+                    let names: Vec<String> = myriade_data::particle_type::ParticleType::ALL
                         .iter()
                         .map(|t| format!("minecraft:{}", t.name()))
                         .collect();
@@ -2101,7 +2101,7 @@ impl ArgType {
             }
             ArgType::ResourceOrId(registry) => suggest_resources(builder, reg.ids(registry), ""),
             ArgType::TeamColor => {
-                builder.suggest_matching(horizon_client_core::scoreboard::team_colors())
+                builder.suggest_matching(myriade_data::scoreboard::team_colors())
             }
             ArgType::Anchor => builder.suggest_matching(["eyes", "feet"]),
             ArgType::Component | ArgType::Style | ArgType::NbtTag => super::snbt::suggest(builder),

@@ -244,7 +244,7 @@ def gen_vanilla_order(root, version, store, build):
          "dev.horizonlab.parity.VanillaCommandParseOracle", "tree", build], build)
     env = dict(os.environ, CARGO_TARGET_DIR=str(root / ".local" / "port-target"))
     jobs = os.environ.get("FLEET_LOAD_JOBS")
-    run(["cargo", "build", "-p", 'horizon-client-lib', "--example", "client_probe",
+    run(["cargo", "build", "-p", 'myriade-engine-lib', "--example", "client_probe",
          *(["-j", jobs] if jobs else [])], root, env=env)
     fixture = root / ".local/port-target/debug/examples/client_probe"
     run([fixture, "command_parse_fixture", "tree", build / "rust_tree.json"], root)
@@ -257,12 +257,12 @@ GENERATORS = [
      lambda root, version, store, build: [python(), "tools/gen_version_consts.py"]),
     ("packet_ids", ["crates/horizon-protocol/src/ids.rs"],
      lambda root, version, store, build: [python(), "tools/generate_packet_ids.py"]),
-    ("entity_tracking", ["crates/horizon-client/src/lan/tracking.rs"],
+    ("entity_tracking", ["crates/myriade-engine/src/lan/tracking.rs"],
      lambda root, version, store, build: [python(), "tools/generate_entity_tracking.py", "--sources",
                                           store / "sources" / "client"]),
-    ("lan_command_order", ["crates/horizon-client/src/lan/command_order.rs"],
+    ("lan_command_order", ["crates/myriade-engine/src/lan/command_order.rs"],
      lambda root, version, store, build: [python(), "tools/generate_lan_command_order.py"]),
-    ("command_suggestions", ["crates/horizon-client/src/lan/command_suggestions.rs"], gen_suggestions),
+    ("command_suggestions", ["crates/myriade-engine/src/lan/command_suggestions.rs"], gen_suggestions),
     ("vanilla_command_order", ["crates/horizon-command/src/vanilla_order.rs"], gen_vanilla_order),
 ]
 

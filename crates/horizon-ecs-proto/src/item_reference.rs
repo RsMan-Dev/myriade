@@ -1,8 +1,8 @@
 //! Horizon's item on the ground, run the naive way: every item, every tick, in the order the game runs `ItemEntity.tick` (the fluid push, the
 //! move, the bubble column, the drags, the burning and the lava, the merge). The control of `item.rs` and the cost it is measured against.
-use horizon_client_lib::entities::{merge_with_neighbours, update_entity_fluids, ItemCells, ItemEntity};
-use horizon_client_lib::items::ItemStack;
-use horizon_client_lib::mobs::MobWorld;
+use myriade_engine_lib::entities::{merge_with_neighbours, update_entity_fluids, ItemCells, ItemEntity};
+use myriade_engine_lib::items::ItemStack;
+use myriade_engine_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 use horizon_core::random::RandomSource;
 
@@ -51,7 +51,7 @@ pub fn tick_original(mw: &MobWorld<'static>, it: &mut ItemEntity) -> bool {
     let mut step = it.tick_move_before_block_effects(world, facts, mw.collision, no_physics, escape, (water, lava), &[], None, Some(mw.movement), ctx);
     let _ = it.check_fall(&mut step, |fall, _, _| fall);
     it.finish_move_block_effects(world, facts, no_physics, Some(mw.movement), step, ctx);
-    horizon_client_lib::motion::bubble_column_push_over(world, mw.registry, facts, mw.collision, it.bounds(), &mut it.velocity, |_| {});
+    myriade_engine_lib::motion::bubble_column_push_over(world, mw.registry, facts, mw.collision, it.bounds(), &mut it.velocity, |_| {});
     let alive = it.tick_settle(world, facts, no_physics, step, ctx);
     let before = it.velocity;
     let (b, p, e) = (it.bounds(), it.position, it.fluid_eye_y());
@@ -107,7 +107,7 @@ impl Original {
 /// looked for at its tick 1 modulo 20, let go beyond 8), and scans for merges at that tick.
 pub struct OrbsOriginal {
     pub mw: &'static MobWorld<'static>,
-    pub orbs: Vec<horizon_client_lib::entities::ExperienceOrb>,
+    pub orbs: Vec<myriade_engine_lib::entities::ExperienceOrb>,
     /// The players (id, feet position).
     pub players: Vec<(u32, Vec3)>,
 }

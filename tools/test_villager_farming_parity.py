@@ -148,7 +148,7 @@ def main():
         build, 'VanillaVillagerFarmingOracle', jars, baking.client_libraries(), lock['minecraft']['java_major'])
     expected = build / 'vanilla.txt'
     oracle_harness.java_run(build, classes, dependencies, 'VanillaVillagerFarmingOracle', [expected], 'vanilla')
-    oracle_harness.run_logged(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client', '--bin', 'horizon-client'],
+    oracle_harness.run_logged(['cargo', 'build', '--profile', 'fast', '-p', 'myriade-engine', '--bin', 'myriade-engine'],
                               build, 'compile-rust')
     bins = Path(lab.cargo_target()) / 'fast'
     with tempfile.TemporaryDirectory(prefix='hz-farming-mod-') as scratch:

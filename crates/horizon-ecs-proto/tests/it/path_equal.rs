@@ -1,6 +1,6 @@
 //! The path finder with its fast paths against the original one, node for node (kind included), over random
 //! searches in the varied worlds of `kernel_lab`. `HORIZON_TEST_RESOURCES` must be set.
-use horizon_client_lib::mobs::path::{Evaluator, Finder, PathMob, with_reference_finder, PATH_TYPES};
+use myriade_engine_lib::mobs::path::{Evaluator, Finder, PathMob, with_reference_finder, PATH_TYPES};
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::kernel_lab::{Rng, varied_world};
 
@@ -41,7 +41,7 @@ fn the_finder_finds_the_same_paths() {
             let old = with_reference_finder(run);
             searches += 1;
             found += usize::from(old.is_some());
-            let key = |p: &Option<horizon_client_lib::mobs::path::Path>| {
+            let key = |p: &Option<myriade_engine_lib::mobs::path::Path>| {
                 p.as_ref().map(|p| (p.nodes.iter().map(|n| (n.x, n.y, n.z, n.kind as u8)).collect::<Vec<_>>(), p.next, p.target, p.dist_to_target.to_bits(), p.reached))
             };
             assert_eq!(key(&new), key(&old), "seed {seed}: from {p:?} to {target:?}");

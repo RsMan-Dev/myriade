@@ -172,7 +172,7 @@ fn resources() -> Option<std::path::PathBuf> {
     let root = std::env::var_os("HORIZON_TEST_RESOURCES")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.local/horizon-client/26.3")
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.local/myriade-engine/26.3")
         });
     if root.join("worldgen/world_presets.json").exists() {
         Some(root)

@@ -40,7 +40,7 @@ def main():
                lab.ROOT / 'tools/oracle_harness.py', lab.ROOT / 'tools/test_rust_parity.py']
     sources += sorted((lab.ROOT / 'crates').rglob('*.rs'))
     hashes = base.source_hashes(sources)
-    harness.run_logged(['cargo', 'test', '--locked', '-p', 'horizon-client',
+    harness.run_logged(['cargo', 'test', '--locked', '-p', 'myriade-engine',
                         '--lib', '--no-default-features', '--no-run', '--message-format=json'],
                        build, 'compile-rust', timeout=3600)
     artifacts = [json.loads(line) for line in (build / 'compile-rust.log').read_text().splitlines()
@@ -48,7 +48,7 @@ def main():
     executables = {record['executable'] for record in artifacts
                    if record.get('reason') == 'compiler-artifact'
                    and record.get('executable') and record.get('profile', {}).get('test')
-                   and record['target']['name'] == 'horizon_client'
+                   and record['target']['name'] == 'myriade_engine'
                    and 'lib' in record['target']['kind']}
     assert len(executables) == 1, executables
     executable = executables.pop()

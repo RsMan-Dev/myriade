@@ -1,6 +1,6 @@
 //! `/worldborder`.
 use super::host::{CommandHost, R};
-use horizon_client::{
+use myriade_engine::{
     command::{Arg, Context},
     text::Text,
     worldborder::{MAX_CENTER, MAX_SIZE},

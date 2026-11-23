@@ -29,7 +29,7 @@ of each field and timing is a prerequisite to approving implementation.
 
 Verified Horizon owners at this revision (all paths relative to the repository):
 
-- `crates/horizon-client-render/src/gfx.rs:2911`: renderer construction;
+- `crates/myriade-level/src/gfx.rs:2911`: renderer construction;
   `:3082`: frame configuration selection before pipeline construction.
 - `gfx.rs:5515`: offscreen target helper, single sample, one mip/layer,
   renderer-selected format and usage.

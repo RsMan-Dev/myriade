@@ -3,7 +3,7 @@
 xtask = "run --package xtask --"
 
 # rustc's parallel front end: one crate's type checking and borrow checking spread over 8 threads.
-# horizon-client is one large crate, and its front end ran on one core: on an M1 Pro, clippy on it
+# myriade-engine is one large crate, and its front end ran on one core: on an M1 Pro, clippy on it
 # from scratch took 30 s (lib) and 63 s (unit tests) with one thread, 10 s and 23 s with eight.
 # The flag is unstable, so the stable compiler accepts it only with RUSTC_BOOTSTRAP. A RUSTFLAGS
 # variable replaces these flags: the release builds set their own (game-build.yml,

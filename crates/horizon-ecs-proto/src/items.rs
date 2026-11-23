@@ -2,7 +2,7 @@
 //! (`item_id("minecraft:saddle")`), with its tags (`has_tag`), the slot it is worn in and the armor it gives (`worn_in`, `armor_of`: read from its
 //! components, not listed here). Installed once, with the level (`install`). A module that cares about a list of items holds an `ItemSet`
 //! (names and `#tags` resolved once at creation), never a bit per id. Nothing here is about one species.
-use horizon_client_lib::items::Items;
+use myriade_engine_lib::items::Items;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 

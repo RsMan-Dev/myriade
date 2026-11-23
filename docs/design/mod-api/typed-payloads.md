@@ -311,7 +311,7 @@ get no separate networking implementation.
 ## Engine declarations: attachment sync (step 4a)
 
 An engine service that sends on a registered channel declares it in the same negotiated
-table as a mod (`raw_payloads::engine` in `horizon-client`). Every installation offers
+table as a mod (`raw_payloads::engine` in `myriade-engine`). Every installation offers
 its engine declarations, so a Horizon peer's Offer carries them even with no mods; each
 is optional, so a peer without one is admitted and a send returns `UnsupportedPeer`
 without a packet. The channel stays reserved: no mod may declare it, and the generic

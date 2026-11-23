@@ -8,8 +8,8 @@ description = "Vanilla's logical side: the gameplay the server jar holds, common
 
 [dependencies]
 horizon-assets = { path = "../horizon-assets" }
-horizon-client-core = { path = "../horizon-client-core" }
-horizon-client-lib = { path = "../horizon-client-lib", default-features = false }
+myriade-data = { path = "../myriade-data" }
+myriade-engine-lib = { path = "../myriade-engine-lib", default-features = false }
 horizon-command = { path = "../horizon-command" }
 horizon-core = { path = "../horizon-core" }
 horizon-items = { path = "../horizon-items" }
@@ -20,7 +20,7 @@ log = "0.4"
 serde_json = { version = "1.0.151", features = ["raw_value"] }
 
 [features]
-# Counters horizon-client's tests read (`api_values::damage`, `api_values::loot_values`, `boats::TYPE_BUILDS`); never in a game build.
+# Counters myriade-engine's tests read (`api_values::damage`, `api_values::loot_values`, `boats::TYPE_BUILDS`); never in a game build.
 test-support = []
 
 [lints]

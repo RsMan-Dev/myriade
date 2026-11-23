@@ -1,6 +1,6 @@
 //! The dragon's bridge (lot dragon 1): the fight loads, its tick makes the fight's dragon, and a placed spike crystal is counted and read back.
 use crate::common::*;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::dragon::fight::FightSave;
 

@@ -1,6 +1,6 @@
 //! `/debug start|stop` (the tick profiler) and `/jfr start|stop`.
 use super::host::{CommandHost, R};
-use horizon_client::{
+use myriade_engine::{
     command::{CommandError, Context},
     text::{Style, Text},
 };

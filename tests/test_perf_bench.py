@@ -250,7 +250,7 @@ class PortabilityTests(unittest.TestCase):
         run = {"startup": {"title_s": 1.0, "world_s": 5.0, "first_chunk_s": 2.5}, "memory": {}, "load_before": None,
                "scenes": {"village": {"load_s": 2.0, "frame_ms": [5.0] * 100, "meshes_load": 10}}}
         args = argparse.Namespace(offscreen=False, settle=2.0, label="x")
-        r = pb.report(args, 8, [run], {"name": "horizon-client"})
+        r = pb.report(args, 8, [run], {"name": "myriade-engine"})
         self.assertNotIn("load_avg_1m", r["conditions"])
         self.assertEqual(r["metrics"]["startup.first_chunk_ms"]["mean"], 2500.0)
         self.assertEqual(r["metrics"]["fps.village.avg_fps"]["mean"], 200.0)

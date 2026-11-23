@@ -72,7 +72,7 @@ def main():
                lab.ROOT / 'crates/horizon-items/src/item_nbt.rs',
                lab.ROOT / 'crates/horizon-core/src/nbt.rs',
                lab.ROOT / 'crates/horizon-world/src/datafix/dynamic.rs',
-               lab.ROOT / 'crates/horizon-client-core/src/lang.rs',
+               lab.ROOT / 'crates/myriade-data/src/lang.rs',
                lab.ROOT / 'crates/horizon-items/src/item_data.rs',
                lab.ROOT / 'crates/horizon-items/src/enchant.rs']
     tested = base.source_hashes(sources)

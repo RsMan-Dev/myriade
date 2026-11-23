@@ -22,11 +22,11 @@ def main():
     report.unlink(missing_ok=True)
     source = lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaMobDiscardOracle.java'
     sources = [source, Path(__file__).resolve(),
-               lab.ROOT / 'crates/horizon-client/src/game/mobs/mob_discard_tests.rs',
-               lab.ROOT / 'crates/horizon-client/src/game/administration/commands/mod.rs',
-               lab.ROOT / 'crates/horizon-client/src/game/entities/entity.rs',
-               lab.ROOT / 'crates/horizon-client/src/game/modding/native_mobs.rs',
-               lab.ROOT / 'crates/horizon-client/src/game/world/persist.rs']
+               lab.ROOT / 'crates/myriade-engine/src/game/mobs/mob_discard_tests.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game/administration/commands/mod.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game/entities/entity.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game/modding/native_mobs.rs',
+               lab.ROOT / 'crates/myriade-engine/src/game/world/persist.rs']
     def hashes():
         return {str(p.relative_to(lab.ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}
     tested = hashes()
@@ -48,7 +48,7 @@ def main():
                            stdout=log, stderr=subprocess.STDOUT, check=True)
     cp = os.pathsep.join(map(str, [jars['server'], *libraries]))
     run('compile-java', [javac, '-proc:none', '-cp', cp, '-d', build, source])
-    run('rust', ['cargo', 'test', '--offline', '--locked', '-p', 'horizon-client', '--lib',
+    run('rust', ['cargo', 'test', '--offline', '--locked', '-p', 'myriade-engine', '--lib',
                  'discarded_mob_leaves_selectors_and_saves_while_frozen', '--', '--ignored', '--nocapture'])
     actual = json.loads(rust.read_text())
     for side, jar in jars.items():

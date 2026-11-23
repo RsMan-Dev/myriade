@@ -11,16 +11,16 @@ Cancelling a layer changes drawing only.
 
 References are against main at `d57e01504e`.
 
-- `crates/horizon-client/src/game/mobs/mounts.rs:951`: `draw_mount_hud` resolves
+- `crates/myriade-engine/src/game/mobs/mounts.rs:951`: `draw_mount_hud` resolves
   `mount_index`, computes capacity, constructs vehicle draws, calls `keep_status_rows`
   before `gui_layer`, then returns capacity even when drawing was cancelled.
-- `crates/horizon-client/src/game.rs:8770`: initializes the frame's HUD room;
+- `crates/myriade-engine/src/game.rs:8770`: initializes the frame's HUD room;
   `game.rs:8867` calls mount drawing except for spectators, then passes its returned
   `vehicle_hearts` into player layout at `game.rs:8903`. This shared client presentation
   route serves single player, LAN and remote servers; dedicated servers draw no HUD.
-- `crates/horizon-client/src/game/interface/hud_room.rs:59`: reserves status keep-outs
+- `crates/myriade-engine/src/game/interface/hud_room.rs:59`: reserves status keep-outs
   from draw geometry, independently of whether the layer later draws.
-- `crates/horizon-client-render/src/hud_layout.rs:473`: default capacity;
+- `crates/myriade-level/src/hud_layout.rs:473`: default capacity;
   `hud_layout.rs:478`: ten containers per row, starting at `h - 39`, stepping up
   ten pixels; `hud_layout.rs:674` selects food using zero vehicle capacity;
   `hud_layout.rs:704` offsets the player's air row using vehicle row count.
@@ -28,7 +28,7 @@ References are against main at `d57e01504e`.
 - `crates/horizon-mod-vocab/src/client/hud_layout.rs:143`: `HealthInputs.vehicle_hearts`
   is the vocabulary crossing to player layout. The exports live in
   `crates/horizon-mod-vocab/src/exports/hud_layout.rs:1`.
-- `crates/horizon-client/src/game/native_hooks/shared.rs:2202`: `gui_layer` runs
+- `crates/myriade-engine/src/game/native_hooks/shared.rs:2202`: `gui_layer` runs
   preceding mod layers, Pre, conditional drawing, then Post. Today Post runs even
   when Pre cancels. Preserve that existing behavior pending verified counterpart evidence.
 

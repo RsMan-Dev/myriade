@@ -13,13 +13,13 @@ use bevy_ecs::{
     schedule::{Schedule, ScheduleLabel, SingleThreadedExecutor},
 };
 #[allow(unused_imports)]
-use horizon_client_lib::mobs::{
+use myriade_engine_lib::mobs::{
     MobWorld,
     nav::Navigation,
     path::{Evaluator, Finder, Path, PathMob, PATH_TYPES},
 };
 #[allow(unused_imports)]
-use horizon_client_render::{chunk::Chunk, collisions::SceneCollisions};
+use myriade_level::{chunk::Chunk, collisions::SceneCollisions};
 #[allow(unused_imports)]
 use horizon_core::geometry::{Aabb, Vec3, trig};
 #[allow(unused_imports)]
@@ -221,7 +221,7 @@ pub(crate) fn travel_one_with(
                 m.y = 0.2;
             }
             let m = Vec3::new(m.x * f64::from(slow), m.y * f64::from(0.8_f32), m.z * f64::from(slow));
-            vel.0 = horizon_client_lib::mobs::living::fluid_falling(g, falling, false, m);
+            vel.0 = myriade_engine_lib::mobs::living::fluid_falling(g, falling, false, m);
             c.fall_distance = 0.0;
         } else {
             move_relative(vel, yaw.0, 0.02, d.xxa, d.yya, d.zza);
@@ -229,7 +229,7 @@ pub(crate) fn travel_one_with(
             let v = vel.0;
             if fs.lava <= threshold {
                 vel.0 = Vec3::new(v.x * 0.5, v.y * f64::from(0.8_f32), v.z * 0.5);
-                vel.0 = horizon_client_lib::mobs::living::fluid_falling(g, falling, false, vel.0);
+                vel.0 = myriade_engine_lib::mobs::living::fluid_falling(g, falling, false, vel.0);
             } else {
                 vel.0 = Vec3::new(v.x * 0.5, v.y * 0.5, v.z * 0.5);
             }

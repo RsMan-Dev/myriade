@@ -19,7 +19,7 @@ A ported mod pack against the same mods on their own loader (docs/modpacks.md, "
     python3 tools/perf_bench.py --game neoforge --mod-jars JARS --deps DEPS --label pack-neoforge
 
 Games:
-  horizon       target/release/horizon-client, driven over its control socket
+  horizon       target/release/myriade-engine, driven over its control socket
   vanilla       your own 26.3 client.jar + Fabric Loader + a dev-only driver
                 mod (mods/horizon/src/bench), built here; nothing of the game
                 is redistributed
@@ -367,7 +367,7 @@ def yaw(start, end):
 # Horizon -------------------------------------------------------------------
 
 def control_path():
-    """Where the game opens its control endpoint (crates/horizon-client/src/control.rs): a Unix socket, or,
+    """Where the game opens its control endpoint (crates/myriade-engine/src/control.rs): a Unix socket, or,
     where Python has none (Windows), a JSON file in which the game names a localhost TCP port and a token."""
     if hasattr(socket, "AF_UNIX"):
         return Path("/tmp") / f"horizon-bench-{os.getpid()}.sock"
@@ -542,7 +542,7 @@ class LocalServer:
         (self.dir / "ops.json").write_text(json.dumps(
             [{"uuid": str(offline), "name": BENCH_PLAYER, "level": 4, "bypassesPlayerLimit": False}]))
         if self.kind == "horizon":
-            binary = Path(args.server_build).resolve() / ("horizon-client.exe" if sys.platform == "win32" else "horizon-client")
+            binary = Path(args.server_build).resolve() / ("myriade-engine.exe" if sys.platform == "win32" else "myriade-engine")
             self.command = [str(binary), "--resources", str(Path(args.resources).resolve()), "--dedicated", "--nogui"]
         else:
             java = Path(os.environ["JAVA_HOME"]) / "bin/java" if os.environ.get("JAVA_HOME") else "java"
@@ -617,7 +617,7 @@ def run_horizon(args, distance):
     options = write_options(game_dir, distance)
     sock = control_path()
     sock.unlink(missing_ok=True)
-    client = Path(args.build).resolve() / ("horizon-client.exe" if sys.platform == "win32" else "horizon-client")
+    client = Path(args.build).resolve() / ("myriade-engine.exe" if sys.platform == "win32" else "myriade-engine")
     command = [str(client), "--resources", str(Path(args.resources).resolve()),
                "--control-socket", str(sock), "--no-pause", "--weather", "clear", "--time", "6000"]
     if (args.width, args.height) != SIZES[0]:
@@ -1258,13 +1258,13 @@ def app(args):
     if args.game == "horizon":
         commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
                                 capture_output=True, text=True).stdout.strip() or None
-        manifest = (ROOT / "crates/horizon-client/Cargo.toml").read_text()
+        manifest = (ROOT / "crates/myriade-engine/Cargo.toml").read_text()
         version = next(l.split('"')[1] for l in manifest.splitlines() if l.startswith("version"))
         mods = [{"name": p.parent.name, "version": "carried"} for p in dev_mods(args)]
         if getattr(args, "release", None):
             # A release binary (--build of an installed version) is not this checkout: report its own version.
             version, commit = args.release, None
-        return {"name": "horizon-client", "version": version, "commit": commit, **({"mods": mods} if mods else {})}
+        return {"name": "myriade-engine", "version": version, "commit": commit, **({"mods": mods} if mods else {})}
     if args.game == "neoforge":
         import neoforge_oracle
         jars = [j.name for f in filter(None, (args.mod_jars, args.deps)) for j in sorted(Path(f).glob("*.jar"))]

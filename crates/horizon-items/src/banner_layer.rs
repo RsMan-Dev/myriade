@@ -87,7 +87,7 @@ pub fn layers_from_nbt(tag: Option<&Tag>) -> Vec<BannerLayer> {
         let pattern = match e.get("pattern")? {
             // `Identifier.CODEC` rejects an invalid id, which fails the layer.
             Tag::String(id) => PatternRef::Id(Arc::from(
-                horizon_client_core::identifier::normalize_id(&id.to_string_lossy())?.as_str(),
+                myriade_data::identifier::normalize_id(&id.to_string_lossy())?.as_str(),
             )),
             Tag::Compound(c) => {
                 let field = |k: &str| match c.get(&k.into()) {
@@ -95,7 +95,7 @@ pub fn layers_from_nbt(tag: Option<&Tag>) -> Vec<BannerLayer> {
                     _ => None,
                 };
                 // `Identifier.CODEC` rejects an invalid `asset_id`.
-                let asset = horizon_client_core::identifier::normalize_id(&field("asset_id")?)?;
+                let asset = myriade_data::identifier::normalize_id(&field("asset_id")?)?;
                 PatternRef::Inline {
                     asset: Arc::from(asset.as_str()),
                     translation_key: Arc::from(field("translation_key")?.as_str()),

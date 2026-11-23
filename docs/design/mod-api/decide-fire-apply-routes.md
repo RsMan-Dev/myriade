@@ -12,13 +12,13 @@ assigned to any row.
 
 Two mechanisms reach the mod API from client-lib code, and both were enumerated:
 
-1. Catalog targets. `rg -n 'horizon_client_lib::' crates/horizon-mod-vocab/src/hooks` returns 22
-   `target = "horizon_client_lib::…"` attributes in 19 declaration files. The generator classifies
+1. Catalog targets. `rg -n 'myriade_engine_lib::' crates/horizon-mod-vocab/src/hooks` returns 22
+   `target = "myriade_engine_lib::…"` attributes in 19 declaration files. The generator classifies
    them in `crates/horizon-mod-api-gen/src/lib.rs:344` (`free_function_source`, prefix
-   `horizon_client_lib::`) and resolves each target's `native_<hook>` in `dispatch.rs:46` (`emit`).
+   `myriade_engine_lib::`) and resolves each target's `native_<hook>` in `dispatch.rs:46` (`emit`).
 2. The callback table. 19 of the 22 are installed through `NativeLevelHooks`
-   (`crates/horizon-client/src/native_client_hooks.rs:9`, installed at `entry.rs:225`); the other 3
-   call `mod_api::dispatch_` themselves (`crates/horizon-client/src/crafting/native_hooks.rs:14,40,56`).
+   (`crates/myriade-engine/src/native_client_hooks.rs:9`, installed at `entry.rs:225`); the other 3
+   call `mod_api::dispatch_` themselves (`crates/myriade-engine/src/crafting/native_hooks.rs:14,40,56`).
 
 Two consequences a reviewer should keep in mind:
 
@@ -75,7 +75,7 @@ The read sets and bold outcome names below are migration proposals, not existing
 Existing callbacks mutate state directly; cancellation does not currently imply transaction rollback.
 
 Paths are relative to the repository root. `hooks/` is `crates/horizon-mod-vocab/src/hooks/` and
-`client/` is `crates/horizon-client/src/`. The design's line numbers moved; these are current.
+`client/` is `crates/myriade-engine/src/`. The design's line numbers moved; these are current.
 
 | Route | Current owner | Vanilla method mirrored | Read set | Existing public result per outcome |
 | --- | --- | --- | --- | --- |
@@ -112,7 +112,7 @@ client-lib targets, and are migrated with the rest of the server menu path.
 
 ## Baseline caller fixtures
 
-`crates/horizon-client/src/menu/dfa_tests.rs` pins three stage-2 acceptance rows through today's
+`crates/myriade-engine/src/menu/dfa_tests.rs` pins three stage-2 acceptance rows through today's
 public `Menu::click` / `Menu::place_recipe` callers, without installing listeners or adding runtime code:
 
 - Cursor stone 3 into an empty chest slot: cursor empty, destination stone 3.
@@ -126,14 +126,14 @@ public `Menu::click` / `Menu::place_recipe` callers, without installing listener
 These are Rust caller regressions with independent vanilla expectations, not a new Java/Rust parity
 harness or proof of dispatch counts, tokens, cancellation, stale refusal or rollback. The recipe fixture
 is ignored by default and asserts that resources were actually loaded when explicitly requested.
-Run on the build server with prepared resources at `.local/horizon-client/26.3`:
+Run on the build server with prepared resources at `.local/myriade-engine/26.3`:
 
 ```sh
-cargo test -p horizon-client-lib --lib dfa_baseline_ -- --include-ignored
+cargo test -p myriade-engine-lib --lib dfa_baseline_ -- --include-ignored
 ```
 
-The sources live under horizon-client, but `client_lib.rs` owns the `menu` module and its unit tests.
-The recipe test reads `HORIZON_TEST_RESOURCES`, or `.local/horizon-client/26.3` in the checkout when
+The sources live under myriade-engine, but `engine_lib.rs` owns the `menu` module and its unit tests.
+The recipe test reads `HORIZON_TEST_RESOURCES`, or `.local/myriade-engine/26.3` in the checkout when
 that is unset, and fails rather than passing silently when neither has the prepared data.
 
 ## Vanilla evidence

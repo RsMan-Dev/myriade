@@ -5,7 +5,7 @@ use crate::cow::{Clock, Following, Moving, Nav, NavParams, NeedsPath};
 use crate::hostile::Daylight;
 use crate::locomotion::{FlyMode, SwimMode, swim::SwimParams};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::mobs::{
+use myriade_engine_lib::mobs::{
     MobWorld,
     path::{Evaluator, Path, PathNode, PathType},
 };

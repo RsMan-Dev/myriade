@@ -1,8 +1,8 @@
 //! The automatic sizes of the long-lived pools the client starts at launch or
 //! when a world opens, in one table: Battery Mode halves each of them through it,
 //! instead of the streaming pool alone. Far terrain's pools
-//! (`crates/horizon-client-render/src/lod.rs`'s sampling and meshing,
-//! `crates/horizon-client/src/vanillagen/lod.rs`'s Far decoration) are not in the
+//! (`crates/myriade-level/src/lod.rs`'s sampling and meshing,
+//! `crates/myriade-engine/src/vanillagen/lod.rs`'s Far decoration) are not in the
 //! table: they start only with far terrain on and keep formulas measured there.
 
 use std::sync::OnceLock;

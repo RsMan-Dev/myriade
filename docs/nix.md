@@ -9,7 +9,7 @@ copy of Minecraft 26.3, as everywhere else ([hosting.md](hosting.md), step 2).
 | `horizon-server` | `horizon-server`, with `horizon-engine` (the game without sound or controllers) beside it | Linux, macOS (Apple Silicon) |
 | `horizon-engine` | The server build of the game alone | Linux, macOS |
 | `horizon-prepare` | `horizon-prepare`, with a JDK 25 for the exporters it compiles | Linux, macOS |
-| `horizon-client` | The game | Linux, macOS |
+| `myriade-engine` | The game | Linux, macOS |
 | `horizon-launcher` | The launcher in an FHS environment (it builds native mods with Cargo) | Linux |
 
 ```sh

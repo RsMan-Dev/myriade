@@ -215,7 +215,7 @@ fn read_tag_dir(dir: &Path) -> HashMap<String, horizon_world::tag_layers::TagLay
     read_tag_dir_in(dir, "minecraft")
 }
 /// The resource root's `data/` namespaces other than `minecraft`, in name
-/// order: content mods' files land there (`horizon_client::mod_content`'s
+/// order: content mods' files land there (`myriade_engine::mod_content`'s
 /// overlay), as a data pack's namespaces do in `RegistryDataLoader`.
 fn other_namespaces(root: &Path) -> Vec<String> {
     let mut out = horizon_world::json_folder::namespaces(&root.join("data"));
@@ -318,7 +318,7 @@ fn parse_entry(
             // A data pack's entry may name itself with a literal component
             // rather than a translation key.
             if key.is_empty() && !v["description"].is_null() {
-                horizon_client_core::scoreboard::comp_text(&v["description"]).plain()
+                myriade_data::scoreboard::comp_text(&v["description"]).plain()
             } else {
                 id.trim_start_matches("minecraft:").replace('_', " ")
             }
@@ -672,14 +672,14 @@ impl Enchantments {
     }
     /// `Enchantment.getFullname` as plain text and whether it is a curse (red).
     pub fn full_name(&self, id: &str, level: u32) -> (String, bool) {
-        let language = horizon_client_core::lang::current();
+        let language = myriade_data::lang::current();
         self.full_name_in(language.as_deref(), id, level)
     }
     /// `Enchantment.getFullname` against `language`; `None` (no language loaded: a
     /// dedicated server, the probes) keeps the English names loaded above.
     pub fn full_name_in(
         &self,
-        language: Option<&horizon_client_core::lang::Language>,
+        language: Option<&myriade_data::lang::Language>,
         id: &str,
         level: u32,
     ) -> (String, bool) {
@@ -689,7 +689,7 @@ impl Enchantments {
     /// [`Enchantments::full_name_in`] with the level as a number when `numeric`.
     fn full_name_with(
         &self,
-        language: Option<&horizon_client_core::lang::Language>,
+        language: Option<&myriade_data::lang::Language>,
         id: &str,
         level: u32,
         numeric: bool,
@@ -2144,7 +2144,7 @@ pub mod tests {
     #[test]
     fn names_follow_the_language() {
         struct Mem(HashMap<String, Vec<u8>>);
-        impl horizon_client_core::lang::ResourceSource for Mem {
+        impl myriade_data::lang::ResourceSource for Mem {
             fn read(&self, path: &str) -> Option<Vec<u8>> {
                 self.0.get(path).cloned()
             }
@@ -2155,7 +2155,7 @@ pub mod tests {
                 .as_bytes()
                 .to_vec(),
         )]));
-        let ru = horizon_client_core::lang::Language::load(&[&ru], "ru_ru");
+        let ru = myriade_data::lang::Language::load(&[&ru], "ru_ru");
         let e = sample();
         assert_eq!(
             e.full_name_in(Some(&ru), "minecraft:sharpness", 5).0,

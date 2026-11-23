@@ -1,5 +1,5 @@
 //! Panic of the animals with a brain (camel, frog, nautilus): the start window, the rider that holds it back, its duration,
-//! and the water it runs to while burning (`horizon-client/src/mobs/animal_panic.rs:11-160`).
+//! and the water it runs to while burning (`myriade-engine/src/mobs/animal_panic.rs:11-160`).
 
 /// Which rider holds the panic back: a player (`m.rider`, the camel), or any rider (the husk: `extra.rider` too).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

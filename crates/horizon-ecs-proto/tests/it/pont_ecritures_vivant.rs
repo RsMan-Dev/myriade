@@ -1,7 +1,7 @@
 //! The host's writes on a living entity (lot 43): health, turn, motion, fire, effects. Each write is read back through the world.
 use crate::common::*;
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::mobs::world::leaked_test_world_mut;
+use myriade_engine_lib::mobs::world::leaked_test_world_mut;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::cow::{Contact, Health, Resist, Vel, Yaw};

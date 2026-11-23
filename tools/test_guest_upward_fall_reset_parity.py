@@ -125,12 +125,12 @@ def main():
     if args.binary:
         binary = args.binary.resolve(strict=True)
     else:
-        subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'horizon-client'],
+        subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-game', '--bin', 'myriade-engine'],
                        cwd=lab.ROOT, check=True)
         metadata = json.loads(subprocess.check_output(
             ['cargo', 'metadata', '--no-deps', '--format-version', '1'], cwd=lab.ROOT, text=True))
         binary = Path(metadata['target_directory']) / 'fast' / (
-            'horizon-client.exe' if os.name == 'nt' else 'horizon-client')
+            'myriade-engine.exe' if os.name == 'nt' else 'myriade-engine')
     horizon = [binary, '--resources', lab.RESOURCES.resolve(), '--dedicated', '--nogui']
     net.PLAYERS = [PLAYER]
     net.PROPERTIES.update({'force-gamemode': 'false'})

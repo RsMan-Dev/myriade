@@ -24,7 +24,7 @@ pub static SHEARING: ShearDef = ShearDef {
         w.entity_mut(e).insert(SearchAfter(until));
         let Some(at) = w.get::<crate::cow::Pos>(e).map(|p| p.0) else { return true };
         let top = w.get::<crate::cow::Body>(e).map_or(1.0, |b| f64::from(b.height));
-        crate::behaviours::shear::drop_stacks(w, vec![horizon_client_lib::items::ItemStack::new(&item, 1)], [at.x, at.y + top, at.z]);
+        crate::behaviours::shear::drop_stacks(w, vec![myriade_engine_lib::items::ItemStack::new(&item, 1)], [at.x, at.y + top, at.z]);
         true
     },
     table: |_, _| None,

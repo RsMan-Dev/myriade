@@ -22,7 +22,7 @@ fn fixture() -> Option<&'static Fixture> {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| {
                     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                        .join("../../.local/horizon-client")
+                        .join("../../.local/myriade-engine")
                         .join(horizon_core::VANILLA_VERSION)
                 });
             if !root.join("block-behaviours.json").exists() {

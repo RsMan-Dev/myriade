@@ -21,7 +21,7 @@ pub struct SwapParams {
 }
 /// The item of `i` leaves the player's hand and `to` takes its place: in the mirror (`Online`, by id) and on the host (`HostEvent::HeldSwap`,
 /// which carries the stack's data). False when the player is not online or `to` is no item.
-pub fn swap_in_hand(w: &mut World, i: &crate::behaviours::Interaction, to: horizon_client_lib::items::ItemStack) -> bool {
+pub fn swap_in_hand(w: &mut World, i: &crate::behaviours::Interaction, to: myriade_engine_lib::items::ItemStack) -> bool {
     let id = crate::items::item_id(&to.item);
     let Some(pl) = w.resource::<Online>().get(i.player) else { return false };
     if id == 0 {
@@ -41,7 +41,7 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
     if i.item == 0 || !crate::items::is(p.from, i.item) || (p.adult_only && w.get::<GrowAt>(e).is_some()) {
         return false;
     }
-    if !swap_in_hand(w, i, horizon_client_lib::items::ItemStack::new(p.to, 1)) {
+    if !swap_in_hand(w, i, myriade_engine_lib::items::ItemStack::new(p.to, 1)) {
         return false;
     }
     let sound = p.alt.filter(|(test, _)| test(w, e)).map_or(p.sound, |(_, s)| s);

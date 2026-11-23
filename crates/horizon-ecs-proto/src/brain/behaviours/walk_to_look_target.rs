@@ -5,7 +5,7 @@
 use crate::behaviours::Cap;
 use crate::brain::*;
 use crate::cow::{FluidState, Level};
-use horizon_client_lib::blocks::Fluid;
+use myriade_engine_lib::blocks::Fluid;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:walk_to_look_target",

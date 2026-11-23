@@ -8,7 +8,7 @@ use crate::cow::*;
 use crate::goals::Events;
 use crate::rules::{no_attrs, params, Rule};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SwallowParams {
@@ -28,7 +28,7 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
     if baby {
         return crate::items::is(p.food, i.item) && crate::hand_feed::age_up(w, e, i);
     }
-    let Some(archetype) = horizon_client_lib::mobs::sulfur_cube::archetype_of(name) else { return false };
+    let Some(archetype) = myriade_engine_lib::mobs::sulfur_cube::archetype_of(name) else { return false };
     let at = w.get::<Pos>(e).map_or([0.0; 3], |q| [q.0.x, q.0.y, q.0.z]);
     if let Some(h) = w.get::<Held>(e) {
         if &*h.item == name {

@@ -121,7 +121,7 @@ pub fn drop_table(w: &mut World, table: &str, at: [f64; 3]) {
 }
 
 /// Throws each stack from `at` as `Entity.spawnAtLocation` does.
-pub fn drop_stacks(w: &mut World, stacks: Vec<horizon_client_lib::items::ItemStack>, at: [f64; 3]) {
+pub fn drop_stacks(w: &mut World, stacks: Vec<myriade_engine_lib::items::ItemStack>, at: [f64; 3]) {
     let throw = with_level_random(w, |r| r.next_long());
     let mut random = LegacyRandom::new(throw);
     for stack in stacks {

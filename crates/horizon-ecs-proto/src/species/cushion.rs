@@ -11,7 +11,7 @@ use crate::item::drop_item;
 use crate::mount::Riding;
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Tag;
 use std::collections::HashMap;
@@ -117,7 +117,7 @@ pub fn place(w: &mut World, block: [i32; 3], at: Vec3, color: u8, yaw: f32, name
     if w.get_resource::<CushionHost>().is_some_and(|h| !(h.can_place)(w, at)) {
         return None;
     }
-    let joined = crate::hanging::JoinedAt(horizon_client_lib::join_seq::JoinSeq::next());
+    let joined = crate::hanging::JoinedAt(myriade_engine_lib::join_seq::JoinSeq::next());
     let e = w.spawn((Pos(at), OwnTime, Cushion { block, born: 0, color: color.min(15), yaw }, joined)).id();
     let born = now_of(w, e);
     w.get_mut::<Cushion>(e).expect("just spawned").born = born;

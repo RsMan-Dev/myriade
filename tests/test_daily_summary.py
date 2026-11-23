@@ -215,8 +215,8 @@ class DailySummaryTests(unittest.TestCase):
                       "`game::slow::case_4` and 2 more.", body)
 
     def test_what_a_stopped_run_reports_is_shown_only_as_names_and_numbers(self):
-        self.assertEqual(summary.stopped_text({"shard": "horizon-client#2of2", "in_progress": True}),
-                         "`horizon-client#2of2` was still running when the leg ended (its time limit, a cancel, or a "
+        self.assertEqual(summary.stopped_text({"shard": "myriade-engine#2of2", "in_progress": True}),
+                         "`myriade-engine#2of2` was still running when the leg ended (its time limit, a cancel, or a "
                          "lost runner); which tests were running and the process's end are not known")
         self.assertEqual(summary.stopped_text({"shard": "x", "reason": "listed tests never reported a result",
                                                "cargo_exit": 0, "wall_seconds": 30, "never_reported": 2}),

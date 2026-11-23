@@ -3,7 +3,7 @@
 A new hook needs its declaration in the area file of `crates/horizon-mod-vocab/src/hooks/` (`///` lines and
 `#[hook(side = "server", contract = "cancel", out = "cancel")]` on `fn name();`; the argument list is in that folder's `mod.rs`), its `native_*` function with the placeholder body
 `let _ = (every, parameter);` (all its parameters, in order), and a run of `cargo run -p xtask -- mod-api`.
-Put that function in `crates/horizon-client/src/game/native_hooks/<area>.rs`, matching the declaration's
+Put that function in `crates/myriade-engine/src/game/native_hooks/<area>.rs`, matching the declaration's
 area filename. Alternatively, a named hook may live in any logical module under `game/`, including
 area folders, `mod.rs` and `#[path]` modules. Its target must name that module and
 `Game<'_>::native_<name>`. Exactly one matching `Game` method must exist. Outside `native_hooks/`,

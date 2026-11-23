@@ -7,7 +7,7 @@ use crate::boat_state::BoatMarker;
 use crate::cow::{Bounds, Health, Index, Pos};
 use crate::rules::{boat::WIDTH as BOAT_WIDTH, seat_rules::CART_WIDTH};
 use bevy_ecs::entity::Entity;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Tag;
 use std::collections::HashSet;

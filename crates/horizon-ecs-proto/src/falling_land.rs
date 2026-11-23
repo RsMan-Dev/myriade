@@ -7,8 +7,8 @@ use crate::projectile_more::{ensure_rng, ThrownRng};
 use crate::rules::falling_block::{anvil_steps, anvil_wear_chance, anvil_worn_name};
 use bevy_ecs::prelude::*;
 use horizon_core::random::RandomSource;
-use horizon_client_lib::blocks::Fluid;
-use horizon_client_lib::items::ItemStack;
+use myriade_engine_lib::blocks::Fluid;
+use myriade_engine_lib::items::ItemStack;
 use horizon_world::registry::BlockStateId;
 
 /// Where a landed falling block goes: placed with its state at its cell, dropped as the item of its state, or broken with nothing placed

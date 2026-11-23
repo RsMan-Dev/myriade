@@ -9,9 +9,9 @@ use crate::IFloor as _;
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
-use horizon_client_lib::blocks::Fluid;
-use horizon_client_lib::mobs::MobWorld;
-use horizon_client_lib::mobs::path::PathType;
+use myriade_engine_lib::blocks::Fluid;
+use myriade_engine_lib::mobs::MobWorld;
+use myriade_engine_lib::mobs::path::PathType;
 use horizon_core::geometry::Vec3;
 
 /// `LongJumpToPreferredBlock` / `LongJumpToRandomPos` : les nombres de la grenouille (`Params::DEFAULT`) et de la chèvre
@@ -497,7 +497,7 @@ pub(crate) fn reaches_on_foot(w: &World, e: Entity, target: [i32; 3]) -> bool {
 /// Whether a path of at most 8 blocks reaches the block (`Mob.create_path_raw(&[target], 0, 8.0).reached`): the search `pathfind` makes, without
 /// touching the animal. The frog's is the amphibious one that prefers shallow water (`nav.rs:20`), the goat's the walking one.
 fn walkable(w: &World, e: Entity, p: &Params, target: [i32; 3]) -> bool {
-    use horizon_client_lib::mobs::path::{Evaluator, PathMob};
+    use myriade_engine_lib::mobs::path::{Evaluator, PathMob};
     let (Some(pos), Some(body), Some(c), Some(sp)) = (w.get::<Pos>(e), w.get::<Body>(e), w.get::<Contact>(e), w.get::<NavParams>(e)) else { return false };
     let in_fluid = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
     if !c.on_ground && !in_fluid {
@@ -527,7 +527,7 @@ thread_local! {
     /// The cells closed by the searches of the series in progress (cleared at its end; at most some hundreds of cells).
     static SEEN: std::cell::RefCell<std::collections::HashSet<[i32; 3]>> = std::cell::RefCell::new(Default::default());
 }
-fn search(w: &World, pm: &horizon_client_lib::mobs::path::PathMob, evaluator: horizon_client_lib::mobs::path::Evaluator, target: [i32; 3], max_visited: i32) -> bool {
+fn search(w: &World, pm: &myriade_engine_lib::mobs::path::PathMob, evaluator: myriade_engine_lib::mobs::path::Evaluator, target: [i32; 3], max_visited: i32) -> bool {
     use crate::pathsearch::Finder;
     // Accepted deviation (suivi/ecs-ecarts.md, 2026-11-20): a cell closed by an earlier search of this series is reachable on foot.
     if SEEN.with(|m| m.borrow().contains(&target)) {

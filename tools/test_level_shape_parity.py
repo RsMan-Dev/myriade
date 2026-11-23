@@ -65,7 +65,7 @@ def main():
     parser.add_argument('--seed', type=int, default=1)
     args = parser.parse_args()
     lock, jars, libraries = base.verify_artifacts()
-    resources = lab.LOCAL / 'horizon-client' / lock['minecraft']['version']
+    resources = lab.LOCAL / 'myriade-engine' / lock['minecraft']['version']
     work = lab.LOCAL / 'level-shape-parity'
     work.mkdir(parents=True, exist_ok=True)
     cases = generate(resources, args.count, args.seed)
