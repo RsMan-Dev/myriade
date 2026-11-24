@@ -315,6 +315,19 @@ impl Session {
                 }
                 Ok(())
             }
+            C::Sound(s) => {
+                // The sound heard, for the parity tests: the registry id (or the inline name), the position in blocks.
+                let name = s.sound.1.as_ref().map(|(n, _)| n.as_str()).unwrap_or("");
+                eprintln!("SOUND id={} name={} src={} x={:.2} y={:.2} z={:.2} vol={} pitch={}", s.sound.0, name, s.source, f64::from(s.x) / 8.0, f64::from(s.y) / 8.0, f64::from(s.z) / 8.0, s.volume, s.pitch);
+                self.st.apply(&p);
+                Ok(())
+            }
+            C::SoundEntity(s) => {
+                let name = s.sound.1.as_ref().map(|(n, _)| n.as_str()).unwrap_or("");
+                eprintln!("SOUND id={} name={} src={} entity={} vol={} pitch={}", s.sound.0, name, s.source, s.id, s.volume, s.pitch);
+                self.st.apply(&p);
+                Ok(())
+            }
             _ => {
                 self.st.apply(&p);
                 Ok(())

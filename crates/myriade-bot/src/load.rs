@@ -1062,6 +1062,16 @@ fn read(
         }
         let mut r = Reader::new(&body);
         let sent = match id {
+            cb::SOUND | cb::SOUND_ENTITY => {
+                // Logged for the parity tests: sound name (registry id when not inline) and position.
+                use horizon_protocol::packets::play::Clientbound as C;
+                match C::decode(id, &body) {
+                    Ok(C::Sound(s)) => eprintln!("SOUND id={} name={} x={:.2} y={:.2} z={:.2} vol={} pitch={}", s.sound.0, s.sound.1.as_ref().map_or("", |n| n.0.as_str()), f64::from(s.x) / 8.0, f64::from(s.y) / 8.0, f64::from(s.z) / 8.0, s.volume, s.pitch),
+                    Ok(C::SoundEntity(s)) => eprintln!("SOUND id={} name={} entity={} vol={} pitch={}", s.sound.0, s.sound.1.as_ref().map_or("", |n| n.0.as_str()), s.id, s.volume, s.pitch),
+                    _ => {}
+                }
+                Ok(())
+            }
             cb::SET_TIME => {
                 *lock(&bot.server_time) = r.i64().ok();
                 Ok(())
