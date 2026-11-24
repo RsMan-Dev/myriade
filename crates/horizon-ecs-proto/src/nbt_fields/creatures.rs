@@ -1,6 +1,5 @@
 //! Les champs NBT propres aux créatures, déclarés par comportement (un composant, des clés). Un champ ne s'applique qu'à une entité qui
-//! porte son composant : sans lui, la clé reste libre (rien n'est inventé). Pas de clé pour `ignited`, que la sauvegarde de référence
-//! n'écrit pas.
+//! porte son composant : sans lui, la clé reste libre (rien n'est inventé).
 use crate::behaviours::attached_face::Attached;
 use crate::behaviours::bee::Bee;
 use crate::behaviours::hunt_prey::{CannotHunt, Hunt};
@@ -47,6 +46,7 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Size"), write: write_size, read: read_size, accepts: accept::int, owner: Some(owner::<Size>) },
     Field { key: Cow::Borrowed("Fuse"), write: write_fuse, read: read_fuse, accepts: accept::short, owner: Some(owner::<Fuse>) },
     Field { key: Cow::Borrowed("ExplosionRadius"), write: write_radius, read: read_radius, accepts: byte, owner: Some(owner::<Fuse>) },
+    Field { key: Cow::Borrowed("ignited"), write: write_ignited, read: read_ignited, accepts: byte, owner: Some(owner::<Fuse>) },
     Field { key: Cow::Borrowed("powered"), write: write_powered, read: read_powered, accepts: byte, owner: Some(owner::<Fuse>) },
     Field { key: Cow::Borrowed("Invul"), write: write_invul, read: read_invul, accepts: accept::int, owner: Some(owner::<Charge>) },
     Field { key: Cow::Borrowed("IsScreamingGoat"), write: write_screaming, read: read_screaming, accepts: byte, owner: Some(owner::<Rammer>) },
@@ -129,6 +129,22 @@ fn read_radius(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Byte(v) = t else { return false };
     let Some(mut f) = w.get_mut::<Fuse>(e) else { return false };
     f.radius = f32::from(*v);
+    true
+}
+
+/// `ignited`: `Creeper.readAdditionalSaveData` calls `ignite()` when it is true, the fuse then runs toward the blast.
+fn write_ignited(w: &World, e: Entity, c: &mut Compound) {
+    c.insert("ignited".into(), Tag::Byte(i8::from(w.get::<Fuse>(e).is_some_and(|f| f.ignited))));
+}
+
+fn read_ignited(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut f) = w.get_mut::<Fuse>(e) else { return false };
+    if *v == 0 {
+        return true;
+    }
+    f.ignited = true;
+    crate::explosion::set_dir(w, e, 1);
     true
 }
 
@@ -352,12 +368,42 @@ fn write_age(w: &World, e: Entity, c: &mut Compound) {
 
 /// The keys whose presence poses `GrowAt` on an adult (`nbt::register_creators`): a baby made by `/summon` or `/data merge`.
 pub const CREATORS: &[Field] = &[
+    Field { key: Cow::Borrowed("VillagerData"), write: write_zombie_data, read: read_zombie_data, accepts: compound, owner: Some(owner::<crate::bridge::sync_a::ZombieVillagerData>) },
     Field { key: Cow::Borrowed("MainGene"), write: write_main_gene, read: read_main_gene, accepts: is_string, owner: Some(owner::<crate::behaviours::spawn_draw::Genes>) },
     Field { key: Cow::Borrowed("HiddenGene"), write: write_hidden_gene, read: read_hidden_gene, accepts: is_string, owner: Some(owner::<crate::behaviours::spawn_draw::Genes>) },
     Field { key: Cow::Borrowed("IsImmuneToZombification"), write: write_immune, read: read_immune, accepts: byte, owner: Some(owner::<crate::behaviours::convert_timer::ZombImmune>) },
     Field { key: Cow::Borrowed("Age"), write: write_age, read: create_age, accepts: accept::int, owner: Some(owner::<GrowAt>) },
     Field { key: Cow::Borrowed("IsBaby"), write: write_baby, read: read_baby, accepts: byte, owner: Some(owner::<GrowAt>) },
 ];
+
+/// `ZombieVillager.readAdditionalSaveData`: `VillagerData` (type, profession, level), by registry name.
+fn write_zombie_data(w: &World, e: Entity, c: &mut Compound) {
+    use crate::bridge::sync_a::{PROFESSION_IDS, VILLAGER_TYPE_IDS};
+    let Some(d) = w.get::<crate::bridge::sync_a::ZombieVillagerData>(e) else { return };
+    let mut m = Compound::new();
+    m.insert("type".into(), Tag::String(JavaString::from(format!("minecraft:{}", VILLAGER_TYPE_IDS[d.0[0] as usize]).as_str())));
+    m.insert("profession".into(), Tag::String(JavaString::from(format!("minecraft:{}", PROFESSION_IDS[d.0[1] as usize]).as_str())));
+    m.insert("level".into(), Tag::Int(d.0[2]));
+    c.insert("VillagerData".into(), Tag::Compound(m));
+}
+
+fn read_zombie_data(w: &mut World, e: Entity, t: &Tag) -> bool {
+    use crate::bridge::sync_a::{PROFESSION_IDS, VILLAGER_TYPE_IDS};
+    let Tag::Compound(d) = t else { return false };
+    if !w.get::<TypeName>(e).is_some_and(|n| n.0 == "minecraft:zombie_villager") {
+        return false;
+    }
+    let id = |k: &str, list: &[&str], default: i32| match d.get(&JavaString::from(k)) {
+        Some(Tag::String(s)) => s.to_string_lossy().strip_prefix("minecraft:").and_then(|n| list.iter().position(|x| *x == n)).map_or(default, |i| i as i32),
+        _ => default,
+    };
+    let level = match d.get(&JavaString::from("level")) {
+        Some(Tag::Int(l)) => (*l).clamp(1, 5),
+        _ => 1,
+    };
+    w.entity_mut(e).insert(crate::bridge::sync_a::ZombieVillagerData([id("type", &VILLAGER_TYPE_IDS, 2), id("profession", &PROFESSION_IDS, 0), level]));
+    true
+}
 
 fn write_immune(w: &World, e: Entity, c: &mut Compound) {
     if w.get::<crate::behaviours::convert_timer::ZombImmune>(e).is_some() {
