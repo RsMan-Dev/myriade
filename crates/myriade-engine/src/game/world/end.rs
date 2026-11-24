@@ -141,8 +141,6 @@ pub(super) struct EndState {
     tickets: Vec<((i32, i32), u32)>,
     /// The Overworld generator, for stronghold positions (ServerLevel.findNearestMapStructure).
     locator: std::sync::Mutex<Option<Arc<VanillaTerrain>>>,
-    /// Thrown eyes of ender in flight.
-    eyes: Vec<EyeOfEnder>,
 }
 
 impl EndState {
@@ -151,53 +149,6 @@ impl EndState {
     }
     pub(super) fn set_locator(&self, terrain: Option<Arc<VanillaTerrain>>) {
         *self.locator.lock().unwrap() = terrain;
-    }
-}
-
-impl EndState {
-    /// The eyes' entity ids, for a server to number them.
-    pub(super) fn eye_ids(&mut self) -> impl Iterator<Item = &mut u32> {
-        self.eyes.iter_mut().map(|e| &mut e.id)
-    }
-    /// The numbered eyes as a server's clients track them: (id, position, motion).
-    pub(super) fn eyes_tracked(&self) -> impl Iterator<Item = (u32, [f64; 3], [f64; 3])> {
-        self.eyes
-            .iter()
-            .filter(|e| e.id != 0)
-            .map(|e| (e.id, e.position.to_array(), e.velocity.to_array()))
-    }
-}
-
-/// The EyeOfEnder entity.
-struct EyeOfEnder {
-    /// Its entity id once a server's clients track it (0 until then).
-    id: u32,
-    position: glam::DVec3,
-    previous: glam::DVec3,
-    velocity: glam::DVec3,
-    target: glam::DVec3,
-    life: u32,
-    survive: bool,
-}
-impl EyeOfEnder {
-    /// EyeOfEnder.updateDeltaMovement.
-    fn update_delta(old: glam::DVec3, position: glam::DVec3, target: glam::DVec3) -> glam::DVec3 {
-        let horizontal = glam::DVec3::new(target.x - position.x, 0.0, target.z - position.z);
-        let length = horizontal.length();
-        let old_horizontal = old.x.hypot(old.z);
-        let mut wanted_speed = old_horizontal + 0.0025 * (length - old_horizontal);
-        let mut y = old.y;
-        if length < 1.0 {
-            wanted_speed *= 0.8;
-            y *= 0.8;
-        }
-        let wanted_y = if position.y - old.y < target.y {
-            1.0
-        } else {
-            -1.0
-        };
-        horizontal * (wanted_speed / length)
-            + glam::DVec3::new(0.0, y + (wanted_y - y) * 0.015, 0.0)
     }
 }
 
@@ -332,7 +283,6 @@ impl Game<'_> {
             self.ecs_with(|ecs, mw| ecs.end_flames(mw));
         }
         self.ecs_end_fire();
-        self.tick_eyes();
         if self.dimension_type().has_ender_dragon_fight {
             self.ensure_exit_portal()?;
         }
@@ -1009,16 +959,15 @@ impl Game<'_> {
             [start.x, start.y, start.z],
             ctx,
         );
-        let id = self.take_entity_id();
-        self.end.eyes.push(EyeOfEnder {
-            id,
-            position: start,
-            previous: start,
-            velocity: glam::DVec3::ZERO,
-            target,
-            life: 0,
-            survive,
+        let (at_p, to_p) = ([start.x, start.y, start.z], [target.x, target.y, target.z]);
+        let mut next = self.next_entity;
+        self.ecs_with(|ecs, mw| {
+            ecs.throw_eye(mw, at_p, to_p, survive, &mut || {
+                next += 1;
+                next
+            })
         });
+        self.next_entity = next;
         let r = self.world.random.next_float();
         let pitch = 0.33 + r * (0.5 - 0.33);
         self.audio
@@ -1032,45 +981,6 @@ impl Game<'_> {
         self.consume_held();
         self.award_stat("used", "minecraft:ender_eye", 1);
         self.swing_arm();
-    }
-
-    /// EyeOfEnder.tick: fly, then drop (4 in 5) or shatter after 80 ticks.
-    fn tick_eyes(&mut self) {
-        let _save_lease = myriade_engine::join_seq::visibility::PassLease::enter();
-        let mut eyes = std::mem::take(&mut self.end.eyes);
-        let mut shattered = Vec::new();
-        eyes.retain_mut(|eye| {
-            eye.previous = eye.position;
-            let next = eye.position + eye.velocity;
-            eye.velocity = EyeOfEnder::update_delta(eye.velocity, next, eye.target);
-            eye.position = next;
-            eye.life += 1;
-            if eye.life <= 80 {
-                return true;
-            }
-            let at = eye.position.to_array();
-            self.audio
-                .play("minecraft:entity.ender_eye.death", Some(at), 1.0, 1.0);
-            if eye.survive {
-                // new ItemEntity(level, x, y, z, item): random spread, 0.2 up.
-                let vx = self.world.random.next_double() * 0.2 - 0.1;
-                let vz = self.world.random.next_double() * 0.2 - 0.1;
-                let stack = ItemStack {
-                    item: "minecraft:ender_eye".into(),
-                    count: 1,
-                    damage: 0,
-                    extra: None,
-                };
-                self.spawn_item(stack, at, [vx, 0.2, vz], 0);
-            } else {
-                shattered.push(at.map(|v| v.floor() as i32));
-            }
-            false
-        });
-        self.end.eyes = eyes;
-        for pos in shattered {
-            self.level_event_at(2003, pos, 0);
-        }
     }
 
     // ---- End gateway travel for the entities ----

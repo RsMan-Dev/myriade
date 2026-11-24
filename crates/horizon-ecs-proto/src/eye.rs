@@ -33,13 +33,17 @@ pub fn launch(w: &mut World, at: Vec3, target: Vec3, survive: bool) -> Entity {
 
 /// The flight, every tick: the eye moves by its velocity, then the velocity turns towards the target (`EyeOfEnder.tick`, the
 /// move before the update of the velocity is the vanilla order: `position + deltaMovement`, then `updateDeltaMovement`).
-pub fn fly(mut q: Query<(&mut Pos, &mut Vel, &Eye)>) {
-    for (mut pos, mut vel, eye) in &mut q {
+pub fn fly(mut q: Query<(Entity, &mut Pos, &mut Vel, &Eye)>, mut sent: Option<ResMut<crate::bridge::view::Modified>>) {
+    for (e, mut pos, mut vel, eye) in &mut q {
         let next = pos.0.add_vector(vel.0);
         if eye.aimed {
             vel.0 = update_delta(vel.0, next, eye.target);
         }
         pos.0 = next;
+        // A tracked eye is sent again where it moved (the tracker reads `Modified`).
+        if let Some(m) = sent.as_mut() {
+            m.push_motion(e);
+        }
     }
 }
 
@@ -51,10 +55,22 @@ fn shatter(w: &mut World, e: Entity) {
     w.despawn(e);
     let at_arr = [at.x, at.y, at.z];
     w.resource_mut::<Events>().host.sound("minecraft:entity.ender_eye.death", at_arr, 1.0, 1.0);
+    if !eye.survive {
+        // `Level.levelEvent(2003, blockPosition(), 0)`: the crumbs and the portal rings.
+        w.resource_mut::<Events>().host.level_event(2003, [at.x.floor() as i32, at.y.floor() as i32, at.z.floor() as i32], 0);
+    }
     if eye.survive {
         let (vx, vz) = with_level_random(w, |r| (r.next_double() * 0.2 - 0.1, r.next_double() * 0.2 - 0.1));
         drop_item(w, ItemStack::new("minecraft:ender_eye", 1), at, Vec3::new(vx, 0.2, vz), 0);
     }
+}
+
+/// An eye thrown by a player (`EyeOfEnder.signalTo` ran): saved and typed like a summoned one.
+pub fn throw(w: &mut World, at: Vec3, target: Vec3, survive: bool) -> Entity {
+    let e = launch(w, at, target, survive);
+    w.entity_mut(e).insert(crate::cow::TypeName(ID));
+    crate::nbt::mark_saved(w, e, ID);
+    e
 }
 
 /// An eye made by `summon`: no `signalTo` ran, so it has no target (`target` is null) and it does not survive (`surviveAfterDeath` false).

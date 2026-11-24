@@ -32,4 +32,9 @@ impl EcsWorld {
         })
     }
 
+    /// An eye of ender thrown by a player (`EyeOfEnder.signalTo`): its network id.
+    pub fn throw_eye(&mut self, mw: &MobWorld<'_>, at: [f64; 3], target: [f64; 3], survive: bool, alloc: &mut dyn FnMut() -> u32) -> u32 {
+        let e = self.lent(mw, |w| crate::eye::throw(w, Vec3::new(at[0], at[1], at[2]), Vec3::new(target[0], target[1], target[2]), survive));
+        self.id_for(e, alloc)
+    }
 }

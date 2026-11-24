@@ -14,4 +14,9 @@ impl EcsLevel {
         w.id_for(e, alloc)
     }
 
+    /// Throws an eye of ender (`EyeOfEnder.signalTo` ran); its network id (0 when inert).
+    pub fn throw_eye(&mut self, mw: &MobWorld<'_>, at: [f64; 3], target: [f64; 3], survive: bool, alloc: &mut dyn FnMut() -> u32) -> u32 {
+        let Some(w) = self.ecs_mut() else { return 0 };
+        w.throw_eye(mw, at, target, survive, alloc)
+    }
 }

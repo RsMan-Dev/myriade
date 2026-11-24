@@ -584,9 +584,6 @@ impl Game<'_> {
         self.potions.thrown_ids().for_each(|id| {
             assign_entity_id(next, id);
         });
-        self.end.eye_ids().for_each(|id| {
-            assign_entity_id(next, id);
-        });
     }
 
     /// Falling blocks, thrown potions and end
@@ -634,11 +631,6 @@ impl Game<'_> {
                     Value::Item(hub.stack(&Some(stack.clone()))),
                 ));
             }
-        }
-        // EyeOfEnder: its item is the plain eye (DATA_ITEM_STACK's default).
-        for (id, position, velocity) in self.end.eyes_tracked().filter(|(id, ..)| *id > after) {
-            let e = add_state(out, id, "minecraft:eye_of_ender", position, 0.0, false);
-            e.velocity = velocity;
         }
         for (id, c) in crystals.iter().filter(|(id, _)| *id > after) {
             let e = add_state(
