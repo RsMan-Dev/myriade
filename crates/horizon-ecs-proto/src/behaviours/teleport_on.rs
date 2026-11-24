@@ -74,6 +74,7 @@ pub fn teleport_somewhere(w: &mut World, e: Entity) -> bool {
         w.resource_mut::<Events>().host.sound(cfg.teleport, at, 1.0, 1.0);
         if let Some(mut a) = w.get_mut::<Attached>(e) {
             a.face = face;
+            crate::bridge::view::mark(w, e);
         }
         set_peek(w, e, 0, &cfg.sounds, cfg.covered);
         if cfg.eject {

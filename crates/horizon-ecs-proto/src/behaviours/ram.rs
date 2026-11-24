@@ -73,6 +73,7 @@ pub struct ShedDef {
 
 /// The parts snapped off so far: bit 0 the left, bit 1 the right. Absent: all of them are there.
 #[derive(Component, Clone, Copy, Debug, Default)]
+#[component(on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Shed(pub u8);
 
 /// `RAM_COOLDOWN_TICKS` : la date (temps propre) à partir de laquelle le bélier peut recommencer. Lue par `long_jump`.

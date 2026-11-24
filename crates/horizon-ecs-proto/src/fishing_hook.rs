@@ -57,7 +57,7 @@ pub enum Target {
 
 /// A hook out. Its position and velocity are the `Pos` and `Vel` components.
 #[derive(Component)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Hook {
     /// The constants of the fishing: one reference shared by all hooks (8 bytes).
     pub params: &'static Params,

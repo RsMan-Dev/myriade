@@ -30,6 +30,7 @@ pub struct Stand {
 }
 /// The animal rears until `until` (the stand counter); it cannot take a goal meanwhile.
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Standing {
     pub until: u64,
 }

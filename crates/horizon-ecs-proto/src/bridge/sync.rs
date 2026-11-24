@@ -90,7 +90,9 @@ pub fn sync_entries(world: &World, e: Entity, out: &mut Vec<(u8, SyncValue)>) {
     };
     for slot in sync_core::SLOTS.iter().chain(species_slots(v.kind)) {
         if let Some(value) = (slot.read)(world, e) {
-            out.push((slot.index, value));
+            // Piglin.DATA_BABY_ID is 17: its index 16 is AbstractPiglin.DATA_IMMUNE_TO_ZOMBIFICATION, so the core's baby flag moves up.
+            let index = if slot.index == 16 && v.kind == "minecraft:piglin" { 17 } else { slot.index };
+            out.push((index, value));
         }
     }
 }

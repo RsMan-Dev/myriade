@@ -6,7 +6,7 @@ use horizon_core::nbt::{JavaString, Tag};
 
 /// `CustomName`: the name as the text the host gave it (a player's rename, an egg's name).
 #[derive(Component, Clone, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct CustomName(pub String);
 
 /// The whole text component of a styled name (`ComponentSerialization.CODEC` writes a compound): kept as given, colour included.
@@ -21,7 +21,7 @@ pub struct Johnny;
 
 /// `CustomNameVisible`: a marker, present only while the name shows above the creature.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct NameVisible;
 
 /// Sets the plain name; `None` takes it away.

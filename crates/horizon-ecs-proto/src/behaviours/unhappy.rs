@@ -8,7 +8,7 @@ pub const TICKS: u64 = 40;
 
 /// The shake is running; `until` is the own-time tick it ends at.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Unhappy {
     pub until: u64,
 }

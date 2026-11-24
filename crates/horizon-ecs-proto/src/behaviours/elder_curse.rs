@@ -31,6 +31,7 @@ pub struct Curse {
 }
 /// Marker of a creature born silent (`isSilent`): no curse sound.
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Silent;
 
 pub static MODULE: Module = Module {

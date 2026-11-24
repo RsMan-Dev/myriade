@@ -342,6 +342,7 @@ fn explode_full(w: &mut World, b: Blast, breaks_blocks: bool, skull: bool) {
 /// A creeper's fuse: the swell grows by one a tick while the direction is +1 and falls by one while it is -1, from `value` at `at`; at
 /// `max` it explodes. The wheel holds the tick it is due at (`armed`), none while it falls.
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Fuse {
     pub value: i32,
     pub at: u64,
@@ -354,6 +355,7 @@ pub struct Fuse {
 }
 /// A creature struck by lightning: its blast is twice the radius.
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Charged;
 impl Fuse {
     pub fn value_at(&self, now: u64) -> i32 {
@@ -380,6 +382,7 @@ pub fn set_dir(w: &mut World, e: Entity, dir: i8) {
         w.resource_mut::<Wheel>().push(at, e, Due::Fuse);
     }
     *w.get_mut::<Fuse>(e).unwrap() = f;
+    crate::bridge::view::mark(w, e);
 }
 /// The deadline: if the fuse is at its end the creature explodes and is gone.
 pub fn fuse_due(w: &mut World, e: Entity) {

@@ -49,6 +49,7 @@ fn equip_egg(world: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync
 pub struct Grown(pub Vec<Entity>);
 /// The wool: `sheared` until the animal eats again, and the colour (data, set at spawn).
 #[derive(Component, Clone, Copy, Debug, Default)]
+#[component(on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Wool {
     pub sheared: bool,
     pub color: u8,

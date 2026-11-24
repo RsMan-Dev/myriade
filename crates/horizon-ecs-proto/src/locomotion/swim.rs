@@ -128,6 +128,8 @@ pub fn water_changed(w: &mut World, e: Entity, in_water: bool) {
         if let Some(mut a) = w.get_mut::<Air>(e) {
             // `WaterAnimal.handleAirSupply`: in the water the air is full again.
             a.0 = 300;
+            drop(a);
+            crate::bridge::view::mark(w, e);
         }
     } else {
         w.entity_mut(e).insert(Dry);
@@ -460,8 +462,12 @@ fn dry(
 ) {
     let cx = level.mw.0.loop_context;
     for (e, mut air, uid, tn, mut c, mut v, mut rng, moving, swp, at, silent) in &mut q {
+        let air_before = air.0;
         if let Some(damage) = myriade_engine_lib::breathing::own_air(cx, uid.0 as u32, tn.0, &mut air.0, false, 300) {
             queue.add(e, damage, Cause::Drown);
+        }
+        if air.0 != air_before {
+            commands.queue(move |w: &mut World| crate::bridge::view::mark(w, e));
         }
         // The flop is `AbstractFish.aiStep`'s: a squid only suffocates.
         if c.on_ground && !swp.squid {

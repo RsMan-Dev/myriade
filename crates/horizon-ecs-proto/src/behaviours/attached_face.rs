@@ -8,6 +8,7 @@ use crate::rules::Rule;
 pub use crate::rules::attached_face::{eased_step, physical_peek, LID_SPEED};
 
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Attached {
     pub face: u8,
     pub color: u8,

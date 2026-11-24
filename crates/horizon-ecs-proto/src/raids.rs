@@ -104,7 +104,7 @@ pub fn set_patrol_leader(w: &mut World, e: Entity, on: bool) {
 pub struct Aggressive;
 /// A raider that celebrates (`Raider.setCelebrating`).
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Celebrating;
 /// A creature joins a raid: its `Raider`, then what the game's step does for an illager near a raid. `Vindicator.customServerAiStep`
 /// opens doors while `raided` (game code: a raid within 96 blocks), written once here at the join, not each step (the raid does not move; a

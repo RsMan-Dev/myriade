@@ -24,7 +24,7 @@ pub struct BoatMarker;
 
 /// The wobble over a bubble column: set where the first bubble column is, absent otherwise.
 #[derive(Component, Clone, Copy, Debug, Default)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Wobble {
     pub time: i32,
     pub above: bool,
@@ -36,7 +36,7 @@ pub struct Wobble {
 
 /// `hurtTime`, `hurtDir` and `damage`: the shake after a hit. Absent at rest.
 #[derive(Component, Clone, Copy, Debug, Default)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Hurt {
     pub time: i32,
     pub dir: i32,

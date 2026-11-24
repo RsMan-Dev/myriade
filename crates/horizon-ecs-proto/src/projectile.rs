@@ -701,6 +701,7 @@ fn heal_owner(w: &mut World, o: Entity, amount: f32) {
     if let Some(mut h) = w.get_mut::<Health>(o) {
         h.0 = (h.0 + amount).min(max);
     }
+    crate::bridge::view::mark(w, o);
 }
 /// A potion a player throws (the player is outside the ECS): its owner, its item (`ThrownItem`), a splash or a lingering flask.
 pub fn throw_potion(w: &mut World, owner: u32, at: Vec3, velocity: Vec3, stack: myriade_engine_lib::items::ItemStack, lingering: bool) -> Entity {

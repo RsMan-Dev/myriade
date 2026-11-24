@@ -42,7 +42,7 @@ pub struct Burst {
 }
 /// The charge is on (`Blaze.isCharged`).
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Charged;
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]

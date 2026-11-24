@@ -32,7 +32,7 @@ pub struct Begger {
 }
 /// The goal runs: the player it begs for and the ticks left.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Begging {
     pub player: u32,
     pub ticks: i32,

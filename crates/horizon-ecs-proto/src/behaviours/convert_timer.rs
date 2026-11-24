@@ -22,7 +22,7 @@ impl Params {
 pub struct Convert(pub &'static Params);
 /// The count runs: the conversion is due at `until`.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Converting {
     pub until: u64,
 }

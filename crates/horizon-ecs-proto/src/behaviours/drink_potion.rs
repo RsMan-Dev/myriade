@@ -123,6 +123,7 @@ fn finish(w: &mut World, e: Entity, d: Drinking, p: &'static Params) {
             if let Some(mut h) = w.get_mut::<Health>(e) {
                 h.0 = healed(h.0, p.heal, max);
             }
+            crate::bridge::view::mark(w, e);
         }
     }
     if let Some(mut b) = w.get_mut::<Body>(e) {

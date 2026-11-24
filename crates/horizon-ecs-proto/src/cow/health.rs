@@ -111,7 +111,7 @@ pub fn record_combat(w: &mut World, e: Entity, damage_type: &'static str, by: Op
 
 /// On fire until this tick; its damage is in the timer wheel (`Due::Burn`, every 20 ticks).
 #[derive(Component, Clone, Copy, Debug)]
-#[component(on_add = crate::behaviours::drink_potion::thirst_hook)]
+#[component(on_add = crate::behaviours::drink_potion::thirst_hook, on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Burning {
     pub until: i64,
 }
@@ -629,6 +629,9 @@ pub(crate) fn apply_damage(
         applied -= absorbed;
         let health_before = h.0;
         h.0 -= applied;
+        if applied != 0.0 {
+            commands.queue(move |w: &mut World| crate::bridge::view::mark(w, e));
+        }
         let health_after = h.0;
         commands.queue(move |w: &mut World| crate::behaviours::crack_sound::hurt(w, e, health_before, health_after));
         // `Mob.doHurtTarget`'s `hurtServer` returned true: what follows a landed melee blow (`hostile::landed`).
@@ -835,6 +838,7 @@ pub(crate) fn hazard_tick(
         // `Entity.baseTick`: the powder snow counts only where `canFreeze` (no `IMMUNE_FREEZE` bit).
         if f & HAZ_SNOW != 0 && !immune.is_some_and(|i| i.has(crate::effects::IMMUNE_FREEZE)) && !wears_freeze_immune(&worn, e) {
             frozen.0 = (frozen.0 + 1).min(140);
+            commands.queue(move |w: &mut World| crate::bridge::view::mark(w, e));
             if frozen.0 >= 140 && now % 40 == 0 {
                 queue.add(e, 1.0, Cause::Freeze);
             }

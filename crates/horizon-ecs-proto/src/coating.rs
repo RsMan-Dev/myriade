@@ -80,7 +80,7 @@ fn read_age(w: &mut World, e: Entity, t: &Tag) -> bool {
 
 /// The coating of the entity: `stage` 0 (plain) to 3 (the oxidized), `waxed`, and `due`, the own tick of its next deadline (0: none, waxed).
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Coat {
     pub stage: u8,
     pub waxed: bool,

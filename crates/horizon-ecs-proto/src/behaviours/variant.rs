@@ -10,6 +10,7 @@ use horizon_core::nbt::{Compound, JavaString, Tag};
 use std::borrow::Cow;
 
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[component(on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Variant(pub u8);
 
 /// The variant table of the species of `e` (`Def::variant`); None for a species that draws none.

@@ -24,6 +24,7 @@ impl SizeParams {
     pub const MAGMA_CUBE: Self = Self { delay_mul: 4, ..Self::SLIME };
 }
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Size(pub i32);
 /// The rule of the body and the box it had at size 1.
 #[derive(Component, Clone, Copy, Debug)]

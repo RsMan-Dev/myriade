@@ -123,6 +123,7 @@ pub fn hurt(w: &mut World, e: Entity, b: Blow) -> Hurt {
     if let Some(mut h) = w.get_mut::<Health>(e) {
         h.0 = after;
     }
+    crate::bridge::view::mark(w, e);
     let ticks = w.get::<super::flight::Flight>(e).map_or(0, |f| f.ticks);
     if let Some(Who::Player(player)) = b.by {
         w.entity_mut(e).insert(HurtByPlayer { player, tick: ticks });

@@ -129,7 +129,7 @@ pub struct Effects {
     pub hidden: Vec<Effect>,
 }
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Invisible;
 /// The level of the Resistance effect (`amp + 1`), sparse: absent when the creature has no Resistance.
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
@@ -387,6 +387,8 @@ fn modifiers(w: &mut World, e: Entity) {
     }
     *w.get_mut::<Effects>(e).unwrap() = f;
     w.get_resource_or_insert_with(crate::attr_mod::AttrDirty::default).0.insert(e);
+    // The ambient flags are read by the synchronized data: every change of the list goes through here.
+    crate::bridge::view::mark(w, e);
 }
 /// The nearest tick something happens: a periodic act or an end.
 fn nearest(f: &Effects) -> Option<u64> {
@@ -454,6 +456,7 @@ pub fn due(w: &mut World, e: Entity) {
                 if let Some(mut h) = w.get_mut::<Health>(e) {
                     h.0 = (h.0 + 1.0).min(max);
                 }
+                crate::bridge::view::mark(w, e);
             }
             _ => {}
         }
@@ -715,6 +718,7 @@ pub fn splash(w: &mut World, at: horizon_core::geometry::Vec3, hit: Option<Entit
                         if let Some(mut h) = w.get_mut::<Health>(c) {
                             h.0 = (h.0 + amount).min(max);
                         }
+                        crate::bridge::view::mark(w, c);
                     }
                 }
             }

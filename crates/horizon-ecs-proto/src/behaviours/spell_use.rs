@@ -238,6 +238,8 @@ fn cast(w: &mut World, e: Entity, p: Params) {
                 if w.get::<Health>(sheep).is_some_and(|h| h.0 > 0.0) {
                     if let Some(mut c) = w.get_mut::<crate::farm::Wool>(sheep) {
                         c.color = 14;
+                        drop(c);
+                        crate::bridge::view::mark(w, sheep);
                     }
                 }
             }

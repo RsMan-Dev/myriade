@@ -6,6 +6,7 @@ use crate::rules::teleport_on::cell_of;
 use crate::rules::turtle_state::near_home_centre;
 
 #[derive(Component, Clone, Copy, Debug, Default)]
+#[component(on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Turtle {
     pub home: [i32; 3],
     pub laying: bool,
@@ -37,6 +38,8 @@ pub fn get(w: &World, e: Entity) -> Turtle {
 pub fn update(w: &mut World, e: Entity, f: impl FnOnce(&mut Turtle)) {
     if let Some(mut t) = w.get_mut::<Turtle>(e) {
         f(&mut t);
+        drop(t);
+        crate::bridge::view::mark(w, e);
     }
 }
 

@@ -12,7 +12,7 @@ pub const TICKS: i32 = 46;
 /// The death is running; the flag the client reads (`is_tearing_down`) is this marker.
 /// `sound` is the death sound it makes at the end.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Crumbling {
     /// None: the plain death of a health put to 0 (`LivingEntity.tickDeath`: 20 ticks, the smoke at the end), not the heart-bound crumbling.
     pub sound: Option<&'static str>,

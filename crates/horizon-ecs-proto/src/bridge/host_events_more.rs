@@ -106,6 +106,7 @@ pub fn resolve_death(w: &mut World, e: Entity, veto: Option<f32>) {
             if let Some(mut h) = w.get_mut::<Health>(e) {
                 h.0 = v;
             }
+            crate::bridge::view::mark(w, e);
             enter_index(w, e);
         }
         None => {

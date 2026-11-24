@@ -40,7 +40,7 @@ impl Params {
 pub struct StareFreeze(pub &'static Params);
 /// `Creaking.isActive`: roused by a stare, it hunts the player.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Roused;
 /// The knockback resistance an entity had before it was stilled (restored when it moves again).
 #[derive(Component, Clone, Copy, Debug)]

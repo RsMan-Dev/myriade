@@ -3,5 +3,5 @@ use bevy_ecs::prelude::*;
 
 /// The entity glows (its flag 0x40 is set). Written and read by the `Glowing` field of `nbt_fields`.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Glowing;

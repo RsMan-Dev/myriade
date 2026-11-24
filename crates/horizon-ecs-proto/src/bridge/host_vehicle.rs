@@ -242,6 +242,7 @@ impl EcsWorld {
         if let Some(mut m) = w.get_mut::<trade_offers::Merchant>(e) {
             m.level = u8::try_from(level).unwrap_or(m.level);
         }
+        view::mark(w, e);
     }
 
     /// `Villager.getVillagerXp`: the open screen's when there is one, else the `Merchant`'s.
@@ -275,6 +276,7 @@ impl EcsWorld {
         if let Some(mut m) = self.world_mut().get_mut::<trade_offers::Merchant>(e) {
             m.variant = variant;
         }
+        view::mark(self.world_mut(), e);
     }
 
     /// `VillagerData.profession`, a registry id; None for a wandering trader or without a `Merchant`.

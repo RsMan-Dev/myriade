@@ -171,6 +171,7 @@ fn step_one(w: &mut World, level: &Level, e: Entity, void_y: f64) {
     let oars = w.get::<Oars>(e).map(|o| o.0).unwrap_or([0.0; 2]);
     let steered = w.entity(e).contains::<Steered>();
     let keys = w.get::<PilotInput>(e).map_or([false; 4], |p| p.keys);
+    let paddled = boat.paddling;
     let (mut boat, mut pos, mut vel, mut yaw, mut contact) = (boat, pos.0, vel.0, yaw.0, contact);
     let gravity = if w.get::<NoGravity>(e).is_some() { 0.0 } else { GRAVITY };
     let (lo, hi) = (bounds.0.min_position(), bounds.0.max_position());
@@ -247,6 +248,9 @@ fn step_one(w: &mut World, level: &Level, e: Entity, void_y: f64) {
     }
     if at_rest {
         em.remove::<Moving>();
+    }
+    if paddled != boat.paddling {
+        crate::bridge::view::mark(w, e);
     }
     if under && w.get::<OutOfControl>(e).is_none() {
         let since = now_of(w, e);

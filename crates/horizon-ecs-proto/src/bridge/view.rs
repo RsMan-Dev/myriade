@@ -121,6 +121,17 @@ pub fn mark(world: &mut World, e: Entity) {
     }
 }
 
+/// The hook of every component a synchronized datum reads (`on_insert`, `on_remove`): the entity is queued whoever inserted or removed
+/// it (a system, a command, a load). A value written in place is marked by its writer. Where no host listens nothing is queued.
+pub fn touched(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    if world.get::<Disabled>(ctx.entity).is_some() {
+        return;
+    }
+    if let Some(mut m) = world.get_resource_mut::<Modified>() {
+        m.push(ctx.entity);
+    }
+}
+
 /// `mark` for a change of position or rotation only: nothing synchronized was written (vanilla `SynchedEntityData.set` is dirty only when the
 /// value changes; the position goes by its own codec).
 pub fn mark_motion(world: &mut World, e: Entity) {

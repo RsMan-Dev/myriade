@@ -349,7 +349,7 @@ fn creature_steer(w: &mut World, mount: Entity) {
 /// `Camel.isDashing` (DASH): set by the dash, cleared by `ridden_drive` once the cooldown is under 50 and the camel is on the ground,
 /// in a liquid or a passenger (`Camel.tick`); kept after its rider gets off until `settle_dash`. Only a dashing camel carries it.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Dashing;
 /// `Camel.tick` end of DASH for a camel that is not ridden: the cooldown under 50 and the camel on the ground, in a liquid or a
 /// passenger. Called at the dismount, by the landing and fluid events (`behaviours::posture`), and on a deadline when the cooldown

@@ -72,6 +72,7 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
         if let Some(mut h) = w.get_mut::<Health>(e) {
             h.0 = crate::rules::regen::healed(h.0, p.heal, max);
         }
+        crate::bridge::view::mark(w, e);
     }
     if let Some(k) = p.needs {
         effects::remove(w, e, k);

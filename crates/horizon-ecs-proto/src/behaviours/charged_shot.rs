@@ -31,7 +31,7 @@ pub struct Charge {
     charge: i32,
 }
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Charging;
 /// `Ghast.explosionPower`: the power of the large fireballs it shoots, saved as `ExplosionPower`; 1 at its creation.
 #[derive(Component, Clone, Copy, Debug)]

@@ -109,6 +109,7 @@ pub fn touched(w: &mut World, e: Entity, name: &str) {
                 {
                     h.0 = max;
                 }
+                crate::bridge::view::mark(w, e);
             }
         }
         "scale" => crate::cow::refresh_box(w, e),

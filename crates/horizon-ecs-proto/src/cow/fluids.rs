@@ -51,6 +51,7 @@ pub struct Air(pub i32);
 
 /// The air is below its maximum: the breathing module ticks until it is full again.
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct AirLow;
 
 /// Ask `wall_check` to look whether the cow's head is in a block (a spawn, a teleport, a growth: the events that

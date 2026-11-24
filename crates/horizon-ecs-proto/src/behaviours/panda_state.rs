@@ -12,6 +12,7 @@ pub const FLAG_ON_BACK: u8 = 16;
 
 /// The gene a panda shows (`Panda.getVariant`, `panda.rs:27-31`). A panda without one is `Normal`.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[component(on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub enum Gene {
     #[default]
     Normal,
@@ -25,6 +26,7 @@ pub enum Gene {
 
 /// `DATA_ID_FLAGS` and `EAT_COUNTER`: what `acts` reads. Written by the goals that set a flag.
 #[derive(Component, Clone, Copy, Debug, Default)]
+#[component(on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct PandaState {
     pub flags: u8,
     pub eat: i32,
@@ -47,6 +49,8 @@ pub fn set_flag(w: &mut World, e: Entity, f: u8, on: bool) {
     } else {
         s.flags &= !f;
     }
+    drop(s);
+    crate::bridge::view::mark(w, e);
 }
 /// A cub: it has the `GrowAt` component until it grows up.
 pub fn is_baby(w: &World, e: Entity) -> bool {

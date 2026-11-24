@@ -40,6 +40,7 @@ fn read_sleeping(w: &mut World, e: Entity, t: &Tag) -> bool {
 fn box_changed(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
     let e = ctx.entity;
     world.commands().queue(move |w: &mut World| crate::cow::refresh_box(w, e));
+    crate::bridge::view::touched(world, ctx);
 }
 
 /// Un autre dormeur occupe déjà le lit `p`.

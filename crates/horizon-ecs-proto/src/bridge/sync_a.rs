@@ -141,3 +141,21 @@ mod tests {
         assert!(matches!(tame_flags(&w, e), Some(SyncValue::Byte(5))));
     }
 }
+
+/// The villager types and professions in the order of the built-in registries (the id the entry carries is the holder's index).
+const VILLAGER_TYPE_IDS: [&str; 7] = ["desert", "jungle", "plains", "savanna", "snow", "swamp", "taiga"];
+const PROFESSION_IDS: [&str; 15] = [
+    "none", "armorer", "butcher", "cartographer", "cleric", "farmer", "fisherman", "fletcher", "leatherworker", "librarian", "mason", "nitwit", "shepherd", "toolsmith",
+    "weaponsmith",
+];
+
+/// Villager.DATA_VILLAGER_DATA (index 19): the type, the profession and the level, in registry ids. None for a profession or a type of
+/// a mod (no vanilla id) and for a villager without a `Merchant`; the default (plains, none, level 1) is not sent.
+pub(crate) fn villager_data(w: &World, e: Entity) -> Option<SyncValue> {
+    let m = w.get::<crate::behaviours::trade_offers::Merchant>(e).filter(|m| !m.wandering)?;
+    let by = |list: &[&str], name: &str| list.iter().position(|n| name.strip_prefix("minecraft:") == Some(n)).map(|i| i as i32);
+    let kind = by(&VILLAGER_TYPE_IDS, &crate::behaviours::trade_offers::variant_name(m.variant))?;
+    let job = if m.profession == crate::behaviours::trade_offers::UNRESOLVED { return None } else { by(&PROFESSION_IDS, &crate::behaviours::trade_offers::profession_name(w, m.profession))? };
+    let level = i32::from(m.level);
+    (kind != 2 || job != 0 || level != 1).then_some(SyncValue::Ids(vec![kind, job, level]))
+}

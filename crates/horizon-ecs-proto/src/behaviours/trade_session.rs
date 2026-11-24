@@ -182,6 +182,7 @@ pub fn close(w: &mut World, e: Entity) {
         m.trade.xp = t.session.xp;
         m.level = u8::try_from(t.session.level).unwrap_or(m.level);
     }
+    crate::bridge::view::mark(w, e);
     let mut d = w.resource_mut::<TradeData>();
     for (id, r) in t.session.sequences {
         d.sequences.insert(id, r);

@@ -21,6 +21,7 @@ impl EcsWorld {
         if air < max {
             w.entity_mut(e).insert(AirLow);
         }
+        crate::bridge::view::mark(w, e);
         true
     }
 

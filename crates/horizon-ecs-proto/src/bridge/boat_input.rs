@@ -34,6 +34,7 @@ impl EcsWorld {
         let Some(e) = self.entity_of(vehicle) else { return false };
         let Some(mut boat) = self.world_mut().get_mut::<Boat>(e) else { return false };
         boat.paddling = paddles;
+        crate::bridge::view::mark(self.world_mut(), e);
         true
     }
 

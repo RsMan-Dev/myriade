@@ -70,6 +70,7 @@ fn inherit_type(w: &mut World, baby: Entity, a: Entity, b: Entity) {
     if let Some(mut m) = w.get_mut::<crate::behaviours::trade_offers::Merchant>(baby) {
         m.variant = v;
     }
+    crate::bridge::view::mark(w, baby);
 }
 
 /// `villagers.villager_birth` : l'enfant apparaît près du partenaire, grandit dans 24000 ticks, les parents se reposent.

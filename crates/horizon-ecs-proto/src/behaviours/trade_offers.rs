@@ -107,6 +107,7 @@ pub fn set_profession(w: &mut World, e: Entity, profession: u8) {
         m.trade.unset = true;
         // A known profession replaces a mod's unloaded one: its saved name no longer applies.
         w.entity_mut(e).remove::<UnresolvedProfession>();
+        crate::bridge::view::mark(w, e);
     }
 }
 

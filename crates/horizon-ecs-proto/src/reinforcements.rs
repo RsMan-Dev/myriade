@@ -132,6 +132,7 @@ pub fn handle_attributes(w: &mut World, e: Entity, special: f32, reason: crate::
         if let Some(mut h) = w.get_mut::<crate::cow::Health>(e) {
             h.0 = max;
         }
+        crate::bridge::view::mark(w, e);
     }
     true
 }

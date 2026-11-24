@@ -51,5 +51,5 @@ pub fn level(w: &World) -> &myriade_engine_lib::mobs::MobWorld {
 
 /// The ocelot trusts players (`Ocelot.mobInteract`, the `Trusting` tag); the game sets it when one feeds it. Read by `ocelot:trusting`.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Trusting;

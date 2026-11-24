@@ -176,6 +176,8 @@ fn thunder_hit(w: &mut World, bolt: Entity, at: [f64; 3]) {
                 if flip_once(w, bolt, t) {
                     if let Some(mut v) = w.get_mut::<crate::behaviours::variant::Variant>(t) {
                         v.0 = 1 - v.0.min(1);
+                        drop(v);
+                        crate::bridge::view::mark(w, t);
                     }
                     w.resource_mut::<Events>().host.sound("entity.mooshroom.convert", [pos.x, pos.y, pos.z], 2.0, 1.0);
                 }

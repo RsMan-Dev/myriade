@@ -406,6 +406,7 @@ impl PhaseDef for Dying {
         if let Some(mut h) = w.get_mut::<Health>(e) {
             h.0 = if out_of_reach(d2(t, here)) { 0.0 } else { 1.0 };
         }
+        crate::bridge::view::mark(w, e);
         None
     }
 }

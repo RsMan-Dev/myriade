@@ -15,6 +15,7 @@ use std::collections::HashMap;
 
 /// Whose it is (`TamableAnimal.getOwner`).
 #[derive(Component, Clone, Copy, Debug, Default)]
+#[component(on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Owner(pub Option<Who>);
 /// The pets of each player, so that what happens to a player wakes its pets without a scan.
 #[derive(Resource, Default)]
@@ -111,6 +112,7 @@ pub fn tame(w: &mut World, e: Entity, owner: Who, health: f32) {
     if let Some(mut h) = w.get_mut::<Health>(e) {
         h.0 = health;
     }
+    crate::bridge::view::mark(w, e);
     write_max_health_base(w, e, health);
     if let Who::Player(id) = owner {
         w.resource_mut::<Pets>().0.entry(id).or_default().push(e);

@@ -39,7 +39,7 @@ impl Params {
 }
 /// The charge runs (its system visits it).
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Charging;
 
 /// `VexChargeAttackGoal`: a target alive, nothing wanted, one chance in 7 per ask, farther than 2 blocks: fly straight at its eyes; the

@@ -235,6 +235,7 @@ fn store(w: &mut World, e: Entity, s: Store, v: u32) {
             if let Some(mut m) = w.get_mut::<super::trade_offers::Merchant>(e) {
                 m.variant = v as u8;
             }
+            crate::bridge::view::mark(w, e);
         }
         Store::Size => crate::size::set_size(w, e, v as i32),
         Store::Call(f) => f(w, e, v),

@@ -44,6 +44,7 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
     }
     let amount = crate::items::nutrition_of(i.item).map_or(p.heal_without, |n| n as f32 * p.per_nutrition);
     w.get_mut::<Health>(e).unwrap().0 = crate::rules::regen::healed(h, amount, m);
+    crate::bridge::view::mark(w, e);
     let at = w.get::<Pos>(e).map_or([0.0; 3], |q| [q.0.x, q.0.y, q.0.z]);
     w.resource_mut::<Events>().host.sound(p.sound, at, 1.0, 1.0);
     let creative = w.get_resource::<crate::used_stack::UsedStack>().is_some_and(|u| u.creative);

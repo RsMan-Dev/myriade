@@ -22,7 +22,7 @@ pub struct DragonRng(pub LegacyRandom, pub LegacyRandom);
 /// (no gravity, no move: the `travel` systems filter `Without<NoAi>`). Table storage, so the filter tests the archetype, not each entity.
 /// The dragon only flaps (to 0.5), nothing else moves.
 #[derive(Component, Clone, Copy, Debug, Default)]
-#[component(on_add = crate::goals::stop_all_goals)]
+#[component(on_add = crate::goals::stop_all_goals, on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct NoAi;
 
 /// `Mob.setNoAi`: a marker, so only the dragons that have it pay for it.
@@ -210,6 +210,7 @@ fn heal(w: &mut World, e: Entity) {
         if let Some(mut h) = w.get_mut::<Health>(e) {
             h.0 = (h.0 + 1.0).min(data::MAX_HEALTH);
         }
+        crate::bridge::view::mark(w, e);
     }
 }
 

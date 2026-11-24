@@ -230,7 +230,7 @@ pub struct Following;
 
 /// The entity stands still (`stare_freeze`): `follow` and `move_control` skip it, its path is kept.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Stilled;
 
 /// The physics of the cow is active (it moves, falls, or was just pushed): `travel` visits only these, and takes
@@ -282,12 +282,14 @@ fn grow_in(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::
     let e = ctx.entity;
     watch_in::<WATCH_FOLLOW_PARENT>(world.reborrow(), ctx);
     world.commands().queue(move |w: &mut World| crate::cow::refresh_box(w, e));
+    crate::bridge::view::touched(world, ctx);
 }
 
 fn grow_out(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
     let e = ctx.entity;
     watch_out::<WATCH_FOLLOW_PARENT>(world.reborrow(), ctx);
     world.commands().queue(move |w: &mut World| crate::cow::refresh_box(w, e));
+    crate::bridge::view::touched(world, ctx);
 }
 
 impl Rng {

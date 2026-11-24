@@ -17,7 +17,7 @@ pub const LOST_HORN_CHANCE: f64 = 0.1;
 /// `Goat.isScreamingGoat`: the screaming goat, the one with the sounds, the horns and the jump's boost. Zero bytes, set at birth on
 /// the drawn goats only; saved as `IsScreamingGoat` when it is there.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Screaming;
 
 /// `RAMS_SCREAMER` and the screaming sounds, picked by the `Screaming` marker.

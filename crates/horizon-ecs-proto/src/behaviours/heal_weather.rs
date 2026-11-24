@@ -57,6 +57,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     {
         h.0 = healed(h.0, cfg.amount, cfg.max);
     }
+    crate::bridge::view::mark(w, e);
     w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
 }
 fn stop(w: &mut World, e: Entity, inst: Inst) {

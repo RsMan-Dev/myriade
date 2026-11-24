@@ -303,6 +303,8 @@ fn distribute(w: &mut World, e: Entity, c: &Compound) -> (usize, Vec<String>) {
     } else {
         w.entity_mut(e).insert(NbtData(Box::new(free)));
     }
+    // The one funnel of the loads and `/data merge`: whatever a field wrote, the synchronized data are read again.
+    crate::bridge::view::mark(w, e);
     (refused, changed)
 }
 

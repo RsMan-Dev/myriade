@@ -107,6 +107,8 @@ pub fn try_totem(w: &mut World, e: Entity) -> bool {
         resolve_death(w, e, Some(1.0));
     } else if let Some(mut h) = w.get_mut::<Health>(e) {
         h.0 = 1.0;
+        drop(h);
+        crate::bridge::view::mark(w, e);
     }
     let kinds: Vec<Kind> = w.get::<effects::Effects>(e).map_or_else(Vec::new, |f| f.list.iter().map(|x| x.kind).collect());
     for kind in kinds {

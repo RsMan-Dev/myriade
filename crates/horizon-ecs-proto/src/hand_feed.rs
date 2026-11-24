@@ -102,6 +102,7 @@ pub fn age_up(w: &mut World, e: Entity, i: &crate::behaviours::Interaction) -> b
 fn set_counter(w: &mut World, e: Entity, n: i32) {
     ps::ensure(w, e);
     w.get_mut::<ps::PandaState>(e).unwrap().eat = n;
+    crate::bridge::view::mark(w, e);
 }
 fn step_in(w: &mut World, e: Entity, ticks: u64) {
     let due = now_of(w, e) + ticks;

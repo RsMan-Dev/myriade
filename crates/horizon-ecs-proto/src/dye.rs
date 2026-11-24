@@ -12,7 +12,7 @@ use bevy_ecs::prelude::*;
 
 /// The colour of a collar (`setCollarColor`), set once a dye was used; absent: `DEFAULT_COLLAR`.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Collar(pub u8);
 /// Red (`DyeColor.RED`), the collar of an undyed wolf or cat.
 pub const DEFAULT_COLLAR: u8 = 14;

@@ -10,7 +10,7 @@ use bevy_ecs::prelude::*;
 
 /// The baby does not grow up; the ticks of its age left are kept here (`GrowAt` is stale while it is on).
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct AgeLocked(pub u64);
 
 /// The pulses of growth particles left, one every 2 ticks (`ageLockParticleTimer` / 2).

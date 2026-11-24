@@ -51,7 +51,7 @@ pub struct Jukebox(pub [i32; 3]);
 
 /// `Allay.DATA_DANCING` is true; the own time of the next check of the jukebox.
 #[derive(Component)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Dancing(pub u64);
 
 pub static MODULE: Module = Module { name: "event_listen", flags: 0, equip, requires: &[crate::behaviours::Cap::Transform], ..Module::DEFAULT };

@@ -8,7 +8,7 @@ use bevy_ecs::prelude::*;
 
 /// `SnowGolem.hasPumpkin`: present on every snow golem, true by default (the NBT byte `Pumpkin`).
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct Pumpkin(pub bool);
 
 /// `SnowGolem.shear`: the pumpkin comes off and falls from 1.7 blocks up.

@@ -173,6 +173,8 @@ fn eat(w: &mut World, e: Entity) {
 pub fn ate(w: &mut World, e: Entity) {
     if let Some(mut wool) = w.get_mut::<crate::farm::Wool>(e) {
         wool.sheared = false;
+        drop(wool);
+        crate::bridge::view::mark(w, e);
     }
     let now = crate::cow::now_of(w, e);
     if w.get::<crate::age_lock::AgeLocked>(e).is_some() {

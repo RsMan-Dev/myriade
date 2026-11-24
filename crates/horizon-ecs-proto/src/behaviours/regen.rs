@@ -82,6 +82,7 @@ fn heal(w: &mut World, e: Entity, amount: f32) {
         let mut h = w.get_mut::<Health>(e).unwrap();
         h.0 = rules::healed(h.0, amount, max);
     }
+    crate::bridge::view::mark(w, e);
     boss_bar::progress(w, e);
 }
 fn full(w: &World, e: Entity) -> bool {

@@ -216,6 +216,7 @@ fn heal(w: &mut World, k: Entity, amount: f32) {
     if let Some(mut h) = w.get_mut::<Health>(k) {
         h.0 = (h.0 + amount).min(max);
     }
+    crate::bridge::view::mark(w, k);
 }
 
 #[cfg(test)]

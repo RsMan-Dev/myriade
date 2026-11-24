@@ -32,7 +32,7 @@ impl Params {
 pub struct SitRules(pub &'static Params);
 /// The sitting pose, taken while this goal runs on land (`OCC_SITTING` stays the order). Vanilla's `isInSittingPose`.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
 pub struct SitPose;
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(SitRules(params::<Params>(p)));

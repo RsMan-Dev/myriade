@@ -25,5 +25,6 @@ pub fn due(w: &mut World, e: Entity) {
     }
     h.0 = (h.0 + 1.0).min(max);
     drop(h);
+    crate::bridge::view::mark(w, e);
     arm(w, e);
 }
