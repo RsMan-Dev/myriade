@@ -56,6 +56,10 @@ pub fn destroy(w: &mut World, e: Entity, by: Option<u32>, direct: bool) {
 /// The crystal is gone (`crystal_destroyed`): a respawn crystal aborts the respawn, a spike crystal leaves the count. The dragon
 /// loses its nearest crystal once it was that one, and takes the blast's 10 points; the strafe follows.
 pub fn gone(w: &mut World, e: Entity, at: Vec3, by: Option<u32>) {
+    // No fight in this world (an end crystal summoned in the overworld): nobody to tell, as in vanilla where `getDragonFight()` is null.
+    if !w.contains_resource::<EndFight>() {
+        return;
+    }
     let respawn_crystal = w.resource::<EndFight>().respawn_crystals.contains(&e);
     if respawn_crystal {
         crate::dragon::respawn::abort(w);
