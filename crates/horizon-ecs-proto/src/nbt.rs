@@ -446,7 +446,8 @@ fn write_air(w: &World, e: Entity, c: &mut Compound) {
 
 fn read_air(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Short(v) = t else { return false };
-    w.entity_mut(e).insert(Air(i32::from(*v)));
+    // The breathing module ticks a creature below its maximum (`AirLow`, which it removes by itself when the air is full).
+    w.entity_mut(e).insert((Air(i32::from(*v)), crate::cow::AirLow));
     true
 }
 
