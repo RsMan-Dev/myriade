@@ -20,7 +20,7 @@ use std::collections::HashMap;
 /// What differs between the kinds of projectile: how they fall, slow down, end and hurt.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Flight {
-    /// The identifier the kind is saved under (`minecraft:arrow`...); a projectile carries no `TypeName`, so this is its id.
+    /// The identifier the kind is saved under (`minecraft:arrow`...).
     pub id: &'static str,
     /// The pull per tick (the arrow 0.05, the snowball 0.03), the factor of the velocity per tick (0.99).
     pub gravity: f64,
@@ -230,7 +230,7 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 /// Launches a projectile at `at` with `velocity`, owned by `owner`; saved (`Saved`, in the same insert) when its identifier is.
 pub fn launch(world: &mut World, flight: Flight, at: Vec3, velocity: Vec3, owner: Option<Who>) -> Entity {
     let id = flight.id;
-    let e = world.spawn((Pos(at), Vel(velocity), flight, Projectile { owner, age: 0, left_owner: false, expires: 0 }, Flying, OwnTime)).id();
+    let e = world.spawn((Pos(at), Vel(velocity), flight, Projectile { owner, age: 0, left_owner: false, expires: 0 }, Flying, OwnTime, crate::cow::TypeName(id))).id();
     crate::nbt::mark_saved(world, e, id);
     // `ShulkerBullet` constructor: `noPhysics = true`.
     if flight.bullet {
@@ -303,7 +303,7 @@ pub fn fly(
         Query<(&crate::hanging::Attached, Option<&crate::hanging::Size>)>,
         Res<crate::hanging::AttachIndex>,
     ),
-    mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &Flight, Option<&BornAt>, Option<&mut crate::arrow_more::PierceLevel>, Option<&crate::arrow_more::ModGate>, Option<&crate::arrow_more::GateOpen>, Option<&crate::arrow_more::Critical>, Option<&crate::arrow_more::BaseDamage>, Option<&crate::arrow_more::HurtAccel>), With<Flying>>,
+    mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &Flight, Option<&BornAt>, Option<&mut crate::arrow_more::PierceLevel>, Option<&crate::arrow_more::ModGate>, Option<&crate::arrow_more::GateOpen>, Option<&crate::arrow_more::Critical>, Option<&crate::arrow_more::BaseDamage>, Option<&crate::arrow_more::HurtAccel>, Has<crate::no_gravity::NoGravity>), With<Flying>>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
@@ -311,7 +311,9 @@ pub fn fly(
     for e in std::mem::take(&mut stuck.falling) {
         commands.entity(e).remove::<Stuck>().insert(Flying);
     }
-    for (e, mut pos, mut vel, mut p, f, born, mut pierce, gate, open, crit, base_dmg, accel_of) in &mut q {
+    for (e, mut pos, mut vel, mut p, f, born, mut pierce, gate, open, crit, base_dmg, accel_of, floats) in &mut q {
+        // `Entity.getGravity`: 0 under NoGravity.
+        let gravity = if floats { 0.0 } else { f.gravity };
         if born.is_some_and(|b| b.0 == clock.0) {
             continue;
         }
@@ -331,7 +333,7 @@ pub fn fly(
         p.age += 1;
         if f.order == Order::DragThenMove {
             // `ThrowableProjectile`: gravity, then inertia, before the move.
-            vel.0 = Vec3::new(vel.0.x, vel.0.y - f.gravity, vel.0.z).scale(f.inertia);
+            vel.0 = Vec3::new(vel.0.x, vel.0.y - gravity, vel.0.z).scale(f.inertia);
         }
         if f.order == Order::Hurting {
             // `AbstractHurtingProjectile.applyInertia`: the push along the velocity, then the inertia.
@@ -579,7 +581,7 @@ pub fn fly(
         // The end of the tick in flight: inertia, then gravity (an arrow; a thrown item did both before its move).
         if f.order == Order::MoveThenDrag {
             vel.0 = vel.0.scale(f.inertia);
-            vel.0 = Vec3::new(vel.0.x, vel.0.y - f.gravity, vel.0.z);
+            vel.0 = Vec3::new(vel.0.x, vel.0.y - gravity, vel.0.z);
         }
         let hurting = f.order == Order::Hurting;
         // `AbstractHurtingProjectile` has no age limit: it is discarded when it enters a chunk that is not loaded (`tick`: `hasChunkAt`).
