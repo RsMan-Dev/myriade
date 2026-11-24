@@ -928,7 +928,28 @@ impl Game<'_> {
         {
             return Some(f(self));
         }
-        let dim = self.resident_target_dimension(t)?;
+        let dim = match self.resident_target_dimension(t) {
+            Some(d) => d,
+            // An ECS entity of another loaded level is not in the residency table: its level is the one whose ECS holds its id.
+            None => {
+                let id = targets::target_id(t)?;
+                let here = self.dim;
+                let mut found = None;
+                for d in self.loaded_dims() {
+                    if d == here {
+                        continue;
+                    }
+                    let Some(back) = self.enter_command_level(d) else { continue };
+                    let has = self.ecs.exists(id);
+                    self.enter_command_level(back);
+                    if has {
+                        found = Some(d);
+                        break;
+                    }
+                }
+                found?
+            }
+        };
         if dim == self.dim {
             return Some(f(self));
         }
