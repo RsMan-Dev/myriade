@@ -244,7 +244,7 @@ fn moved_effects(
     mut dmg: ResMut<DamageQueue>,
     mut commands: Commands,
     mut q: Query<
-        (Entity, &Bounds, Option<&mut Contact>, Has<Health>, Has<Item>, Has<Orb>, Has<IgnoresBerryBush>, Option<&mut BerryTrail>, Has<Soaking>, Option<&Effects>, Option<&NeverStuck>),
+        (Entity, Ref<Bounds>, Option<&mut Contact>, Has<Health>, Has<Item>, Has<Orb>, Has<IgnoresBerryBush>, Option<&mut BerryTrail>, Has<Soaking>, Option<&Effects>, Option<&NeverStuck>),
         (Changed<Bounds>, Without<IgnoresTriggers>),
     >,
     was: Query<(), With<WasInPowder>>,
@@ -286,7 +286,8 @@ fn moved_effects(
                 }
                 None => {
                     commands.entity(e).insert(BerryTrail(cx, cz));
-                    true
+                    // `SweetBerryBushBlock.entityInside` compares `oldPosition` with `position`: a body just put there (summon, load) has not moved.
+                    !b.is_added()
                 }
             };
             if moved && f.pricks {
