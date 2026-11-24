@@ -63,6 +63,7 @@ pub mod stab_dismount;
 pub mod remove_killed;
 pub mod level;
 pub mod loot;
+pub mod moisture;
 pub mod mount;
 pub mod orb;
 pub mod area;

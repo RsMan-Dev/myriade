@@ -32,5 +32,6 @@ pub static TABLE: &[(&str, &[SyncSlot])] = &[
     ("minecraft:cat", &[SyncSlot { index: 18, read: tame_flags }, SyncSlot { index: 19, read: tame_owner }, SyncSlot { index: 23, read: collar }]),
     ("minecraft:parrot", &[SyncSlot { index: 18, read: tame_flags }, SyncSlot { index: 19, read: tame_owner }, SyncSlot { index: 20, read: variant }]),
     ("minecraft:llama", &[SyncSlot { index: 21, read: variant }]),
+    ("minecraft:dolphin", &[SyncSlot { index: 19, read: moistness }]),
     ("minecraft:salmon", &[SyncSlot { index: 17, read: salmon_type }]),
 ];

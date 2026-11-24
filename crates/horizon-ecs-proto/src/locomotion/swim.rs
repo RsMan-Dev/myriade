@@ -126,6 +126,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 }
 /// The entity entered the water (`true`) or left it, at an event of `reindex`.
 pub fn water_changed(w: &mut World, e: Entity, in_water: bool) {
+    crate::moisture::water_changed(w, e, in_water);
     if w.get::<NeedsWater>(e).is_none() {
         return;
     }

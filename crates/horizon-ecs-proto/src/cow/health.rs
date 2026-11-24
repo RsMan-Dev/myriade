@@ -229,6 +229,8 @@ pub enum Cause {
     Freeze,
     Fall,
     Drown,
+    /// `DamageTypes.DRY_OUT`: a dolphin out of the water (`moisture.rs`).
+    DryOut,
     /// `Entity.checkBelowWorld`: 4 a tick under the world (`DamageTypes.OUT_OF_WORLD`).
     OutOfWorld,
     InWall,
@@ -460,6 +462,7 @@ pub fn cause_name(cause: Cause, by: Option<crate::targeting::Who>) -> &'static s
         Cause::Freeze => "freeze",
         Cause::Fall => "fall",
         Cause::Drown => "drown",
+        Cause::DryOut => "dry_out",
         Cause::OutOfWorld => "out_of_world",
         Cause::InWall => "in_wall",
         Cause::Cramming => "cramming",

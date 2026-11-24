@@ -187,3 +187,8 @@ pub(crate) fn villager_data(w: &World, e: Entity) -> Option<SyncValue> {
     let level = i32::from(m.level);
     (kind != 2 || job != 0 || level != 1).then_some(SyncValue::Ids(vec![kind, job, level]))
 }
+
+/// Dolphin.DATA_MOISTNESS_LEVEL (index 19, default 2400): sent while below it.
+pub(crate) fn moistness(w: &World, e: Entity) -> Option<SyncValue> {
+    w.get::<crate::moisture::Moisture>(e).filter(|m| m.level != crate::moisture::FULL).map(|m| SyncValue::Int(m.level))
+}

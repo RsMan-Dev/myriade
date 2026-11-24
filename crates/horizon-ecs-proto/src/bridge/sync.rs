@@ -70,6 +70,8 @@ pub struct SyncSlot {
 /// The defaults of `kind`'s entries that are not the zero of their serializer (the entry left out goes back to it).
 pub fn special_defaults(kind: &str) -> &'static [(u8, i32, Value)] {
     match kind {
+        // Dolphin.DATA_MOISTNESS_LEVEL is defined as 2400.
+        "minecraft:dolphin" => &[(19, serializer::INT, Value::Int(2400))],
         "minecraft:creeper" => &[(16, serializer::INT, Value::Int(-1))],
         // VehicleEntity.DATA_ID_HURTDIR is defined as 1.
         k if k.ends_with("_boat") || k.ends_with("_raft") => &[(9, serializer::INT, Value::Int(1))],
