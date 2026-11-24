@@ -211,8 +211,13 @@ fn read_fire(w: &mut World, e: Entity, t: &Tag) -> bool {
     if *v == 0 {
         w.entity_mut(e).remove::<Burning>();
     } else {
-        let until = now_of(w, e) as i64 + *v as i64;
-        w.entity_mut(e).insert(Burning { until });
+        let now = now_of(w, e);
+        let already = w.get::<Burning>(e).is_some();
+        w.entity_mut(e).insert(Burning { until: now as i64 + *v as i64 });
+        // `Entity.baseTick` hurts on the ticks where the remaining fire is a multiple of 20: the burn is a deadline of the wheel.
+        if !already {
+            crate::cow::arm_at(w, e, now + if *v % 20 == 0 { 1 } else { 20 }, crate::cow::Due::Burn);
+        }
     }
     true
 }
