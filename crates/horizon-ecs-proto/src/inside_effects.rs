@@ -44,7 +44,7 @@ const CAMPFIRE_DAMAGE: f32 = 1.0;
 const SOUL_CAMPFIRE_DAMAGE: f32 = 2.0;
 /// `WitherRoseBlock`: the wither effect it gives (ticks) and how often a creature that stays in it gets it again (it never lapses).
 const ROSE_TICKS: i32 = 40;
-const ROSE_REFRESH: u64 = 20;
+const ROSE_REFRESH: u64 = 10;
 /// `Entity.lavaIgnite` (15 s), `lavaHurt` (4), `MagmaBlock.stepOn` (1), the stalagmite's fall distance factor and damage multiplier.
 const LAVA_IGNITE_TICKS: u64 = 300;
 const LAVA_HURT: f32 = 4.0;
@@ -302,7 +302,7 @@ fn moved_effects(
                 dmg.add(e, 1.0, Cause::Cactus);
             }
         }
-        let holds = living && (f.rose || f.campfire > 0.0);
+        let holds = living && (f.rose || f.campfire > 0.0 || f.cauldron);
         if holds && !soaking {
             let due = clock.of(e) + ROSE_REFRESH;
             commands.queue(move |w: &mut World| {
@@ -319,7 +319,7 @@ fn soak_due(w: &mut World, e: Entity) {
     let (Some(b), Some(&Soaking(rose_at))) = (w.get::<Bounds>(e).map(|b| b.0), w.get::<Soaking>(e)) else { return };
     let now = crate::cow::now_of(w, e);
     let f = w.resource_scope(|w, mut kinds: Mut<InsideKinds>| scan(w.resource::<Level>(), &mut kinds, &b, true, false));
-    if !f.rose && f.campfire <= 0.0 {
+    if !f.rose && f.campfire <= 0.0 && !f.cauldron {
         w.entity_mut(e).remove::<Soaking>();
         return;
     }
@@ -328,7 +328,7 @@ fn soak_due(w: &mut World, e: Entity) {
         w.entity_mut(e).insert(Soaking(now + ROSE_REFRESH));
     }
     let mut queue = bevy_ecs::world::CommandQueue::default();
-    w.resource_scope(|w, mut dmg: Mut<DamageQueue>| apply(&Found { stuck: 0, berry: false, pricks: false, cauldron: false, powder: None, ..f }, e, true, due, &mut dmg, &mut Commands::new(&mut queue, w)));
+    w.resource_scope(|w, mut dmg: Mut<DamageQueue>| apply(&Found { stuck: 0, berry: false, pricks: false, powder: None, ..f }, e, true, due, &mut dmg, &mut Commands::new(&mut queue, w)));
     queue.apply(w);
     crate::cow::after(w, e, SOAK_PERIOD, soak_due);
 }
