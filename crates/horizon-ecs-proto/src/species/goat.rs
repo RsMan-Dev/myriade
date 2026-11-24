@@ -47,6 +47,8 @@ pub static DEF: Def = Def {
     load_attrs: &[crate::attr_mod::LoadAttr { name: "attack_damage", base: Some(1.0), when: crate::attr_mod::LoadWhen::Baby }],
     name: "minecraft:goat",
     reference: Some(&farm_animal::DEF),
+    // `Goat.checkGoatSpawnRules`: the floor is in `goats_spawnable_on` (snow, stone, ...), not the animals' grass.
+    spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Bright { on: "minecraft:goats_spawnable_on" }, ..crate::spawning::SpawnDef::ANIMAL }),
     // `GoatAi.initCoreActivity`: `AnimalPanic(2.0)`, the panic of the farm animals' goal swapped for it (100 to 120 ticks, the window of 40).
     changes: &[
         Change::Remove { module: &panic::MODULE, nth: 0 },
