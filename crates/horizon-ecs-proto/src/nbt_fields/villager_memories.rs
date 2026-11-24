@@ -5,7 +5,7 @@ use crate::behaviours::golem_recent::GOLEM_RECENT;
 use crate::behaviours::summon_defender::LastSlept;
 use crate::brain::{self, MemValue};
 use crate::nbt::Field;
-use crate::species::villager::POTENTIAL_JOB_SITE;
+use crate::species::villager::{HOME, JOB_SITE, MEETING_POINT, POTENTIAL_JOB_SITE};
 use bevy_ecs::prelude::*;
 use horizon_core::nbt::{Compound, Tag};
 use std::borrow::Cow;
@@ -93,11 +93,15 @@ fn read_slept(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
+/// The sites a villager keeps (`GlobalPos` memories): the potential job site, and written only (a claim is not rebuilt by reading) the
+/// job site, the home and the meeting point.
 fn write_site(w: &World, e: Entity, c: &mut Compound) {
-    let Some(MemValue::Block(p)) = brain::get(w, e, &POTENTIAL_JOB_SITE) else { return };
     let dim = w.get_resource::<crate::bridge::host::WorldDimension>().map_or("minecraft:overworld", |d| d.0);
-    let value = Tag::compound([("dimension", Tag::String(dim.into())), ("pos", Tag::IntArray(p.to_vec()))]);
-    put(c, "minecraft:potential_job_site", memory(value, brain::ttl_left(w, e, &POTENTIAL_JOB_SITE)));
+    for key in [&POTENTIAL_JOB_SITE, &JOB_SITE, &HOME, &MEETING_POINT] {
+        let Some(MemValue::Block(p)) = brain::get(w, e, key) else { continue };
+        let value = Tag::compound([("dimension", Tag::String(dim.into())), ("pos", Tag::IntArray(p.to_vec()))]);
+        put(c, key.name, memory(value, brain::ttl_left(w, e, key)));
+    }
 }
 
 fn read_site(w: &mut World, e: Entity, t: &Tag) -> bool {

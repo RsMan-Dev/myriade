@@ -46,7 +46,7 @@ fn assign(w: &mut World, e: Entity, c: &Ctx) {
         profession::on_acquired(w, e, s);
         let kind = w.get::<Profession>(e).map(|j| j.0);
         let name = p.professions.iter().find(|(k, _)| Some(*k) == kind).map(|&(_, n)| n);
-        if let Some(i) = name.and_then(|n| (0..=u8::MAX).find(|&i| trade_offers::profession_name(w, i) == n)) {
+        if let Some(i) = name.and_then(|n| (0..=u8::MAX).find(|&i| trade_offers::profession_name(w, i).trim_start_matches("minecraft:") == n)) {
             trade_offers::set_profession(w, e, i);
         }
     }
