@@ -599,7 +599,13 @@ impl Game<'_> {
         // A selector with a spatial constraint reaches the level the command
         // runs in only; an unbounded one reaches every loaded level
         // (EntitySelector.findEntities).
-        let dims = if s.world_limited() {
+        let home = match (s.kind, self.command_source) {
+            ('s', Some(source)) => source.entity.and_then(|t| self.target_home_dimension(t)),
+            _ => None,
+        };
+        let dims = if let Some(h) = home {
+            vec![h]
+        } else if s.world_limited() {
             vec![source_dim]
         } else {
             self.loaded_dims()
@@ -608,7 +614,7 @@ impl Game<'_> {
         for dim in dims {
             let back = self.enter_command_level(dim);
             let mut candidates = Vec::new();
-            if dim == source_dim {
+            if dim == home.unwrap_or(source_dim) {
                 candidates.append(&mut source_candidates);
             }
             // EntitySelector.findEntities: a selector without entities (`@a`, `@p`, `@r`, a
@@ -828,6 +834,29 @@ impl Game<'_> {
         ordered
     }
 
+    /// The loaded level that holds `t`: the residency table's answer, else the level whose ECS holds its id.
+    pub(in crate::game) fn target_home_dimension(&mut self, t: Target) -> Option<Dim> {
+        if let Some(d) = self.resident_target_dimension(t) {
+            return Some(d);
+        }
+        let id = targets::target_id(t)?;
+        let here = self.dim;
+        if self.ecs.exists(id) {
+            return Some(here);
+        }
+        for d in self.loaded_dims() {
+            if d == here {
+                continue;
+            }
+            let Some(back) = self.enter_command_level(d) else { continue };
+            let has = self.ecs.exists(id);
+            self.enter_command_level(back);
+            if has {
+                return Some(d);
+            }
+        }
+        None
+    }
     /// The entities of the level in place a selector can find: one walk over
     /// the entity lists (a kind added there joins `@e` once it names its
     /// `Target`), then the kinds that are not on the walk. An
@@ -919,37 +948,12 @@ impl Game<'_> {
         f: impl FnOnce(&mut Self) -> R,
     ) -> Option<R> {
         // A mob the ECS holds is in the level in place: the ECS is that level's.
-        if let Target::Mob(id)
-        | Target::Frame(id)
-        | Target::Painting(id)
-        | Target::Item(id)
-        | Target::Crystal(id) = t
+        if let Some(id) = targets::target_id(t)
             && self.ecs.exists(id)
         {
             return Some(f(self));
         }
-        let dim = match self.resident_target_dimension(t) {
-            Some(d) => d,
-            // An ECS entity of another loaded level is not in the residency table: its level is the one whose ECS holds its id.
-            None => {
-                let id = targets::target_id(t)?;
-                let here = self.dim;
-                let mut found = None;
-                for d in self.loaded_dims() {
-                    if d == here {
-                        continue;
-                    }
-                    let Some(back) = self.enter_command_level(d) else { continue };
-                    let has = self.ecs.exists(id);
-                    self.enter_command_level(back);
-                    if has {
-                        found = Some(d);
-                        break;
-                    }
-                }
-                found?
-            }
-        };
+        let dim = self.target_home_dimension(t)?;
         if dim == self.dim {
             return Some(f(self));
         }
@@ -3716,7 +3720,14 @@ impl Game<'_> {
             _ => String::new(),
         };
         let message = self.expand_selectors(&raw);
-        let name = self.source_display_name();
+        // The source entity may live in another loaded level: its name is read there.
+        let name = match self.command_source.and_then(|c| c.entity) {
+            Some(t) => match self.in_target_level(t, |g| g.target_name(t)) {
+                Some(n) => n,
+                None => self.source_display_name(),
+            },
+            None => self.source_display_name(),
+        };
         // A player's command whose output is captured (a function, `execute …
         // run say`, the command harness) gets the announcement with that
         // output, in order; everyone else gets the broadcast.
