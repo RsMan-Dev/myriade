@@ -58,7 +58,13 @@ impl Dim {
     /// `Level.getSeaLevel` of the level: the sea level its noise settings give a mod's level, else
     /// the built-in level's.
     pub fn sea_level(self) -> i32 {
-        Self::sea_level_of_id(self.id())
+        // The built-in levels name their key directly: `LevelKey::parse` looks the id up in the table of keys, and `mob_world_base` asks every tick.
+        match self {
+            Self::Overworld => horizon_world::level::sea_level_of(horizon_core::LevelKey::OVERWORLD),
+            Self::Nether => horizon_world::level::sea_level_of(horizon_core::LevelKey::NETHER),
+            Self::End => horizon_world::level::sea_level_of(horizon_core::LevelKey::END),
+            Self::Extra(_) => Self::sea_level_of_id(self.id()),
+        }
     }
     /// [`Self::sea_level`] of the level `id` names.
     pub fn sea_level_of_id(id: &str) -> i32 {
