@@ -22,7 +22,7 @@ pub static TABLE: &[(&str, &[SyncSlot])] = &[
     ("minecraft:fox", &[SyncSlot { index: 18, read: variant }]),
     ("minecraft:mooshroom", &[SyncSlot { index: 18, read: variant }]),
     ("minecraft:rabbit", &[SyncSlot { index: 18, read: variant }]),
-    ("minecraft:zombie_villager", &[SyncSlot { index: 19, read: converting }]),
+    ("minecraft:zombie_villager", &[SyncSlot { index: 19, read: converting }, SyncSlot { index: 20, read: zombie_villager_data }, SyncSlot { index: 21, read: zombie_villager_finalized }]),
     ("minecraft:villager", &[SyncSlot { index: 18, read: unhappy }, SyncSlot { index: 19, read: villager_data }, SyncSlot { index: 20, read: villager_finalized }]),
     ("minecraft:wandering_trader", &[SyncSlot { index: 18, read: unhappy }]),
     (

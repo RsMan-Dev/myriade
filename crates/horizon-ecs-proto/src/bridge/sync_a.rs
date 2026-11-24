@@ -143,8 +143,8 @@ mod tests {
 }
 
 /// The villager types and professions in the order of the built-in registries (the id the entry carries is the holder's index).
-const VILLAGER_TYPE_IDS: [&str; 7] = ["desert", "jungle", "plains", "savanna", "snow", "swamp", "taiga"];
-const PROFESSION_IDS: [&str; 15] = [
+pub(crate) const VILLAGER_TYPE_IDS: [&str; 7] = ["desert", "jungle", "plains", "savanna", "snow", "swamp", "taiga"];
+pub(crate) const PROFESSION_IDS: [&str; 15] = [
     "none", "armorer", "butcher", "cartographer", "cleric", "farmer", "fisherman", "fletcher", "leatherworker", "librarian", "mason", "nitwit", "shepherd", "toolsmith",
     "weaponsmith",
 ];
@@ -161,6 +161,20 @@ pub struct VillagerFinalized;
 
 pub(crate) fn villager_finalized(w: &World, e: Entity) -> Option<SyncValue> {
     w.get::<VillagerFinalized>(e).map(|_| SyncValue::Bool(true))
+}
+
+/// ZombieVillager.DATA_VILLAGER_DATA (index 20) and its finalized flag (21): the type, profession and level in registry ids, set once
+/// `VillagerData` is read (a zombie villager has no trades, so no `Merchant`).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
+pub struct ZombieVillagerData(pub [i32; 3]);
+
+pub(crate) fn zombie_villager_data(w: &World, e: Entity) -> Option<SyncValue> {
+    w.get::<ZombieVillagerData>(e).filter(|d| d.0 != [2, 0, 1]).map(|d| SyncValue::Ids(d.0.to_vec()))
+}
+
+pub(crate) fn zombie_villager_finalized(w: &World, e: Entity) -> Option<SyncValue> {
+    w.get::<ZombieVillagerData>(e).map(|_| SyncValue::Bool(true))
 }
 
 /// Villager.DATA_VILLAGER_DATA (index 19): the type, the profession and the level, in registry ids. None for a profession or a type of
