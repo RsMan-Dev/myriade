@@ -213,6 +213,7 @@ fn die(w: &mut World, e: Entity, damage: &'static str, by: Option<crate::targeti
             m.despawn();
         }
     } else {
+        w.entity_mut(e).insert(crate::tear_down::DyingPose);
         crate::tear_down::linger(w, e);
     }
 }

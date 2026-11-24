@@ -18,6 +18,12 @@ pub struct Crumbling {
     pub sound: Option<&'static str>,
 }
 
+/// `LivingEntity.die`'s `setPose(Pose.DYING)`: the pose the client reads (index 6) to lay the body down. Only a real death poses it; `fade`
+/// (a health put to 0 with no source) leaves the pose as it was.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
+pub struct DyingPose;
+
 /// `LivingEntity.tickDeath`: `deathTime >= 20`.
 pub const FADE_TICKS: i32 = 20;
 

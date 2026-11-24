@@ -9,6 +9,7 @@ use crate::dragon::flight::NoAi;
 use crate::effects::{AMBIENT, Effects, Invisible};
 use bevy_ecs::prelude::*;
 use horizon_core::nbt::Tag;
+use horizon_protocol::entity_data::serializer;
 
 /// Entity.DATA_SHARED_FLAGS_ID: on fire 0x01, invisible 0x20, glowing 0x40 (the saved `Glowing` key, `setGlowingTag`).
 fn shared(w: &World, e: Entity) -> Option<SyncValue> {
@@ -93,6 +94,11 @@ pub const NOT_AGEABLE: &[&str] = &[
     "minecraft:zombie", "minecraft:husk", "minecraft:drowned", "minecraft:zombie_villager", "minecraft:zombified_piglin", "minecraft:giant", "minecraft:piglin", "minecraft:zoglin",
 ];
 
+/// `Pose.DYING` (network id 7): the pose of a body that died (`LivingEntity.die`); no other pose is synced here.
+fn pose(w: &World, e: Entity) -> Option<SyncValue> {
+    w.get::<crate::tear_down::DyingPose>(e).map(|_| SyncValue::Id(serializer::POSE, 7))
+}
+
 /// The core's slots, in index order.
 pub static SLOTS: &[SyncSlot] = &[
     SyncSlot { index: 0, read: shared },
@@ -101,6 +107,7 @@ pub static SLOTS: &[SyncSlot] = &[
     SyncSlot { index: 3, read: name_visible },
     SyncSlot { index: 4, read: silent },
     SyncSlot { index: 5, read: no_gravity },
+    SyncSlot { index: 6, read: pose },
     SyncSlot { index: 7, read: frozen },
     SyncSlot { index: 9, read: health },
     SyncSlot { index: 11, read: ambient },

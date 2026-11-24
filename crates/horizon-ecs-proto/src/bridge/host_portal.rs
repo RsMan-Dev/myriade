@@ -36,6 +36,7 @@ impl EcsWorld {
             let names = crate::loot::on_death(w, e);
             crate::item::spill_destroyed(w, e);
             crate::spawn_trial::forget(w, e);
+            w.entity_mut(e).insert(crate::tear_down::DyingPose);
             crate::tear_down::linger(w, e);
             names
         })
