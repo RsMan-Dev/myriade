@@ -499,7 +499,7 @@ fn locate_start(w: &mut World, e: Entity, _: Inst) {
     let now = now_of(w, e);
     let here = block_of(w, e);
     let reg = w.resource::<crate::poi::PoiRegistry>();
-    let mut hives: Vec<[i32; 3]> = reg.in_range(here, 20, false, |k| k == horizon_world::poi::PoiType::Beehive).into_iter().map(|(p, _)| p).filter(|&p| !full(w, p) && is_hive(w, p)).collect();
+    let mut hives: Vec<[i32; 3]> = reg.in_range(here, 20, false, |k| matches!(k, horizon_world::poi::PoiType::Beehive | horizon_world::poi::PoiType::BeeNest)).into_iter().map(|(p, _)| p).filter(|&p| !full(w, p) && is_hive(w, p)).collect();
     let dist = |p: &[i32; 3]| (0..3).map(|i| i64::from(p[i] - here[i]).pow(2)).sum::<i64>();
     hives.sort_by_key(|p| (dist(p), *p));
     let b = w.get_mut::<Bee>(e);
