@@ -85,6 +85,11 @@ fn age_locked(w: &World, e: Entity) -> Option<SyncValue> {
     w.get::<crate::age_lock::AgeLocked>(e).map(|_| SyncValue::Bool(true))
 }
 
+/// The kinds with a baby flag that are not an `AgeableMob` (the age lock at 17 does not exist for them).
+pub const NOT_AGEABLE: &[&str] = &[
+    "minecraft:zombie", "minecraft:husk", "minecraft:drowned", "minecraft:zombie_villager", "minecraft:zombified_piglin", "minecraft:giant", "minecraft:piglin", "minecraft:zoglin",
+];
+
 /// The core's slots, in index order.
 pub static SLOTS: &[SyncSlot] = &[
     SyncSlot { index: 0, read: shared },
