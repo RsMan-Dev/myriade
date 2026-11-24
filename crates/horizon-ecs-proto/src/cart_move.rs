@@ -4,10 +4,10 @@
 //! shape with its mod hooks, the conductors, the activator rails, the container signal) come in through `TrackRead`.
 use crate::block_factor::{self, BlockSpeed};
 use crate::cart_state::{Cart, Contents};
-use crate::cow::{block_changes, Index, Level, Pos, Vel};
+use crate::cow::{block_changes, do_move, Body, Bounds, Contact, Index, Level, Pos, Vel};
 use crate::goals::sparse_any;
 use crate::host_out_cart_move::{CartMoveEvent, CartMoveOut};
-use crate::minecart::{along_track, can_park, container_slowdown, fall_step, furnace_slowdown, off_track_drag, off_track_velocity, rail_point, settle, slowdown, Fall, Furnace, Kind, Rail, Track, GRAVITY, MAX_LAND, MAX_WATER};
+use crate::minecart::{along_track, can_park, container_slowdown, fall_step, furnace_slowdown, off_track_drag, off_track_velocity, bounds_at, rail_point, settle, slowdown, Fall, Furnace, Kind, Rail, Track, GRAVITY, MAX_LAND, MAX_WATER};
 use crate::seat;
 use bevy_ecs::{entity_disabling::Disabled, prelude::*};
 use myriade_engine_lib::items::ItemStack;
@@ -86,13 +86,13 @@ fn cart_step(world: &mut World, mut cached: Local<Option<QueryState<Entity, With
     world.init_resource::<CartMoveOut>();
     let state = cached.get_or_insert_with(|| world.query_filtered());
     let list: Vec<Entity> = state.iter(world).collect();
-    let mw = level.mw.0;
     for e in list {
-        step(world, e, mw, read);
+        step(world, e, &level, read);
     }
 }
 
-fn step(w: &mut World, e: Entity, mw: &MobWorld<'static>, read: TrackRead) {
+fn step(w: &mut World, e: Entity, level: &Level, read: TrackRead) {
+    let mw = &level.mw.0;
     let (Some(kind), Some(t), Some(p), Some(v)) = (
         w.get::<Kind>(e).copied(),
         w.get::<Track>(e).copied(),
@@ -145,8 +145,17 @@ fn step(w: &mut World, e: Entity, mw: &MobWorld<'static>, read: TrackRead) {
             if vel.horizontal().length_squared() > 0.0 {
                 emit(w, CartMoveEvent::Derail { entity: e });
             }
-            pos = Vec3::new(pos.x + vel.x, pos.y + vel.y, pos.z + vel.z);
-            let on_ground = t.on_ground;
+            // `Entity.move` over the blocks (`comeOffTrack`): the cart falls onto the ground and stops there, it does not hang in the air.
+            let mut contact = w.get::<Contact>(e).copied().unwrap_or_default();
+            contact.on_ground = t.on_ground;
+            let mut boxed = Bounds(w.get::<Bounds>(e).map_or_else(|| bounds_at(pos), |b| b.0));
+            let body = Body { width: 0.98, height: 0.7, step_height: 0.0, speed: 0.0, fall_factor: 1.0, safe_fall: 3.0, fall_mult: 1.0, movement_efficiency: 0.0, lava_walker: false, object: false, orb: false, tnt: false };
+            let (mut at, mut moving, mut ignored) = (Pos(pos), Vel(vel), 0.0_f32);
+            do_move(level, &mut at, &mut moving, &mut contact, &body, &mut boxed, &mut ignored);
+            pos = at.0;
+            vel = moving.0;
+            let on_ground = contact.on_ground;
+            w.entity_mut(e).insert((contact, boxed));
             fall_step(&mut fall, pos.y - p.y, t.in_water, on_ground, kind == Kind::Tnt);
             if on_ground {
                 vel.y = 0.0;

@@ -146,7 +146,8 @@ fn spawn_idle(w: &mut World, kind: Kind, at: [f64; 3], yaw: f32) -> Entity {
     let p = Vec3::new(at[0], at[1], at[2]);
     let e = w.spawn((Pos(p), crate::cow::Vel(Vec3::ZERO), Uid(next_uid()), TypeName(name), Cart, kind, Track::default(), Yaw(yaw), Bounds(bounds_at(p)), Cell(u32::MAX, [i32::MIN; 8], u32::MAX))).id();
     crate::nbt::mark_saved(w, e, name);
-    w.entity_mut(e).insert((Ticked(false), Flipped(false)));
+    // A cart not on a rail falls to the ground: it rolls (and parks) from its first tick.
+    w.entity_mut(e).insert((Ticked(false), Flipped(false), crate::cart_move::Rolling));
     let container = Contents { slots: vec![None; slot_count(kind)], loot: None };
     match kind {
         Kind::Chest => {
