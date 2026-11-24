@@ -408,7 +408,6 @@ pub(crate) fn assemble_resources(world: &mut World, level: Level, sleep: bool, p
     crate::nbt::register_creators(world, crate::dispense::CREATORS);
     crate::nbt::register_creators(world, crate::behaviours::stew_flower::CREATORS);
     crate::nbt::register_creators(world, crate::credit::CREATORS);
-    crate::cart_state::register_nbt(world);
     crate::boat_state::register_nbt(world);
     // Every species, then the passive types, then the sorts with a constructor (which replaces the species' recipe of their id).
     for sp in species_table().0 {
@@ -417,6 +416,8 @@ pub(crate) fn assemble_resources(world: &mut World, level: Level, sleep: bool, p
     for id in crate::passive::kinds() {
         crate::nbt::declare(world, id, crate::nbt::Recipe { saved: true, build: crate::nbt::Build::Passive });
     }
+    // The carts are in the species table too: their own recipe (which builds the cart, with its rail state) comes after and replaces it.
+    crate::cart_state::register_nbt(world);
     for &(id, b) in crate::nbt_fields::things::builders() {
         crate::nbt::declare(world, id, crate::nbt::Recipe { saved: true, build: crate::nbt::Build::With(b) });
     }

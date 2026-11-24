@@ -34,7 +34,7 @@ mod boats;
 mod cart_more;
 mod cart_kill;
 mod cart_refs;
-mod cart_move;
+pub(crate) mod cart_move;
 pub(crate) mod cart_variants;
 mod carts;
 mod falling;

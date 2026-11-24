@@ -318,6 +318,20 @@ impl EcsWorld {
                 }
                 return Some(e);
             }
+            // A cart is built by its own constructor (`Cart`, `Kind`, `Track`), not as a species: its keys (`Motion`...) are loaded on it.
+            if let Some((_, genre)) = crate::species::minecart::GENRES.iter().find(|(d, _)| d.name == kind) {
+                let e = crate::cart_state::spawn(w, *genre, at, 0.0);
+                if let Some(c) = nbt {
+                    nbt::load(w, e, c);
+                    crate::cart_variants::start_cart(w, e);
+                }
+                zone::admit(w, &[e]);
+                view::mark(w, e);
+                if announce {
+                    crate::bridge::host_events_more::said_spawned(w, e, natural, reason);
+                }
+                return Some(e);
+            }
             let sp = sp?;
             let e = spawn_armed(w, sp, at[0], at[2], seed);
             // The place asked for, box and movement included: a creature summoned in the air falls (`cow::teleport` raises `Moving`).

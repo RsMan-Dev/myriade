@@ -1,7 +1,39 @@
 //! The minecarts on rails by network id (lot 57): the host's track reads, the push of a cart and its velocity, through the bridge's
 //! `EcsWorld` (bridge/cart_move.rs). An inert level answers as an empty world.
 use super::level::EcsLevel;
+use crate::mobs::MobWorld;
 use horizon_ecs_proto::cart_move::TrackRead;
+use horizon_ecs_proto::minecart::Rail;
+use horizon_gameplay::minecarts::Shape;
+
+const RAILS: [&str; 4] = ["minecraft:rail", "minecraft:powered_rail", "minecraft:detector_rail", "minecraft:activator_rail"];
+
+/// The host's reads of the track (`BaseRailBlock.isRail`, the shape of the rail, `isRedstoneConductor`, the activator rail, the container signal).
+pub fn track_read() -> TrackRead {
+    fn rail(mw: &MobWorld<'static>, p: [i32; 3]) -> Option<Rail> {
+        let state = mw.world.block(p[0], p[1], p[2]);
+        let name = &*mw.facts.get(state).name;
+        if !RAILS.contains(&name) {
+            return None;
+        }
+        let props = &mw.registry.state(state)?.properties;
+        let (a, b) = Shape::parse(props.get("shape").map_or("", String::as_str)).exits();
+        let powered = (name == "minecraft:powered_rail").then(|| props.get("powered").is_some_and(|v| v == "true"));
+        Some(Rail { exits: [a, b], powered })
+    }
+    fn conductor(mw: &MobWorld<'static>, p: [i32; 3]) -> bool {
+        let f = mw.facts.get(mw.world.block(p[0], p[1], p[2]));
+        f.solid_render && f.full_collision
+    }
+    fn activator(mw: &MobWorld<'static>, p: [i32; 3]) -> bool {
+        &*mw.facts.get(mw.world.block(p[0], p[1], p[2])).name == "minecraft:activator_rail"
+    }
+    fn signal(mw: &MobWorld<'static>, slots: &[Option<myriade_engine::items::ItemStack>]) -> i32 {
+        let fractions: Vec<f32> = slots.iter().flatten().map(|s| s.count as f32 / horizon_ecs_proto::rules::item::max_stack(mw, s) as f32).collect();
+        horizon_ecs_proto::minecart::container_signal(&fractions, slots.len())
+    }
+    TrackRead { rail, conductor, activator, signal }
+}
 
 impl EcsLevel {
     /// Lends the host's track reads to the world (once, when the level opens).

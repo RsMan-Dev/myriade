@@ -60,6 +60,7 @@ impl Game<'_> {
             ecs.set_chunk_spawnable(cx, cz, self.block_ticking_at(cx * 16, cz * 16));
         }
         ecs.set_world_border(Some(self.border.geometry().bounds(0.0)));
+        ecs.set_track_read(crate::ecs_bridge::cart_move::track_read());
         if let Some(at) = self.level.world_spawn {
             ecs.set_world_spawn(at);
         }

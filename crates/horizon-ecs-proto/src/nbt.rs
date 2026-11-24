@@ -424,6 +424,10 @@ fn write_motion(w: &World, e: Entity, c: &mut Compound) {
 fn read_motion(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Some(v) = tag_vec3(t) else { return false };
     w.entity_mut(e).insert(Vel(v));
+    // A cart with a speed rolls (`push`); one at rest parks again on its own.
+    if v.length_squared() > 0.0 {
+        crate::cart_move::wake(w, e);
+    }
     true
 }
 
