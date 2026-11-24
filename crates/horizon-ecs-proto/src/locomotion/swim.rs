@@ -142,6 +142,7 @@ fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
         pathfind.after(crate::cow::pathfind).before(crate::cow::follow),
         follow.after(crate::cow::follow).before(crate::cow::path_ended),
         move_control.after(crate::cow::move_control),
+        dry_air.before(crate::cow::apply_damage),
         dry.after(crate::cow::wall_check).before(crate::cow::travel),
         travel.after(crate::cow::travel).before(crate::cow::ordered_pass),
     ));
@@ -450,25 +451,36 @@ fn turtle_control(pos: &Pos, vel: &mut Vel, yaw: &mut Yaw, m: &mut MoveTo, d: &m
     vel.0.y += f64::from(speed) * (yd / dist) * 0.1;
 }
 
-/// `WaterAnimal.handleAirSupply` out of the water (the air runs down, drowning hurts 2 at -20) and `AbstractFish.aiStep`'s flop: an
-/// animal on the ground out of the water jumps a little at random.
-#[allow(clippy::type_complexity)]
-fn dry(
+/// `WaterAnimal.handleAirSupply` out of the water (the air runs down, drowning hurts 2 at -20), at the start of the entity's tick as
+/// `baseTick` is, so the hit lands in the same tick as the air reaching 0. A dead body is given its air back (`isAlive` is false).
+fn dry_air(
     level: Res<Level>,
-    mut q: Query<(Entity, &mut Air, &crate::goals::Uid, &TypeName, &mut Contact, &mut Vel, &mut Rng, Has<Moving>, &SwimParams, &Pos, Has<crate::behaviours::elder_curse::Silent>), With<Dry>>,
+    mut q: Query<(Entity, &mut Air, &crate::goals::Uid, &TypeName, Has<crate::tear_down::Crumbling>), With<Dry>>,
     mut queue: ResMut<DamageQueue>,
-    mut events: ResMut<crate::goals::Events>,
     mut commands: Commands,
 ) {
     let cx = level.mw.0.loop_context;
-    for (e, mut air, uid, tn, mut c, mut v, mut rng, moving, swp, at, silent) in &mut q {
+    for (e, mut air, uid, tn, dead) in &mut q {
         let air_before = air.0;
-        if let Some(damage) = myriade_engine_lib::breathing::own_air(cx, uid.0 as u32, tn.0, &mut air.0, false, 300) {
+        if dead {
+            air.0 = 300;
+        } else if let Some(damage) = myriade_engine_lib::breathing::own_air(cx, uid.0 as u32, tn.0, &mut air.0, false, 300) {
             queue.add(e, damage, Cause::Drown);
         }
         if air.0 != air_before {
             commands.queue(move |w: &mut World| crate::bridge::view::mark(w, e));
         }
+    }
+}
+
+/// `AbstractFish.aiStep`'s flop: an animal on the ground out of the water jumps a little at random.
+#[allow(clippy::type_complexity)]
+fn dry(
+    mut q: Query<(Entity, &mut Air, &crate::goals::Uid, &TypeName, &mut Contact, &mut Vel, &mut Rng, Has<Moving>, &SwimParams, &Pos, Has<crate::behaviours::elder_curse::Silent>), With<Dry>>,
+    mut events: ResMut<crate::goals::Events>,
+    mut commands: Commands,
+) {
+    for (e, _, _, _, mut c, mut v, mut rng, moving, swp, at, silent) in &mut q {
         // The flop is `AbstractFish.aiStep`'s: a squid only suffocates.
         if c.on_ground && !swp.squid {
             let (a, b) = (rng.next_f64() as f32, rng.next_f64() as f32);
