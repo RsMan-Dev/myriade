@@ -62,7 +62,14 @@ pub fn has(w: &World, e: Entity, name: &str) -> bool {
 /// Adds the tag. False when the entity already has it, has `MAX_TAGS` tags, is dead, or is not `Saved` (its tags are its NBT's:
 /// vanilla's `addTag`).
 pub fn add(w: &mut World, e: Entity, name: &str) -> bool {
-    if w.get_entity(e).is_err() || w.get::<crate::nbt::Saved>(e).is_none() || has(w, e, name) || names(w, e).len() >= MAX_TAGS {
+    if w.get::<crate::nbt::Saved>(e).is_none() {
+        return false;
+    }
+    add_unsaved(w, e, name)
+}
+/// Adds the tag to an entity that is not `Saved` either (a leash knot read from a summon's data: vanilla reads `Tags` for every entity).
+pub fn add_unsaved(w: &mut World, e: Entity, name: &str) -> bool {
+    if w.get_entity(e).is_err() || has(w, e, name) || names(w, e).len() >= MAX_TAGS {
         return false;
     }
     let c = marker(w, name);

@@ -110,6 +110,13 @@ fn build(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     if let Some(Tag::IntArray(u)) = c.get(&JavaString::from("UUID")) && let Ok(u) = <[i32; 4]>::try_from(u.as_slice()) {
         crate::bridge::uuids::set_uuid(w, e, u);
     }
+    if let Some(Tag::List(tags)) = c.get(&JavaString::from("Tags")) {
+        for t in tags {
+            if let Tag::String(n) = t {
+                if let Ok(n) = n.to_string() { crate::nbt_tag::add_unsaved(w, e, &n); }
+            }
+        }
+    }
     Some(e)
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
