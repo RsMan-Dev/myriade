@@ -94,6 +94,9 @@ impl Game<'_> {
     /// `Level.gameEvent` for the allays of P: each allay that hears `event` at `at` (its vibration listening or, for a jukebox
     /// event, its jukebox listening) is P's to apply.
     pub(in crate::game) fn ecs_allays_hear(&mut self, event: &'static str, at: [f64; 3]) {
+        if !self.ecs.any_ear() {
+            return;
+        }
         self.ecs_with(|ecs, mw| ecs.allays_hear(mw, event, at));
     }
 }

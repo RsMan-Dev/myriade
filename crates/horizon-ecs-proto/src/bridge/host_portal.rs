@@ -81,6 +81,21 @@ impl EcsWorld {
         w.component_id::<Moving>().is_some_and(|id| w.archetypes().iter().any(|a| !a.is_empty() && a.contains(id)))
     }
 
+    /// Whether an entity carries `C`: an archetype with it holds an entity (no walk of the entities).
+    pub fn any_with<C: Component>(&self) -> bool {
+        let w = self.world();
+        w.component_id::<C>().is_some_and(|id| w.archetypes().iter().any(|a| !a.is_empty() && a.contains(id)))
+    }
+    pub fn any_ear(&self) -> bool {
+        self.any_with::<crate::behaviours::event_listen::Ear>()
+    }
+    pub fn any_item(&self) -> bool {
+        self.any_with::<crate::item::Item>()
+    }
+    pub fn any_orb(&self) -> bool {
+        self.any_with::<crate::orb::Orb>()
+    }
+
     /// The box of the creature by its species' data and its age: a baby (`GrowAt` still running) has the baby box.
     pub fn size(&self, e: Entity) -> Option<(f32, f32)> {
         let w = self.world();

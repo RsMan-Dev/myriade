@@ -21,6 +21,9 @@ impl Game<'_> {
         // The stacks in reach are listed first; each is taken by its id, so the rest the guest's inventory refuses keeps its id.
         let who = horizon_ecs_proto::targeting::Who::Player(id as u32);
         let uuid_ints = crate::lan::playerdata::uuid_ints(uuid);
+        if !self.ecs.any_item() {
+            return;
+        }
         let candidates = self.ecs_with(|ecs, mw| ecs.pickup_candidates(mw, who, uuid_ints, position, 1.5));
         let mut counts = Vec::new();
         for (item, stack) in candidates {
@@ -79,6 +82,9 @@ impl Game<'_> {
         };
         let g = &host.hub.guests[gi];
         let (conn, id, at) = (g.conn, g.entity_id, g.position);
+        if !self.ecs.any_orb() {
+            return;
+        }
         let mut next = self.next_entity;
         let touching = self.ecs_with(|ecs, mw| ecs.pickup_orbs(mw, at, 1.0, &mut || { next += 1; next }));
         self.next_entity = next;

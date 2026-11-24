@@ -25,6 +25,16 @@ impl EcsLevel {
     pub fn any_moving(&self) -> bool {
         self.ecs().is_some_and(|b| b.any_moving() || b.any_entered())
     }
+    /// Whether an ear (an allay), a ground item or an orb exists: the archetype test, no mob world built when none does.
+    pub fn any_ear(&self) -> bool {
+        self.ecs().is_some_and(|b| b.any_ear())
+    }
+    pub fn any_item(&self) -> bool {
+        self.ecs().is_some_and(|b| b.any_item())
+    }
+    pub fn any_orb(&self) -> bool {
+        self.ecs().is_some_and(|b| b.any_orb())
+    }
     /// `EcsWorld::can_use_portal` of the entity `id`.
     pub fn can_use_portal(&self, id: u32) -> bool {
         self.entity_of(id).zip(self.ecs()).is_some_and(|(e, b)| b.can_use_portal(e))
