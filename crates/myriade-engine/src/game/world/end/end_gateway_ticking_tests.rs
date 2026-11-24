@@ -15,7 +15,7 @@ use std::sync::Arc;
 fn items_past_the_simulation_distance_enter_no_end_gateway() {
     let mut resources = None;
     let mut game = server_game(&mut resources);
-    game.dim = Dim::End;
+    game.set_dim(Dim::End);
     game.settings.simulation_distance = 4;
     game.settings.view_distance = 12;
     let gateway = game
@@ -70,7 +70,7 @@ fn a_ticking_gateway_counts_its_age_in_its_block_entity() {
     let mut game = server_game(&mut game_resources);
     game.build_registries();
     game.set_allow_commands(true);
-    game.dim = Dim::End;
+    game.set_dim(Dim::End);
     crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
     game.world
         .chunks

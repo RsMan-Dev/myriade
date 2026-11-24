@@ -762,7 +762,7 @@ impl Game<'_> {
                 std::mem::swap(&mut h.border_sent, &mut p.border_sent);
             }
             p.idle = 0;
-            let left = std::mem::replace(&mut self.dim, target);
+            let left = self.set_dim(target);
             self.levels.parked.insert(left, p);
             if opened {
                 // The new streaming's radius and meshing options.

@@ -704,6 +704,8 @@ struct Game<'a> {
     /// `SleepStatus`'s active and sleeping players at the last announcement.
     sleep_seen: (i64, i64),
     dim: Dim,
+    /// The key of `dim`, parsed once where `dim` is written (`set_dim`), read by `dimension_type`.
+    dim_key: horizon_core::LevelKey,
     world_root: PathBuf,
     carrier_retention_snapshot: Vec<(u128, u32)>,
     /// Offline-to-account UUID migration: loaded entities retain the old UUID until saved.
@@ -1100,9 +1102,12 @@ impl Game<'_> {
     /// The level's dimension type: a mod's or a data pack's own when it has one, else the
     /// built-in level's.
     fn dimension_type(&self) -> &horizon_world::dimension_type::DimensionFacts {
-        self.dimension_facts_for(
-            horizon_core::LevelKey::parse(self.dim.id()).unwrap_or(horizon_core::LevelKey::OVERWORLD),
-        )
+        self.dimension_facts_for(self.dim_key)
+    }
+    /// The only writer of `dim`: keeps `dim_key` with it. Returns the level left.
+    pub(in crate::game) fn set_dim(&mut self, dim: Dim) -> Dim {
+        self.dim_key = horizon_core::LevelKey::parse(dim.id()).unwrap_or(horizon_core::LevelKey::OVERWORLD);
+        std::mem::replace(&mut self.dim, dim)
     }
     /// A client only knows its current level's type; other keys use built-in defaults.
     fn dimension_facts_for(
@@ -4590,6 +4595,7 @@ impl<'a> Game<'a> {
             player_beds: Vec::new(),
             sleep_seen: (0, 0),
             dim: Dim::Overworld,
+            dim_key: horizon_core::LevelKey::OVERWORLD,
             world_root: PathBuf::new(),
             carrier_retention_snapshot: Vec::new(),
             owner_migration: None,

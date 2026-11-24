@@ -888,7 +888,7 @@ mod pitch_preservation_controls {
         assert_eq!(stored.1.to_bits(), look_at_yaw(stored.0, bed.pos).to_bits());
 
         // Existing built-in dimension facts select the anchor rule; no new world or actor API.
-        game.dim = Dim::Nether;
+        game.set_dim(Dim::Nether);
         let anchor = state(&game, "minecraft:respawn_anchor", &[("charges", "2")]);
         game.world.set(10, 100, 10, anchor).unwrap();
         assert!(game.anchor_works() && game.is_anchor(anchor));
@@ -916,7 +916,7 @@ mod pitch_preservation_controls {
             "existing forced-charge behavior"
         );
 
-        game.dim = Dim::Overworld;
+        game.set_dim(Dim::Overworld);
         game.level.world_spawn = Some([4, 100, 4]);
         game.level.world_spawn_angle = [-30.0, -5.0];
         game.world.set(12, 100, 12, stone).unwrap();

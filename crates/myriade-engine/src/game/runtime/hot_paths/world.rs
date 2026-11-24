@@ -52,7 +52,7 @@ impl Game<'_> {
         self.hoppers.clear();
         self.level_events.clear();
         self.session.rules = Default::default();
-        self.dim = super::super::Dim::Overworld;
+        self.set_dim(super::super::Dim::Overworld);
         self.world.shape = self.dim.shape();
         self.session.difficulty = 2;
         self.level.seed = seed;

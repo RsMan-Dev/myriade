@@ -34,7 +34,7 @@ fn game() -> Game<'static> {
     game.build_registries();
     game.set_allow_commands(true);
     // The player stands in the End, so `/time` without `of` names its clock.
-    game.dim = Dim::End;
+    game.set_dim(Dim::End);
     game
 }
 

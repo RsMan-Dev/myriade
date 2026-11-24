@@ -884,7 +884,7 @@ mod tests {
         use std::sync::Arc;
         let mut resources = None;
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
-        game.dim = Dim::End;
+        game.set_dim(Dim::End);
         game.world.shape = LevelShape::END;
         let end = world_biomes!(game).id("minecraft:the_end");
         // The column runs -64..320: quart rows 16..80 are the level's 0..256. The zoom

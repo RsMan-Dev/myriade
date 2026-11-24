@@ -120,7 +120,7 @@ fn the_exit_search_does_not_stop_at_an_unloaded_candidate() {
         return;
     }
     let mut game = server_game();
-    game.dim = Dim::End;
+    game.set_dim(Dim::End);
     let stone = game
         .pack
         .assets
@@ -168,7 +168,7 @@ fn the_exit_search_keeps_the_candidate_chunk_it_waits_for_loaded() {
         return;
     }
     let mut game = server_game();
-    game.dim = Dim::End;
+    game.set_dim(Dim::End);
     load_world(&mut game, false);
     wait_for_exit(&mut game);
     let _ = game.resolve_gateway(job(), TARGET);
@@ -191,7 +191,7 @@ fn the_exit_search_keeps_every_candidate_it_tested_until_it_ends() {
         return;
     }
     let mut game = server_game();
-    game.dim = Dim::End;
+    game.set_dim(Dim::End);
     load_world(&mut game, true);
     // The candidates (64, 0) and (65, 0) are empty, (66, 0) is not loaded.
     for cz in -1..=1 {
@@ -250,7 +250,7 @@ fn the_exit_height_waits_for_the_chunks_next_to_the_landing_spot() {
         return;
     }
     let mut game = server_game();
-    game.dim = Dim::End;
+    game.set_dim(Dim::End);
     // Every chunk loaded: TALLER, then above(10).
     load_world(&mut game, true);
     put(&mut game, TALLER, "minecraft:end_stone");
@@ -293,7 +293,7 @@ fn of_two_landing_spots_at_the_same_distance_the_lower_z_wins() {
         return;
     }
     let mut game = server_game();
-    game.dim = Dim::End;
+    game.set_dim(Dim::End);
     load_world(&mut game, true);
     put(&mut game, STONE, "minecraft:air");
     put(&mut game, [1040, 32, 2], "minecraft:end_stone");
@@ -313,7 +313,7 @@ fn a_known_exit_waits_for_the_chunks_find_exit_position_reads() {
         return;
     }
     let mut game = server_game();
-    game.dim = Dim::End;
+    game.set_dim(Dim::End);
     let job = GatewayJob::Known {
         exit: [200, 75, 0],
         exact: false,

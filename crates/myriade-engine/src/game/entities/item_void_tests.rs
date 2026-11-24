@@ -29,7 +29,7 @@ fn items_fall_to_each_dimensions_own_void_floor() {
         (Dim::Nether, -64.0),
         (Dim::End, -64.0),
     ] {
-        game.dim = dim;
+        game.set_dim(dim);
         game.world.shape = dim.shape();
         for (y, survives) in [(floor + 0.5, true), (floor - 0.5, false)] {
             game.ecs_clear_items();
