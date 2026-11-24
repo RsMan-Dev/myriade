@@ -276,7 +276,7 @@ mod tests {
         w.init_resource::<Clock>();
         w.init_resource::<Online>();
         w.init_resource::<crate::hostile::PlayerState>();
-        w.insert_resource(Index::new(-32.0, 32));
+        w.insert_resource(Index::square(32));
         w
     }
     fn indexed(w: &mut World, e: Entity, at: Vec3) {

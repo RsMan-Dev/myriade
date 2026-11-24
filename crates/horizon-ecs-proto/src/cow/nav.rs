@@ -111,20 +111,19 @@ pub(crate) fn player_near(
     }
     let idx = &mut *idx;
     let pl = &mut *players;
-    let origin = idx.origin;
-    let bins = ((idx.width as f64 * CELL / BIN).ceil() as i64).max(1) + 2;
-    let bin = |v: f64| (((v - origin) / BIN).floor() as i64 + 1).clamp(0, bins - 1);
+    let bin = |v: f64| (v / BIN).floor() as i32;
     let tick = clock.0 as u32 + 1;
     pl.candidates.clear();
     if pl.dirty {
         pl.dirty = false;
-        // The bins hold the players as they are now.
-        pl.n = bins;
-        pl.bins.iter_mut().for_each(Vec::clear);
-        pl.bins.resize((bins * bins) as usize, Vec::new());
+        // The bins hold the players as they are now (only the occupied ones are listed).
+        pl.bins.values_mut().for_each(Vec::clear);
         for i in 0..pl.list.len() {
             let (px, pz) = pl.list[i];
-            pl.bins[(bin(pz) * bins + bin(px)) as usize].push((px, pz));
+            pl.bins.entry((bin(px), bin(pz))).or_default().push((px, pz));
+        }
+        if pl.bins.len() > 64 {
+            pl.bins.retain(|_, v| !v.is_empty());
         }
         std::mem::swap(&mut pl.prev, &mut pl.old);
         pl.prev.clear();
@@ -135,14 +134,8 @@ pub(crate) fn player_near(
             if n == o {
                 continue;
             }
-            let (mut x0, mut x1, mut z0, mut z1) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
-            for (px, pz) in [n, o].into_iter().flatten() {
-                (x0, x1, z0, z1) = (x0.min(px - BIN), x1.max(px + BIN), z0.min(pz - BIN), z1.max(pz + BIN));
-            }
-            let (x0, x1) = (idx.column(x0).max(0), idx.column(x1).min(idx.width as i64 - 1));
-            let (z0, z1) = (idx.column(z0).max(0), idx.column(z1).min(idx.width as i64 - 1));
             // A rectangle of columns the two circles agree on (inside both, or outside both) holds no animal whose state
-            // changes: only the blocks and the columns that hold an animal and are not so are looked at.
+            // changes: only the chunks and the columns that hold an animal and are not so are looked at.
             let agree = |cx0: f64, cx1: f64, cz0: f64, cz1: f64| -> bool {
                 let (mut inside, mut outside) = (true, true);
                 for q in [n, o] {
@@ -154,29 +147,38 @@ pub(crate) fn player_near(
                 }
                 inside || outside
             };
-            let b = BLOCK as i64;
-            for bz in z0 / b..=z1 / b {
-                for bx in x0 / b..=x1 / b {
-                    if idx.blocks[(bz * idx.bw as i64 + bx) as usize] == 0 {
-                        continue;
-                    }
-                    let (bx0, bz0) = (origin + (bx * b) as f64 * CELL, origin + (bz * b) as f64 * CELL);
-                    if agree(bx0, bx0 + b as f64 * CELL, bz0, bz0 + b as f64 * CELL) {
-                        continue;
-                    }
-                    let mut bits = idx.blocks[(bz * idx.bw as i64 + bx) as usize];
-                    while bits != 0 {
-                        let k = bits.trailing_zeros() as i64;
-                        bits &= bits - 1;
-                        let (xx, zz) = (bx * b + k % b, bz * b + k / b);
-                        let c = zz as usize * idx.width + xx as usize;
-                        if idx.stamp[c] == tick {
+            // Each place has its own box (a player that teleports must not make the box span the way between).
+            for (px, pz) in [n, o].into_iter().flatten() {
+                let (kx0, kx1) = (((px - BIN).ifloor() - 1) >> 4, ((px + BIN).ifloor() + 1) >> 4);
+                let (kz0, kz1) = (((pz - BIN).ifloor() - 1) >> 4, ((pz + BIN).ifloor() + 1) >> 4);
+                for kz in kz0..=kz1 {
+                    for kx in kx0..=kx1 {
+                        let slot = idx.chunks.slot_at(kx, kz);
+                        if slot == NO_SLOT || idx.chunks.recs[slot as usize].len == 0 {
                             continue;
                         }
-                        let (cx0, cz0) = (origin + xx as f64 * CELL, origin + zz as f64 * CELL);
-                        if !agree(cx0, cx0 + CELL, cz0, cz0 + CELL) {
-                            idx.stamp[c] = tick;
-                            pl.candidates.push(c);
+                        let (bx0, bz0) = (f64::from(kx * 16), f64::from(kz * 16));
+                        if agree(bx0, bx0 + 16.0, bz0, bz0 + 16.0) {
+                            continue;
+                        }
+                        let rec = &mut idx.chunks.recs[slot as usize];
+                        let rows = rec.rows;
+                        let Some(cols) = rec.cols.as_mut() else { continue };
+                        for (lz, &row) in rows.iter().enumerate() {
+                            let mut bits = u32::from(row);
+                            while bits != 0 {
+                                let lx = bits.trailing_zeros() as usize;
+                                bits &= bits - 1;
+                                let col = lz * 16 + lx;
+                                if cols.stamp[col] == tick {
+                                    continue;
+                                }
+                                let (cx0, cz0) = (bx0 + lx as f64, bz0 + lz as f64);
+                                if !agree(cx0, cx0 + CELL, cz0, cz0 + CELL) {
+                                    cols.stamp[col] = tick;
+                                    pl.candidates.push(slot << 8 | col as u32);
+                                }
+                            }
                         }
                     }
                 }
@@ -184,17 +186,9 @@ pub(crate) fn player_near(
         }
     }
     let list_empty = pl.list.is_empty();
-    let (bins_n, nbins) = (pl.n, &pl.bins);
-    let within = |x: f64, z: f64| {
-        let (bx, bz) = (bin(x), bin(z));
-        (bz - 1..=bz + 1).any(|zz| {
-            (bx - 1..=bx + 1).any(|xx| {
-                (0..bins_n).contains(&xx)
-                    && (0..bins_n).contains(&zz)
-                    && nbins[(zz * bins_n + xx) as usize].iter().any(|&(px, pz)| (x - px).powi(2) + (z - pz).powi(2) < R2)
-            })
-        })
-    };
+    let nbins = &pl.bins;
+    let near_bins = |bx: i32, bz: i32, any: &dyn Fn(&Vec<(f64, f64)>) -> bool| (bz - 1..=bz + 1).any(|zz| (bx - 1..=bx + 1).any(|xx| nbins.get(&(xx, zz)).is_some_and(any)));
+    let within = |x: f64, z: f64| near_bins(bin(x), bin(z), &|v| v.iter().any(|&(px, pz)| (x - px).powi(2) + (z - pz).powi(2) < R2));
     let mut test = |e: Entity, active: &mut Query<(&Bounds, &mut ActiveUntil, Option<&mut Stroll>, Option<&mut Rng>)>, wheel: &mut Wheel| {
         let Ok((b, mut a, s, r)) = active.get_mut(e) else { return };
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
@@ -217,16 +211,18 @@ pub(crate) fn player_near(
         }
     };
     for &c in &pl.candidates {
-        for &e in &idx.cells[c] {
+        for &e in idx.chunks.list(c) {
             test(e, &mut active, &mut wheel);
         }
     }
     if !list_empty {
         for &(e, cell) in &idx.crossed {
             // A column more or less changes nothing for an animal with no player within a bin of it.
-            let (cx, cz) = ((cell as usize % idx.width) as f64 + 0.5 + origin / CELL, (cell as usize / idx.width) as f64 + 0.5 + origin / CELL);
-            let (bx, bz) = (bin(cx * CELL), bin(cz * CELL));
-            let near = (bz - 1..=bz + 1).any(|zz| (bx - 1..=bx + 1).any(|xx| (0..bins_n).contains(&xx) && (0..bins_n).contains(&zz) && !nbins[(zz * bins_n + xx) as usize].is_empty()));
+            if cell == u32::MAX {
+                continue;
+            }
+            let (px, pz) = idx.corner(cell);
+            let near = near_bins(bin(px + 0.5), bin(pz + 0.5), &|v| !v.is_empty());
             if near {
                 test(e, &mut active, &mut wheel);
             }

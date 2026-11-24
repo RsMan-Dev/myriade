@@ -14,7 +14,7 @@
 //! its entries of the timer wheel are taken out. Waking it shifts every deadline it holds by the time it slept (the
 //! `Mob`'s counters do not count while it is not ticked) and puts the entries back.
 use crate::IFloor as _;
-use crate::cow::{Clock, Crowded, Due, Following, Index, Moving, NeedsPath, Overlapping, Players, Recheck, Touching, Wheel};
+use crate::cow::{Chunks, Clock, Crowded, Due, Following, Index, Moving, NeedsPath, Overlapping, Players, Recheck, Touching, Wheel, NO_SLOT};
 use bevy_ecs::{entity_disabling::Disabled, prelude::*};
 
 /// How a creature is kept while its chunk does not tick.
@@ -55,103 +55,62 @@ pub struct ZoneStats {
     pub woke: u64,
 }
 
-/// The count of players covering each chunk of the slab, by event.
+/// The count of players covering each loaded chunk, by event (the counts live in the chunks' records, `cow/chunks.rs`).
 #[derive(Default)]
 pub struct Zone {
     pub on: bool,
     pub radius: i32,
     pub form: Form,
     pub stats: ZoneStats,
-    width: usize,
-    cx0: i32,
-    cz0: i32,
-    /// Chunks per side, the chunk of each column, the first column of each chunk (and one past the last).
-    cw: i32,
-    col: Vec<i32>,
-    first: Vec<usize>,
-    count: Vec<u16>,
-    pre: Vec<u16>,
-    stamp: Vec<u32>,
-    touched: Vec<usize>,
+    /// The slots of the chunks whose count changed since `sync_players` began.
+    pub(crate) touched: Vec<u32>,
     epoch: u32,
-    /// The chunk (grid coordinates, may be off the grid) each player stands in.
-    chunks: Vec<(i32, i32)>,
+    /// The chunk (absolute coordinates) each player stands in.
+    at: Vec<(i32, i32)>,
 }
 
 const CHUNK: f64 = 16.0;
 
 impl Zone {
-    fn build_grid(&mut self, origin: f64, width: usize, cell: f64) {
-        self.width = width;
-        self.cx0 = (origin / CHUNK).ifloor();
-        self.cz0 = self.cx0;
-        self.col = (0..width).map(|c| ((origin + c as f64 * cell) / CHUNK).ifloor() - self.cx0).collect();
-        self.cw = self.col.last().copied().unwrap_or(0) + 1;
-        self.first = vec![0; self.cw as usize + 1];
-        for k in 0..self.cw as usize {
-            self.first[k] = self.col.iter().position(|&c| c == k as i32).unwrap_or(width);
-        }
-        self.first[self.cw as usize] = width;
-        let n = (self.cw * self.cw) as usize;
-        self.count = vec![0; n];
-        self.pre = vec![0; n];
-        self.stamp = vec![0; n];
-        self.touched.clear();
-        self.chunks.clear();
-    }
-    /// The chunk (grid index) of a column pair.
-    fn chunk_of_cell(&self, cell: u32) -> usize {
-        let (cx, cz) = (cell as usize % self.width, cell as usize / self.width);
-        (self.col[cz] * self.cw + self.col[cx]) as usize
-    }
-    /// Whether the chunk of a cell ticks.
-    pub fn simulated_cell(&self, cell: u32) -> bool {
-        !self.on || self.count[self.chunk_of_cell(cell)] > 0
-    }
-    /// Whether the chunk at block coordinates ticks.
-    pub fn simulated_at(&self, x: f64, z: f64) -> bool {
+    /// How many players cover chunk `(cx, cz)` (0 while the zone is off).
+    pub(crate) fn covering(&self, cx: i32, cz: i32) -> u16 {
         if !self.on {
-            return true;
+            return 0;
         }
-        let (cx, cz) = ((x / CHUNK).ifloor() - self.cx0, (z / CHUNK).ifloor() - self.cz0);
-        (0..self.cw).contains(&cx) && (0..self.cw).contains(&cz) && self.count[(cz * self.cw + cx) as usize] > 0
+        self.at.iter().filter(|p| (p.0 - cx).abs() <= self.radius && (p.1 - cz).abs() <= self.radius).count() as u16
     }
-    /// Whether chunk `(cx, cz)` (absolute chunk coordinates) ticks.
-    pub fn chunk_simulated(&self, cx: i32, cz: i32) -> bool {
-        let (x, z) = (cx - self.cx0, cz - self.cz0);
-        !self.on || ((0..self.cw).contains(&x) && (0..self.cw).contains(&z) && self.count[(z * self.cw + x) as usize] > 0)
-    }
-    /// How many chunks tick.
-    pub fn simulated_chunks(&self) -> usize {
-        self.count.iter().filter(|&&c| c > 0).count()
-    }
-    fn bump(&mut self, k: usize, up: bool) {
-        if self.stamp[k] != self.epoch {
-            self.stamp[k] = self.epoch;
-            self.pre[k] = self.count[k];
+    fn bump(&mut self, ch: &mut Chunks, x: i32, z: i32, up: bool) {
+        // A chunk that is not loaded has no count: it is worked out when it is made (`Index::chunk_created`).
+        let k = ch.slot_at(x, z);
+        if k == NO_SLOT {
+            return;
+        }
+        let r = &mut ch.recs[k as usize];
+        if r.stamp != self.epoch {
+            r.stamp = self.epoch;
+            r.pre = r.count;
             self.touched.push(k);
         }
         if up {
-            self.count[k] += 1;
+            r.count += 1;
         } else {
-            self.count[k] -= 1;
+            r.count -= 1;
         }
     }
-    /// The chunks of the square of `radius` around `at` that `other` does not hold, clipped to the grid: each is bumped.
-    fn bump_square_minus(&mut self, at: (i32, i32), other: Option<(i32, i32)>, up: bool) {
+    /// The chunks of the square of `radius` around `at` that `other` does not hold: each is bumped.
+    fn bump_square_minus(&mut self, ch: &mut Chunks, at: (i32, i32), other: Option<(i32, i32)>, up: bool) {
         let r = self.radius;
-        let (x0, x1, z0, z1) = ((at.0 - r).max(0), (at.0 + r).min(self.cw - 1), (at.1 - r).max(0), (at.1 + r).min(self.cw - 1));
-        for z in z0..=z1 {
+        for z in at.1 - r..=at.1 + r {
             // The part of this row `other`'s square holds, if any.
             let hold = other.filter(|o| (z - o.1).abs() <= r).map(|o| (o.0 - r, o.0 + r));
             match hold {
-                None => (x0..=x1).for_each(|x| self.bump((z * self.cw + x) as usize, up)),
+                None => (at.0 - r..=at.0 + r).for_each(|x| self.bump(ch, x, z, up)),
                 Some((h0, h1)) => {
-                    for x in x0..=x1.min(h0 - 1) {
-                        self.bump((z * self.cw + x) as usize, up);
+                    for x in at.0 - r..=(at.0 + r).min(h0 - 1) {
+                        self.bump(ch, x, z, up);
                     }
-                    for x in x0.max(h1 + 1)..=x1 {
-                        self.bump((z * self.cw + x) as usize, up);
+                    for x in (at.0 - r).max(h1 + 1)..=at.0 + r {
+                        self.bump(ch, x, z, up);
                     }
                 }
             }
@@ -159,41 +118,37 @@ impl Zone {
     }
     /// The players moved, came or left: the chunks of the two squares of each are counted again, only the ring they
     /// differ by. Fills `touched`.
-    fn sync_players(&mut self, list: &[(f64, f64)]) {
+    fn sync_players(&mut self, ch: &mut Chunks, list: &[(f64, f64)]) {
         self.epoch += 1;
-        let n = list.len().max(self.chunks.len());
+        let n = list.len().max(self.at.len());
         for i in 0..n {
-            let new = list.get(i).map(|p| ((p.0 / CHUNK).ifloor() - self.cx0, (p.1 / CHUNK).ifloor() - self.cz0));
-            let old = self.chunks.get(i).copied();
+            let new = list.get(i).map(|p| ((p.0 / CHUNK).ifloor(), (p.1 / CHUNK).ifloor()));
+            let old = self.at.get(i).copied();
             if new == old {
                 continue;
             }
             if let Some(o) = old {
-                self.bump_square_minus(o, new, false);
+                self.bump_square_minus(ch, o, new, false);
             }
             if let Some(nw) = new {
-                self.bump_square_minus(nw, old, true);
+                self.bump_square_minus(ch, nw, old, true);
             }
         }
-        self.chunks.clear();
-        self.chunks.extend(list.iter().map(|p| ((p.0 / CHUNK).ifloor() - self.cx0, (p.1 / CHUNK).ifloor() - self.cz0)));
+        self.at.clear();
+        self.at.extend(list.iter().map(|p| ((p.0 / CHUNK).ifloor(), (p.1 / CHUNK).ifloor())));
     }
     /// The chunks whose state changed (true: now ticks), after `sync_players`.
-    fn transitions(&mut self) -> Vec<(usize, bool)> {
-        let out = self.touched.iter().filter(|&&k| (self.pre[k] > 0) != (self.count[k] > 0)).map(|&k| (k, self.count[k] > 0)).collect();
+    fn transitions(&mut self, ch: &Chunks) -> Vec<(u32, bool)> {
+        let out = self.touched.iter().filter_map(|&k| ch.recs.get(k as usize).filter(|r| (r.pre > 0) != (r.count > 0)).map(|r| (k, r.count > 0))).collect();
         self.touched.clear();
         out
     }
 }
 
-/// The creatures in the columns of chunk `k`.
-fn in_chunk(idx: &Index, k: usize, out: &mut Vec<Entity>) {
-    let z = &idx.zone;
-    let (kx, kz) = (k % z.cw as usize, k / z.cw as usize);
-    for zz in z.first[kz]..z.first[kz + 1] {
-        for xx in z.first[kx]..z.first[kx + 1] {
-            out.extend_from_slice(&idx.cells[zz * idx.width + xx]);
-        }
+/// The creatures in the columns of the chunk in `slot`.
+fn in_chunk(idx: &Index, slot: u32, out: &mut Vec<Entity>) {
+    if let Some(c) = idx.chunks.recs[slot as usize].cols.as_deref() {
+        out.extend(c.cells.iter().flatten().copied());
     }
 }
 
@@ -212,8 +167,9 @@ pub fn zone_step(world: &mut World) {
         let (mut down, mut up) = (false, false);
         if dirty {
             let list = world.resource::<Players>().list.clone();
-            idx.zone.sync_players(&list);
-            for (k, ticks) in idx.zone.transitions() {
+            let ix = &mut *idx;
+            ix.zone.sync_players(&mut ix.chunks, &list);
+            for (k, ticks) in ix.zone.transitions(&ix.chunks) {
                 if ticks {
                     up = true;
                 } else {
@@ -234,7 +190,7 @@ pub fn zone_step(world: &mut World) {
         // A creature that walked into a chunk that does not tick goes to sleep (its tick that moved it was its last).
         for &(e, _) in &idx.crossed {
             let Some(c) = world.get::<crate::cow::Cell>(e) else { continue };
-            if !idx.zone.simulated_cell(c.0) && !world.entity(e).contains::<Dormant>() {
+            if !idx.simulated_cell(c.0) && !world.entity(e).contains::<Dormant>() {
                 slept.push(e);
             }
         }
@@ -254,7 +210,7 @@ pub fn zone_step(world: &mut World) {
         // ones in flight (or stuck) are looked at once, by event and never per tick, and the frozen ones likewise. Cost: one pass over those
         // sets per change of a player's chunk that flipped a chunk, nothing per entity and nothing while no player moves.
         if down {
-            let list: Vec<Entity> = world.query_filtered::<(Entity, &crate::cow::Pos), (Loose, Without<Dormant>)>().iter(world).filter(|(_, p)| !idx.zone.simulated_at(p.0.x, p.0.z)).map(|(e, _)| e).collect();
+            let list: Vec<Entity> = world.query_filtered::<(Entity, &crate::cow::Pos), (Loose, Without<Dormant>)>().iter(world).filter(|(_, p)| !idx.simulated_at(p.0.x, p.0.z)).map(|(e, _)| e).collect();
             idx.zone.stats.slept += list.len() as u64;
             for e in list {
                 // A `Hurting` projectile leaves the loaded chunks: it is discarded, not kept (`projectile::fly`).
@@ -269,7 +225,7 @@ pub fn zone_step(world: &mut World) {
             let list: Vec<Entity> = world
                 .query_filtered::<(Entity, &crate::cow::Pos), (Loose, With<Dormant>, Allow<Disabled>)>()
                 .iter(world)
-                .filter(|(_, p)| idx.zone.simulated_at(p.0.x, p.0.z))
+                .filter(|(_, p)| idx.simulated_at(p.0.x, p.0.z))
                 .map(|(e, _)| e)
                 .collect();
             idx.zone.stats.woke += list.len() as u64;
@@ -307,7 +263,7 @@ pub fn freeze(world: &mut World, e: Entity, now: u64) {
 
 /// A loose object just made: it waits at once when its chunk does not tick.
 pub fn settle(world: &mut World, e: Entity) {
-    if world.get_resource::<Index>().is_some_and(|i| world.get::<crate::cow::Pos>(e).is_some_and(|p| !i.zone.simulated_at(p.0.x, p.0.z))) {
+    if world.get_resource::<Index>().is_some_and(|i| world.get::<crate::cow::Pos>(e).is_some_and(|p| !i.simulated_at(p.0.x, p.0.z))) {
         if world.get::<crate::projectile::Flight>(e).is_some_and(|f| f.order == crate::projectile::Order::Hurting) {
             world.despawn(e);
             return;
@@ -347,23 +303,25 @@ pub fn enable(world: &mut World, radius: i32) {
     let now = world.resource::<Clock>().0;
     let list = world.resource::<Players>().list.clone();
     world.resource_scope(|world, mut idx: Mut<Index>| {
-        let (origin, width) = (idx.origin, idx.width);
-        let z = &mut idx.zone;
-        z.build_grid(origin, width, 1.0);
-        z.on = true;
-        z.radius = radius.max(2);
+        let ix = &mut *idx;
+        ix.zone.on = true;
+        ix.zone.radius = radius.max(2);
+        ix.zone.at.clear();
+        ix.zone.touched.clear();
         // Every chunk ticked until now.
-        z.epoch += 1;
-        for k in 0..z.count.len() {
-            z.stamp[k] = z.epoch;
-            z.pre[k] = 1;
-            z.touched.push(k);
+        ix.zone.epoch += 1;
+        let epoch = ix.zone.epoch;
+        let live: Vec<u32> = ix.chunks.live().collect();
+        for k in live {
+            let r = &mut ix.chunks.recs[k as usize];
+            (r.stamp, r.pre, r.count) = (epoch, 1, 0);
+            ix.zone.touched.push(k);
         }
-        z.sync_players(&list);
+        ix.zone.sync_players(&mut ix.chunks, &list);
         let mut sleepers = Vec::new();
-        for (k, ticks) in idx.zone.transitions() {
+        for (k, ticks) in ix.zone.transitions(&ix.chunks) {
             if !ticks {
-                in_chunk(&idx, k, &mut sleepers);
+                in_chunk(ix, k, &mut sleepers);
             }
         }
         for e in sleepers {
@@ -383,7 +341,7 @@ pub fn admit(world: &mut World, fresh: &[Entity]) {
     if !idx.zone.on {
         return;
     }
-    let asleep: Vec<Entity> = fresh.iter().copied().filter(|&e| world.get::<Dormant>(e).is_none() && world.get::<crate::cow::Cell>(e).is_some_and(|c| !idx.zone.simulated_cell(c.0))).collect();
+    let asleep: Vec<Entity> = fresh.iter().copied().filter(|&e| world.get::<Dormant>(e).is_none() && world.get::<crate::cow::Cell>(e).is_some_and(|c| !idx.simulated_cell(c.0))).collect();
     for e in asleep {
         sleep(world, e, now);
         world.resource_mut::<Index>().zone.stats.slept += 1;

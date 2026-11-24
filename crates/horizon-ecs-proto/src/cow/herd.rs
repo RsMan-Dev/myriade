@@ -245,7 +245,7 @@ impl Herd {
     }
     /// Whether chunk `(cx, cz)` ticks (always, with the zone off).
     pub fn chunk_simulated(&self, cx: i32, cz: i32) -> bool {
-        self.world.resource::<Index>().zone.chunk_simulated(cx, cz)
+        self.world.resource::<Index>().chunk_simulated(cx, cz)
     }
     /// The players of the herd's world (their positions; cows within 32 blocks stay active).
     pub fn set_players(&mut self, players: Vec<(f64, f64)>) {
@@ -373,7 +373,14 @@ impl Herd {
 /// the config and the spatial index. The herd builder and the host world (`bridge/assemble.rs`) build them the same way.
 pub(crate) fn assemble_resources(world: &mut World, level: Level, sleep: bool, parallel: bool) {
     let half = level.half;
-    world.insert_resource(Hazards::build(&level));
+    // A slab (benches, tests) is a bounded set of loaded chunks; a host world has none until its chunks load.
+    let mut idx = if half > 0 { Index::square(half) } else { Index::new() };
+    let mut hazards = Hazards::default();
+    let slab: Vec<(i32, i32)> = idx.chunks.live().map(|s| (idx.chunks.recs[s as usize].cx, idx.chunks.recs[s as usize].cz)).collect();
+    for (cx, cz) in slab {
+        hazards.scan_chunk(&mut idx.chunks, level.mw.0, cx, cz);
+    }
+    world.insert_resource(hazards);
     world.insert_resource(DamageQueue::default());
     world.insert_resource(HurtCauses::default());
     world.insert_resource(BlockChanges::default());
@@ -430,7 +437,7 @@ pub(crate) fn assemble_resources(world: &mut World, level: Level, sleep: bool, p
     crate::inside_effects::insert_resources(world);
     crate::inside_more::insert_resources(world);
     crate::hostile::insert_resources(world);
-    world.insert_resource(Index::new(-f64::from(half), (f64::from(2 * half) / CELL) as usize + 2));
+    world.insert_resource(idx);
 }
 
 /// The natural spawning of a level, as the production level and the harness install it: the biome tables and zoom of `mw` with `seed`, the

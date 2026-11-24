@@ -1,6 +1,6 @@
 //! The places of the blocks some goal looks for (a repellent, say), kept as a set by events: a block that changed
-//! (`ChangedBlocks`) is read again, the set takes it or drops it; nothing scans the area of a creature each tick. The slab is
-//! indexed once when a name is first watched (a server would index each chunk as it loads). `appeared` lists the names whose set
+//! (`ChangedBlocks`) is read again, the set takes it or drops it; nothing scans the area of a creature each tick. Each chunk is
+//! indexed as it loads (`scan_chunk`), and dropped as it unloads (`forget_chunk`). `appeared` lists the names whose set
 //! was empty and is not any more: the goals parked for lack of such a block wake on it.
 use crate::cow::Level;
 use crate::hostile::ChangedBlocks;
@@ -12,6 +12,8 @@ pub struct BlockWatch {
     sets: HashMap<&'static str, HashSet<[i32; 3]>>,
     /// The names that got their first block since the last run of the system.
     pub appeared: Vec<&'static str>,
+    /// The names watched since the last `take_fresh`.
+    fresh: Vec<&'static str>,
     /// The entities that wait on a cell, and the ones whose cell changed in the last run (forgotten once listed).
     cells: HashMap<[i32; 3], Vec<Entity>>,
     pub woken: Vec<Entity>,
@@ -24,24 +26,45 @@ impl BlockWatch {
             list.push(e);
         }
     }
-    /// Starts to follow `names` (the slab is read once for each new one).
-    pub fn watch(&mut self, level: &Level, names: &[&'static str]) {
+    /// Starts to follow `names`: an empty set for each new one, listed in `fresh` (its blocks come from the loaded chunks, see `scan_chunk_names`).
+    pub fn watch(&mut self, names: &[&'static str]) {
         for &n in names {
-            if self.sets.contains_key(n) {
-                continue;
+            if !self.sets.contains_key(n) {
+                self.sets.insert(n, HashSet::new());
+                self.fresh.push(n);
             }
-            let mw = level.mw.0;
-            let mut set = HashSet::new();
-            for x in -level.half..=level.half {
-                for z in -level.half..=level.half {
-                    for y in -2..32 {
-                        if mw.block_name(x, y, z) == n {
+        }
+    }
+    /// The names watched since the last call (the host reads the loaded chunks for them).
+    pub fn take_fresh(&mut self) -> Vec<&'static str> {
+        std::mem::take(&mut self.fresh)
+    }
+    /// The blocks of the chunk (`cx`, `cz`) enter the set of each of `names` they have (what a server reads as the chunk loads).
+    pub fn scan_chunk_names(&mut self, mw: &myriade_engine_lib::mobs::MobWorld<'_>, cx: i32, cz: i32, names: &[&'static str]) {
+        for x in (cx << 4)..(cx << 4) + 16 {
+            for z in (cz << 4)..(cz << 4) + 16 {
+                for y in -2..32 {
+                    let b = mw.block_name(x, y, z);
+                    for &n in names {
+                        if b == n
+                            && let Some(set) = self.sets.get_mut(n)
+                        {
                             set.insert([x, y, z]);
                         }
                     }
                 }
             }
-            self.sets.insert(n, set);
+        }
+    }
+    /// `scan_chunk_names` for every name already watched.
+    pub fn scan_chunk(&mut self, mw: &myriade_engine_lib::mobs::MobWorld<'_>, cx: i32, cz: i32) {
+        let names: Vec<&'static str> = self.sets.keys().copied().collect();
+        self.scan_chunk_names(mw, cx, cz, &names);
+    }
+    /// The blocks of the chunk (`cx`, `cz`) leave every set when it unloads.
+    pub fn forget_chunk(&mut self, cx: i32, cz: i32) {
+        for set in self.sets.values_mut() {
+            set.retain(|p| (p[0] >> 4, p[2] >> 4) != (cx, cz));
         }
     }
     /// Some block of one of the names exists.
@@ -73,7 +96,7 @@ pub(crate) fn block_watch(level: Res<Level>, changed: Res<ChangedBlocks>, mut bw
     if changed.0.is_empty() {
         return;
     }
-    let BlockWatch { sets, appeared, cells, woken } = &mut *bw;
+    let BlockWatch { sets, appeared, cells, woken, .. } = &mut *bw;
     for &(x, y, z) in &changed.0 {
         if let Some(list) = cells.remove(&[x, y, z]) {
             woken.extend(list);

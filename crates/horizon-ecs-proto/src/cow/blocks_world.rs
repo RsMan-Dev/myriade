@@ -70,7 +70,7 @@ pub struct Level {
     pub blocks: Blocks,
     /// The occupancy masks of the world's sections (`occupancy.rs`): the block kernel's fast path.
     pub occ: &'static crate::occupancy::Occupancy,
-    /// The walls are at |x| or |z| = `half`.
+    /// The walls are at |x| or |z| = `half` (a bounded slab of tests and benches; 0: a host's world, which has none).
     pub half: i32,
 }
 
@@ -239,8 +239,8 @@ fn species_rows(types: &'static myriade_engine_lib::mobs::MobTypes) -> Vec<Speci
 }
 
 /// The level of a host world (`bridge/host.rs`): the mob world it is given (read only, lent for one call), no blocks of its own
-/// (`blocks` is null: `block_changes` reports the change as a `HostEvent::SetBlock`), a spatial index of `half` blocks each way.
-pub(crate) fn host_level(mw: &'static MobWorld<'static>, types: &'static myriade_engine_lib::mobs::MobTypes, half: i32) -> Level {
+/// (`blocks` is null: `block_changes` reports the change as a `HostEvent::SetBlock`), no walls (`half` is 0).
+pub(crate) fn host_level(mw: &'static MobWorld<'static>, types: &'static myriade_engine_lib::mobs::MobTypes) -> Level {
     // The species' rows need the mob types: a mob world does not carry them. `type_tags::install` is not run here (it needs the
     // resources' folder); a process whose first level is a host's keeps no tags.
     let _ = TYPES.set(types);
@@ -251,7 +251,7 @@ pub(crate) fn host_level(mw: &'static MobWorld<'static>, types: &'static myriade
         }
         species_rows(types)
     });
-    Level { mw: Mw(mw), blocks: Blocks(std::ptr::null_mut()), occ: Box::leak(Box::default()), half }
+    Level { mw: Mw(mw), blocks: Blocks(std::ptr::null_mut()), occ: Box::leak(Box::default()), half: 0 }
 }
 
 /// A path that a block change asked to make again (`PathNavigation.pendingRecompute` and `delayedRecompute`).
@@ -294,7 +294,7 @@ pub(crate) fn block_changes(
     mut host_writes: ResMut<HostWrites>,
     level: Res<Level>,
     mut hazards: ResMut<Hazards>,
-    idx: Res<Index>,
+    mut idx: ResMut<Index>,
     mut sun: ResMut<crate::hostile::SunDirty>,
     mut seen: ResMut<crate::hostile::ChangedBlocks>,
     mut dirty: Option<ResMut<crate::spawning::DirtyColumns>>,
@@ -334,7 +334,7 @@ pub(crate) fn block_changes(
             }
             lit.push((x, y, z));
         }
-        hazards.set(x, y, z, hazard_bit(name));
+        hazards.set(&mut idx.chunks, x, y, z, hazard_bit(name));
         hazards.eggs.remove(&[x, y, z]);
         if name == EGG {
             hazards.eggs.insert([x, y, z]);

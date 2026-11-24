@@ -29,32 +29,16 @@ use super::*;
 /// The widening of a slot's extent (blocks): covers the `f32` rounding of the relative extent.
 pub(crate) const SLOT_MARGIN: f64 = 1e-3;
 
-/// The side of a block of columns of the index, in columns.
-pub(crate) const BLOCK: usize = 8;
-
-/// `BLOCK` as a signed column count.
-pub(crate) const B: i64 = BLOCK as i64;
-
-/// The spatial index: the entities by 2-block column of their box's centre, a resource. It is changed only when a
-/// box changes column (`reindex`, after the move): a cow that does not move costs it nothing.
+/// The spatial index: the entities by column of 1 block, kept per loaded chunk (`chunks.rs`), a resource. It is changed only when a
+/// box changes column (`reindex`, after the move): a cow that does not move costs it nothing. An entity in a chunk that is not loaded
+/// is not indexed (`Cell` holds `u32::MAX`).
 #[derive(Resource, Default)]
 pub struct Index {
-    pub(crate) origin: f64,
-    pub(crate) width: usize,
-    pub(crate) cells: Vec<Vec<Entity>>,
-    /// Parallel to `cells`: the XZ extent of each entity's box (min x, max x, min z, max z) relative to the column's corner, widened by `SLOT_MARGIN`,
-    /// as `f32` (16 bytes per entity): `push` skips the neighbours whose extent does not touch its own without an ECS lookup. An entity whose box
-    /// `reindex` has not seen yet holds an infinite extent (always a candidate).
-    pub(crate) slots: Vec<Vec<[f32; 4]>>,
-    pub(crate) stamp: Vec<u32>,
+    pub(crate) chunks: Chunks,
     /// The entities whose cell changed since the last `player_near` (`reindex` writes them).
     pub(crate) crossed: Vec<(Entity, u32)>,
     /// The simulated chunks (`zone.rs`): on in the constructors of a server (`Herd::new`, `with_slab`...), off only in their `_awake` variants (benches and tests that want every creature ticked).
     pub zone: crate::zone::Zone,
-    /// How many animals each block of 8 x 8 columns holds (`player_near` looks only at the blocks that hold some).
-    /// A bit per column of each block (row-major, 8 x 8): the columns that hold an animal.
-    pub(crate) blocks: Vec<u64>,
-    pub(crate) bw: usize,
     /// The watched columns of each consumer of `CellMoves` that looks at the NEIGHBOURS of a mover (see `Watch`).
     pub(crate) watch: [Watch; WATCHERS],
     /// By entity index: the consumers (bit `WATCH_*`) the entity is a watcher of.
@@ -73,39 +57,82 @@ pub const WATCH_PUFFER: usize = 3;
 
 pub(crate) const WATCHERS: usize = 4;
 
-/// The side of a bucket of watched columns: a watcher within 32 columns of a mover is in the 3 x 3 buckets around its column.
-pub(crate) const BUCKET: i64 = 32;
-
-/// The watchers of one consumer, counted by bucket of 32 x 32 columns; `total` is zero while nobody watches (the whole cost then).
+/// The watchers of one consumer, counted by bucket of 2 x 2 chunks (32 x 32 columns, a watcher within 32 columns of a mover is in the
+/// 3 x 3 buckets around its column); only the occupied buckets are listed. `total` is zero while nobody watches (the whole cost then).
 #[derive(Default)]
 pub(crate) struct Watch {
     pub(crate) total: u32,
-    pub(crate) counts: Vec<u32>,
+    pub(crate) counts: horizon_core::fast_hash::FxHashMap<(i32, i32), u32>,
 }
 
 impl Index {
-    pub fn new(origin: f64, width: usize) -> Self {
-        Self { origin, width, cells: vec![Vec::new(); width * width], slots: vec![Vec::new(); width * width], stamp: vec![0; width * width], crossed: Vec::new(), zone: Default::default(), blocks: vec![0; width.div_ceil(BLOCK).pow(2)], bw: width.div_ceil(BLOCK), watch: Default::default(), watching: Vec::new() }
+    /// An index with no chunk: they come with `chunk_created`.
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// An index with the chunks that cover the square of blocks `-half..half` (a bounded slab, for benches and tests).
+    pub fn square(half: i32) -> Self {
+        let mut idx = Self::default();
+        for cz in (-half >> 4)..=((half + 1) >> 4) {
+            for cx in (-half >> 4)..=((half + 1) >> 4) {
+                idx.chunk_created(cx, cz);
+            }
+        }
+        idx
+    }
+    /// Chunk `(cx, cz)` is loaded: its record is made (the one it has when it is made already) and its count of players is worked out.
+    pub fn chunk_created(&mut self, cx: i32, cz: i32) -> u32 {
+        let known = self.chunks.find(cx, cz);
+        if known != NO_SLOT {
+            return known;
+        }
+        let slot = self.chunks.create(cx, cz);
+        let n = self.zone.covering(cx, cz);
+        let r = &mut self.chunks.recs[slot as usize];
+        (r.count, r.pre) = (n, n);
+        slot
+    }
+    /// Chunk `(cx, cz)` is unloaded: its record is freed. The entities that were still listed in it are returned, no longer indexed (the
+    /// caller puts them to sleep or takes them out: their `Cell` is set to `u32::MAX`).
+    pub fn chunk_unloaded(&mut self, cx: i32, cz: i32) -> Vec<Entity> {
+        let slot = self.chunks.find(cx, cz);
+        if slot == NO_SLOT {
+            return Vec::new();
+        }
+        let left = self.chunks.free(slot);
+        let bucket = (cx >> 1, cz >> 1);
+        for &e in &left {
+            let m = self.watching.get(e.index().index() as usize).copied().unwrap_or(0);
+            for k in (0..WATCHERS).filter(|k| m >> k & 1 == 1) {
+                self.watch_bucket(k, bucket, -1);
+            }
+        }
+        self.crossed.retain(|&(_, c)| c == u32::MAX || chunk_slot_of(c) != slot as usize);
+        self.zone.touched.retain(|&k| k != slot);
+        left
+    }
+    /// Whether chunk `(cx, cz)` is loaded.
+    pub fn chunk_loaded(&self, cx: i32, cz: i32) -> bool {
+        self.chunks.find(cx, cz) != NO_SLOT
     }
     #[inline]
-    pub(crate) fn bucket_of(&self, cell: u32) -> (usize, usize) {
-        let (cx, cz) = ((cell as usize % self.width) as i64 / BUCKET, (cell as usize / self.width) as i64 / BUCKET);
-        (cx as usize, cz as usize)
+    fn bucket_of(&self, cell: u32) -> (i32, i32) {
+        let r = &self.chunks.recs[chunk_slot_of(cell)];
+        (r.cx >> 1, r.cz >> 1)
     }
-    pub(crate) fn buckets(&self) -> usize {
-        self.width.div_ceil(BUCKET as usize)
+    fn watch_bucket(&mut self, k: usize, b: (i32, i32), delta: i32) {
+        let w = &mut self.watch[k];
+        let c = w.counts.entry(b).or_insert(0);
+        *c = (*c as i64 + delta as i64) as u32;
+        if *c == 0 {
+            w.counts.remove(&b);
+        }
+        w.total = (w.total as i64 + delta as i64) as u32;
     }
     /// `e`, in column `cell`, watches for consumer `k` (adds it to the count of its bucket).
     pub(crate) fn watch_count(&mut self, k: usize, cell: u32, delta: i32) {
-        let n = self.buckets();
-        let (bx, bz) = self.bucket_of(cell);
-        let w = &mut self.watch[k];
-        if w.counts.is_empty() {
-            w.counts = vec![0; n * n];
-        }
-        let c = &mut w.counts[bz * n + bx];
-        *c = (*c as i64 + delta as i64) as u32;
-        w.total = (w.total as i64 + delta as i64) as u32;
+        let b = self.bucket_of(cell);
+        self.watch_bucket(k, b, delta);
     }
     /// `e` became a watcher of consumer `k` (its component was inserted); `cell` is its column (`u32::MAX`: not placed yet,
     /// `move_watcher` counts it at its first column).
@@ -131,7 +158,7 @@ impl Index {
     #[inline]
     pub(crate) fn move_watcher(&mut self, e: Entity, old: u32, new: u32) {
         let m = self.watching.get(e.index().index() as usize).copied().unwrap_or(0);
-        if m == 0 || (old != u32::MAX && self.bucket_of(old) == self.bucket_of(new)) {
+        if m == 0 || (old != u32::MAX && new != u32::MAX && self.bucket_of(old) == self.bucket_of(new)) {
             return;
         }
         for k in 0..WATCHERS {
@@ -139,7 +166,9 @@ impl Index {
                 if old != u32::MAX {
                     self.watch_count(k, old, -1);
                 }
-                self.watch_count(k, new, 1);
+                if new != u32::MAX {
+                    self.watch_count(k, new, 1);
+                }
             }
         }
     }
@@ -147,180 +176,185 @@ impl Index {
     #[inline]
     pub fn watched_near(&self, k: usize, cell: u32) -> bool {
         let w = &self.watch[k];
-        if w.total == 0 {
+        if w.total == 0 || cell == u32::MAX {
             return false;
         }
-        let n = self.buckets();
         let (bx, bz) = self.bucket_of(cell);
-        (bz.saturating_sub(1)..=(bz + 1).min(n - 1)).any(|z| (bx.saturating_sub(1)..=(bx + 1).min(n - 1)).any(|x| w.counts[z * n + x] > 0))
+        (bz - 1..=bz + 1).any(|z| (bx - 1..=bx + 1).any(|x| w.counts.contains_key(&(x, z))))
     }
-    pub(crate) fn column(&self, x: f64) -> i64 {
-        let v = (x - self.origin) / CELL;
-        let i = v as i64;
-        i.saturating_sub(i64::from(v < i as f64))
+    /// The cell of block column `(bx, bz)` seen from chunk slot `home` (`NO_SLOT`: no start), `u32::MAX` when its chunk is not loaded.
+    #[inline]
+    pub(crate) fn cell_in(&self, home: u32, bx: i32, bz: i32) -> u32 {
+        let s = self.chunks.rel(home, bx >> 4, bz >> 4);
+        if s == NO_SLOT { u32::MAX } else { s << 8 | ((bz & 15) << 4 | (bx & 15)) as u32 }
     }
+    /// The cell of the column at `(x, z)`, `u32::MAX` when its chunk is not loaded.
     pub fn cell_of(&self, x: f64, z: f64) -> u32 {
-        let cx = self.column(x).clamp(0, self.width as i64 - 1) as usize;
-        let cz = self.column(z).clamp(0, self.width as i64 - 1) as usize;
-        (cz * self.width + cx) as u32
+        self.cell_in(NO_SLOT, x.ifloor(), z.ifloor())
+    }
+    /// `cell_of` for a position near the entity whose cell is `from` (the links of its chunk: no hash for a step into the next chunk).
+    #[inline]
+    pub fn cell_near(&self, from: u32, x: f64, z: f64) -> u32 {
+        self.cell_in(if from == u32::MAX { NO_SLOT } else { (from >> 8) as u32 }, x.ifloor(), z.ifloor())
+    }
+    /// The slot of the chunk that holds `(x, z)`.
+    #[inline]
+    fn home(&self, x: f64, z: f64) -> u32 {
+        self.chunks.slot_at(x.ifloor() >> 4, z.ifloor() >> 4)
     }
     pub fn insert(&mut self, e: Entity, cell: u32) {
-        self.cells[cell as usize].push(e);
-        self.slots[cell as usize].push([f32::NEG_INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::INFINITY]);
-        let (b, bit) = self.block_of(cell);
-        self.blocks[b] |= bit;
-    }
-    #[inline]
-    pub(crate) fn block_of(&self, cell: u32) -> (usize, u64) {
-        let (cx, cz) = (cell as usize % self.width, cell as usize / self.width);
-        ((cz / BLOCK) * self.bw + cx / BLOCK, 1 << ((cz % BLOCK) * BLOCK + cx % BLOCK))
+        self.chunks.push(cell, e);
     }
     pub fn remove(&mut self, e: Entity, cell: u32) {
-        let list = &mut self.cells[cell as usize];
-        if let Some(i) = list.iter().position(|&o| o == e) {
-            list.swap_remove(i);
-            self.slots[cell as usize].swap_remove(i);
-            let emptied = list.is_empty();
-            if emptied {
-                let (b, bit) = self.block_of(cell);
-                self.blocks[b] &= !bit;
+        self.chunks.take(cell, e);
+    }
+    /// The block column `(x, z)` of a cell.
+    #[inline]
+    pub(crate) fn corner(&self, cell: u32) -> (f64, f64) {
+        let r = &self.chunks.recs[chunk_slot_of(cell)];
+        let col = col_of(cell) as i32;
+        (f64::from(r.cx * 16 + (col & 15)), f64::from(r.cz * 16 + (col >> 4)))
+    }
+    /// Records the XZ extent of the box of `e`, which is in `cell` (see `Cols::slots`).
+    pub(crate) fn set_box(&mut self, e: Entity, cell: u32, mn: (f64, f64), mx: (f64, f64)) {
+        if cell == u32::MAX {
+            return;
+        }
+        let (x0, z0) = self.corner(cell);
+        let col = col_of(cell);
+        let Some(c) = self.chunks.recs[chunk_slot_of(cell)].cols.as_mut() else { return };
+        let Some(i) = c.cells[col].iter().rposition(|&o| o == e) else { return };
+        c.slots[col][i] = [(mn.0 - x0 - SLOT_MARGIN) as f32, (mx.0 - x0 + SLOT_MARGIN) as f32, (mn.1 - z0 - SLOT_MARGIN) as f32, (mx.1 - z0 + SLOT_MARGIN) as f32];
+    }
+    /// Whether the chunk of a cell ticks (always when the zone is off; never for an entity that is not indexed).
+    pub fn simulated_cell(&self, cell: u32) -> bool {
+        !self.zone.on || (cell != u32::MAX && self.chunks.recs[chunk_slot_of(cell)].count > 0)
+    }
+    /// Whether the chunk at block coordinates ticks (a chunk that is not loaded does not).
+    pub fn simulated_at(&self, x: f64, z: f64) -> bool {
+        !self.zone.on || self.chunk_simulated(x.ifloor() >> 4, z.ifloor() >> 4)
+    }
+    /// Whether chunk `(cx, cz)` ticks.
+    pub fn chunk_simulated(&self, cx: i32, cz: i32) -> bool {
+        !self.zone.on || self.chunks.recs.get(self.chunks.slot_at(cx, cz) as usize).is_some_and(|r| r.count > 0)
+    }
+    /// How many chunks tick.
+    pub fn simulated_chunks(&self) -> usize {
+        self.chunks.recs.iter().filter(|r| r.live && r.count > 0).count()
+    }
+    /// Calls `g` for each column of row `z` (a block coordinate) between `lo` and `hi` that holds entities, in increasing x, with its x,
+    /// its entities and their extents. The chunks are reached from `home` by the links of the neighbours; a chunk that is not loaded is
+    /// empty.
+    #[inline]
+    fn row(&self, home: u32, z: i32, lo: i32, hi: i32, mut g: impl FnMut(i32, &[Entity], &[[f32; 4]])) {
+        if lo > hi {
+            return;
+        }
+        let (cz, lz) = (z >> 4, (z & 15) as usize);
+        for cx in (lo >> 4)..=(hi >> 4) {
+            let s = self.chunks.rel(home, cx, cz);
+            if s == NO_SLOT {
+                continue;
+            }
+            let r = &self.chunks.recs[s as usize];
+            let Some(c) = r.cols.as_deref() else { continue };
+            let mut bits = u32::from(r.rows[lz]);
+            if bits == 0 {
+                continue;
+            }
+            let (a, b) = ((lo - cx * 16).max(0), (hi - cx * 16).min(15));
+            bits &= (0xffff_u32 << a) & (0xffff_u32 >> (15 - b));
+            while bits != 0 {
+                let i = bits.trailing_zeros() as usize;
+                bits &= bits - 1;
+                g(cx * 16 + i as i32, &c.cells[lz * 16 + i], &c.slots[lz * 16 + i]);
             }
         }
     }
     /// Calls `f` for the entities in the columns within `r` blocks of `(x, z)` (a box is at most 2 blocks wide).
-    /// Two levels: the blocks of 8 x 8 columns hold a bit per occupied column, so the cost follows the occupied columns, not the area.
+    /// The chunks hold a bit per occupied column of each row, so the cost follows the occupied columns, not the area.
     /// The visit order is the plain row-major order of the columns (rows outer, columns inner), as a loop over every column would give.
     pub fn for_radius(&self, x: f64, z: f64, r: f64, mut f: impl FnMut(Entity)) {
-        let w = self.width as i64;
-        let (x0, x1) = (self.column(x - r - 1.0).max(0), self.column(x + r + 1.0).min(w - 1));
-        let (z0, z1) = (self.column(z - r - 1.0).max(0), self.column(z + r + 1.0).min(w - 1));
-        if x0 > x1 || z0 > z1 {
-            return;
-        }
-        let (bx0, bx1) = ((x0 / B) as usize, (x1 / B) as usize);
-        let mut zz = z0;
-        while zz <= z1 {
-            let band = (zz / B) as usize * self.bw;
-            let row_end = z1.min(zz / B * B + B - 1);
-            if self.blocks[band + bx0..=band + bx1].iter().all(|&m| m == 0) {
-                zz = row_end + 1;
-                continue;
-            }
-            for z in zz..=row_end {
-                let shift = (z % B) * B;
-                for bx in bx0..=bx1 {
-                    let mut bits = (self.blocks[band + bx] >> shift) & 0xff;
-                    if bits == 0 {
-                        continue;
-                    }
-                    let lo = if bx == bx0 { x0 % B } else { 0 };
-                    let hi = if bx == bx1 { x1 % B } else { B - 1 };
-                    bits &= (0xffu64 << lo) & (0xffu64 >> (B - 1 - hi));
-                    while bits != 0 {
-                        let i = bits.trailing_zeros() as i64;
-                        bits &= bits - 1;
-                        for &e in &self.cells[(z * w + bx as i64 * B + i) as usize] {
-                            f(e);
-                        }
-                    }
-                }
-            }
-            zz = row_end + 1;
+        let home = self.home(x, z);
+        let (x0, x1) = ((x - r - 1.0).ifloor(), (x + r + 1.0).ifloor());
+        for zz in (z - r - 1.0).ifloor()..=(z + r + 1.0).ifloor() {
+            self.row(home, zz, x0, x1, |_, cells, _| cells.iter().for_each(|&e| f(e)));
         }
     }
     /// Calls `f` for the entities whose column may lie in the disk of radius `r` around `old` and not in the one around `new` (a
     /// superset: the crescent a player's step sweeps, or a whole disk when `new` is `None`), row by row: the cost follows the length
     /// of the crescent, not the area of the disk.
     pub fn crescent(&self, old: (f64, f64), new: Option<(f64, f64)>, r: f64, mut f: impl FnMut(Entity)) {
-        let w = self.width as i64;
+        let home = self.home(old.0, old.1);
         let (r, ro) = (r + 1.0, r - 1.0);
-        for zz in self.column(old.1 - r).max(0)..=self.column(old.1 + r).min(w - 1) {
-            let (z0, z1) = (self.origin + zz as f64 * CELL, self.origin + (zz + 1) as f64 * CELL);
+        for zz in (old.1 - r).ifloor()..=(old.1 + r).ifloor() {
+            let (z0, z1) = (f64::from(zz), f64::from(zz + 1));
             let near = (old.1.clamp(z0, z1) - old.1).abs();
             if near >= r {
                 continue;
             }
             let half = (r * r - near * near).sqrt();
-            let (mut a, b) = (self.column(old.0 - half).max(0), self.column(old.0 + half).min(w - 1));
+            let (mut a, b) = ((old.0 - half).ifloor(), (old.0 + half).ifloor());
             // The columns surely inside the new disk (its chord at the far edge of the row) are left out: two runs.
             let skip = new.and_then(|n| {
                 let far = (n.1 - z0).abs().max((n.1 - z1).abs());
                 (far < ro).then(|| ((ro * ro - far * far).sqrt(), n.0))
             });
-            let run = |lo: i64, hi: i64, f: &mut dyn FnMut(Entity)| {
-                for xx in lo..=hi {
-                    for &e in &self.cells[(zz * w + xx) as usize] {
-                        f(e);
-                    }
-                }
-            };
+            let run = |lo: i32, hi: i32, f: &mut dyn FnMut(Entity)| self.row(home, zz, lo, hi, |_, cells, _| cells.iter().for_each(|&e| f(e)));
             if let Some((h, nx)) = skip {
-                let (s0, s1) = (self.column(nx - h + 1.0), self.column(nx + h - 1.0));
+                let (s0, s1) = ((nx - h + 1.0).ifloor(), (nx + h - 1.0).ifloor());
                 run(a, b.min(s0 - 1), &mut f);
                 a = a.max(s1 + 1);
             }
             run(a, b, &mut f);
         }
     }
-    /// Calls `f` for the entities in the columns around `(x, z)` (3 x 3, a box is at most 2 blocks wide).
-    /// Records the XZ extent of the box of `e`, which is in `cell` (see `slots`).
-    pub(crate) fn set_box(&mut self, e: Entity, cell: u32, mn: (f64, f64), mx: (f64, f64)) {
-        let Some(i) = self.cells[cell as usize].iter().rposition(|&o| o == e) else { return };
-        let (x0, z0) = self.corner(cell);
-        self.slots[cell as usize][i] = [(mn.0 - x0 - SLOT_MARGIN) as f32, (mx.0 - x0 + SLOT_MARGIN) as f32, (mn.1 - z0 - SLOT_MARGIN) as f32, (mx.1 - z0 + SLOT_MARGIN) as f32];
-    }
-    #[inline]
-    pub(crate) fn corner(&self, cell: u32) -> (f64, f64) {
-        let (cx, cz) = (cell as usize % self.width, cell as usize / self.width);
-        (self.origin + cx as f64 * CELL, self.origin + cz as f64 * CELL)
-    }
     /// `for_near` for the entities whose box may touch the XZ extent `mn..mx` (a superset: the caller tests the real boxes).
     pub fn for_near_touching(&self, x: f64, z: f64, mn: (f64, f64), mx: (f64, f64), mut f: impl FnMut(Entity)) {
-        let (cx, cz) = (self.column(x), self.column(z));
-        let w = self.width as i64;
-        for zz in (cz - 1).max(0)..=(cz + 1).min(w - 1) {
-            for xx in (cx - 1).max(0)..=(cx + 1).min(w - 1) {
-                let c = (zz * w + xx) as usize;
-                let list = &self.cells[c];
-                if list.is_empty() {
-                    continue;
-                }
-                let (x0, z0) = self.corner(c as u32);
+        let (home, bx, bz) = (self.home(x, z), x.ifloor(), z.ifloor());
+        for zz in bz - 1..=bz + 1 {
+            self.row(home, zz, bx - 1, bx + 1, |xx, cells, slots| {
+                let (x0, z0) = (f64::from(xx), f64::from(zz));
                 let (ax, bx, az, bz) = ((mn.0 - x0) as f32, (mx.0 - x0) as f32, (mn.1 - z0) as f32, (mx.1 - z0) as f32);
-                for (&e, s) in list.iter().zip(&self.slots[c]) {
+                for (&e, s) in cells.iter().zip(slots) {
                     if s[1] >= ax && s[0] <= bx && s[3] >= az && s[2] <= bz {
                         f(e);
                     }
                 }
-            }
+            });
         }
     }
+    /// Calls `f` for the entities in the columns around `(x, z)` (3 x 3, a box is at most 2 blocks wide).
     pub fn for_near(&self, x: f64, z: f64, mut f: impl FnMut(Entity)) {
-        let (cx, cz) = (self.column(x), self.column(z));
-        let w = self.width as i64;
-        for zz in (cz - 1).max(0)..=(cz + 1).min(w - 1) {
-            for xx in (cx - 1).max(0)..=(cx + 1).min(w - 1) {
-                for &e in &self.cells[(zz * w + xx) as usize] {
-                    f(e);
-                }
-            }
+        let (home, bx, bz) = (self.home(x, z), x.ifloor(), z.ifloor());
+        for zz in bz - 1..=bz + 1 {
+            self.row(home, zz, bx - 1, bx + 1, |_, cells, _| cells.iter().for_each(|&e| f(e)));
         }
+    }
+    /// The entities listed in column `cell`.
+    #[inline]
+    pub(crate) fn list(&self, cell: u32) -> &[Entity] {
+        self.chunks.list(cell)
     }
 }
+
 
 /// A new animal is in the spatial index from its creation (not after its first tick: the pushes and the searches of that
 /// tick see it).
 pub fn enter_index(world: &mut World, e: Entity) {
     let Some(b) = world.get::<Bounds>(e).copied() else { return };
     let (mn, mx) = (b.0.min_position(), b.0.max_position());
-    let cell = world.resource::<Index>().cell_of((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
     let old = world.get::<Cell>(e).unwrap().0;
+    let cell = world.resource::<Index>().cell_near(old, (mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
+    debug_assert!(cell != u32::MAX, "an entity is made in a chunk that is not loaded");
     {
         let mut idx = world.resource_mut::<Index>();
         if old != u32::MAX {
             idx.remove(e, old);
         }
-        idx.insert(e, cell);
+        if cell != u32::MAX {
+            idx.insert(e, cell);
+        }
         idx.move_watcher(e, old, cell);
         // An entity that comes into a column is looked at as one that crossed into it (`player_near`, the zone): born beside a
         // player that stands still, it is active at once.
@@ -350,19 +384,21 @@ pub(crate) fn reindex(
             m.push(e);
         }
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
-        let cell = idx.cell_of((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
+        let cell = idx.cell_near(c.0, (mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         if cell != c.0 {
             if c.0 != u32::MAX {
                 idx.remove(e, c.0);
             }
-            idx.insert(e, cell);
+            if cell != u32::MAX {
+                idx.insert(e, cell);
+            }
             idx.move_watcher(e, c.0, cell);
             c.0 = cell;
             moves.0.push(e);
             idx.crossed.push((e, cell));
         }
         idx.set_box(e, cell, (mn.x, mn.z), (mx.x, mx.z));
-        let bits = hazards.of_box_kept(&b.0, c.bypass_change_detection(), hz.map_or(0, |h| h.0));
+        let bits = hazards.of_box_kept(&idx.chunks, &b.0, c.bypass_change_detection(), hz.map_or(0, |h| h.0));
         let fluid = bits & (HAZ_WATER | HAZ_LAVA) != 0;
         if fluid && !in_fluid {
             // A cow that enters a fluid (placed water, a push) needs its physics at once.

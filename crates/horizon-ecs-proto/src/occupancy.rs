@@ -243,9 +243,9 @@ impl Hasher for KeyHash {
     }
 }
 type Map = HashMap<u64, Box<Section>, BuildHasherDefault<KeyHash>>;
-/// A section's key: 21 bits per axis.
+/// A section's key: 26 bits for x, 12 for y, 26 for z (x and z cover ±30 000 000 blocks, y ±32 768).
 fn key(k: [i32; 3]) -> u64 {
-    (k[0] as u64 & 0x1F_FFFF) | (k[1] as u64 & 0x1F_FFFF) << 21 | (k[2] as u64 & 0x1F_FFFF) << 42
+    (k[0] as u64 & 0x03FF_FFFF) | (k[1] as u64 & 0xFFF) << 26 | (k[2] as u64 & 0x03FF_FFFF) << 38
 }
 
 /// A collider of the kernel's own arithmetic: the unit cube at an offset, or a stored shape at an offset (`BlockCollider::Moved`).

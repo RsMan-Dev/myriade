@@ -26,9 +26,6 @@ use std::{
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
 };
 
-/// The half-width of the spatial index, in blocks: entities beyond it are read as on its border.
-const HALF: i32 = 1024;
-
 /// What a host world starts with: the seed of its spawns, the dimension's name, and the simulation distance in chunks (0: none).
 #[derive(Clone, Debug)]
 pub struct HostSetup {
@@ -62,7 +59,6 @@ pub struct EcsWorld {
     world: World,
     schedule: Schedule,
     occ: &'static crate::occupancy::Occupancy,
-    half: i32,
     spawned: u64,
     /// The NBT of the chunks that unloaded, read back by `chunk_loaded`.
     chunks: HashMap<(i32, i32), Vec<Compound>>,
@@ -90,7 +86,7 @@ fn despawned_is_a_no_op(err: bevy_ecs::error::BevyError, ctx: bevy_ecs::error::E
 impl EcsWorld {
     /// `tags` is the resources' folder: the entity type tags are read from it, against the species table.
     pub fn new(setup: &HostSetup, mw: &MobWorld<'_>, types: &'static MobTypes, tags: &std::path::Path) -> EcsWorld {
-        let level = host_level(lend(mw), types, HALF);
+        let level = host_level(lend(mw), types);
         let occ = level.occ;
         crate::type_tags::install(tags, &species_table().0);
         let mut world = assemble::assemble(level);
@@ -100,7 +96,7 @@ impl EcsWorld {
         world.insert_resource(bevy_ecs::error::FallbackErrorHandler(despawned_is_a_no_op));
         world.insert_resource(crate::frame_item::DropRng(crate::flat::Rng(setup.seed as u64 ^ 0x9E37_79B9_7F4A_7C15)));
         world.insert_resource(WorldDimension(setup.dimension));
-        EcsWorld { world, schedule: crate::cow::schedule(), occ, half: HALF, spawned: setup.seed as u64, chunks: HashMap::new() }
+        EcsWorld { world, schedule: crate::cow::schedule(), occ, spawned: setup.seed as u64, chunks: HashMap::new() }
     }
 
     /// The game time of the world's tick 0 (`Clock::set_game_base`), from the host's game time and the ECS clock.
@@ -118,7 +114,7 @@ impl EcsWorld {
 
     /// Runs `f` over the world with the level lent for the call, and takes the level out again (panics included).
     pub fn lent<R>(&mut self, mw: &MobWorld<'_>, f: impl FnOnce(&mut World) -> R) -> R {
-        let level = Level { mw: Mw(lend(mw)), blocks: Blocks(std::ptr::null_mut()), occ: self.occ, half: self.half };
+        let level = Level { mw: Mw(lend(mw)), blocks: Blocks(std::ptr::null_mut()), occ: self.occ, half: 0 };
         self.world.insert_resource(level);
         self.note_game_time(mw, None);
         let ran = catch_unwind(AssertUnwindSafe(|| f(&mut self.world)));
@@ -131,10 +127,11 @@ impl EcsWorld {
 
     /// Runs the schedule when a player is online (none: nothing is awake), and returns the host's outputs since the last call, in order.
     pub fn step(&mut self, mw: &MobWorld<'_>) -> Vec<HostEvent> {
+        self.scan_fresh_names(mw);
         let ticking = self.world.resource::<Online>().players().next().is_some();
         self.note_game_time(mw, Some(ticking));
         if ticking {
-            let level = Level { mw: Mw(lend(mw)), blocks: Blocks(std::ptr::null_mut()), occ: self.occ, half: self.half };
+            let level = Level { mw: Mw(lend(mw)), blocks: Blocks(std::ptr::null_mut()), occ: self.occ, half: 0 };
             self.world.insert_resource(level);
             let ran = catch_unwind(AssertUnwindSafe(|| self.schedule.run(&mut self.world)));
             self.world.remove_resource::<Level>();
@@ -542,14 +539,36 @@ impl EcsWorld {
         }
     }
 
-    /// A chunk just loaded (with or without entities): its water, lava, fire, cactus, powder snow and turtle eggs join the hazard grid.
+    /// A chunk just loaded (with or without entities): its record is made in the index (before any of its entities comes), its water, lava,
+    /// fire, cactus, powder snow and turtle eggs join its hazard columns, and its points and watched blocks are read.
     pub fn chunk_hazards(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32) {
-        self.world.resource_mut::<crate::cow::Hazards>().scan_chunk(mw, cx, cz);
+        self.world.resource_scope(|w, mut idx: Mut<crate::cow::Index>| {
+            idx.chunk_created(cx, cz);
+            w.resource_mut::<crate::cow::Hazards>().scan_chunk(&mut idx.chunks, mw, cx, cz);
+        });
+        self.world.resource_mut::<crate::poi::PoiRegistry>().scan_chunk(mw, cx, cz);
+        self.world.resource_mut::<crate::block_watch::BlockWatch>().scan_chunk(mw, cx, cz);
+    }
+
+    /// The blocks named since the last call (`BlockWatch::watch`) are read from every loaded chunk (a rare event: nothing when none is new).
+    fn scan_fresh_names(&mut self, mw: &MobWorld<'_>) {
+        let fresh = self.world.resource_mut::<crate::block_watch::BlockWatch>().bypass_change_detection().take_fresh();
+        if fresh.is_empty() {
+            return;
+        }
+        let idx = self.world.resource::<crate::cow::Index>();
+        let loaded: Vec<(i32, i32)> = idx.chunks.live().map(|s| (idx.chunks.recs[s as usize].cx, idx.chunks.recs[s as usize].cz)).collect();
+        let mut watch = self.world.resource_mut::<crate::block_watch::BlockWatch>();
+        for (cx, cz) in loaded {
+            watch.scan_chunk_names(mw, cx, cz, &fresh);
+        }
     }
 
     /// Restores the NBT the chunk was saved with (its entities come back; none when it was never unloaded).
     pub fn chunk_loaded(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32) {
         let saved = self.chunks.remove(&(cx, cz)).unwrap_or_default();
+        // The record is made by `chunk_hazards` before this call; made here when it was not, so the entities find their chunk.
+        self.world.resource_mut::<crate::cow::Index>().chunk_created(cx, cz);
         self.lent(mw, |w| {
             for c in &saved {
                 nbt::restore(w, c);
@@ -573,6 +592,24 @@ impl EcsWorld {
             self.world.despawn(e);
         }
         self.chunks.insert((cx, cz), saved);
+        let left = self.world.resource_scope(|w, mut idx: Mut<crate::cow::Index>| {
+            w.resource_mut::<crate::cow::Hazards>().forget_chunk(&idx.chunks, cx, cz);
+            idx.chunk_unloaded(cx, cz)
+        });
+        // What was still indexed in the chunk (an entity that is not saved with it) is no longer indexed: it waits, asleep, out of the zone.
+        if !left.is_empty() {
+            let now = self.world.resource::<Clock>().0;
+            for e in left {
+                if let Some(mut c) = self.world.get_mut::<crate::cow::Cell>(e) {
+                    c.0 = u32::MAX;
+                    if self.world.get_entity(e).is_ok_and(|r| !r.contains::<Disabled>()) {
+                        zone::sleep(&mut self.world, e, now);
+                    }
+                }
+            }
+        }
+        self.world.resource_mut::<crate::poi::PoiRegistry>().forget_chunk(cx, cz);
+        self.world.resource_mut::<crate::block_watch::BlockWatch>().forget_chunk(cx, cz);
         nbt::forget_chunk(&mut self.world, cx, cz);
     }
 

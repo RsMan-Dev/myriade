@@ -585,7 +585,7 @@ pub fn fly(
         // `AbstractHurtingProjectile` has no age limit: it is discarded when it enters a chunk that is not loaded (`tick`: `hasChunkAt`).
         if pos.0.y < mw.world.below_world_y() || !hurting && p.age >= f.max_age && !f.sticks {
             commands.entity(e).despawn();
-        } else if chunk_changed(original, pos.0) && !idx.zone.simulated_at(pos.0.x, pos.0.z) {
+        } else if chunk_changed(original, pos.0) && !idx.simulated_at(pos.0.x, pos.0.z) {
             if hurting {
                 commands.entity(e).despawn();
             } else {

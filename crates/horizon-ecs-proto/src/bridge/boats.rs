@@ -135,7 +135,7 @@ mod tests {
 
     fn world() -> World {
         let mut w = crate::cow::Herd::new(0, 1.0, true, false, 1).world;
-        w.insert_resource(Index::new(-32.0, 32));
+        w.insert_resource(Index::square(32));
         w
     }
 

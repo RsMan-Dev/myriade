@@ -263,17 +263,10 @@ pub struct HurtCauses(pub Vec<(Entity, Cause)>);
 /// height updates its entry (`set`).
 #[derive(Resource, Default)]
 pub struct Hazards {
-    pub(crate) origin: i32,
-    pub(crate) width: usize,
-    /// Per column: 0, or 1 + the index in `pool`.
-    pub(crate) cols: Vec<u32>,
-    pub(crate) pool: Vec<Vec<(i32, u8)>>,
     /// The cells that hold a turtle egg (what the egg hunters look for): a search that has none in its zone does not walk it.
     pub(crate) eggs: std::collections::BTreeSet<[i32; 3]>,
     /// Bumped by each `set` that changes an entry: what an entity read of the columns is valid while it holds.
     pub(crate) version: u32,
-    /// The entries per block of 16 x 16 columns (row-major, `width.div_ceil(16)` per side): `bits_of` skips the empty ones.
-    pub(crate) block_count: Vec<u32>,
 }
 
 pub(crate) fn hazard_bit(name: &str) -> u8 {
@@ -288,39 +281,10 @@ pub(crate) fn hazard_bit(name: &str) -> u8 {
 }
 
 impl Hazards {
-    /// Reads the generated height of the world (`-2..=BUILD_TOP`: the floor, the walls and what the patches add).
-    pub fn build(level: &Level) -> Self {
-        let mw = level.mw.0;
-        let (origin, width) = (-level.half, (2 * level.half + 1) as usize);
-        let mut h = Self {
-            origin,
-            width,
-            cols: vec![0; width * width],
-            pool: Vec::new(),
-            eggs: Default::default(),
-            version: 0,
-            block_count: vec![0; width.div_ceil(16).pow(2)],
-        };
-        let mut cursor = myriade_level::world::BlockCursor::new(mw.world);
-        for x in 0..width {
-            for z in 0..width {
-                for y in -2..=BUILD_TOP {
-                    let name = &mw.facts.get(cursor.block(x as i32 + origin, y, z as i32 + origin)).name;
-                    if &**name == EGG {
-                        h.eggs.insert([x as i32 + origin, y, z as i32 + origin]);
-                    }
-                    let bit = hazard_bit(name);
-                    if bit != 0 {
-                        h.set(x as i32 + origin, y, z as i32 + origin, bit);
-                    }
-                }
-            }
-        }
-        h
-    }
-    /// Reads the hazard blocks of the chunk (cx, cz) that just loaded (`build` read only the arena's floor): section by section, the ones whose
-    /// palette holds none are skipped, so a generated ocean, lava lake or cactus field reaches the fluid and hazard modules of the creatures.
-    pub fn scan_chunk(&mut self, mw: &myriade_engine_lib::mobs::MobWorld<'_>, cx: i32, cz: i32) {
+    /// Reads the hazard blocks of the chunk (cx, cz) that just loaded (its record is made, `Index::chunk_created`): section by section, the ones
+    /// whose palette holds none are skipped, so a generated ocean, lava lake or cactus field reaches the fluid and hazard modules of the creatures.
+    pub fn scan_chunk(&mut self, chunks: &mut Chunks, mw: &myriade_engine_lib::mobs::MobWorld<'_>, cx: i32, cz: i32) {
+        debug_assert!(chunks.find(cx, cz) != NO_SLOT, "a chunk is scanned before its record is made");
         let layout = mw.world.layout();
         let (x0, z0) = (cx << 4, cz << 4);
         let wanted = |id| {
@@ -342,11 +306,23 @@ impl Hazards {
                         }
                         let bit = hazard_bit(name);
                         if bit != 0 {
-                            self.set(x, y, z, bit);
+                            self.set(chunks, x, y, z, bit);
                         }
                     }
                 }
             }
+        }
+    }
+    /// Chunk (cx, cz) unloads: its eggs are forgotten (its hazard columns go with its record).
+    pub fn forget_chunk(&mut self, chunks: &Chunks, cx: i32, cz: i32) {
+        let (x0, z0) = (cx << 4, cz << 4);
+        let eggs: Vec<[i32; 3]> = self.eggs.range([x0, i32::MIN, i32::MIN]..=[x0 + 15, i32::MAX, i32::MAX]).filter(|p| (z0..z0 + 16).contains(&p[2])).copied().collect();
+        let held = chunks.recs.get(chunks.find(cx, cz) as usize).is_some_and(|r| r.haz_count > 0);
+        if held || !eggs.is_empty() {
+            self.version = self.version.wrapping_add(1);
+        }
+        for p in eggs {
+            self.eggs.remove(&p);
         }
     }
     /// The world holds no turtle egg at all.
@@ -357,75 +333,72 @@ impl Hazards {
     pub fn egg_in(&self, lo: [i32; 3], hi: [i32; 3]) -> bool {
         self.eggs.range([lo[0], i32::MIN, i32::MIN]..=[hi[0], i32::MAX, i32::MAX]).any(|p| (lo[1]..=hi[1]).contains(&p[1]) && (lo[2]..=hi[2]).contains(&p[2]))
     }
-    /// The block at (x, y, z) now has these hazard bits (0: none), at any height.
-    pub fn set(&mut self, x: i32, y: i32, z: i32, bit: u8) {
-        let (cx, cz) = (x - self.origin, z - self.origin);
-        if cx < 0 || cz < 0 || cx as usize >= self.width || cz as usize >= self.width {
+    /// The block at (x, y, z) now has these hazard bits (0: none), at any height. A change in a chunk that is not loaded is dropped: its
+    /// blocks are read again when it loads (`scan_chunk`).
+    pub fn set(&mut self, chunks: &mut Chunks, x: i32, y: i32, z: i32, bit: u8) {
+        let s = chunks.slot_at(x >> 4, z >> 4);
+        if s == NO_SLOT {
             return;
         }
-        let (cx, cz) = (cx as usize, cz as usize);
-        let i = cz * self.width + cx;
-        let slot = self.cols[i] as usize;
-        let old = if slot == 0 { 0 } else { self.pool[slot - 1].iter().find(|e| e.0 == y).map_or(0, |e| e.1) };
+        let ChunkRec { haz, haz_count, .. } = &mut chunks.recs[s as usize];
+        if bit == 0 && haz.is_none() {
+            return;
+        }
+        let h = haz.get_or_insert_with(|| Box::new(HazCols { cols: [0; 256], pool: Vec::new() }));
+        let col = (((z & 15) << 4) | (x & 15)) as usize;
+        let slot = h.cols[col] as usize;
+        let old = if slot == 0 { 0 } else { h.pool[slot - 1].iter().find(|e| e.0 == y).map_or(0, |e| e.1) };
         if old == bit {
             return;
         }
         if slot == 0 {
-            self.pool.push(Vec::new());
-            self.cols[i] = self.pool.len() as u32;
+            h.pool.push(Vec::new());
+            h.cols[col] = h.pool.len() as u32;
         }
-        let b = (cz >> 4) * self.width.div_ceil(16) + (cx >> 4);
-        let list = &mut self.pool[self.cols[i] as usize - 1];
+        let list = &mut h.pool[h.cols[col] as usize - 1];
         match (list.iter().position(|e| e.0 == y), bit) {
             (Some(p), 0) => {
                 list.swap_remove(p);
-                self.block_count[b] -= 1;
+                *haz_count -= 1;
             }
             (Some(p), _) => list[p].1 = bit,
             (None, _) => {
                 list.push((y, bit));
-                self.block_count[b] += 1;
+                *haz_count += 1;
             }
         }
         self.version = self.version.wrapping_add(1);
     }
-    /// The hazards of the columns a box covers, at the heights it covers (a block more each way).
-    pub fn of_box(&self, b: &Aabb) -> u8 {
-        self.bits_of(&self.key_of(b))
+    /// The hazards of the columns a box covers, at the heights it covers (a block more each way); a chunk that is not loaded holds none.
+    pub fn of_box(&self, chunks: &Chunks, b: &Aabb) -> u8 {
+        self.bits_of(chunks, NO_SLOT, &self.key_of(b))
     }
-    /// What `of_box` reads of a box: the columns (clamped to the grid) and the two height ranges.
+    /// What `of_box` reads of a box: the columns and the two height ranges.
     #[inline]
     pub(crate) fn key_of(&self, b: &Aabb) -> [i32; 8] {
         let (mn, mx) = (b.min_position(), b.max_position());
         let e = 1.0e-7;
         // Fluids have a surface below the top of their block and flow: they are looked at a block wider (the real
         // test is `fluids`); fire, cactus and snow are the blocks the box overlaps.
-        let w = self.width as i32;
-        [
-            mn.x.ifloor().saturating_sub(self.origin).max(0),
-            (mx.x - e).ifloor().saturating_sub(self.origin).min(w - 1),
-            mn.z.ifloor().saturating_sub(self.origin).max(0),
-            (mx.z - e).ifloor().saturating_sub(self.origin).min(w - 1),
-            mn.y.ifloor() - 1,
-            (mx.y - e).ifloor() + 1,
-            (mn.y + 0.001).ifloor(),
-            (mx.y - 0.001).ifloor(),
-        ]
+        [mn.x.ifloor(), (mx.x - e).ifloor(), mn.z.ifloor(), (mx.z - e).ifloor(), mn.y.ifloor() - 1, (mx.y - e).ifloor() + 1, (mn.y + 0.001).ifloor(), (mx.y - 0.001).ifloor()]
     }
-    pub(crate) fn bits_of(&self, k: &[i32; 8]) -> u8 {
+    /// The bits of a key; the chunks are reached from the slot `home` by the links of the neighbours (`NO_SLOT`: from the table).
+    pub(crate) fn bits_of(&self, chunks: &Chunks, home: u32, k: &[i32; 8]) -> u8 {
         let [xa, xb, za, zb, y0, y1, x0, x1] = *k;
-        let bw = self.width.div_ceil(16);
         let mut bits = 0;
-        for bz in (za >> 4)..=(zb >> 4) {
-            for bx in (xa >> 4)..=(xb >> 4) {
-                if self.block_count[bz as usize * bw + bx as usize] == 0 {
+        for cz in (za >> 4)..=(zb >> 4) {
+            for cx in (xa >> 4)..=(xb >> 4) {
+                let s = chunks.rel(home, cx, cz);
+                if s == NO_SLOT {
                     continue;
                 }
-                for cz in za.max(bz << 4)..=zb.min((bz << 4) | 15) {
-                    for cx in xa.max(bx << 4)..=xb.min((bx << 4) | 15) {
-                        let c = self.cols[cz as usize * self.width + cx as usize];
+                let r = &chunks.recs[s as usize];
+                let Some(h) = r.haz.as_deref().filter(|_| r.haz_count > 0) else { continue };
+                for z in za.max(cz << 4)..=zb.min((cz << 4) | 15) {
+                    for x in xa.max(cx << 4)..=xb.min((cx << 4) | 15) {
+                        let c = h.cols[(((z & 15) << 4) | (x & 15)) as usize];
                         if c != 0 {
-                            for &(y, bit) in &self.pool[c as usize - 1] {
+                            for &(y, bit) in &h.pool[c as usize - 1] {
                                 let fluid = bit & (HAZ_WATER | HAZ_LAVA) != 0;
                                 if (fluid && (y0..=y1).contains(&y)) || (!fluid && (x0..=x1).contains(&y)) {
                                     bits |= bit;
@@ -441,14 +414,14 @@ impl Hazards {
     /// `of_box` for an entity that keeps what it read last (`key`, `version`) and its hazard bits then (`prev`): nothing is read again while the
     /// box covers the same columns and heights and no hazard block changed.
     #[inline]
-    pub fn of_box_kept(&self, b: &Aabb, cell: &mut Cell, prev: u8) -> u8 {
+    pub fn of_box_kept(&self, chunks: &Chunks, b: &Aabb, cell: &mut Cell, prev: u8) -> u8 {
         let k = self.key_of(b);
         if cell.1 == k && cell.2 == self.version {
             return prev;
         }
         cell.1 = k;
         cell.2 = self.version;
-        self.bits_of(&k)
+        self.bits_of(chunks, if cell.0 == u32::MAX { NO_SLOT } else { cell.0 >> 8 }, &k)
     }
 }
 

@@ -47,7 +47,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
     let f = params::<Params>(p);
     if !f.blocks.is_empty() {
         w.init_resource::<crate::block_watch::BlockWatch>();
-        w.resource_scope(|w, mut bw: Mut<crate::block_watch::BlockWatch>| bw.watch(w.resource::<Level>(), f.blocks));
+        w.resource_mut::<crate::block_watch::BlockWatch>().watch(f.blocks);
     }
     w.entity_mut(e).insert(Flee(f));
 }

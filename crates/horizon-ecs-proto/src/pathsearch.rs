@@ -2364,7 +2364,7 @@ pub static LAST_VISITED: std::sync::atomic::AtomicI32 = std::sync::atomic::Atomi
 const AMPH_BIT: u64 = 1 << 63;
 const AMPH_MIX: u64 = 0x9E37_79B9_7F4A_7C15;
 fn layer_key(x: i32, y: i32, z: i32) -> u64 {
-    (((x >> 4) as u64) & 0x1F_FFFF) | ((((z >> 4) as u64) & 0x1F_FFFF) << 21) | ((((y >> 4) as u64) & 0x1F_FFFF) << 42)
+    (((x >> 4) as u64) & 0x03FF_FFFF) | ((((y >> 4) as u64) & 0xFFF) << 26) | ((((z >> 4) as u64) & 0x01FF_FFFF) << 38)
 }
 fn layer_idx(x: i32, y: i32, z: i32) -> usize {
     (((y & 15) << 8) | ((z & 15) << 4) | (x & 15)) as usize

@@ -250,12 +250,11 @@ pub struct Players {
     pub dirty: bool,
     /// The same event for the zone (`zone_step`), which runs before `player_near` clears `dirty`: cleared by the zone alone.
     pub zone_dirty: bool,
-    /// The players by bin of 32 blocks (side `n`), rebuilt when one moves, the places they had before, and the
+    /// The players by bin of 32 blocks (only the occupied ones), rebuilt when one moves, the places they had before, and the
     /// cells the last move touched (scratch buffers kept between ticks).
-    pub(crate) bins: Vec<Vec<(f64, f64)>>,
-    pub(crate) n: i64,
+    pub(crate) bins: horizon_core::fast_hash::FxHashMap<(i32, i32), Vec<(f64, f64)>>,
     pub(crate) old: Vec<(f64, f64)>,
-    pub(crate) candidates: Vec<usize>,
+    pub(crate) candidates: Vec<u32>,
 }
 
 /// An object (an item on the ground, an experience orb) neither pushes nor is pushed (`Entity.isPushable`): `push` does not visit it.

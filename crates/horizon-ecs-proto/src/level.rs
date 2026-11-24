@@ -135,10 +135,14 @@ pub fn block_is_air(w: &World, p: [i32; 3]) -> bool {
 pub fn block_is_moving_piston(w: &World, p: [i32; 3]) -> bool {
     block_name(w, p) == "minecraft:moving_piston"
 }
-/// Inside the walls, which sit at |x| or |z| = `Level.half`.
+/// Inside the vanilla world border (`MobWorld.border`).
 pub fn within_border(w: &World, p: [i32; 3]) -> bool {
-    let half = w.resource::<Level>().half;
-    p[0].abs() < half && p[2].abs() < half
+    // `WorldBorder.isWithinBounds(x, z)`: `min <= v < max` on each axis, no border meaning the whole world.
+    w.resource::<Level>().mw.0.border.is_none_or(|b| {
+        let [min_x, min_z, max_x, max_z] = b.bounds(0.0);
+        let (x, z) = (f64::from(p[0]), f64::from(p[2]));
+        x >= min_x && x < max_x && z >= min_z && z < max_z
+    })
 }
 /// No collision shape of the level in the box.
 pub fn box_free_of_blocks(w: &World, _e: Entity, b: Aabb) -> bool {

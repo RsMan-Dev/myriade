@@ -30,6 +30,7 @@ use horizon_core::geometry::{Aabb, Vec3, trig};
 use std::sync::Arc;
 
 mod blocks_world;
+mod chunks;
 mod fluids;
 mod frame;
 mod health;
@@ -44,6 +45,7 @@ mod species;
 mod travel;
 mod wheel;
 pub use blocks_world::*;
+pub use chunks::*;
 pub use fluids::*;
 pub use frame::*;
 pub use health::*;

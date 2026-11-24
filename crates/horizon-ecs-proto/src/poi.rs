@@ -2,7 +2,7 @@
 //! types (Horizon's own `horizon_world::poi`), their tickets (who has taken one), the search of the ones near a place, and the distance
 //! of a place to the nearest village, in sections (`PoiManager.sectionsToVillage`). The registry is written by events: a block that changed
 //! (`ChangedBlocks`) is read again, a point appears or goes (`poi_added` / `poi_removed`, readable the tick after like the other events);
-//! nothing scans the world each tick. The bench's world is indexed once at the first use (a server would index each chunk as it loads).
+//! nothing scans the world each tick. Each chunk is indexed as it loads (`scan_chunk`), and dropped as it unloads (`forget_chunk`).
 //! A creature asks "is it in a village" by the named predicate `horizon:in_village`.
 use crate::cow::*;
 use crate::hostile::ChangedBlocks;
@@ -11,12 +11,15 @@ use bevy_ecs::prelude::*;
 use horizon_world::poi::{saved_poi, PoiType};
 use std::collections::HashMap;
 
+
 /// A point of interest: its type and the tickets taken.
 #[derive(Clone, Copy, Debug)]
 pub struct Poi {
     pub kind: PoiType,
     pub taken: usize,
 }
+/// The sections of a column in vanilla's height (-64..320).
+const SECTIONS_Y: std::ops::Range<i32> = -4..20;
 #[derive(Resource, Default)]
 pub struct PoiRegistry {
     points: HashMap<[i32; 3], Poi>,
@@ -24,7 +27,6 @@ pub struct PoiRegistry {
     sections: HashMap<[i32; 3], u32>,
     /// Every point of each section (village or not) with a copy of its `Poi`, kept equal to `points`: what `in_range` searches without a lookup per point.
     by_section: horizon_core::fast_hash::FxHashMap<[i32; 3], Vec<([i32; 3], Poi)>>,
-    scanned: bool,
     /// The points that appeared / went this tick, and the ones of the tick before (what the modules read).
     now: (Vec<[i32; 3]>, Vec<[i32; 3]>),
     last: (Vec<[i32; 3]>, Vec<[i32; 3]>),
@@ -194,30 +196,11 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(poi_changes.after(block_changes).before(crate::targeting::sight_eval));
 }
 /// The block at `p` as a point of interest, if it is one.
-fn classify(mw: &myriade_engine_lib::mobs::MobWorld<'static>, p: [i32; 3]) -> Option<PoiType> {
+fn classify(mw: &myriade_engine_lib::mobs::MobWorld<'_>, p: [i32; 3]) -> Option<PoiType> {
     saved_poi(mw.registry.state(mw.world.block(p[0], p[1], p[2]))?)
-}
-/// The world of the bench indexed once: every block of the slab and the first blocks above it.
-fn scan(reg: &mut PoiRegistry, level: &Level) {
-    let mw = level.mw.0;
-    reg.scanned = true;
-    for x in -level.half..=level.half {
-        for z in -level.half..=level.half {
-            for y in -2..8 {
-                if let Some(k) = classify(mw, [x, y, z]) {
-                    reg.add([x, y, z], k);
-                }
-            }
-        }
-    }
-    // What the first scan found is the world as it was: not an event.
-    reg.now = (Vec::new(), Vec::new());
 }
 /// The blocks that changed: each is read again, a point appears or goes, the events of the last tick are kept for the modules.
 fn poi_changes(level: Res<Level>, changed: Res<ChangedBlocks>, mut reg: ResMut<PoiRegistry>) {
-    if !reg.scanned {
-        scan(&mut reg, &level);
-    }
     reg.last = std::mem::take(&mut reg.now);
     if changed.0.is_empty() {
         return;
@@ -238,6 +221,30 @@ fn poi_changes(level: Res<Level>, changed: Res<ChangedBlocks>, mut reg: ResMut<P
 }
 
 impl PoiRegistry {
+    /// The points of the chunk (`cx`, `cz`) enter the registry as it loads (appearances, as any block that changes).
+    pub fn scan_chunk(&mut self, mw: &myriade_engine_lib::mobs::MobWorld<'_>, cx: i32, cz: i32) {
+        for x in (cx << 4)..(cx << 4) + 16 {
+            for z in (cz << 4)..(cz << 4) + 16 {
+                for y in -2..8 {
+                    if let Some(k) = classify(mw, [x, y, z]) {
+                        self.add([x, y, z], k);
+                    }
+                }
+            }
+        }
+    }
+    /// The points of the chunk (`cx`, `cz`) leave the registry when it unloads, section by section over the heights of vanilla.
+    pub fn forget_chunk(&mut self, cx: i32, cz: i32) {
+        for sy in SECTIONS_Y {
+            let s = [cx, sy, cz];
+            let Some(list) = self.by_section.remove(&s) else { continue };
+            self.sections.remove(&s);
+            for (p, _) in list {
+                self.points.remove(&p);
+                self.now.1.push(p);
+            }
+        }
+    }
     /// `occupied_pois_in_range`: the points within `radius` of `center` (a cube, as `getInRange`) that someone holds a ticket of.
     pub fn occupied_in_range(&self, center: [i32; 3], radius: i32) -> Vec<[i32; 3]> {
         let mut v: Vec<[i32; 3]> = self.points.iter().filter(|(p, poi)| poi.taken > 0 && within_cube(**p, center, radius)).map(|(p, _)| *p).collect();
