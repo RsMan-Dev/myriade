@@ -429,6 +429,7 @@ pub(crate) fn assemble_resources(world: &mut World, level: Level, sleep: bool, p
         }
         crate::nbt::declare(world, id, crate::nbt::Recipe { saved: true, build: crate::nbt::Build::With(crate::projectile::build) });
     }
+    crate::nbt::declare(world, crate::eye::ID, crate::nbt::Recipe { saved: true, build: crate::nbt::Build::With(crate::eye::build) });
     crate::nbt::end_declarations(world);
     world.insert_resource(Config { sleep, parallel, ordered_push: false, keep_touching: std::env::var_os("TOUCHING").is_some(), path_budget: std::env::var("PATH_BUDGET").ok().and_then(|v| v.parse().ok()).unwrap_or(0), push_form: if std::env::var("PUSH_FORM").as_deref() == Ok("b") { 1 } else { 0 }, push_k: std::env::var("PUSH_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0) });
     world.insert_resource(OrderedStats::default());

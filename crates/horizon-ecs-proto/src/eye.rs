@@ -20,11 +20,13 @@ const SHATTER_AT: i32 = 81;
 pub struct Eye {
     pub target: Vec3,
     pub survive: bool,
+    /// `signalTo` ran: no target (a summoned eye) leaves the velocity as it is (`EyeOfEnder.tick`: `target != null`).
+    pub aimed: bool,
 }
 
 /// Throws an eye at `at` towards `target`, its velocity nil (`signalTo` ran); it shatters on its 81st tick.
 pub fn launch(w: &mut World, at: Vec3, target: Vec3, survive: bool) -> Entity {
-    let e = w.spawn((Pos(at), Vel(Vec3::ZERO), Eye { target, survive }, OwnTime)).id();
+    let e = w.spawn((Pos(at), Vel(Vec3::ZERO), Eye { target, survive, aimed: true }, OwnTime)).id();
     after(w, e, SHATTER_AT, shatter);
     e
 }
@@ -34,7 +36,9 @@ pub fn launch(w: &mut World, at: Vec3, target: Vec3, survive: bool) -> Entity {
 pub fn fly(mut q: Query<(&mut Pos, &mut Vel, &Eye)>) {
     for (mut pos, mut vel, eye) in &mut q {
         let next = pos.0.add_vector(vel.0);
-        vel.0 = update_delta(vel.0, next, eye.target);
+        if eye.aimed {
+            vel.0 = update_delta(vel.0, next, eye.target);
+        }
         pos.0 = next;
     }
 }
@@ -52,6 +56,16 @@ fn shatter(w: &mut World, e: Entity) {
         drop_item(w, ItemStack::new("minecraft:ender_eye", 1), at, Vec3::new(vx, 0.2, vz), 0);
     }
 }
+
+/// An eye made by `summon`: no `signalTo` ran, so it has no target (`target` is null) and it does not survive (`surviveAfterDeath` false).
+pub fn build(w: &mut World, at: Vec3, _: &horizon_core::nbt::Compound) -> Option<Entity> {
+    let e = launch(w, at, Vec3::ZERO, false);
+    w.get_mut::<Eye>(e)?.aimed = false;
+    w.entity_mut(e).insert(crate::cow::TypeName(ID));
+    crate::nbt::mark_saved(w, e, ID);
+    Some(e)
+}
+pub const ID: &str = "minecraft:eye_of_ender";
 
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(fly.run_if(|w: &World| crate::goals::sparse_any::<Eye>(w)));
