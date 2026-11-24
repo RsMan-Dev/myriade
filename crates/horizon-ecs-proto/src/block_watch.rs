@@ -41,15 +41,27 @@ impl BlockWatch {
     }
     /// The blocks of the chunk (`cx`, `cz`) enter the set of each of `names` they have (what a server reads as the chunk loads).
     pub fn scan_chunk_names(&mut self, mw: &myriade_engine_lib::mobs::MobWorld<'_>, cx: i32, cz: i32, names: &[&'static str]) {
-        for x in (cx << 4)..(cx << 4) + 16 {
-            for z in (cz << 4)..(cz << 4) + 16 {
-                for y in -2..32 {
-                    let b = mw.block_name(x, y, z);
-                    for &n in names {
-                        if b == n
-                            && let Some(set) = self.sets.get_mut(n)
-                        {
-                            set.insert([x, y, z]);
+        let layout = mw.world.layout();
+        let (x0, z0) = (cx << 4, cz << 4);
+        let wanted = |id| {
+            let n = &*mw.facts.get(id).name;
+            names.iter().any(|&w| w == n)
+        };
+        for s in 0..layout.sections() {
+            let y0 = layout.section_y(s);
+            if !mw.world.may_hold([x0, y0, z0], [x0 + 15, y0 + 15, z0 + 15], wanted) {
+                continue;
+            }
+            for x in x0..x0 + 16 {
+                for z in z0..z0 + 16 {
+                    for y in y0..y0 + 16 {
+                        let b = mw.block_name(x, y, z);
+                        for &n in names {
+                            if b == n
+                                && let Some(set) = self.sets.get_mut(n)
+                            {
+                                set.insert([x, y, z]);
+                            }
                         }
                     }
                 }

@@ -18,8 +18,6 @@ pub struct Poi {
     pub kind: PoiType,
     pub taken: usize,
 }
-/// The sections of a column in vanilla's height (-64..320).
-const SECTIONS_Y: std::ops::Range<i32> = -4..20;
 #[derive(Resource, Default)]
 pub struct PoiRegistry {
     points: HashMap<[i32; 3], Poi>,
@@ -30,6 +28,8 @@ pub struct PoiRegistry {
     /// The points that appeared / went this tick, and the ones of the tick before (what the modules read).
     now: (Vec<[i32; 3]>, Vec<[i32; 3]>),
     last: (Vec<[i32; 3]>, Vec<[i32; 3]>),
+    /// The section heights of the dimension's column (`ColumnLayout`), set by the first `scan_chunk`: what `forget_chunk` walks.
+    section_ys: std::ops::Range<i32>,
 }
 impl PoiRegistry {
     /// The points that appeared / went in the last tick.
@@ -223,19 +223,29 @@ fn poi_changes(level: Res<Level>, changed: Res<ChangedBlocks>, mut reg: ResMut<P
 impl PoiRegistry {
     /// The points of the chunk (`cx`, `cz`) enter the registry as it loads (appearances, as any block that changes).
     pub fn scan_chunk(&mut self, mw: &myriade_engine_lib::mobs::MobWorld<'_>, cx: i32, cz: i32) {
-        for x in (cx << 4)..(cx << 4) + 16 {
-            for z in (cz << 4)..(cz << 4) + 16 {
-                for y in -2..8 {
-                    if let Some(k) = classify(mw, [x, y, z]) {
-                        self.add([x, y, z], k);
+        let layout = mw.world.layout();
+        self.section_ys = (layout.min_y() >> 4)..(layout.max_y() >> 4);
+        let (x0, z0) = (cx << 4, cz << 4);
+        let wanted = |id| mw.registry.state(id).and_then(saved_poi).is_some();
+        for s in 0..layout.sections() {
+            let y0 = layout.section_y(s);
+            if !mw.world.may_hold([x0, y0, z0], [x0 + 15, y0 + 15, z0 + 15], wanted) {
+                continue;
+            }
+            for x in x0..x0 + 16 {
+                for z in z0..z0 + 16 {
+                    for y in y0..y0 + 16 {
+                        if let Some(k) = classify(mw, [x, y, z]) {
+                            self.add([x, y, z], k);
+                        }
                     }
                 }
             }
         }
     }
-    /// The points of the chunk (`cx`, `cz`) leave the registry when it unloads, section by section over the heights of vanilla.
+    /// The points of the chunk (`cx`, `cz`) leave the registry when it unloads, section by section over the heights of the dimension.
     pub fn forget_chunk(&mut self, cx: i32, cz: i32) {
-        for sy in SECTIONS_Y {
+        for sy in self.section_ys.clone() {
             let s = [cx, sy, cz];
             let Some(list) = self.by_section.remove(&s) else { continue };
             self.sections.remove(&s);
