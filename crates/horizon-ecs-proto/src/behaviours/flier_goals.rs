@@ -187,7 +187,8 @@ fn scan_pick(w: &World, e: Entity) -> Option<u32> {
             found = Some(pl.id);
         }
     });
-    found.filter(|&id| targeting::info(w, Who::Player(id)).is_some_and(|i| !i.exempt))
+    // `canAttack(p, TargetingConditions.DEFAULT)`: not creative or spectator, and in the line of sight.
+    found.filter(|&id| targeting::info(w, Who::Player(id)).is_some_and(|i| !i.exempt) && targeting::sees(w, e, Who::Player(id)))
 }
 fn scan_fired(w: &mut World, e: Entity, _: Inst) -> bool {
     if w.get::<Target>(e).is_some() {
