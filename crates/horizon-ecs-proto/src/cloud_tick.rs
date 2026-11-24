@@ -39,6 +39,7 @@ pub fn spawn(w: &mut World, at: Vec3, mut c: CloudSpec) -> Entity {
     c.age_base = -(w.resource::<crate::cow::Clock>().0 as i32);
     let e = w.spawn((Pos(at), c, Reached::default(), OwnTime)).id();
     crate::nbt::mark_saved(w, e, crate::species::lists::AREA_EFFECT_CLOUD);
+    w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::AREA_EFFECT_CLOUD));
     w.resource_mut::<Events>().host.cloud([at.x, at.y, at.z], radius, duration);
     // A wait of 0 is over at once: a deadline on the current tick would never come.
     if wait <= 0 {

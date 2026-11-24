@@ -29,6 +29,7 @@ pub fn spawn_led(w: &mut World, spec: CloudSpec, at: [f64; 3], lead: i32) -> Ent
     let (radius, duration) = (c.radius, c.duration);
     let e = w.spawn((Pos(Vec3::new(at[0], at[1], at[2])), c, OwnTime)).id();
     crate::nbt::mark_saved(w, e, crate::species::lists::AREA_EFFECT_CLOUD);
+    w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::AREA_EFFECT_CLOUD));
     w.resource_mut::<Events>().host.cloud(at, radius, duration);
     after(w, e, WAIT - lead, wake);
     after(w, e, WAIT + duration - lead, gone);
@@ -43,6 +44,7 @@ pub fn build(w: &mut World, at: Vec3, c: &horizon_core::nbt::Compound) -> Option
     // `Entity.deltaMovement` starts at zero and `saveWithoutId` writes it as `Motion`.
     let e = w.spawn((Pos(at), Vel(Vec3::ZERO), breath::FLAME.cloud([at.x, at.y, at.z]), OwnTime)).id();
     crate::nbt::mark_saved(w, e, crate::species::lists::AREA_EFFECT_CLOUD);
+    w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::AREA_EFFECT_CLOUD));
     Some(e)
 }
 
