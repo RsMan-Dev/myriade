@@ -528,8 +528,19 @@ fn write_block_state(w: &World, e: Entity, c: &mut Compound) {
     }
 }
 
+/// `BlockState.CODEC` of 26.3: a block name, or a compound keyed by `id` (the legacy `Name` compound is refused).
+fn modern_state(t: &Tag) -> Option<Tag> {
+    match t {
+        Tag::String(_) => Some(t.clone()),
+        Tag::Compound(c) if c.get(&horizon_core::nbt::JavaString::from("id")).is_some() => Some(t.clone()),
+        _ => None,
+    }
+}
+
 fn read_block_state(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Some(state) = world_of(w).registry.saved_state_id(t) else { return false };
+    // A form the 26.3 codec refuses (the `Name` compound of earlier saves) leaves the default, sand (`Optional.orElse`).
+    let modern = modern_state(t).unwrap_or_else(|| Tag::String("minecraft:sand".into()));
+    let Some(state) = world_of(w).registry.saved_state_id(&modern) else { return false };
     let nbt = world_of(w).registry.state(state).map(|s| s.to_nbt());
     let Some(mut f) = w.get_mut::<FallingBlock>(e) else { return false };
     f.state = state;
@@ -645,7 +656,7 @@ fn build_breath_cloud(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
 fn build_falling_block(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     // `FallingBlockEntity.DEFAULT_BLOCK_STATE` is sand when `BlockState` is absent.
     let state = match tag(c, "BlockState") {
-        Some(t) => world_of(w).registry.saved_state_id(t)?,
+        Some(t) => world_of(w).registry.saved_state_id(&modern_state(t).unwrap_or_else(|| Tag::String("minecraft:sand".into())))?,
         None => world_of(w).registry.default_state("minecraft:sand")?,
     };
     let cell = [at.x.floor() as i32, at.y.floor() as i32, at.z.floor() as i32];
