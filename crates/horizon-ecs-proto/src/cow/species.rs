@@ -54,7 +54,18 @@ pub struct SpeciesId(pub u8);
 /// How many entities of each species are alive (by `SpeciesId`): kept by the hooks, read by the goals that scan for a species.
 /// It lives in `Carriers` (a resource of its own would be one more entity, and shift the bench's picks).
 #[derive(Default)]
-pub struct Census(pub Vec<u32>);
+pub struct Census(pub Vec<u32>, pub NameIndex);
+
+/// The live entities of each `TypeName`, kept by the hooks of `TypeName` (spawn, despawn, replacement): `select` by species reads its set
+/// and never scans the world. Unordered; the readers sort what they return.
+#[derive(Default)]
+pub struct NameIndex(pub std::collections::HashMap<&'static str, bevy_ecs::entity::EntityHashSet>);
+
+impl NameIndex {
+    pub fn of(&self, name: &str) -> Option<&bevy_ecs::entity::EntityHashSet> {
+        self.0.get(name)
+    }
+}
 
 pub(crate) fn census_added(mut w: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
     let id = w.get::<SpeciesId>(ctx.entity).unwrap().0 as usize;
@@ -401,10 +412,26 @@ pub fn tags_of_id(id: SpeciesId) -> u32 {
 /// The type of the entity (`minecraft:cow`...), for the data keyed by type of the host (breathing).
 /// Every entity has one when it is made, so its join is taken there, unless it has one already or hangs (`hanging::JoinedAt` is taken then).
 #[derive(Component, Clone, Copy, Debug)]
-#[component(on_add = joined)]
+#[component(on_add = joined, on_remove = unnamed)]
 pub struct TypeName(pub &'static str);
 
+fn unnamed(mut w: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let name = w.get::<TypeName>(ctx.entity).map(|t| t.0);
+    if let (Some(name), Some(mut c)) = (name, w.get_resource_mut::<crate::goals::Carriers>())
+        && let Some(set) = c.1.1.0.get_mut(name)
+    {
+        set.remove(&ctx.entity);
+        if set.is_empty() {
+            c.1.1.0.remove(name);
+        }
+    }
+}
+
 fn joined(mut w: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let name = w.get::<TypeName>(ctx.entity).map(|t| t.0);
+    if let (Some(name), Some(mut c)) = (name, w.get_resource_mut::<crate::goals::Carriers>()) {
+        c.1.1.0.entry(name).or_default().insert(ctx.entity);
+    }
     if w.get::<crate::hanging::JoinedAt>(ctx.entity).is_none() && w.get::<crate::hanging::Attached>(ctx.entity).is_none() {
         let at = crate::hanging::JoinedAt(myriade_engine_lib::join_seq::JoinSeq::next());
         w.commands().entity(ctx.entity).insert(at);

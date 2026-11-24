@@ -151,12 +151,10 @@ pub fn first_tick(w: &World, e: Entity) -> bool {
     now_of(w, e) == 0
 }
 
-/// The alive entities of the species `kind`, from its census (kept by the hooks): no scan. 0 for an unknown species.
+/// The alive entities of the species `kind`, from the name index the `TypeName` hooks keep: no scan, and every entity has a name
+/// (the census by `SpeciesId` misses the species without one: item, trident, tnt). 0 for an unknown species.
 pub fn species_count(w: &World, kind: &str) -> usize {
-    let Some(id) = w.get_resource::<SpeciesTable>().and_then(|t| t.0.iter().find(|s| s.name == kind)).map(|s| s.id) else {
-        return 0;
-    };
-    w.get_resource::<Carriers>().and_then(|c| c.1.0.get(usize::from(id)).copied()).unwrap_or(0) as usize
+    w.get_resource::<Carriers>().and_then(|c| c.1.1.of(kind)).map_or(0, |s| s.len())
 }
 
 impl EcsWorld {

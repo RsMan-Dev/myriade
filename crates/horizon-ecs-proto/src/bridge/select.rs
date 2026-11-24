@@ -1,5 +1,5 @@
 //! What a host query names: an entity by kind, by tag and by radius. The radius is answered by the creature index (`Index`), never by a
-//! scan of the world; a query without a radius reads every entity once (the only scan of the bridge, and no tick uses it).
+//! scan of the world; a query without a radius reads the entities of its species from the name index, or every entity once when it names no species.
 use crate::cow::{Index, Pos, TypeName};
 use crate::type_tags::{self, TagId};
 use bevy_ecs::{entity::Entity, entity_disabling::Disabled, prelude::*};
@@ -23,7 +23,10 @@ pub fn select(world: &World, q: &Select) -> Vec<Entity> {
             world.resource::<Index>().for_radius(at[0], at[2], r, |e| v.push(e));
             v
         }
-        None => world.iter_entities().map(|r| r.id()).collect(),
+        None => match &q.kind {
+            Some(k) => named(world, k).collect(),
+            None => world.iter_entities().map(|r| r.id()).collect(),
+        },
     };
     let mut out: Vec<Entity> = candidates.into_iter().filter(|&e| keep(world, q, tag, e)).collect();
     out.sort_unstable();
@@ -43,9 +46,17 @@ pub fn count(world: &World, q: &Select) -> usize {
             world.resource::<Index>().for_radius(at[0], at[2], r, |e| n += usize::from(keep(world, q, tag, e)));
             n
         }
-        None => world.iter_entities().filter(|r| keep(world, q, tag, r.id())).count(),
+        None => match &q.kind {
+            Some(k) => named(world, k).filter(|&e| keep(world, q, tag, e)).count(),
+            None => world.iter_entities().filter(|r| keep(world, q, tag, r.id())).count(),
+        },
     };
     if q.limit > 0 { n.min(q.limit) } else { n }
+}
+
+/// The entities of the species `kind`, from the index the `TypeName` hooks keep: no scan, nothing when none lives.
+fn named<'a>(world: &'a World, kind: &str) -> impl Iterator<Item = Entity> + 'a {
+    world.get_resource::<crate::goals::Carriers>().and_then(|c| c.1.1.of(kind)).into_iter().flat_map(|s| s.iter().copied())
 }
 
 /// The tag id of `q`: None when the query names a tag that does not exist (no entity has it), Some(None) when it names none.
