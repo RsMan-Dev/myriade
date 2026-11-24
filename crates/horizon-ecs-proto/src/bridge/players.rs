@@ -41,6 +41,15 @@ pub fn set_player(world: &mut World, p: Player, state: PlayerFact) {
         }
         ps.health[i] = want;
     }
+    // `TargetingConditions`: a creative or spectator player is no target. The host's fact (`targetable`) is what the creatures read.
+    if let Some(mut ps) = world.get_resource_mut::<crate::hostile::PlayerState>() {
+        ps.set_creative(p.id, !state.targetable && !state.spectator);
+        let i = p.id as usize;
+        if ps.spectator.len() <= i {
+            ps.spectator.resize(i + 1, false);
+        }
+        ps.spectator[i] = state.spectator;
+    }
     let moved = world.resource::<Online>().get(p.id).is_none_or(|o| !same(&o, &p));
     if moved {
         world.resource_mut::<Online>().set(p);
