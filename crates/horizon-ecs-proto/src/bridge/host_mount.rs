@@ -285,7 +285,7 @@ impl EcsWorld {
     /// mounts are visited, never every entity.
     pub fn dismount_underwater(&mut self) {
         let w = self.world_mut();
-        let mounts: Vec<Entity> = w.query_filtered::<Entity, With<Ridden>>().iter(w).collect();
+        let mounts: Vec<Entity> = crate::queries::entities::<With<Ridden>>(w);
         for m in mounts {
             if !type_tags::named(w, "dismounts_underwater", m) {
                 continue;

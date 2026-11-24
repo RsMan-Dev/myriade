@@ -65,7 +65,7 @@ pub fn register(s: &mut Schedule) {
 /// `LivingEntity.updateFallFlying` on the gliding entities only: a glide that cannot hold stops; else the glider takes its wear, and
 /// the ELYTRA_GLIDE event comes on every tenth tick.
 fn glide_tick(w: &mut World) {
-    let gliding: Vec<Entity> = w.query_filtered::<Entity, With<FallFlying>>().iter(w).collect();
+    let gliding: Vec<Entity> = crate::queries::entities::<With<FallFlying>>(w);
     for e in gliding {
         let on_ground = w.get::<Contact>(e).is_some_and(|c| c.on_ground);
         let riding = w.get::<Riding>(e).is_some();

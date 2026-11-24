@@ -77,7 +77,7 @@ fn fire_tick(w: &mut World, e: Entity) {
 
 /// One `ModTick` per subscribed general entity, this tick.
 fn tick_subscribed(w: &mut World) {
-    let subscribed: Vec<(Entity, u16)> = w.query_filtered::<(Entity, &General), With<Subscribed>>().iter(w).map(|(e, g)| (e, g.kind)).collect();
+    let subscribed: Vec<(Entity, u16)> = crate::queries::with::<(Entity, &'static General), With<Subscribed>, _>(w, |q, w| q.iter(w).map(|(e, g)| (e, g.kind)).collect());
     for (entity, kind) in subscribed {
         emit(w, GeneralEvent::ModTick { entity, kind });
     }

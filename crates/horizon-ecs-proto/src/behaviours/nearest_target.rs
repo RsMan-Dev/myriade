@@ -264,7 +264,7 @@ fn release(w: &mut World, e: Entity) {
 }
 /// A creature of species `sp` was born where none lived: the instances parked for it are armed again.
 pub fn unpark(w: &mut World, sp: u8) {
-    let ids: Vec<Entity> = w.query_filtered::<Entity, With<NearestTargets>>().iter(w).collect();
+    let ids: Vec<Entity> = crate::queries::entities::<With<NearestTargets>>(w);
     for e in ids {
         let hits: Vec<(u8, u8)> = w.get::<NearestTargets>(e).map_or(Vec::new(), |ts| ts.0.iter().enumerate().filter(|(_, n)| n.parked && n.mask.contains(sp)).map(|(i, n)| (n.slot, i as u8)).collect());
         for (slot, nth) in hits {

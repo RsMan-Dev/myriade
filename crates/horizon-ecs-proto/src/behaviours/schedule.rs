@@ -82,7 +82,7 @@ pub static BEHAVIOUR: Behaviour = Behaviour { name: "schedule:timeline", can_sta
 
 /// The schedule starts again on every brain that has one (the hour jumped).
 fn resync(w: &mut World) {
-    let all: Vec<Entity> = w.query_filtered::<Entity, With<Brain>>().iter(w).collect();
+    let all: Vec<Entity> = crate::queries::entities::<With<Brain>>(w);
     for e in all {
         restart(w, e, &BEHAVIOUR);
     }

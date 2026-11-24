@@ -69,7 +69,7 @@ fn arm(w: &mut World, e: Entity, ticks: i32, f: fn(&mut World, Entity)) {
 
 /// The lit furnaces burn one tick of fuel; at zero the push goes and the furnace is no longer lit.
 fn furnace_step(w: &mut World) {
-    let lit: Vec<Entity> = w.query_filtered::<Entity, With<Lit>>().iter(w).collect();
+    let lit: Vec<Entity> = crate::queries::entities::<With<Lit>>(w);
     for e in lit {
         let Some(mut f) = w.get_mut::<Furnace>(e) else { continue };
         f.fuel = (f.fuel - 1).max(0);
@@ -86,7 +86,7 @@ fn furnace_step(w: &mut World) {
 
 /// The hurt time counts down and the damage eases by one a tick; a cart with neither left is no longer hurt.
 fn hurt_step(w: &mut World) {
-    let hurt: Vec<(Entity, CartHurt)> = w.query::<(Entity, &CartHurt)>().iter(w).map(|(e, h)| (e, *h)).collect();
+    let hurt: Vec<(Entity, CartHurt)> = crate::queries::with::<(Entity, &'static CartHurt), (), _>(w, |q, w| q.iter(w).map(|(e, h)| (e, *h)).collect());
     for (e, h) in hurt {
         let (time, damage) = ((h.time - 1).max(0), (h.damage - 1.0).max(0.0));
         if time == 0 && damage == 0.0 {

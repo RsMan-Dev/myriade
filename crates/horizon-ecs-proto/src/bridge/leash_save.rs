@@ -79,7 +79,7 @@ fn drop_pending(w: &mut World, e: Entity) {
 
 /// Ties each pending lead whose holder is there (a knot, or the entity of its uuid); the others wait for the next call.
 pub fn resolve_pending(w: &mut World) {
-    let waiting: Vec<(Entity, Pending)> = w.query::<(Entity, &PendingLeash)>().iter(w).map(|(e, p)| (e, p.0)).collect();
+    let waiting: Vec<(Entity, Pending)> = crate::queries::with::<(Entity, &'static PendingLeash), (), _>(w, |q, w| q.iter(w).map(|(e, p)| (e, p.0)).collect());
     for (e, p) in waiting {
         tie_pending(w, e, p);
     }

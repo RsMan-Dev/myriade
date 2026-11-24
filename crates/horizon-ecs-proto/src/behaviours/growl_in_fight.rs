@@ -29,7 +29,7 @@ fn never(_: &mut World, _: Entity, _: Inst) -> bool {
     false
 }
 fn tick(w: &mut World) {
-    let growls: Vec<Entity> = w.query_filtered::<Entity, With<Growls>>().iter(w).collect();
+    let growls: Vec<Entity> = crate::queries::entities::<With<Growls>>(w);
     for e in growls {
         let Some(f) = w.get_mut::<Rng>(e).map(|mut r| r.next_f64()) else { continue };
         if f >= f64::from(LIKELIHOOD) || !is_active(w, e, "fight") {

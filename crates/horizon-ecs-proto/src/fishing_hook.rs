@@ -317,7 +317,7 @@ fn refresh_speed(w: &mut World, e: Entity) {
 }
 /// The weather changed (rain or none): the hooks waiting in the water read their fish's speed again.
 pub fn weather_changed(w: &mut World) {
-    let hooks: Vec<Entity> = w.query_filtered::<Entity, With<Wait>>().iter(w).collect();
+    let hooks: Vec<Entity> = crate::queries::entities::<With<Wait>>(w);
     for e in hooks {
         refresh_speed(w, e);
     }
@@ -414,7 +414,7 @@ fn fly(world: &mut World) {
     if !sparse_any::<Hook>(world) {
         return;
     }
-    let hooks: Vec<Entity> = world.query_filtered::<Entity, (With<Hook>, Or<(Without<Wait>, With<Approach>)>)>().iter(world).collect();
+    let hooks: Vec<Entity> = crate::queries::entities::<(With<Hook>, Or<(Without<Wait>, With<Approach>)>)>(world);
     for e in hooks {
         step(world, e);
     }

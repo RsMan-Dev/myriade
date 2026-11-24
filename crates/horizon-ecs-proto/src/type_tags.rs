@@ -134,7 +134,7 @@ pub fn reload(w: &mut World, root: &std::path::Path, species: &[Species]) {
     install(root, species);
     sync(w);
     let all: Vec<ComponentId> = w.resource::<TypeTags>().ids.clone();
-    let holders: Vec<(Entity, u8)> = w.query::<(Entity, &SpeciesId)>().iter(w).map(|(e, s)| (e, s.0)).collect();
+    let holders: Vec<(Entity, u8)> = crate::queries::with::<(Entity, &'static SpeciesId), (), _>(w, |q, w| q.iter(w).map(|(e, s)| (e, s.0)).collect());
     for (e, s) in holders {
         let held: Vec<ComponentId> = all.iter().copied().filter(|&c| w.entity(e).contains_id(c)).collect();
         if !held.is_empty() {

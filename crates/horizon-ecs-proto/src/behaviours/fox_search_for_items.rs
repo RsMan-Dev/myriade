@@ -179,7 +179,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
 struct Idle;
 /// An item joined the ground: the sleeping searches draw again.
 pub fn wake_parked(w: &mut World) {
-    let es: Vec<Entity> = w.query_filtered::<Entity, With<Idle>>().iter(w).collect();
+    let es: Vec<Entity> = crate::queries::entities::<With<Idle>>(w);
     for e in es {
         w.entity_mut(e).remove::<Idle>();
         arm_draw(w, e);

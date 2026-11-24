@@ -104,7 +104,7 @@ fn tick(w: &mut World) {
     if !carried {
         return;
     }
-    let escorts: Vec<(Entity, Escorting)> = w.query_filtered::<(Entity, &Escorting), ()>().iter(w).map(|(e, x)| (e, *x)).collect();
+    let escorts: Vec<(Entity, Escorting)> = crate::queries::with::<(Entity, &'static Escorting), (), _>(w, |q, w| q.iter(w).map(|(e, x)| (e, *x)).collect());
     for (e, x) in escorts {
         let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { continue };
         let Some(p) = w.resource::<Online>().get(x.player) else {

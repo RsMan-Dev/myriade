@@ -210,7 +210,7 @@ pub fn zone_step(world: &mut World) {
         // ones in flight (or stuck) are looked at once, by event and never per tick, and the frozen ones likewise. Cost: one pass over those
         // sets per change of a player's chunk that flipped a chunk, nothing per entity and nothing while no player moves.
         if down {
-            let list: Vec<Entity> = world.query_filtered::<(Entity, &crate::cow::Pos), (Loose, Without<Dormant>)>().iter(world).filter(|(_, p)| !idx.simulated_at(p.0.x, p.0.z)).map(|(e, _)| e).collect();
+            let list: Vec<Entity> = crate::queries::with::<(Entity, &'static crate::cow::Pos), (Loose, Without<Dormant>), _>(world, |q, world| q.iter(world).filter(|(_, p)| !idx.simulated_at(p.0.x, p.0.z)).map(|(e, _)| e).collect());
             idx.zone.stats.slept += list.len() as u64;
             for e in list {
                 // A `Hurting` projectile leaves the loaded chunks: it is discarded, not kept (`projectile::fly`).

@@ -279,7 +279,7 @@ pub fn boat_step(w: &mut World) {
     }
     let level = *w.resource::<Level>();
     let void_y = f64::from(level.mw.0.world.bottom_y() - BELOW);
-    let boats: Vec<Entity> = w.query_filtered::<Entity, (With<Boat>, With<Moving>)>().iter(w).collect();
+    let boats: Vec<Entity> = crate::queries::entities::<(With<Boat>, With<Moving>)>(w);
     for e in boats {
         step_one(w, &level, e, void_y);
         if w.entity(e).contains::<crate::leash::Leash>() {

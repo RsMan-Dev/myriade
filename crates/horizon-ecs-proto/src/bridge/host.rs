@@ -93,6 +93,7 @@ impl EcsWorld {
         world.remove_resource::<Level>();
         zone::enable(&mut world, setup.simulation_radius);
         world.init_resource::<view::Modified>();
+        world.init_resource::<crate::queries::Queries>();
         world.init_resource::<view::Entered>();
         world.insert_resource(bevy_ecs::error::FallbackErrorHandler(despawned_is_a_no_op));
         world.insert_resource(crate::frame_item::DropRng(crate::flat::Rng(setup.seed as u64 ^ 0x9E37_79B9_7F4A_7C15)));

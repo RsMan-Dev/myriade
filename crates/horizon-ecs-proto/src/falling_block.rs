@@ -116,7 +116,7 @@ fn lands(w: &mut World) {
             b.fell = c.fall_distance;
         }
     }
-    let landed: Vec<(Entity, Vec3)> = w.query_filtered::<(Entity, &Pos, &Contact), With<FallingBlock>>().iter(w).filter(|x| x.2.on_ground).map(|x| (x.0, x.1 .0)).collect();
+    let landed: Vec<(Entity, Vec3)> = crate::queries::with::<(Entity, &'static Pos, &'static Contact), With<FallingBlock>, _>(w, |q, w| q.iter(w).filter(|x| x.2.on_ground).map(|x| (x.0, x.1 .0)).collect());
     for (e, at) in landed {
         let Some(b) = w.get::<FallingBlock>(e).cloned() else { continue };
         let at3 = [at.x, at.y, at.z];

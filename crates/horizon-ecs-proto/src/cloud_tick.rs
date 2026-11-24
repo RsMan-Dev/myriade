@@ -63,7 +63,7 @@ pub fn any_live(q: Query<(), With<Live>>) -> bool {
 
 /// One tick of every live cloud: it ends past its duration, grows, is removed under 0.5 blocks, and doses at every 5th tick of its age.
 pub fn tick(w: &mut World) {
-    let clouds: Vec<Entity> = w.query_filtered::<Entity, With<Live>>().iter(w).collect();
+    let clouds: Vec<Entity> = crate::queries::entities::<With<Live>>(w);
     for e in clouds {
         // Taken out and put back: the spec holds its particle compound, which a tick must not copy.
         let mut c = std::mem::take(&mut *w.get_mut::<CloudSpec>(e).expect("live clouds have a spec"));

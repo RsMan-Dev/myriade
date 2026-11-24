@@ -125,7 +125,7 @@ fn tick(w: &mut World) {
     if !id.is_some_and(|i| w.resource::<Carriers>().0.get(i).is_some_and(|n| *n > 0)) {
         return;
     }
-    let es: Vec<Entity> = w.query_filtered::<Entity, With<Aiming>>().iter(w).collect();
+    let es: Vec<Entity> = crate::queries::entities::<With<Aiming>>(w);
     for e in es {
         step(w, e);
     }

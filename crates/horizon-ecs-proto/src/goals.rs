@@ -1208,16 +1208,9 @@ fn tick_modules(world: &mut World) {
         tick_state(world, crate::touch::touch_events);
     }
 }
-/// The entities that match a filter, through a query state kept in the world (one per filter): building a `QueryState` each tick costs thousands of
-/// instructions, reading a kept one a few hundred.
-#[derive(Resource)]
-pub(crate) struct Cached<F: bevy_ecs::query::QueryFilter + 'static>(bevy_ecs::query::QueryState<Entity, F>);
+/// The entities that match a filter, through a query state kept in the world (`queries::Queries`).
 pub(crate) fn entities<F: bevy_ecs::query::QueryFilter + 'static>(w: &mut World) -> Vec<Entity> {
-    if !w.contains_resource::<Cached<F>>() {
-        let q = w.query_filtered::<Entity, F>();
-        w.insert_resource(Cached::<F>(q));
-    }
-    w.resource_scope(|w, mut c: Mut<Cached<F>>| c.0.iter(w).collect())
+    crate::queries::entities::<F>(w)
 }
 /// The parameters of a system function kept as a tick (`SystemState`, one per function).
 #[derive(Resource)]

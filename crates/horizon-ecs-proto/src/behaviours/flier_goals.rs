@@ -75,7 +75,7 @@ fn charge_stop(w: &mut World, e: Entity, _: Inst) {
     arm_vex_charge(w, e, Inst { slot: 0, nth: 0 });
 }
 fn charge_tick(w: &mut World) {
-    let es: Vec<Entity> = w.query_filtered::<Entity, With<Charging>>().iter(w).collect();
+    let es: Vec<Entity> = crate::queries::entities::<With<Charging>>(w);
     for e in es {
         let Some((who, t)) = target_of(w, e) else { end(w, e, &VEX_CHARGE); continue };
         let (Some(b), Some(p)) = (w.get::<Bounds>(e).map(|b| b.0), w.get::<Pos>(e).map(|p| p.0)) else { continue };
@@ -276,7 +276,7 @@ fn strategy_tick(w: &mut World) {
             w.resource_mut::<Requests>().0.push(Req::End(e, s));
         }
     }
-    let es: Vec<Entity> = w.query_filtered::<Entity, (With<Strategy>, Without<Diving>)>().iter(w).collect();
+    let es: Vec<Entity> = crate::queries::entities::<(With<Strategy>, Without<Diving>)>(w);
     for e in es {
         let due = {
             let mut s = w.get_mut::<Strategy>(e).unwrap();
@@ -311,7 +311,7 @@ fn sweep_stop(w: &mut World, e: Entity, _: Inst) {
     }
 }
 fn sweep_tick(w: &mut World) {
-    let es: Vec<Entity> = w.query_filtered::<Entity, With<Sweeping>>().iter(w).collect();
+    let es: Vec<Entity> = crate::queries::entities::<With<Sweeping>>(w);
     for e in es {
         let Some((who, t)) = target_of(w, e) else { end(w, e, &PHANTOM_SWEEP_ATTACK); continue };
         if w.get::<Diving>(e).is_none() {
@@ -382,7 +382,7 @@ fn circle_stop(w: &mut World, e: Entity, _: Inst) {
 }
 /// Every other tick (the `Mob` ticks a goal that is not `every_tick` on the ticks where tick + id is even).
 fn circle_tick(w: &mut World) {
-    let es: Vec<Entity> = w.query_filtered::<Entity, With<Circling>>().iter(w).collect();
+    let es: Vec<Entity> = crate::queries::entities::<With<Circling>>(w);
     for e in es {
         let now = crate::cow::now_of(w, e);
         let one = |w: &mut World| {

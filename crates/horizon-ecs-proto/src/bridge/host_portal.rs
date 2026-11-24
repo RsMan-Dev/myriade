@@ -52,11 +52,13 @@ impl EcsWorld {
             let mut seen = std::collections::HashSet::new();
             let mut rows: Vec<(Entity, [f64; 3])> = Vec::new();
             if w.component_id::<Moving>().is_some() {
-                for (e, p) in w.query_filtered::<(Entity, &Pos), With<Moving>>().iter(w) {
-                    if seen.insert(e) {
-                        rows.push((e, [p.0.x, p.0.y, p.0.z]));
+                crate::queries::with::<(Entity, &'static Pos), With<Moving>, _>(w, |q, w| {
+                    for (e, p) in q.iter(w) {
+                        if seen.insert(e) {
+                            rows.push((e, [p.0.x, p.0.y, p.0.z]));
+                        }
                     }
-                }
+                });
             }
             let entered: Vec<Entity> = w.get_resource::<crate::bridge::view::Entered>().map(|v| v.0.iter().chain(&v.1).copied().collect()).unwrap_or_default();
             for e in entered.into_iter().chain(extra.iter().copied()) {

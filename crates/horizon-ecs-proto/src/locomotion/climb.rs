@@ -34,7 +34,7 @@ pub fn tick(w: &mut World) {
     if !crate::goals::sparse_any::<ClimbWish>(w) {
         return;
     }
-    let all: Vec<(Entity, [i32; 3], f64)> = w.query::<(Entity, &ClimbWish)>().iter(w).map(|(e, c)| (e, c.cell, c.at)).collect();
+    let all: Vec<(Entity, [i32; 3], f64)> = crate::queries::with::<(Entity, &'static ClimbWish), (), _>(w, |q, w| q.iter(w).map(|(e, c)| (e, c.cell, c.at)).collect());
     for (e, t, speed) in all {
         let (Some(p), Some(b)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Body>(e).map(|b| b.width)) else {
             w.entity_mut(e).remove::<ClimbWish>();

@@ -96,7 +96,7 @@ pub fn spawn_flame(w: &mut World, at: [f64; 3]) -> Entity {
 
 /// Ends the flames (`DragonSittingFlamingPhase.end`).
 pub fn end_flames(w: &mut World) {
-    let ids: Vec<Entity> = w.query_filtered::<Entity, With<Flame>>().iter(w).collect();
+    let ids: Vec<Entity> = crate::queries::entities::<With<Flame>>(w);
     for e in ids {
         w.despawn(e);
     }
@@ -105,7 +105,7 @@ pub fn end_flames(w: &mut World) {
 /// The cloud system: each cloud steps once per tick, against the players and creatures its box meets. Players it harms take the
 /// instant damage. Not done here: the creatures' effect (`breath_affect_mob`) and the damage source `indirect_magic`.
 pub fn tick_clouds(w: &mut World) {
-    let ids: Vec<Entity> = w.query_filtered::<Entity, With<Cloud>>().iter(w).collect();
+    let ids: Vec<Entity> = crate::queries::entities::<With<Cloud>>(w);
     for e in ids {
         let Some(mut c) = w.get::<Cloud>(e).cloned() else { continue };
         let area = cloud_rule::scan_box(c.at, cloud_rule::cloud_reach(c.radius, c.radius_per_tick));

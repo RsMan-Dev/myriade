@@ -257,7 +257,7 @@ mod tests {
     }
 
     fn ground(w: &mut World) -> Vec<String> {
-        let mut names: Vec<String> = w.query::<&Item>().iter(w).map(|it| it.stack.item.to_string()).collect();
+        let mut names: Vec<String> = crate::queries::with::<&'static Item, (), _>(w, |q, w| q.iter(w).map(|it| it.stack.item.to_string()).collect());
         names.sort();
         names
     }

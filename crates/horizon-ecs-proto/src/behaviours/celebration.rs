@@ -32,7 +32,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
 }
 /// The goal's tick is every other game tick (`reducedTickDelay`): the cheer is one draw in 50 of them, the jump one in 25.
 fn tick(w: &mut World) {
-    let es: Vec<Entity> = w.query_filtered::<Entity, With<Celebrating>>().iter(w).collect();
+    let es: Vec<Entity> = crate::queries::entities::<With<Celebrating>>(w);
     for e in es {
         if (now_of(w, e) + phase_of(w, e)) % 2 != 0 {
             continue;

@@ -42,7 +42,7 @@ pub static MODULE: Module = Module {
 /// ticks every tick, so it never digs away from its owner.
 const KEPT_COOLDOWN: u64 = 1200;
 fn keep_cooldown(w: &mut World) {
-    let es: Vec<Entity> = w.query_filtered::<Entity, With<Cfg>>().iter(w).collect();
+    let es: Vec<Entity> = crate::queries::entities::<With<Cfg>>(w);
     for e in es {
         if w.get::<Persistent>(e).is_none() && !mount_bound(w, e) {
             continue;

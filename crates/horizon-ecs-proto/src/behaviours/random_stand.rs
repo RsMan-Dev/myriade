@@ -117,7 +117,7 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
 /// `AbstractHorse.animate` (stand part): rises while it rears (`+ (1 - v) * 0.4 + 0.05`, at most 1), else falls (`0.8 v³ - v`).
 /// The value is kept while the animal rears or is still above 0; the component goes when it reaches 0 at rest.
 fn animate(w: &mut World) {
-    let rows: Vec<Entity> = w.query_filtered::<Entity, Or<(With<Standing>, With<StandAnim>)>>().iter(w).collect();
+    let rows: Vec<Entity> = crate::queries::entities::<Or<(With<Standing>, With<StandAnim>)>>(w);
     for e in rows {
         let now = crate::cow::now_of(w, e);
         let standing = w.get::<Standing>(e).is_some_and(|s| now < s.until);

@@ -139,7 +139,7 @@ fn tick(w: &mut World) {
             chain(w, e, 1);
         }
     }
-    let running: Vec<Entity> = w.query_filtered::<Entity, With<Fetching>>().iter(w).collect();
+    let running: Vec<Entity> = crate::queries::entities::<With<Fetching>>(w);
     for e in running {
         let scan = w.get::<Fetcher>(e).map_or(8.0, |f| f.p.scan);
         match point(w, e, scan) {

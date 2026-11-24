@@ -117,7 +117,7 @@ fn tick(w: &mut World) {
             chain(w, e, 1);
         }
     }
-    let swimming: Vec<Entity> = w.query_filtered::<Entity, With<SwimmingUp>>().iter(w).collect();
+    let swimming: Vec<Entity> = crate::queries::entities::<With<SwimmingUp>>(w);
     for e in swimming {
         let stuck = w.get::<Rising>(e).is_some_and(|r| r.stuck);
         if !up_ok(w, e) || stuck {

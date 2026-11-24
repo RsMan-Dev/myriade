@@ -17,7 +17,7 @@ pub fn forgive(w: &mut World, e: Entity, player: u32) -> bool {
 
 /// Forgives `player` at every neutral mob in reach of the block `block` (the dead player's feet, floored).
 pub fn forgive_in_reach(w: &mut World, block: [i32; 3], player: u32) {
-    let angry: Vec<Entity> = w.query_filtered::<Entity, With<Anger>>().iter(w).collect();
+    let angry: Vec<Entity> = crate::queries::entities::<With<Anger>>(w);
     for e in angry {
         if in_reach(w, e, block) {
             forgive(w, e, player);

@@ -167,7 +167,7 @@ fn wants(w: &mut World, e: Entity, inst: Inst) -> bool {
         Spell::Vexes { species } => {
             let Some(id) = crate::species::registry().id(species) else { return false };
             let me = w.get::<Pos>(e).unwrap().0;
-            let near = w.query::<(&Pos, &SpeciesId, &Health)>().iter(w).filter(|(p, s, h)| s.0 as usize == id && h.0 > 0.0 && d2(p.0, me) <= 256.0).count() as i32;
+            let near = crate::queries::with::<(&'static Pos, &'static SpeciesId, &'static Health), (), _>(w, |q, w| q.iter(w).filter(|(p, s, h)| s.0 as usize == id && h.0 > 0.0 && d2(p.0, me) <= 256.0).count() as i32);
             with_rng(w, e, |r| r.next_int(8) + 1) > near
         }
         Spell::Disappear => !effects::has(w, e, effects::Kind::Invisibility),

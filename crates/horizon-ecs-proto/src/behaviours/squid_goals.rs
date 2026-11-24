@@ -34,7 +34,7 @@ fn wander_stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Wandering>();
 }
 fn wander_tick(w: &mut World) {
-    let es: Vec<Entity> = w.query_filtered::<Entity, With<Wandering>>().iter(w).collect();
+    let es: Vec<Entity> = crate::queries::entities::<With<Wandering>>(w);
     for e in es {
         if (now_of(w, e) + phase_of(w, e)) % 2 != 0 {
             continue;
@@ -88,7 +88,7 @@ fn flee_tick(w: &mut World) {
             w.resource_mut::<Requests>().0.push(Req::Start(e, s));
         }
     }
-    let es: Vec<Entity> = w.query_filtered::<Entity, With<Fleeing>>().iter(w).collect();
+    let es: Vec<Entity> = crate::queries::entities::<With<Fleeing>>(w);
     for e in es {
         if !flee_ok(w, e) {
             end(w, e, &SQUID_FLEE);

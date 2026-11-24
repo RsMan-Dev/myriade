@@ -32,7 +32,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Watching>();
 }
 fn tick(w: &mut World) {
-    let es: Vec<(Entity, u8)> = w.query::<(Entity, &Watching)>().iter(w).map(|(e, s)| (e, s.0)).collect();
+    let es: Vec<(Entity, u8)> = crate::queries::with::<(Entity, &'static Watching), (), _>(w, |q, w| q.iter(w).map(|(e, s)| (e, s.0)).collect());
     for (e, slot) in es {
         match watched(w, e) {
             Some(at) => crate::brain::look_at(w, e, at),

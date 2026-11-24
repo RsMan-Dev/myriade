@@ -141,7 +141,7 @@ fn tick(w: &mut World) {
             None => crate::goals::wake(w, e, &MODULE),
         }
     }
-    let running: Vec<Entity> = w.query_filtered::<Entity, With<Surfacing>>().iter(w).collect();
+    let running: Vec<Entity> = crate::queries::entities::<With<Surfacing>>(w);
     for e in running {
         let Some(s) = settings(w, e) else { continue };
         if w.get::<Air>(e).is_some_and(|a| a.0 >= s.threshold) {

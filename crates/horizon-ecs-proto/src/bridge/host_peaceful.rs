@@ -67,7 +67,7 @@ impl EcsWorld {
         if id != 0 {
             return Vec::new();
         }
-        let gone: Vec<Entity> = w.query_filtered::<Entity, With<NotInPeaceful>>().iter(w).collect();
+        let gone: Vec<Entity> = crate::queries::entities::<With<NotInPeaceful>>(w);
         let ids = gone.iter().filter_map(|&e| crate::bridge::ids::id_of(w, e)).collect();
         for e in gone {
             crate::despawn::remove(w, e);

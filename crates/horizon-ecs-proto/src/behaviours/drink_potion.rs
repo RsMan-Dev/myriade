@@ -77,7 +77,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 #[derive(bevy_ecs::prelude::Resource, Default)]
 pub struct Visits(pub u64);
 fn tick(w: &mut World) {
-    let es: Vec<(Entity, &'static Params)> = w.query_filtered::<(Entity, &Drinker), With<Thirsty>>().iter(w).map(|(e, d)| (e, d.0)).collect();
+    let es: Vec<(Entity, &'static Params)> = crate::queries::with::<(Entity, &'static Drinker), With<Thirsty>, _>(w, |q, w| q.iter(w).map(|(e, d)| (e, d.0)).collect());
     w.get_resource_or_insert_with(Visits::default).0 += es.len() as u64;
     for (e, p) in es {
         if w.get::<Health>(e).is_none_or(|h| h.0 <= 0.0) {

@@ -42,6 +42,7 @@ pub mod hand_swallow;
 pub mod flat;
 pub mod goal_edit;
 pub mod goals;
+pub mod queries;
 pub mod health;
 pub mod instr;
 pub mod item;

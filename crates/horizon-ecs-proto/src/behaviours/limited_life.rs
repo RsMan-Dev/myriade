@@ -20,7 +20,7 @@ fn never(_: &mut World, _: Entity, _: Inst) -> bool {
 }
 fn tick(w: &mut World) {
     let now = w.resource::<Clock>().0;
-    let late: Vec<(Entity, Option<(f64, f64)>)> = w.query::<(Entity, &Lifespan, &Health, &Pos)>().iter(w).filter(|(_, l, h, _)| l.0 <= now && h.0 > 0.0).map(|(e, _, _, p)| (e, Some((p.0.x, p.0.z)))).collect();
+    let late: Vec<(Entity, Option<(f64, f64)>)> = crate::queries::with::<(Entity, &'static Lifespan, &'static Health, &'static Pos), (), _>(w, |q, w| q.iter(w).filter(|(_, l, h, _)| l.0 <= now && h.0 > 0.0).map(|(e, _, _, p)| (e, Some((p.0.x, p.0.z)))).collect());
     let mut q = w.resource_mut::<DamageQueue>();
     for (e, from) in late {
         q.0.push(Hit { target: e, amount: 1.0, cause: Cause::Magic, damage: "starve", from, by: None, direct: false, power: None, extra: None, projectile: None });

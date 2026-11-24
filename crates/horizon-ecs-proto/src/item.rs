@@ -344,7 +344,7 @@ fn item_moved(world: &mut World) {
     if world.resource::<ItemIndex>().awake == 0 {
         return;
     }
-    let mut list: Vec<(u32, Entity)> = world.query_filtered::<(Entity, &Item), With<ItemAwake>>().iter(world).map(|(e, it)| (it.id, e)).collect();
+    let mut list: Vec<(u32, Entity)> = crate::queries::with::<(Entity, &'static Item), With<ItemAwake>, _>(world, |q, world| q.iter(world).map(|(e, it)| (it.id, e)).collect());
     if list.is_empty() {
         return;
     }

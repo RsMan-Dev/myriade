@@ -267,7 +267,7 @@ fn snowflakes(w: &mut World, e: Entity, cells: &[[i32; 3]]) {
 /// The boats that move, and the boats beside a block that changed, are read for the cells they reach into; a boat at rest with no
 /// change near it is not in any query.
 fn boat_cells(w: &mut World) {
-    let mut boats: Vec<Entity> = w.query_filtered::<Entity, (With<Boat>, With<Moving>)>().iter(w).collect();
+    let mut boats: Vec<Entity> = crate::queries::entities::<(With<Boat>, With<Moving>)>(w);
     let changed: Vec<[i32; 3]> = w.get_resource::<BlockEvents>().map_or_else(Vec::new, |b| b.changed.clone());
     for c in changed {
         let mut near = Vec::new();

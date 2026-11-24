@@ -158,5 +158,5 @@ pub fn aim_at(w: &mut World, e: Entity, at: [f64; 3], y_speed: Option<f32>) {
 
 /// The entities that carry the marker `T` (a goal that runs), as a list: empty costs nothing.
 pub fn marked<T: Component>(w: &mut World) -> Vec<Entity> {
-    w.query_filtered::<Entity, With<T>>().iter(w).collect()
+    crate::queries::entities::<With<T>>(w)
 }

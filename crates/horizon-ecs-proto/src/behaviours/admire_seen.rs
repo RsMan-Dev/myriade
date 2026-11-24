@@ -118,7 +118,7 @@ fn tick(w: &mut World) {
             arm_module(w, e, &MODULE, 1);
         }
     }
-    let running: Vec<Entity> = w.query::<(Entity, &SeenAdmire)>().iter(w).map(|(e, _)| e).collect();
+    let running: Vec<Entity> = crate::queries::with::<(Entity, &'static SeenAdmire), (), _>(w, |q, w| q.iter(w).map(|(e, _)| e).collect());
     for e in running {
         step(w, e);
     }

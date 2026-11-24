@@ -65,7 +65,7 @@ fn tick(w: &mut World) {
         Some(b) if !b.appeared.is_empty() => b.appeared.clone(),
         _ => return,
     };
-    let es: Vec<Entity> = w.query_filtered::<(Entity, &Flee), With<Parked>>().iter(w).filter(|(_, f)| f.0.blocks.iter().any(|b| appeared.contains(b))).map(|x| x.0).collect();
+    let es: Vec<Entity> = crate::queries::with::<(Entity, &'static Flee), With<Parked>, _>(w, |q, w| q.iter(w).filter(|(_, f)| f.0.blocks.iter().any(|b| appeared.contains(b))).map(|x| x.0).collect());
     for e in es {
         w.entity_mut(e).remove::<Parked>();
         arm_module(w, e, &MODULE, 1);

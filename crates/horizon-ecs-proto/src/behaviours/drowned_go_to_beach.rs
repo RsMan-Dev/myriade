@@ -130,7 +130,7 @@ fn tick(w: &mut World) {
     if w.resource::<Carriers>().0.get(i).is_none_or(|n| *n == 0) {
         return;
     }
-    let walking: Vec<Entity> = w.query_filtered::<Entity, With<Beaching>>().iter(w).collect();
+    let walking: Vec<Entity> = crate::queries::entities::<With<Beaching>>(w);
     for e in walking {
         let mut b = w.get::<Beach>(e).unwrap().clone();
         let can = {

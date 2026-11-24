@@ -163,7 +163,7 @@ fn fly(world: &mut World) {
     if !crate::goals::sparse_any::<TridentFlying>(world) {
         return;
     }
-    let flying: Vec<Entity> = world.query_filtered::<Entity, With<TridentFlying>>().iter(world).collect();
+    let flying: Vec<Entity> = crate::queries::entities::<With<TridentFlying>>(world);
     for e in flying {
         let Some(t) = world.get::<Trident>(e) else { continue };
         let (owner, loyalty, dealt) = (t.owner, t.loyalty, t.dealt);
