@@ -149,6 +149,15 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(item_moved.after(travel).before(reindex));
 }
 
+/// `ItemEntity.tick` ends with a second `updateFluidInteraction` (the first is `Entity.baseTick`'s): an item in a current is pushed twice a tick,
+/// the second time from where it has moved to.
+pub(crate) fn item_fluids_again(level: Res<Level>, mut q: Query<(&Bounds, &Pos, &mut Vel, Option<&FluidParams>), (With<Item>, With<InFluid>)>) {
+    let mw = level.mw.0;
+    for (b, p, mut v, fp) in &mut q {
+        mw.fluids_pushed(b.0, p.0.y + fp.map_or(0.0, |f| f.eye_height), &mut v.0);
+    }
+}
+
 /// The components of the item on the ground of vanilla: a position, a velocity, a box in the index and a body of an object.
 pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, pickup_delay: i64) -> Entity {
     let resists = world.get_resource::<ItemResists>().map_or(0, |r| (r.0)(&stack));
