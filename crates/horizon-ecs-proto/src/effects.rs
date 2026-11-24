@@ -88,6 +88,38 @@ pub enum Kind {
     BreathOfTheNautilus,
     /// `MobEffects.SLOW_FALLING`: the fall distance is discarded before each travel (`fall_reset`).
     SlowFalling,
+    /// `MobEffects.HASTE`: stored, counted down, sent and saved; no server-side action.
+    Haste,
+    /// `MobEffects.NAUSEA`: stored, counted down, sent and saved; no server-side action.
+    Nausea,
+    /// `MobEffects.NIGHT_VISION`: stored, counted down, sent and saved; no server-side action.
+    NightVision,
+    /// `MobEffects.SATURATION`: stored, counted down, sent and saved; no server-side action.
+    Saturation,
+    /// `MobEffects.LUCK`: stored, counted down, sent and saved; no server-side action.
+    Luck,
+    /// `MobEffects.UNLUCK`: stored, counted down, sent and saved; no server-side action.
+    Unluck,
+    /// `MobEffects.DOLPHINS_GRACE`: stored, counted down, sent and saved; no server-side action.
+    DolphinsGrace,
+    /// `MobEffects.BAD_OMEN`: stored, counted down, sent and saved; no server-side action.
+    BadOmen,
+    /// `MobEffects.HERO_OF_THE_VILLAGE`: stored, counted down, sent and saved; no server-side action.
+    HeroOfTheVillage,
+    /// `MobEffects.DARKNESS`: stored, counted down, sent and saved; no server-side action.
+    Darkness,
+    /// `MobEffects.TRIAL_OMEN`: stored, counted down, sent and saved; no server-side action.
+    TrialOmen,
+    /// `MobEffects.RAID_OMEN`: stored, counted down, sent and saved; no server-side action.
+    RaidOmen,
+    /// `MobEffects.WIND_CHARGED`: stored, counted down, sent and saved; no server-side action.
+    WindCharged,
+    /// `MobEffects.OOZING`: stored, counted down, sent and saved; no server-side action.
+    Oozing,
+    /// `MobEffects.INSTANT_HEALTH`: acts on each tick of its duration (1 tick for the usual one); the undead are hurt by it.
+    InstantHealth,
+    /// `MobEffects.INSTANT_DAMAGE`: as `InstantHealth`, healing the undead.
+    InstantDamage,
 }
 impl Kind {
     /// The period of a periodic effect at level 0 (`MobEffect.shouldApplyEffectTickThisTick`).
@@ -96,6 +128,7 @@ impl Kind {
             Kind::Poison => Some(25),
             Kind::Wither => Some(40),
             Kind::Regeneration => Some(50),
+            Kind::InstantHealth | Kind::InstantDamage => Some(1),
             _ => None,
         }
     }
@@ -179,7 +212,8 @@ pub fn add_flagged(w: &mut World, e: Entity, kind: Kind, amp: i32, ticks: i32, f
     }
     if kind == Kind::Absorption {
         let cur = w.get::<crate::absorption::Absorption>(e).map_or(0.0, |a| a.0);
-        crate::absorption::set(w, e, cur.max(4.0 * (amp + 1) as f32));
+        // The effect's own modifier on `max_absorption` is not in the list yet: the cap is at least what it gives.
+        crate::absorption::set_with_cap(w, e, cur.max(4.0 * (amp + 1) as f32), 4.0 * (amp + 1) as f32);
     }
     let first = now_of(w, e) + 1;
     // `tickEffects` drops the effect at the end of its last tick, before the travel of that tick: it is gone from that tick on.
@@ -299,11 +333,12 @@ pub fn attribute_modifiers(w: &World, e: Entity, name: &str) -> Vec<crate::attr_
         .filter_map(|x| {
             let n = f64::from(x.amp + 1);
             match (name, x.kind) {
-                ("movement_speed", Kind::Speed) => Some(make("minecraft:effect.speed", 0.2 * n, Operation::AddMultipliedTotal)),
-                ("movement_speed", Kind::Slowness) => Some(make("minecraft:effect.slowness", -0.15 * n, Operation::AddMultipliedTotal)),
+                ("movement_speed", Kind::Speed) => Some(make("minecraft:effect.speed", f64::from(0.2f32) * n, Operation::AddMultipliedTotal)),
+                ("movement_speed", Kind::Slowness) => Some(make("minecraft:effect.slowness", f64::from(-0.15f32) * n, Operation::AddMultipliedTotal)),
                 ("attack_damage", Kind::Weakness) => Some(make("minecraft:effect.weakness", -4.0 * n, Operation::AddValue)),
                 ("attack_damage", Kind::Strength) => Some(make("minecraft:effect.strength", 3.0 * n, Operation::AddValue)),
                 ("max_health", Kind::HealthBoost) => Some(make("minecraft:effect.health_boost", 4.0 * n, Operation::AddValue)),
+                ("max_absorption", Kind::Absorption) => Some(make("minecraft:effect.absorption", 4.0 * n, Operation::AddValue)),
                 _ => None,
             }
         })
@@ -316,6 +351,7 @@ pub fn attribute_names(w: &World, e: Entity) -> impl Iterator<Item = &'static st
         Kind::Speed | Kind::Slowness => Some("movement_speed"),
         Kind::Weakness | Kind::Strength => Some("attack_damage"),
         Kind::HealthBoost => Some("max_health"),
+        Kind::Absorption => Some("max_absorption"),
         _ => None,
     })
 }
@@ -416,13 +452,13 @@ pub fn due(w: &mut World, e: Entity) {
     }
     f.armed = 0;
     let max = w.get::<SpeciesId>(e).map_or(f32::MAX, |s| w.resource::<SpeciesTable>().0[s.0 as usize].max_health);
-    let mut acts: Vec<(Kind, u64)> = Vec::new();
+    let mut acts: Vec<(Kind, i32)> = Vec::new();
     for x in &mut f.list {
         if let Some(p) = period(x.kind, x.amp) {
             let (next, hit) = rule::settle(x.next, x.ends, now, p as u64);
             x.next = next;
             if hit {
-                acts.push((x.kind, now));
+                acts.push((x.kind, x.amp));
             }
         }
     }
@@ -441,7 +477,7 @@ pub fn due(w: &mut World, e: Entity) {
         let cur = w.get::<crate::absorption::Absorption>(e).map_or(0.0, |a| a.0);
         crate::absorption::set(w, e, cur.max(4.0 * (amp + 1) as f32));
     }
-    for (kind, _) in acts {
+    for (kind, amp) in acts {
         match kind {
             Kind::Poison => {
                 if w.get::<Health>(e).is_some_and(|h| h.0 > 1.0) && !type_tags::is::<IgnoresPoisonAndRegen>(w, e) {
@@ -449,6 +485,20 @@ pub fn due(w: &mut World, e: Entity) {
                 }
             }
             Kind::Wither => w.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Wither),
+            Kind::InstantHealth | Kind::InstantDamage => {
+                // `InstantenousMobEffect.applyEffectTick`: healing gives `4 << amp`, harming hurts `6 << amp`; the undead take the other.
+                let undead = type_tags::is::<InvertedHealingAndHarm>(w, e);
+                let harm_kind = kind == Kind::InstantDamage;
+                let amount = rule::harm_amount(1.0, if harm_kind { 6 } else { 4 }, amp);
+                if rule::harms(harm_kind, undead) {
+                    w.resource_mut::<DamageQueue>().add(e, amount, Cause::Magic);
+                } else {
+                    if let Some(mut h) = w.get_mut::<Health>(e) {
+                        h.0 = (h.0 + amount).min(max);
+                    }
+                    crate::bridge::view::mark(w, e);
+                }
+            }
             Kind::Regeneration => {
                 if type_tags::is::<IgnoresPoisonAndRegen>(w, e) {
                     continue;

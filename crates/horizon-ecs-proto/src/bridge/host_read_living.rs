@@ -29,7 +29,7 @@ fn default_attack_reach() -> f64 {
 }
 
 /// The vanilla registry names of the effects this crate models, with their kind.
-const NAMES: [(&str, Kind); 24] = [
+const NAMES: [(&str, Kind); 40] = [
     ("minecraft:speed", Kind::Speed),
     ("minecraft:slowness", Kind::Slowness),
     ("minecraft:weakness", Kind::Weakness),
@@ -54,6 +54,22 @@ const NAMES: [(&str, Kind); 24] = [
     ("minecraft:conduit_power", Kind::ConduitPower),
     ("minecraft:breath_of_the_nautilus", Kind::BreathOfTheNautilus),
     ("minecraft:slow_falling", Kind::SlowFalling),
+    ("minecraft:haste", Kind::Haste),
+    ("minecraft:nausea", Kind::Nausea),
+    ("minecraft:night_vision", Kind::NightVision),
+    ("minecraft:saturation", Kind::Saturation),
+    ("minecraft:luck", Kind::Luck),
+    ("minecraft:unluck", Kind::Unluck),
+    ("minecraft:dolphins_grace", Kind::DolphinsGrace),
+    ("minecraft:bad_omen", Kind::BadOmen),
+    ("minecraft:hero_of_the_village", Kind::HeroOfTheVillage),
+    ("minecraft:darkness", Kind::Darkness),
+    ("minecraft:trial_omen", Kind::TrialOmen),
+    ("minecraft:raid_omen", Kind::RaidOmen),
+    ("minecraft:wind_charged", Kind::WindCharged),
+    ("minecraft:oozing", Kind::Oozing),
+    ("minecraft:instant_health", Kind::InstantHealth),
+    ("minecraft:instant_damage", Kind::InstantDamage),
 ];
 
 /// The kind of the effect named `name` (`minecraft:poison`); None for any other name, a mod's effect included.

@@ -101,7 +101,7 @@ pub fn touched(w: &mut World, e: Entity, name: &str) {
             }
         }
         "max_health" => {
-            if w.get::<crate::cow::SpeciesId>(e).is_some() && w.get::<crate::cow::MaxHealth>(e).is_some() {
+            if w.get::<crate::cow::SpeciesId>(e).is_some() {
                 let max = crate::cow::max_health(w, e);
                 w.entity_mut(e).insert(crate::cow::MaxHealth(max));
                 if let Some(mut h) = w.get_mut::<crate::cow::Health>(e)

@@ -73,7 +73,19 @@ fn effect_color(k: Kind) -> Option<i32> {
         Kind::ConduitPower => 0x1dc2d1,
         Kind::BreathOfTheNautilus => 0x00ffee,
         Kind::SlowFalling => 0xf3cfb9,
-        Kind::Weaving | Kind::Infested => return None,
+        Kind::Haste => 14270531,
+        Kind::Nausea => 5578058,
+        Kind::NightVision => 12779366,
+        Kind::Saturation => 16262179,
+        Kind::Luck => 5882118,
+        Kind::Unluck => 12624973,
+        Kind::DolphinsGrace => 8954814,
+        Kind::InstantHealth => 16262179,
+        Kind::InstantDamage => 11101546,
+        Kind::BadOmen => 745784,
+        Kind::HeroOfTheVillage => 4521796,
+        Kind::Darkness => 2696993,
+        Kind::Weaving | Kind::Infested | Kind::Oozing | Kind::WindCharged | Kind::TrialOmen | Kind::RaidOmen => return None,
     })
 }
 
@@ -86,7 +98,16 @@ fn effect_particles(w: &World, e: Entity) -> Option<SyncValue> {
         .filter(|f| f.flags & HIDDEN == 0)
         .filter_map(|f| {
             let alpha = if f.flags & AMBIENT != 0 { 38 } else { 255 };
-            effect_color(f.kind).map(|c| Particle { id: 28, data: Some(ParticleData::Color((alpha << 24) | c)) })
+            match f.kind {
+                // The effects with their own `ParticleOptions` (`MobEffect(category, colour, particle)`): item_cobweb, infested, item_slime, small_gust, trial_omen, raid_omen.
+                Kind::Weaving => Some(Particle { id: 63, data: None }),
+                Kind::Infested => Some(Particle { id: 40, data: None }),
+                Kind::Oozing => Some(Particle { id: 62, data: None }),
+                Kind::WindCharged => Some(Particle { id: 32, data: None }),
+                Kind::TrialOmen => Some(Particle { id: 124, data: None }),
+                Kind::RaidOmen => Some(Particle { id: 123, data: None }),
+                k => effect_color(k).map(|c| Particle { id: 28, data: Some(ParticleData::Color((alpha << 24) | c)) }),
+            }
         })
         .collect();
     (!ps.is_empty()).then_some(SyncValue::Particles(ps))
