@@ -604,7 +604,7 @@ impl EcsWorld {
                     zone::sleep(w, e, now);
                 }
             }
-            es.iter().filter(|&&e| w.get::<Riding>(e).is_none()).filter_map(|&e| nbt::save(w, e)).collect()
+            es.iter().filter(|&&e| w.get::<Riding>(e).is_none() && w.get::<crate::seat::Seated>(e).is_none()).filter_map(|&e| nbt::save(w, e)).collect()
         });
         for e in es {
             self.world.despawn(e);
@@ -634,7 +634,7 @@ impl EcsWorld {
     /// The NBT of the saved entities of the chunk; a passenger is written inside its mount (`Passengers`), not on its own.
     pub fn save_chunk(&mut self, cx: i32, cz: i32) -> Vec<Compound> {
         let es = self.chunk_entities(cx, cz);
-        es.into_iter().filter(|&e| self.world.get::<Riding>(e).is_none()).filter_map(|e| nbt::save(&self.world, e)).collect()
+        es.into_iter().filter(|&e| self.world.get::<Riding>(e).is_none() && self.world.get::<crate::seat::Seated>(e).is_none()).filter_map(|e| nbt::save(&self.world, e)).collect()
     }
 
     /// The entity made from `c` (its `id` and `Pos`), None when no recipe makes it.
