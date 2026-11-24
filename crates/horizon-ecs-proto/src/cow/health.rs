@@ -628,7 +628,7 @@ pub(crate) fn apply_damage(
         }
         applied -= absorbed;
         let health_before = h.0;
-        h.0 -= applied;
+        h.0 = (h.0 - applied).max(0.0);
         if applied != 0.0 {
             commands.queue(move |w: &mut World| crate::bridge::view::mark(w, e));
         }
