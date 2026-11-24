@@ -69,7 +69,8 @@ pub fn hit(w: &mut World, e: Entity, amount: f32, attacker: Option<Who>, creativ
     if flags.invulnerable || w.get::<Wood>(e).is_none() {
         return HitResult::Ignored;
     }
-    let fresh = w.get::<Hurt>(e).is_none();
+    // The shake is idle at zero: `hurtDir` stays as the last hit left it (it is data), only the countdown stops.
+    let fresh = w.get::<Hurt>(e).is_none_or(|h| h.time == 0 && h.damage == 0.0);
     // `VehicleEntity.DATA_ID_HURTDIR` is defined as 1: the first hit turns it to -1.
     let mut h = w.get::<Hurt>(e).copied().unwrap_or(Hurt { time: 0, dir: 1, damage: 0.0 });
     h.time = 10;
@@ -77,7 +78,8 @@ pub fn hit(w: &mut World, e: Entity, amount: f32, attacker: Option<Who>, creativ
     h.damage += amount * 10.0;
     w.entity_mut(e).insert(h);
     if fresh {
-        after(w, e, 1, hurt_step);
+        // Vanilla's tracker sends before the entities tick: the first state seen is the full ten, the first decay is one tick later.
+        after(w, e, 2, hurt_step);
     }
     w.get_resource_or_insert_with(BoatHurtEvents::default).0.push(BoatHurtEvent::Hit { entity: e, damage: amount, by: attacker });
     if !creative && h.damage <= 40.0 {
@@ -119,10 +121,8 @@ fn hurt_step(w: &mut World, e: Entity) {
     let Some(mut h) = w.get::<Hurt>(e).copied() else { return };
     h.time = (h.time - 1).max(0);
     h.damage = (h.damage - 1.0).max(0.0);
-    if h.time == 0 && h.damage == 0.0 {
-        w.entity_mut(e).remove::<Hurt>();
-    } else {
-        w.entity_mut(e).insert(h);
+    w.entity_mut(e).insert(h);
+    if h.time != 0 || h.damage != 0.0 {
         after(w, e, 1, hurt_step);
     }
 }
@@ -285,13 +285,14 @@ mod tests {
     }
 
     #[test]
-    fn the_hurt_is_removed_once_it_has_decayed() {
+    fn the_hurt_goes_idle_once_it_has_decayed_keeping_its_direction() {
         let mut w = world();
         let e = boat_state::spawn(&mut w, 0, false, [0.0, 64.0, 0.0], 0.0);
         hit(&mut w, e, 1.0, None, false, drops());
         for _ in 0..10 {
             hurt_step(&mut w, e);
         }
-        assert!(w.get::<Hurt>(e).is_none());
+        let h = w.get::<Hurt>(e).unwrap();
+        assert_eq!((h.time, h.damage, h.dir), (0, 0.0, -1));
     }
 }
