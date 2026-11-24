@@ -171,6 +171,10 @@ pub struct Projectile {
     /// The tick it expires at, while stuck.
     pub expires: u64,
 }
+/// In water after its last base tick (`Entity.isInWater`): the next tick uses the water's inertia.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Wet;
 /// In flight: the flight system visits it every tick.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -310,7 +314,7 @@ pub fn fly(
         Query<(&crate::hanging::Attached, Option<&crate::hanging::Size>)>,
         Res<crate::hanging::AttachIndex>,
     ),
-    mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &Flight, Option<&BornAt>, Option<&mut crate::arrow_more::PierceLevel>, Option<&crate::arrow_more::ModGate>, Option<&crate::arrow_more::GateOpen>, Option<&crate::arrow_more::Critical>, Option<&crate::arrow_more::BaseDamage>, Option<&crate::arrow_more::HurtAccel>, Has<crate::no_gravity::NoGravity>), With<Flying>>,
+    mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &Flight, Option<&BornAt>, Option<&mut crate::arrow_more::PierceLevel>, Option<&crate::arrow_more::ModGate>, Option<&crate::arrow_more::GateOpen>, Option<&crate::arrow_more::Critical>, Option<&crate::arrow_more::BaseDamage>, Option<&crate::arrow_more::HurtAccel>, Has<crate::no_gravity::NoGravity>, Has<Wet>), With<Flying>>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
@@ -318,7 +322,7 @@ pub fn fly(
     for e in std::mem::take(&mut stuck.falling) {
         commands.entity(e).remove::<Stuck>().insert(Flying);
     }
-    for (e, mut pos, mut vel, mut p, f, born, mut pierce, gate, open, crit, base_dmg, accel_of, floats) in &mut q {
+    for (e, mut pos, mut vel, mut p, f, born, mut pierce, gate, open, crit, base_dmg, accel_of, floats, wet) in &mut q {
         // `Entity.getGravity`: 0 under NoGravity.
         let gravity = if floats { 0.0 } else { f.gravity };
         if born.is_some_and(|b| b.0 == clock.0) {
@@ -338,16 +342,18 @@ pub fn fly(
             continue;
         }
         p.age += 1;
+        // `isInWater` as the last base tick left it: the water's inertia (an arrow 0.6, a thrown item or a hurting projectile 0.8).
+        let inertia = if wet && !f.spit_end && !f.bullet && f.inertia < 1.0 { f64::from(if f.order == Order::MoveThenDrag { 0.6_f32 } else { 0.8_f32 }) } else { f.inertia };
         if f.order == Order::DragThenMove {
             // `ThrowableProjectile`: gravity, then inertia, before the move.
-            vel.0 = Vec3::new(vel.0.x, vel.0.y - gravity, vel.0.z).scale(f.inertia);
+            vel.0 = Vec3::new(vel.0.x, vel.0.y - gravity, vel.0.z).scale(inertia);
         }
         if f.order == Order::Hurting {
             // `AbstractHurtingProjectile.applyInertia`: the push along the velocity, then the inertia.
             let v = vel.0;
             let len = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt().max(1.0e-9);
             let accel = accel_of.map_or(f.accel, |a| a.0);
-            vel.0 = Vec3::new((v.x + v.x / len * accel) * f.inertia, (v.y + v.y / len * accel) * f.inertia, (v.z + v.z / len * accel) * f.inertia);
+            vel.0 = Vec3::new((v.x + v.x / len * accel) * inertia, (v.y + v.y / len * accel) * inertia, (v.z + v.z / len * accel) * inertia);
         }
         let (original, movement) = (pos.0, vel.0);
         let end = Vec3::new(original.x + movement.x, original.y + movement.y, original.z + movement.z);
@@ -587,8 +593,15 @@ pub fn fly(
         }
         // The end of the tick in flight: inertia, then gravity (an arrow; a thrown item did both before its move).
         if f.order == Order::MoveThenDrag {
-            vel.0 = vel.0.scale(f.inertia);
+            vel.0 = vel.0.scale(inertia);
             vel.0 = Vec3::new(vel.0.x, vel.0.y - gravity, vel.0.z);
+        }
+        // `Projectile.tick`'s base tick, at the end of the tick: the fluids of where it is push it, and say whether it is in water next tick.
+        if !f.spit_end && !f.bullet && f.inertia < 1.0 {
+            let now_wet = mw.fluids_pushed(bounds(pos.0, f.size), pos.0.y, &mut vel.0).in_water;
+            if now_wet != wet {
+                if now_wet { commands.entity(e).insert(Wet); } else { commands.entity(e).remove::<Wet>(); }
+            }
         }
         let hurting = f.order == Order::Hurting;
         // `AbstractHurtingProjectile` has no age limit: it is discarded when it enters a chunk that is not loaded (`tick`: `hasChunkAt`).
