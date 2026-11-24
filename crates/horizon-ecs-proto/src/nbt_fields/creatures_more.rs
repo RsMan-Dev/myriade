@@ -49,7 +49,7 @@ fn read_pumpkin(w: &mut World, e: Entity, t: &Tag) -> bool {
 pub const CREATORS: &[Field] = &[
     Field { key: Cow::Borrowed("life_ticks"), write: write_life, read: read_life, accepts: accept::int, owner: Some(owner::<Lifespan>) },
     Field { key: Cow::Borrowed("GotFish"), write: write_got_fish, read: read_got_fish, accepts: is_byte, owner: Some(owner::<GotFish>) },
-    Field { key: Cow::Borrowed("Sleeping"), write: write_sleeping, read: read_sleeping, accepts: is_byte, owner: Some(owner::<FoxSleeping>) },
+    Field { key: Cow::Borrowed("Sleeping"), write: write_sleeping, read: read_sleeping, accepts: is_byte, owner: Some(owner::<crate::behaviours::fox_state::FoxFlags>) },
     Field { key: Cow::Borrowed("RaidId"), write: write_raid_id, read: read_raid_id, accepts: accept::int, owner: Some(owner::<Raider>) },
     Field { key: Cow::Borrowed("Wave"), write: write_wave, read: read_wave, accepts: accept::int, owner: Some(owner::<Raider>) },
     Field { key: Cow::Borrowed("PatrolLeader"), write: write_patrol_leader, read: read_patrol_leader, accepts: is_byte, owner: Some(owner::<Patrol>) },
@@ -163,11 +163,9 @@ fn read_life(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-/// `Sleeping`: a byte, 1 while the fox's sleep goal runs (the marker is there); 0 takes it away.
+/// `Sleeping`: a byte of every fox, 1 while its sleep goal runs (the marker is there); 0 takes it away.
 fn write_sleeping(w: &World, e: Entity, c: &mut Compound) {
-    if w.get::<FoxSleeping>(e).is_some() {
-        c.insert("Sleeping".into(), Tag::Byte(1));
-    }
+    c.insert("Sleeping".into(), Tag::Byte(i8::from(w.get::<FoxSleeping>(e).is_some())));
 }
 
 fn read_sleeping(w: &mut World, e: Entity, t: &Tag) -> bool {
