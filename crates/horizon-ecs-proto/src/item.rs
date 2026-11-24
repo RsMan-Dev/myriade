@@ -188,6 +188,10 @@ pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, 
             Immune(BREATHES_WATER | NO_HURT_COOLDOWN),
             TypeName(crate::species::lists::ITEM),
     ));
+    // `Entity.tick` measures the fluid before the item's first move: a drop made in water is in it from tick 1 (`reindex` would add it a tick late).
+    if let Some(level) = world.get_resource::<Level>() && level.mw.0.contains_any_liquid(box_at(at)) {
+        world.entity_mut(e).insert(crate::cow::InFluid);
+    }
     let now = now_of(world, e);
     world.entity_mut(e).insert(ItemAwake);
     world.entity_mut(e).insert(Item { stack, born: now as i64, age_base: now as i64, neg_delay: 0, ready_at: ready.map(|d| now + d), target: None, cell, expire: 0, check: 0, id });
