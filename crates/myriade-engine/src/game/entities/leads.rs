@@ -64,17 +64,7 @@ impl Game<'_> {
     /// The authoritative fence of an active natural knot, until a last-holder
     /// notification or the tracking cleanup retires its physical owner.
     pub(super) fn natural_knot(&self, id: u32) -> Option<[i32; 3]> {
-        use myriade_engine::join_seq::residency::table::EntityLookup;
-        let EntityLookup::Found {
-            location,
-            value: Target::Knot(_),
-        } = self.server_resident_entity(id)
-        else {
-            return None;
-        };
-        if location.owner.dimension != self.dim.key() {
-            return None;
-        }
+        // The level in place's ECS holds the knot: no residency row is kept for a knot (`Kind::Knot` has no list), so the ECS answers.
         self.ecs.knot_fence_of(id)
     }
     /// Actual natural knot owners, without allocating or inferring membership from leashes.

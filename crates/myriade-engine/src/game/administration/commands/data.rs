@@ -849,7 +849,13 @@ impl Game<'_> {
         if !self.res.mob_types().contains_key(&*kind) && !self.ecs.summons_unsaved(&kind) {
             return self.ecs_load(c).map(Target::Mob);
         }
-        self.ecs_spawn(&kind, [p.x, p.y, p.z], Some(c)).map(Target::Mob)
+        let id = self.ecs_spawn(&kind, [p.x, p.y, p.z], Some(c))?;
+        // A knot is listed by the selectors as a knot, once its identity is kept (`tie_knot` does the same for a lead's).
+        if kind == "minecraft:leash_knot" {
+            self.uuid_for(id);
+            return Some(Target::Knot(id));
+        }
+        Some(Target::Mob(id))
     }
     /// The `summon <entity> <pos> <nbt>` form.
     pub(in crate::game) fn summon_with_nbt(

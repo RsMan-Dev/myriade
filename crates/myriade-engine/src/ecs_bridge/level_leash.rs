@@ -73,6 +73,11 @@ impl EcsLevel {
         let e = self.entity_of(id)?;
         self.world().and_then(|w| leash_save::knot_fence(w, e))
     }
+    /// The scoreboard tags of the entity `id`, whether it is saved or not (a summoned knot is not).
+    pub fn tag_names(&self, id: u32) -> Vec<String> {
+        let (Some(e), Some(w)) = (self.entity_of(id), self.world()) else { return Vec::new() };
+        horizon_ecs_proto::nbt_tag::names(w, e).into_iter().map(String::from).collect()
+    }
     /// The network ids and fences of the knots the ECS holds.
     pub fn knots(&self) -> Vec<(u32, [i32; 3])> {
         self.species_ids(LEASH_KNOT).into_iter().filter_map(|id| self.knot_fence_of(id).map(|f| (id, f))).collect()

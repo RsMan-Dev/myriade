@@ -38,7 +38,7 @@ impl Game<'_> {
     /// `Entity.getTags` of the entity `id` in the ECS level: the `Tags` list of its tree; none when it has no tag left.
     pub(in crate::game) fn ecs_mob_tags(&self, id: u32) -> Vec<String> {
         let Some(tree) = self.ecs_mob_tree(id) else {
-            return Vec::new();
+            return self.ecs.tag_names(id);
         };
         match Tag::Compound(tree).get("Tags") {
             Some(Tag::List(l)) => l

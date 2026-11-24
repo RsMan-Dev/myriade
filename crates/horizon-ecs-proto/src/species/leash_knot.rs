@@ -25,6 +25,8 @@ const OFFSET_Y: f64 = 0.375;
 pub struct Knot {
     pub fence: [i32; 3],
     pub born: u64,
+    /// Made by `/summon`: no lead was ever tied to it, so the sweep for knots without a lead leaves it (only its fence ends it).
+    pub summoned: bool,
 }
 
 /// The knot of each fence cell (one knot per cell): found when a lead is tied, and woken when that cell changes.
@@ -47,10 +49,13 @@ fn leave_index(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecyc
 /// check: the fence was seen when the lead was tied, and only a change in its cell can end it.
 pub fn tie(w: &mut World, fence: [i32; 3]) -> Entity {
     if let Some(&e) = w.resource::<KnotIndex>().0.get(&fence) {
+        if let Some(mut k) = w.get_mut::<Knot>(e) {
+            k.summoned = false;
+        }
         return e;
     }
     let at = Vec3::new(f64::from(fence[0]) + 0.5, f64::from(fence[1]) + OFFSET_Y, f64::from(fence[2]) + 0.5);
-    let e = w.spawn((Pos(at), OwnTime, Knot { fence, born: 0 })).id();
+    let e = w.spawn((Pos(at), OwnTime, TypeName(DEF.name), Knot { fence, born: 0, summoned: false })).id();
     let born = now_of(w, e);
     w.get_mut::<Knot>(e).expect("just spawned").born = born;
     w.resource_mut::<KnotIndex>().0.insert(fence, e);
@@ -60,6 +65,9 @@ pub fn tie(w: &mut World, fence: [i32; 3]) -> Entity {
 /// A leashee left its knot (`notifyLeasheeRemoved`): a knot that holds no leash any more is discarded, without a sound.
 pub fn released(w: &mut World, fence: [i32; 3]) {
     let Some(&e) = w.resource::<KnotIndex>().0.get(&fence) else { return };
+    if w.get::<Knot>(e).is_some_and(|k| k.summoned) {
+        return;
+    }
     if leash::held_by(w, Holder::Knot(fence)).is_empty() {
         w.despawn(e);
     }
@@ -98,8 +106,16 @@ pub fn knot_wake(w: &mut World) {
     }
 }
 
+/// `BlockTags.FENCES` at `cell`, from the level's blocks.
+fn is_fence_cell(w: &World, cell: [i32; 3]) -> bool {
+    let Some(l) = w.get_resource::<crate::cow::Level>() else { return true };
+    let mw = l.mw.0;
+    mw.has_tag("minecraft:fences", &mw.facts.get(mw.world.block(cell[0], cell[1], cell[2])).name)
+}
+
 pub fn insert_resources(w: &mut World) {
     w.insert_resource(KnotIndex::default());
+    w.insert_resource(Fences(is_fence_cell));
     crate::nbt::declare(w, DEF.name, crate::nbt::Recipe { saved: false, build: crate::nbt::Build::With(build) });
 }
 
@@ -107,6 +123,12 @@ pub fn insert_resources(w: &mut World) {
 fn build(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     let fence = [at.x.floor() as i32, at.y.floor() as i32, at.z.floor() as i32];
     let e = tie(w, fence);
+    let held = !leash::held_by(w, Holder::Knot(fence)).is_empty();
+    if let Some(mut k) = w.get_mut::<Knot>(e) {
+        k.summoned = !held;
+    }
+    // `BlockAttachedEntity.tick`: a summoned knot is checked against its fence too, on the 101st tick.
+    arm(w, e);
     if let Some(Tag::IntArray(u)) = c.get(&JavaString::from("UUID")) && let Ok(u) = <[i32; 4]>::try_from(u.as_slice()) {
         crate::bridge::uuids::set_uuid(w, e, u);
     }
