@@ -483,13 +483,19 @@ fn dry_air(
 /// `AbstractFish.aiStep`'s flop: an animal on the ground out of the water jumps a little at random.
 #[allow(clippy::type_complexity)]
 fn dry(
-    mut q: Query<(Entity, &mut Air, &crate::goals::Uid, &TypeName, &mut Contact, &mut Vel, &mut Rng, Has<Moving>, &SwimParams, &Pos, Has<crate::behaviours::elder_curse::Silent>), With<Dry>>,
+    mut q: Query<(Entity, &mut Air, &crate::goals::Uid, &TypeName, &mut Contact, &mut Vel, &mut Rng, Has<Moving>, &SwimParams, &Pos, Has<crate::behaviours::elder_curse::Silent>, &mut Yaw), With<Dry>>,
     mut events: ResMut<crate::goals::Events>,
     mut commands: Commands,
 ) {
-    for (e, _, _, _, mut c, mut v, mut rng, moving, swp, at, silent) in &mut q {
-        // The flop is `AbstractFish.aiStep`'s: a squid only suffocates.
-        if c.on_ground && !swp.squid {
+    for (e, _, _, _, mut c, mut v, mut rng, moving, swp, at, silent, mut yaw) in &mut q {
+        // `Guardian.aiStep` out of the water, on the ground: +/-0.4 sideways, 0.5 up, a turn at random (no sound, no ceiling test).
+        if c.on_ground && matches!(swp.control, Control::Guardian) {
+            let (a, b) = (rng.next_float(), rng.next_float());
+            v.0 = Vec3::new(v.0.x + f64::from((a * 2.0 - 1.0) * 0.4), v.0.y + 0.5, v.0.z + f64::from((b * 2.0 - 1.0) * 0.4));
+            yaw.0 = rng.next_float() * 360.0;
+            c.on_ground = false;
+        } else if c.on_ground && !swp.squid {
+            // The flop is `AbstractFish.aiStep`'s: a squid only suffocates.
             let (a, b) = (rng.next_f64() as f32, rng.next_f64() as f32);
             v.0 = flop_velocity(v.0, a, b);
             c.on_ground = false;
