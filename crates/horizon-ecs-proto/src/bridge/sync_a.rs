@@ -149,6 +149,12 @@ const PROFESSION_IDS: [&str; 15] = [
     "weaponsmith",
 ];
 
+/// Villager.DATA_VILLAGER_DATA_FINALIZED (index 20, default false): true once the data was read from a save or set by `finalizeSpawn`
+/// (`Villager.readAdditionalSaveData`, `finalizeSpawn`), which is every villager here; only a bare `/summon` with a tag leaves it false.
+pub(crate) fn villager_finalized(w: &World, e: Entity) -> Option<SyncValue> {
+    w.get::<crate::behaviours::trade_offers::Merchant>(e).filter(|m| !m.wandering).map(|_| SyncValue::Bool(true))
+}
+
 /// Villager.DATA_VILLAGER_DATA (index 19): the type, the profession and the level, in registry ids. None for a profession or a type of
 /// a mod (no vanilla id) and for a villager without a `Merchant`; the default (plains, none, level 1) is not sent.
 pub(crate) fn villager_data(w: &World, e: Entity) -> Option<SyncValue> {
