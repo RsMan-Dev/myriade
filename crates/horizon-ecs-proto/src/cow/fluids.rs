@@ -250,6 +250,10 @@ pub(crate) fn breathing(
             // `Nautilus.handleAirSupply` tests `isInWater`, not the eye.
             air.0 = if fs.in_water { max } else { before - 1 };
         }
+        // The air is synchronized (`DATA_AIR_SUPPLY`): a change is a write the tracker must read, a mere move does not queue it.
+        if air.0 != before {
+            commands.queue(move |w: &mut bevy_ecs::world::World| crate::bridge::view::mark(w, e));
+        }
         if air.0 < max && !low {
             commands.entity(e).insert(AirLow);
         } else if air.0 >= max && low && !in_fluid {
