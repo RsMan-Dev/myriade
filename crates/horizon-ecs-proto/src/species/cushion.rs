@@ -127,6 +127,10 @@ pub fn place(w: &mut World, block: [i32; 3], at: Vec3, color: u8, yaw: f32, name
     for c in covered(at) {
         w.resource_mut::<CushionIndex>().0.entry(c).or_default().push(e);
     }
+    // Born with no anchor (a summon in the air): the check of its 101st tick finds it out, as `BlockAttachedEntity.tick` does.
+    if w.get_resource::<CushionHost>().is_none() && !level_survives(w, at) {
+        arm(w, e);
+    }
     Some(e)
 }
 
@@ -210,12 +214,19 @@ fn check(w: &mut World, e: Entity) {
         return;
     }
     let at = pos_of(w, e);
-    let (hazard, survives) = w.get_resource::<CushionHost>().map_or((Hazard::None, true), |h| ((h.hazard)(w, at), (h.survives)(w, at)));
+    let (hazard, survives) = w.get_resource::<CushionHost>().map_or((Hazard::None, level_survives(w, at)), |h| ((h.hazard)(w, at), (h.survives)(w, at)));
     if hazard != Hazard::None {
         remove(w, e, Source::Environment, true);
     } else if !survives {
         remove(w, e, Source::Environment, false);
     }
+}
+
+/// `Cushion.wouldSurviveAt` read from the level's blocks when the host gave none: `hasAnchorBelow`, a block with a shape within 1/8 under
+/// the box (its covered columns, from the cell of the bottom down to the cell 1/8 below). Not the suffocation test.
+fn level_survives(w: &World, at: Vec3) -> bool {
+    let (y_in, y_below) = (cell(at.y - 1.0e-7), cell(at.y - 0.140625));
+    covered(at).into_iter().any(|c| c[1] >= y_below && c[1] <= y_in && c[1] < cell(at.y + 0.25) && !crate::level::block_empty(w, c))
 }
 
 fn arm(w: &mut World, e: Entity) {
