@@ -238,7 +238,9 @@ const INERTIA: f64 = 0.99_f32 as f64;
 /// The end of a flying tick: the age, the leaving of the owner, the inertia 0.99 and the gravity 0.05 of the velocity.
 fn after_move(world: &mut World, e: Entity, at: Vec3, owner: Option<Who>, vel: Vec3) {
     let owner_pos = owner_at(world, owner);
-    let v = Vec3::new(vel.x * INERTIA, vel.y * INERTIA - 0.05, vel.z * INERTIA);
+    // `Entity.getGravity` is 0 under NoGravity.
+    let gravity = if crate::no_gravity::get(world, e) { 0.0 } else { 0.05 };
+    let v = Vec3::new(vel.x * INERTIA, vel.y * INERTIA - gravity, vel.z * INERTIA);
     world.entity_mut(e).insert((Pos(at), Vel(v)));
     if let Some(mut p) = world.get_mut::<Projectile>(e) {
         p.age += 1;
