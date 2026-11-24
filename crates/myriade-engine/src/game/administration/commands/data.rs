@@ -219,7 +219,6 @@ impl Game<'_> {
                     item_transformation: None,
                     interaction: None,
                     knot_check: None,
-                    eye: None,
                 };
                 let mut tag = self.other_to_nbt(&knot, uuid);
                 // Entity.saveWithoutId writes `remainingFireTicks` always; the

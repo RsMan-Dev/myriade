@@ -168,48 +168,6 @@ impl EndState {
     }
 }
 
-/// An eye of ender from `/summon` or a saved chunk. `signalTo` never ran for
-/// it, so it has no target and `surviveAfterDeath` stays false.
-#[derive(Clone, Copy, Debug)]
-pub(in crate::game) struct SummonedEye {
-    /// `getDeltaMovement`, which nothing changes without a target.
-    pub(super) motion: Vec3,
-    /// `EyeOfEnder.life`: not saved, so a loaded eye starts again at 0.
-    life: u32,
-}
-impl SummonedEye {
-    /// `Entity.load`'s motion and `EyeOfEnder.readAdditionalSaveData`'s
-    /// `setItem`, which keeps one of the saved item, or an eye of ender.
-    pub(super) fn load(tag: &mut horizon_core::nbt::Tag) -> Self {
-        use horizon_core::nbt::Tag;
-        let motion = myriade_engine::entity_nbt::loaded_motion(tag);
-        if let Tag::Compound(c) = tag {
-            let mut item = match c.remove(&"Item".into()) {
-                Some(Tag::Compound(item)) => item,
-                _ => Default::default(),
-            };
-            let id = match item.get(&"id".into()) {
-                Some(Tag::String(s)) => {
-                    myriade_data::identifier::normalize_id(&s.to_string_lossy())
-                }
-                _ => None,
-            }
-            .filter(|id| id != "minecraft:air");
-            if id.is_none() {
-                item.clear();
-            }
-            let id = id.unwrap_or_else(|| "minecraft:ender_eye".into());
-            item.insert("id".into(), Tag::String(id.as_str().into()));
-            item.insert("count".into(), Tag::Int(1));
-            c.insert("Item".into(), Tag::Compound(item));
-        }
-        Self { motion, life: 0 }
-    }
-}
-
-impl Game<'_> {
-}
-
 /// The EyeOfEnder entity.
 struct EyeOfEnder {
     /// Its entity id once a server's clients track it (0 until then).
