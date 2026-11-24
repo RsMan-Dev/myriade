@@ -16,7 +16,11 @@ impl MiscHost for Game<'_> {
         super::super::misc::millis(nanos)
     }
     fn apply_tick_rate(&mut self, rate: f32) {
-        Game::apply_tick_rate(self, rate);
+        // `ServerTickRateManager.setTickRate` (1 to 10000), then `MinecraftServer.onTickRateChanged`.
+        if (1.0..=10_000.0).contains(&rate) {
+            self.clock.set_rate(rate);
+            Game::on_tick_rate_changed(self);
+        }
     }
     fn sprint_report(&mut self, report: &SprintReport) {
         Game::sprint_report(self, report);
