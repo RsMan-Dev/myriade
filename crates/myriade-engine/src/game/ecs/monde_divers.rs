@@ -21,6 +21,13 @@ impl Game<'_> {
         self.ecs = ecs;
         r
     }
+    /// The entities that moved (`EcsLevel::portal_entries`); none moved: no mob world is built.
+    pub(in crate::game) fn ecs_portal_entries(&mut self) -> Vec<(u32, bool, [f64; 3])> {
+        if !self.ecs.any_moving() {
+            return Vec::new();
+        }
+        self.ecs_with(|ecs, mw| ecs.portal_entries(mw))
+    }
     /// The network id of the ECS entity `e`, linked here when it has none: a listener or a mover is named by the event it posts.
     pub(in crate::game) fn ecs_id_of(&mut self, e: Entity) -> u32 {
         let next = &mut self.next_entity;

@@ -42,7 +42,11 @@ impl EcsWorld {
     }
 
     /// The entities that moved this tick, as (entity, may take a portal with its vehicle, where it is). Only the `Moving` ones are visited.
+    /// None moved: nothing is lent, no query is built (read from the archetypes, no entity visited).
     pub fn portal_entries(&mut self, mw: &MobWorld<'_>) -> Vec<(Entity, bool, [f64; 3])> {
+        if !self.any_moving() {
+            return Vec::new();
+        }
         self.lent(mw, |w| {
             let movers: Vec<(Entity, [f64; 3])> = w
                 .query_filtered::<(Entity, &Pos), With<Moving>>()
@@ -54,6 +58,12 @@ impl EcsWorld {
                 .map(|(e, at)| (e, portal::usable(w, e, true), at))
                 .collect()
         })
+    }
+
+    /// Whether an entity carries `Moving`: an archetype with it holds an entity.
+    pub fn any_moving(&self) -> bool {
+        let w = self.world();
+        w.component_id::<Moving>().is_some_and(|id| w.archetypes().iter().any(|a| !a.is_empty() && a.contains(id)))
     }
 
     /// The box of the creature by its species' data and its age: a baby (`GrowAt` still running) has the baby box.

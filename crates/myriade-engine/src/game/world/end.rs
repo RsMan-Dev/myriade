@@ -1142,7 +1142,7 @@ impl Game<'_> {
         let mut mobs: Vec<(u32, Vec3, f32, f32)> = Vec::new();
         // The ECS creatures, items and carts that moved (`portal_entries`): the legacy lists above are empty while the ECS is active.
         if self.ecs.is_active() {
-            let entries = self.ecs_with(|ecs, mw| ecs.portal_entries(mw));
+            let entries = self.ecs_portal_entries();
             for (id, can_sweep, at) in entries {
                 let at = Vec3::new(at[0], at[1], at[2]);
                 if can_sweep && ticks(at) {

@@ -20,6 +20,10 @@ impl EcsLevel {
         let Some(w) = self.world() else { return Vec::new() };
         rows.into_iter().filter_map(|(e, usable, to)| Some((id_of(w, e)?, usable, to))).collect()
     }
+    /// Whether any entity moved (`EcsWorld::any_moving`): read before a mob world is built for `portal_entries`.
+    pub fn any_moving(&self) -> bool {
+        self.ecs().is_some_and(|b| b.any_moving())
+    }
     /// `EcsWorld::can_use_portal` of the entity `id`.
     pub fn can_use_portal(&self, id: u32) -> bool {
         self.entity_of(id).zip(self.ecs()).is_some_and(|(e, b)| b.can_use_portal(e))

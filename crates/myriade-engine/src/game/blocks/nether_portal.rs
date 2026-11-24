@@ -606,7 +606,7 @@ impl Game<'_> {
         let mut ids: Vec<(u32, bool, i32)> = Vec::new();
         // Portal handling runs only in entity-ticking chunks.
         let entity_ticking = self.entity_ticking_area();
-        let ecs_entries = if self.ecs.is_active() && !vehicles { self.ecs_with(|ecs, mw| ecs.portal_entries(mw)) } else { Vec::new() };
+        let ecs_entries = if self.ecs.is_active() && !vehicles { self.ecs_portal_entries() } else { Vec::new() };
         let tracked = &self.portals.entities;
         let mut present = std::collections::HashSet::new();
         if self.ecs.is_active() && !vehicles {
@@ -941,7 +941,7 @@ impl Game<'_> {
         // The first portal block each entity's box swept through since the
         // start of its tick (a stuck arrow that did not move enters none).
         if self.ecs.is_active() {
-            for (id, can_sweep, to) in self.ecs_with(|ecs, mw| ecs.portal_entries(mw)) {
+            for (id, can_sweep, to) in self.ecs_portal_entries() {
                 let to = Vec3::new(to[0], to[1], to[2]);
                 if !entity_ticking(to.x.floor() as i32, to.z.floor() as i32) {
                     continue;
