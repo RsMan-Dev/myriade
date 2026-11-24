@@ -89,10 +89,9 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
         w.entity_mut(e).insert((FloatState(0), Moving));
     }
     if p.control == Control::Bank {
-        // `PhantomMoveControl`'s speed starts at the movement speed attribute.
-        let sp0 = w.get::<Body>(e).map_or(0.1, |b| b.speed as f32);
+        // `PhantomMoveControl`'s `speed` field starts at the constant 0.1f (not an attribute).
         if let Some(mut d) = w.get_mut::<Drive>(e) {
-            d.speed = sp0;
+            d.speed = 0.1;
         }
         w.entity_mut(e).insert(Moving);
     }
