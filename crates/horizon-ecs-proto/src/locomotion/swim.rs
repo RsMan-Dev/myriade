@@ -98,6 +98,9 @@ pub struct NeedsWater;
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Dry;
+/// The creature is not a `WaterAnimal`: out of the water its air stays (a guardian's `canBreatheUnderwater`, no `handleAirSupply`).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct NoDrown;
 
 pub static MODULE: Module = Module { name: "swim", requires: &[Cap::Locomotion, Cap::Living], equip, systems, ..Module::DEFAULT };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
@@ -112,6 +115,9 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
         };
         let body_yaw = w.get::<Yaw>(e).map_or(0.0, |y| y.0);
         w.entity_mut(e).insert((SquidState { movement: 0.0, speed, vector: [0.0; 3], body_yaw }, Moving));
+    }
+    if matches!(sp.control, Control::Guardian) {
+        w.entity_mut(e).insert(NoDrown);
     }
     if sp.needs_water {
         // Out of the water until the first event says otherwise.
@@ -455,7 +461,7 @@ fn turtle_control(pos: &Pos, vel: &mut Vel, yaw: &mut Yaw, m: &mut MoveTo, d: &m
 /// `baseTick` is, so the hit lands in the same tick as the air reaching 0. A dead body is given its air back (`isAlive` is false).
 fn dry_air(
     level: Res<Level>,
-    mut q: Query<(Entity, &mut Air, &crate::goals::Uid, &TypeName, Has<crate::tear_down::Crumbling>), With<Dry>>,
+    mut q: Query<(Entity, &mut Air, &crate::goals::Uid, &TypeName, Has<crate::tear_down::Crumbling>), (With<Dry>, Without<NoDrown>)>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
