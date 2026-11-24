@@ -76,6 +76,10 @@ impl EcsWorld {
     /// The host's AI pause: the marker is posed or taken, and the view is marked since the follower reads it.
     pub fn set_ai_paused(&mut self, e: Entity, on: bool) {
         let w = self.world_mut();
+        // A summon that vanishes at once (a bolt, a spent fireball) is already gone when its saved flags are restored.
+        if w.get_entity(e).is_err() {
+            return;
+        }
         if on {
             w.entity_mut(e).insert(AiPaused);
         } else {
