@@ -45,7 +45,42 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Spot { cfg: params::<Params>(p) });
+    w.entity_mut(e).insert((Spot { cfg: params::<Params>(p) }, Unchecked));
+}
+/// The body has not been asked yet whether its support holds (its first tick).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+struct Unchecked;
+
+pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
+    s.add_systems(check_supports.after(crate::cow::block_changes));
+}
+/// `Shulker.tick`: a body that is not a passenger and whose support does not hold looks for another (`findNewAttachment`). By event: on its
+/// first tick, and when a block changes in the world.
+fn check_supports(w: &mut World) {
+    let fresh: Vec<Entity> = w.query_filtered::<Entity, With<Unchecked>>().iter(w).collect();
+    let changed = w.get_resource::<crate::block_events::BlockEvents>().is_some_and(|b| !b.changed.is_empty());
+    let all: Vec<Entity> = if changed { w.query_filtered::<Entity, With<Spot>>().iter(w).collect() } else { fresh.clone() };
+    for e in fresh {
+        w.entity_mut(e).remove::<Unchecked>();
+    }
+    for e in all {
+        if !crate::bridge::host_vehicle::is_passenger(w, e) && !can_stay(w, e) {
+            find_new_attachment(w, e);
+        }
+    }
+}
+/// `Shulker.findNewAttachment`: the first face of its own cell that holds it, else `teleportSomewhere`.
+pub fn find_new_attachment(w: &mut World, e: Entity) {
+    let Some(own) = w.get::<Pos>(e).map(|p| cell_of(p.0)) else { return };
+    if let Some(face) = attachable(w, e, own) {
+        if let Some(mut a) = w.get_mut::<Attached>(e) {
+            a.face = face;
+            crate::bridge::view::mark(w, e);
+        }
+    } else {
+        teleport_somewhere(w, e);
+    }
 }
 /// Below `hurt_below` of the max health, one chance in `hurt_one_in` to teleport (the body's own random).
 fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {

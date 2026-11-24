@@ -257,7 +257,7 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
 pub fn forget_birth_draws(world: &mut World, e: Entity, sp: &Species) {
     // `Phantom.finalizeSpawn` sets the anchor 5 blocks up; the data a summon is given leaves it null (`anchor_pos` is read, or none).
     if sp.name == "minecraft:phantom" {
-        world.entity_mut(e).remove::<crate::behaviours::lay_egg::Anchor>();
+        world.entity_mut(e).remove::<crate::cow::Anchor>();
     }
     if !sp.random_max_health && matches!(sp.horse_gen, crate::species::HorseGen::None) {
         return;
@@ -332,6 +332,7 @@ pub fn schedule() -> Schedule {
     crate::hanging::register(&mut s);
     crate::species::cushion::register(&mut s);
     crate::species::leash_knot::register(&mut s);
+    crate::behaviours::teleport_on::register(&mut s);
     crate::firework::register(&mut s);
     crate::trident::register(&mut s);
     crate::falling_block::register(&mut s);
