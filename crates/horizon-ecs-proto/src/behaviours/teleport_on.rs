@@ -53,7 +53,9 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 struct Unchecked;
 
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(check_supports.after(crate::cow::block_changes));
+    s.add_systems(check_supports.after(crate::cow::block_changes).run_if(
+        |fresh: Query<(), With<Unchecked>>, b: Option<Res<crate::block_events::BlockEvents>>| !fresh.is_empty() || b.is_some_and(|b| !b.changed.is_empty()),
+    ));
 }
 /// `Shulker.tick`: a body that is not a passenger and whose support does not hold looks for another (`findNewAttachment`). By event: on its
 /// first tick, and when a block changes in the world.
