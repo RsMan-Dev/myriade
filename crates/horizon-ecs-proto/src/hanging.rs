@@ -133,8 +133,29 @@ pub fn hang(w: &mut World, pos: [i32; 3], face: u8, kind: u8, size: Option<Size>
             arm(w, o);
         }
         arm(w, e);
+    } else if !walls_hold_at(w, e) {
+        // A summon in the air hangs on nothing: the first survival check (the 101st tick) breaks it.
+        arm(w, e);
     }
     e
+}
+
+/// Whether the wall of the footprint of `e` holds (the host's `Walls`; true when there is none).
+fn walls_hold_at(w: &World, e: Entity) -> bool {
+    let Some(a) = w.get::<Attached>(e).copied() else { return true };
+    walls_hold(w, a.pos, a.face, size_of(w, e))
+}
+
+/// `HangingEntity.survives`: the host's `Walls` when it gave one, else the level's blocks: every block behind the footprint has a
+/// collision shape and the cells in front of it are free.
+fn walls_hold(w: &World, pos: [i32; 3], face: u8, size: (u8, u8)) -> bool {
+    if let Some(f) = w.get_resource::<Walls>() {
+        return (f.0)(w, pos, face, size);
+    }
+    crate::rules::hanging::cells(pos, face, size).into_iter().all(|c| {
+        let behind = crate::rules::hanging::support(c, face);
+        crate::level::block_empty(w, c) && !crate::level::block_empty(w, behind)
+    })
 }
 
 /// `setPos` and `setDirection` of a hanging entity: it moves to `pos` on `face` when the wall of its footprint holds there, and its support
@@ -273,7 +294,7 @@ fn covering(w: &World, c: [i32; 3], face: u8) -> Vec<Entity> {
 fn check(w: &mut World, e: Entity) {
     let Some(a) = w.get::<Attached>(e).copied() else { return };
     let size = size_of(w, e);
-    let walls_hold = w.get_resource::<Walls>().map_or(true, |f| (f.0)(w, a.pos, a.face, size));
+    let walls_hold = walls_hold(w, a.pos, a.face, size);
     let free = overlapping(w, e).is_empty();
     if !walls_hold || !free {
         break_entity(w, e, a);
