@@ -1104,6 +1104,17 @@ impl Game<'_> {
     ) -> bool {
         sections.any(&self.world.chunks, |v| self.is_portal_state(v))
     }
+    /// [`Self::level_may_hold_portal`] on the game's own sections cache.
+    pub(in crate::game) fn level_may_hold_portal_now(&mut self) -> bool {
+        let mut sections = std::mem::take(&mut self.portals.sections);
+        let r = self.level_may_hold_portal(&mut sections);
+        self.portals.sections = sections;
+        r
+    }
+    /// Whether this level is the End (the gateways are looked for there).
+    pub(in crate::game) fn in_end(&self) -> bool {
+        self.dim == Dim::End
+    }
     /// A nether or End portal state, by its id in a palette.
     pub(in crate::game) fn is_portal_state(&self, v: u32) -> bool {
         let state = horizon_world::registry::BlockStateId(v);

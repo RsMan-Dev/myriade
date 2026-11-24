@@ -30,6 +30,11 @@ impl Game<'_> {
         if extra.is_empty() && !self.ecs.any_moving() {
             return Vec::new();
         }
+        // No portal state in any loaded palette (nearly always) and no End gateway to look for: no mover can enter anything, so no
+        // row is built (the flag is the portal sections' own, kept by the chunks touched).
+        if extra.is_empty() && !self.in_end() && !self.level_may_hold_portal_now() {
+            return Vec::new();
+        }
         self.ecs_with(|ecs, mw| ecs.portal_entries(mw, &extra))
     }
     /// The network id of the ECS entity `e`, linked here when it has none: a listener or a mover is named by the event it posts.
