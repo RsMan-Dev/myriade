@@ -410,7 +410,7 @@ impl EcsWorld {
         }
     }
 
-    pub fn drain_modified(&mut self) -> Vec<Entity> {
+    pub fn drain_modified(&mut self) -> Vec<(Entity, bool)> {
         view::drain(&mut self.world)
     }
 

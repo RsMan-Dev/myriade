@@ -235,7 +235,8 @@ impl EcsLevel {
     pub fn id_for(&mut self, e: Entity, alloc: &mut dyn FnMut() -> u32) -> u32 {
         self.inner.as_mut().map_or(0, |w| w.id_for(e, alloc))
     }
-    pub fn drain_modified(&mut self) -> Vec<Entity> {
+    /// The entities modified since the last call, by index, each with whether its synchronized data may have changed (false: it only moved or turned).
+    pub fn drain_modified(&mut self) -> Vec<(Entity, bool)> {
         self.inner.as_mut().map_or_else(Vec::new, |w| w.drain_modified())
     }
     pub fn set_player(&mut self, p: Player, state: PlayerFact) {

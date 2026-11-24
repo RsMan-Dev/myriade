@@ -86,9 +86,10 @@ pub fn position(world: &World, e: Entity) -> Option<[f64; 3]> {
     Some([p.x, p.y, p.z])
 }
 
-/// The entities whose view changed since the last `drain`.
+/// The entities whose view changed since the last `drain`: `.0` those whose synchronized data may have changed (the default: read all of
+/// it again), `.1` those that only moved or turned (`reindex`, `look_control`: position and rotation, no metadata).
 #[derive(Resource, Default)]
-pub struct Modified(Vec<Entity>);
+pub struct Modified(Vec<Entity>, Vec<Entity>);
 
 /// The entities that entered the world (a `Pos` was added) since the start of the last step: the host looks once at the block each stands
 /// in (an entity in a portal when it spawns or loads is taken by it). Two generations: at the start of a step the new ones become the old
@@ -106,6 +107,10 @@ impl Modified {
     pub fn push(&mut self, e: Entity) {
         self.0.push(e);
     }
+    /// `e` only moved or turned: its position and rotation are read again, its metadata is not.
+    pub fn push_motion(&mut self, e: Entity) {
+        self.1.push(e);
+    }
 }
 
 /// Queues `e`: its view changed. A sleeping entity is not queued (it is not ticked, so nothing moves in it).
@@ -116,10 +121,31 @@ pub fn mark(world: &mut World, e: Entity) {
     }
 }
 
-/// The queued entities, each once, by index; empty when nothing changed. A queued entity may have been despawned since: `view` says.
-pub fn drain(world: &mut World) -> Vec<Entity> {
-    let mut v = world.get_resource_mut::<Modified>().map(|mut m| std::mem::take(&mut m.0)).unwrap_or_default();
-    v.sort_unstable();
-    v.dedup();
-    v
+/// `mark` for a change of position or rotation only: nothing synchronized was written (vanilla `SynchedEntityData.set` is dirty only when the
+/// value changes; the position goes by its own codec).
+pub fn mark_motion(world: &mut World, e: Entity) {
+    if world.get_entity(e).is_ok_and(|r| !r.contains::<Disabled>()) {
+        world.init_resource::<Modified>();
+        world.resource_mut::<Modified>().push_motion(e);
+    }
+}
+
+/// The queued entities, each once, by index, with whether their synchronized data may have changed (queued by `mark`); empty when nothing
+/// changed. A queued entity may have been despawned since: `view` says.
+pub fn drain(world: &mut World) -> Vec<(Entity, bool)> {
+    let Some((mut full, mut motion)) = world.get_resource_mut::<Modified>().map(|mut m| (std::mem::take(&mut m.0), std::mem::take(&mut m.1))) else {
+        return Vec::new();
+    };
+    full.sort_unstable();
+    full.dedup();
+    if motion.is_empty() {
+        return full.into_iter().map(|e| (e, true)).collect();
+    }
+    motion.sort_unstable();
+    motion.dedup();
+    let mut out: Vec<(Entity, bool)> = Vec::with_capacity(full.len() + motion.len());
+    out.extend(full.iter().map(|&e| (e, true)));
+    out.extend(motion.into_iter().filter(|e| full.binary_search(e).is_err()).map(|e| (e, false)));
+    out.sort_unstable_by_key(|x| x.0);
+    out
 }

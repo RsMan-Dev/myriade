@@ -1101,6 +1101,7 @@ fn guests_see_each_other_and_the_world_entities() {
         stepped: false,
         idle: false,
         bare: false,
+        keep_meta: false,
         leash: None,
         spectator: false,
         watching: false,

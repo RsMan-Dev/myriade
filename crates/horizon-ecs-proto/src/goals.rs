@@ -1609,7 +1609,7 @@ fn look_control(
         }
         // A followed entity whose head or body turned is sent again (the tracker reads `Modified`).
         if followed && before != (h.yaw, h.pitch, h.body, h.stable) && let Some(m) = sent.as_mut() {
-            m.push(e);
+            m.push_motion(e);
         }
         memo.settled = (aimed && !moved && h.stable_time > 20 && before == (h.yaw, h.pitch, h.body, h.stable)).then_some((look.target, pos.0, look.y_speed, walking));
         if look.cooldown == 0 && !moved && wrap(h.yaw - h.body).abs() < 0.01 && h.pitch == 0.0 {

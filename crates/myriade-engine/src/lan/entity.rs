@@ -96,6 +96,8 @@ pub struct EntityState {
     /// with this tick, whose data the tracker then never reads (game/network/lan_idle.rs).
     /// It is never paired.
     pub bare: bool,
+    /// `meta` was not read this tick (the entity only moved or turned): the tracker keeps the data it sent, as for `attributes` left empty.
+    pub keep_meta: bool,
     /// `Leashable.getLeashHolder`: the entity holding its lead.
     pub leash: Option<i32>,
     /// `ServerPlayer.isSpectator`: a player in spectator mode, whom only the
@@ -138,6 +140,7 @@ impl EntityState {
         self.stepped = false;
         self.idle = false;
         self.bare = false;
+        self.keep_meta = false;
         self.leash = None;
         self.spectator = false;
         self.watching = false;
@@ -520,7 +523,7 @@ impl ServerEntity {
                 .map_or(0, |n| (n + 1) * self.interval);
         }
         // SynchedEntityData.isDirty: once for every client.
-        let dirty = e.meta != self.meta || e.forced_meta != [0; 4];
+        let dirty = !e.keep_meta && (e.meta != self.meta || e.forced_meta != [0; 4]);
         let due = self.interval != 0 && self.tick.is_multiple_of(self.interval);
         if due || dirty || e.needs_sync {
             let rotation = (pack_degrees(e.pitch), pack_degrees(e.yaw));
@@ -1917,6 +1920,7 @@ mod tests {
             stepped: false,
             idle: false,
             bare: false,
+            keep_meta: false,
             leash: None,
             spectator: false,
             watching: false,

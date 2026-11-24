@@ -50,7 +50,7 @@ fn set_rotation_turns_and_marks_the_entity() {
     if let Some(head) = h.world().get::<Head>(e) {
         assert_eq!((head.yaw, head.pitch), (90.0, 10.0));
     }
-    assert!(h.drain_modified().contains(&e), "the view reads the new turn");
+    assert!(h.drain_modified().iter().any(|x| x.0 == e), "the view reads the new turn");
 }
 
 #[test]

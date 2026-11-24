@@ -30,6 +30,7 @@ fn entity(id: i32, kind: &str, at: [f64; 2]) -> EntityState {
         stepped: false,
         idle: false,
         bare: false,
+        keep_meta: false,
         leash: None,
         spectator: false,
         watching: false,

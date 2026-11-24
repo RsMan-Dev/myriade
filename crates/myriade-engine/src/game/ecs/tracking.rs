@@ -12,8 +12,9 @@ fn section(p: [f64; 3]) -> [i32; 3] {
 impl Game<'_> {
     /// The tracker's state of `e`, under its network id (linked on its first follow). None when `e` sleeps: a sleeping entity
     /// stays tracked and sends nothing, and is not removed.
-    fn ecs_state(&mut self, e: Entity, attributes: bool) -> Option<EntityState> {
-        // The sleep test comes before the id is linked: a sleeping entity gets no id and no state.
+    fn ecs_state(&mut self, e: Entity, attributes: bool, meta: bool) -> Option<EntityState> {
+        // The sleep test comes before the id is linked: a sleeping entity gets no id and no state. `fill` uses the id only for the state's
+        // own `id` field, written once it is linked.
         let mut state = EntityState::default();
         if !self.ecs.view_state(e, 0, &mut state) {
             return None;
@@ -22,8 +23,15 @@ impl Game<'_> {
             self.next_entity += 1;
             self.next_entity
         });
-        self.ecs.view_state(e, id as i32, &mut state);
-        self.ecs.metadata(e, &mut state.meta);
+        state.id = id as i32;
+        // The metadata only when it may have changed (`meta`): an entity that only moved or turned leaves what was sent, as for the attributes.
+        if meta {
+            self.ecs.metadata(e, &mut state.meta);
+        } else {
+            // `fill` wrote the entries of a fishing hook: none of it is a full reading.
+            state.meta.clear();
+            state.keep_meta = true;
+        }
         // The attribute instances only when they changed or the entity is being paired: a state without them leaves what was sent.
         if attributes {
             state.attributes = self.ecs_attributes(e, &state.kind);
@@ -57,21 +65,21 @@ impl Game<'_> {
         let pairing = !moved.is_empty();
         let mut changed = Vec::new();
         let mut done = FxHashSet::default();
-        for e in self.ecs.drain_modified() {
+        for (e, written) in self.ecs.drain_modified() {
             // `dirty` is sorted by `to_bits` (`drain_attribute_changes`).
             let with = pairing || dirty.binary_search_by_key(&e.to_bits(), |x| x.to_bits()).is_ok();
             done.insert(e);
-            changed.extend(self.ecs_state(e, with));
+            changed.extend(self.ecs_state(e, with, pairing || written || with));
         }
         for &e in dirty.iter().filter(|e| !done.contains(*e)) {
-            changed.extend(self.ecs_state(e, true));
+            changed.extend(self.ecs_state(e, true, true));
         }
         let mut seen: FxHashSet<i32> = changed.iter().map(|s| s.id).collect();
         for (at, view) in moved {
             // A client sees no further than its view distance (`sees`), so the entities within it are the ones to pair.
             let q = Select { kind: None, tag: None, near: Some((at, f64::from(view * 16))), limit: usize::MAX };
             for e in self.ecs.select(&q) {
-                if let Some(s) = self.ecs_state(e, true)
+                if let Some(s) = self.ecs_state(e, true, true)
                     && seen.insert(s.id)
                 {
                     changed.push(s);

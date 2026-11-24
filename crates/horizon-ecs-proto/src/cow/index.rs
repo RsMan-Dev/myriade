@@ -381,7 +381,7 @@ pub(crate) fn reindex(
 ) {
     for (e, b, mut c, hz, in_fluid, mut fs, followed) in &mut q {
         if followed && let Some(m) = sent.as_mut() {
-            m.push(e);
+            m.push_motion(e);
         }
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let cell = idx.cell_near(c.0, (mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
