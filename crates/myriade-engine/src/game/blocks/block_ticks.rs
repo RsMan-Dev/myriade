@@ -394,6 +394,10 @@ impl Game<'_> {
     /// events) happen before the next tick runs, as they do inline in vanilla.
     pub(super) fn tick_scheduled(&mut self) -> Result<()> {
         for fluids in [false, true] {
+            // Nothing scheduled: beginning and finishing the phase would change nothing.
+            if (if fluids { &self.block_ticks.fluids } else { &self.block_ticks.blocks }).is_idle() {
+                continue;
+            }
             let mut laps = myriade_engine::spans::laps();
             let name = if fluids { "tb_fluids" } else { "tb_scheduled" };
             if !self.with_level(|b, level, ticks| b.scheduled_begin(level, ticks, fluids)) {

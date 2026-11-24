@@ -26,6 +26,10 @@ impl DeadlineIndex {
     fn capacity(&self) -> usize {
         self.keys.len() - 1
     }
+    /// No chunk has a deadline: `visit` would call nothing. Kept in `size`, O(1).
+    pub(super) fn is_empty(&self) -> bool {
+        self.size == 0
+    }
     fn find(&self, key: i64) -> usize {
         if key == 0 {
             return self.capacity();

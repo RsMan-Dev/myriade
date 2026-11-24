@@ -485,6 +485,10 @@ impl LevelTicks {
     pub fn all_queued(&self) -> impl Iterator<Item = &ScheduledTick> {
         self.chunks.values().flat_map(|c| c.queued())
     }
+    /// No chunk holds a scheduled tick: `begin_tick` would collect nothing and `finish_tick` change nothing, so a caller may skip both.
+    pub fn is_idle(&self) -> bool {
+        self.deadlines.is_empty() && self.to_run.is_empty() && !self.collecting
+    }
     pub fn begin_tick(
         &mut self,
         game_time: i64,
