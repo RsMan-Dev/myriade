@@ -45,6 +45,8 @@ pub fn build(w: &mut World, at: Vec3, c: &horizon_core::nbt::Compound) -> Option
     let e = w.spawn((Pos(at), Vel(Vec3::ZERO), breath::FLAME.cloud([at.x, at.y, at.z]), OwnTime)).id();
     crate::nbt::mark_saved(w, e, crate::species::lists::AREA_EFFECT_CLOUD);
     w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::AREA_EFFECT_CLOUD));
+    // Summoned with no `Age` key: age 0 (the keys read after this one, `Duration` among them, set what the timers then check).
+    resume(w, e, 0);
     Some(e)
 }
 
@@ -62,6 +64,9 @@ pub fn resume(w: &mut World, e: Entity, age: i32) {
 /// The wait is over, on the tick `WAIT` after the spawn: the age is `WAIT - 1`, so the step that follows is the tick `WAIT`, as
 /// `AreaEffectCloud.serverTick` counts it (`tick_live` runs after the timers).
 fn wake(w: &mut World, e: Entity) {
+    if w.get::<Live>(e).is_some() {
+        return;
+    }
     let Some(mut c) = w.get_mut::<Cloud>(e) else { return };
     c.age = WAIT - 1;
     drop(c);
@@ -70,6 +75,15 @@ fn wake(w: &mut World, e: Entity) {
 
 /// The cloud's end: it is removed.
 pub fn gone(w: &mut World, e: Entity) {
+    // A `Duration` read after the timer was armed moves the end: the timer is re-armed for what the cloud's own duration leaves.
+    if let Some(cl) = w.get::<Cloud>(e) {
+        let age = if w.get::<Live>(e).is_some() { cl.age } else { cl.age + crate::cow::now_of(w, e) as i32 };
+        let left = WAIT + cl.duration - age;
+        if left > 1 {
+            after(w, e, left, gone);
+            return;
+        }
+    }
     w.despawn(e);
 }
 
