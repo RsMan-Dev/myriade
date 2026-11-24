@@ -47,6 +47,7 @@ fn zero_of(kind: i32) -> Option<Value> {
         s::OPTIONAL_COMPONENT => Value::OptText(None),
         s::ITEM_STACK => Value::Item(None),
         s::OPTIONAL_BLOCK_POS => Value::OptPos(None),
+        s::PARTICLES => Value::Particles(Vec::new()),
         _ => return None,
     })
 }

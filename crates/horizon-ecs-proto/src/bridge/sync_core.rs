@@ -6,7 +6,8 @@ use crate::behaviours::bed::Sleeping;
 use crate::behaviours::elder_curse::Silent;
 use crate::cow::{Air, AirLow, Burning, Frozen, GrowAt, Health, now_of};
 use crate::dragon::flight::NoAi;
-use crate::effects::{AMBIENT, Effects, Invisible};
+use crate::effects::{Kind, AMBIENT, Effects, HIDDEN, Invisible};
+use horizon_protocol::entity_data::{Particle, ParticleData};
 use bevy_ecs::prelude::*;
 use horizon_core::nbt::Tag;
 use horizon_protocol::entity_data::serializer;
@@ -14,7 +15,7 @@ use horizon_protocol::entity_data::serializer;
 /// Entity.DATA_SHARED_FLAGS_ID: on fire 0x01, invisible 0x20, glowing 0x40 (the saved `Glowing` key, `setGlowingTag`).
 fn shared(w: &World, e: Entity) -> Option<SyncValue> {
     let fire = w.get::<Burning>(e).is_some_and(|b| b.until > now_of(w, e) as i64);
-    let glow = w.entity(e).contains::<crate::glowing::Glowing>();
+    let glow = w.entity(e).contains::<crate::glowing::Glowing>() || w.get::<Effects>(e).is_some_and(|f| f.list.iter().any(|x| x.kind == Kind::Glowing));
     let bits = i8::from(fire) | i8::from(w.entity(e).contains::<Invisible>()) << 5 | i8::from(glow) << 6;
     (bits != 0).then_some(SyncValue::Byte(bits))
 }
@@ -47,10 +48,54 @@ fn health(w: &World, e: Entity) -> Option<SyncValue> {
     w.get::<Health>(e).map(|h| h.0.max(0.0)).filter(|h| *h != 1.0).map(SyncValue::Float)
 }
 
-/// LivingEntity.DATA_EFFECT_AMBIENCE_ID: sent when there are effects and all of them are ambient.
+/// `MobEffect`'s colour (`MobEffects` constructor); None for the effects with their own particle (weaving, infested).
+fn effect_color(k: Kind) -> Option<i32> {
+    Some(match k {
+        Kind::Speed => 3402751,
+        Kind::Slowness => 9154528,
+        Kind::Weakness => 4738376,
+        Kind::Poison => 8889187,
+        Kind::Wither => 7561558,
+        Kind::Regeneration => 13458603,
+        Kind::FireResistance => 16750848,
+        Kind::WaterBreathing => 10017472,
+        Kind::Invisibility => 16185078,
+        Kind::Levitation => 0xceffff,
+        Kind::Hunger => 5797459,
+        Kind::MiningFatigue => 4866583,
+        Kind::Blindness => 2039587,
+        Kind::JumpBoost => 16646020,
+        Kind::Glowing => 0x94a061,
+        Kind::Strength => 16762624,
+        Kind::Resistance => 9520880,
+        Kind::Absorption => 0x2552a5,
+        Kind::HealthBoost => 16284963,
+        Kind::ConduitPower => 0x1dc2d1,
+        Kind::BreathOfTheNautilus => 0x00ffee,
+        Kind::SlowFalling => 0xf3cfb9,
+        Kind::Weaving | Kind::Infested => return None,
+    })
+}
+
+/// LivingEntity.DATA_EFFECT_PARTICLES (index 10): `ENTITY_EFFECT` (28) of each visible effect, ARGB with alpha 255, 38 when ambient
+/// (`MobEffect.AMBIENT_ALPHA`); the list is in the creature's own order (vanilla's is its map's).
+fn effect_particles(w: &World, e: Entity) -> Option<SyncValue> {
+    let list = &w.get::<Effects>(e)?.list;
+    let ps: Vec<Particle> = list
+        .iter()
+        .filter(|f| f.flags & HIDDEN == 0)
+        .filter_map(|f| {
+            let alpha = if f.flags & AMBIENT != 0 { 38 } else { 255 };
+            effect_color(f.kind).map(|c| Particle { id: 28, data: Some(ParticleData::Color((alpha << 24) | c)) })
+        })
+        .collect();
+    (!ps.is_empty()).then_some(SyncValue::Particles(ps))
+}
+
+/// LivingEntity.DATA_EFFECT_AMBIENCE_ID: sent when there are effects and none is both visible and not ambient (`areAllEffectsAmbient`).
 fn ambient(w: &World, e: Entity) -> Option<SyncValue> {
     let list = &w.get::<Effects>(e)?.list;
-    (!list.is_empty() && list.iter().all(|f| f.flags & AMBIENT != 0)).then_some(SyncValue::Bool(true))
+    (!list.is_empty() && list.iter().all(|f| f.flags & (AMBIENT | HIDDEN) != 0)).then_some(SyncValue::Bool(true))
 }
 
 /// LivingEntity.DATA_SLEEPING_POS_ID: the bed a sleeper lies in.
@@ -110,6 +155,7 @@ pub static SLOTS: &[SyncSlot] = &[
     SyncSlot { index: 6, read: pose },
     SyncSlot { index: 7, read: frozen },
     SyncSlot { index: 9, read: health },
+    SyncSlot { index: 10, read: effect_particles },
     SyncSlot { index: 11, read: ambient },
     SyncSlot { index: 14, read: sleeping },
     SyncSlot { index: 15, read: mob_flags },
