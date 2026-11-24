@@ -6,6 +6,25 @@ use crate::blocks::Fluid;
 use horizon_core::geometry::{Aabb, Vec3};
 
 impl MobWorld<'_> {
+    /// The flow of the fluid block at (x, y, z), added to its fluid's accumulator (`height` is its surface over the box's bottom).
+    fn add_current(&self, x: i32, y: i32, z: i32, height: f64, water: &mut super::CurrentAccumulator, lava: &mut super::CurrentAccumulator) {
+        use super::FluidKind;
+        let state = self.fluid_tables.fluid(self.world.block(x, y, z));
+        let current = match state.kind() {
+            // A mod's fluid is in neither tag, so it pushes no entity.
+            FluidKind::Empty | FluidKind::Mod(_) | FluidKind::ModFlowing(_) => return,
+            FluidKind::Water | FluidKind::FlowingWater => water,
+            FluidKind::Lava | FluidKind::FlowingLava => lava,
+        };
+        current.height = current.height.max(height);
+        let mut scene = super::FlowScene(self);
+        let p = horizon_core::position::BlockPos::new(x, y, z);
+        let mut flow = crate::motion::pushing_flow(self.loop_context, &mut scene, state, p).unwrap_or(Vec3::ZERO);
+        if current.height < 0.4 {
+            flow = flow.scale(current.height);
+        }
+        current.accumulate(flow);
+    }
     /// FluidState.getHeight: a full block under the same fluid, else amount / 9.
     pub fn fluid_height(&self, x: i32, y: i32, z: i32) -> (Fluid, f64) {
         let f = self.facts.get(self.world.block(x, y, z));
@@ -28,6 +47,17 @@ impl MobWorld<'_> {
     /// in `bounds` deflated by 0.001 and measures each depth from `bottom`, the
     /// entity's own box bottom (`getBoundingBox().minY`).
     pub fn fluids_from(&self, bounds: Aabb, bottom: f64, eye_y: f64) -> Fluids {
+        self.fluids_scan(bounds, bottom, eye_y, None)
+    }
+    /// One walk over the box: the fluid heights, the eyes and, when `currents` is given, the flow of every water and lava block it
+    /// touches (`fluid_currents`' sum, as (water, lava)), so no cell is read twice.
+    pub(super) fn fluids_scan(
+        &self,
+        bounds: Aabb,
+        bottom: f64,
+        eye_y: f64,
+        mut currents: Option<&mut (super::CurrentAccumulator, super::CurrentAccumulator)>,
+    ) -> Fluids {
         let b = bounds.deflate(Vec3::new(0.001, 0.001, 0.001));
         let (lo, hi) = (b.min_position(), b.max_position());
         let mut out = Fluids::default();
@@ -66,6 +96,9 @@ impl MobWorld<'_> {
                     let top = f64::from(y) + h;
                     if top >= lo.y {
                         let depth = top - bottom;
+                        if let Some((water, lava)) = currents.as_deref_mut() {
+                            self.add_current(x, y, z, top - bottom, water, lava);
+                        }
                         match fluid {
                             Fluid::Water => {
                                 out.water = out.water.max(depth);

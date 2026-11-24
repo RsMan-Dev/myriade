@@ -154,7 +154,7 @@ pub(crate) fn fluid_update(
             myriade_engine_lib::motion::bubble_column_push_over(mw.world, mw.registry, mw.facts, mw.collision, b.0, &mut v.0, |_| {});
             return;
         };
-        let f = mw.fluids(bx, pos.0.y + fp.unwrap_or(&FluidParams::DEFAULT).eye_height);
+        let f = mw.fluids_pushed(bx, pos.0.y + fp.unwrap_or(&FluidParams::DEFAULT).eye_height, &mut v.0);
         if f.eye_in_water != fs.eye_in_water {
             flips.lock().unwrap().push((e, f.eye_in_water));
         }
@@ -167,10 +167,6 @@ pub(crate) fn fluid_update(
             eye_in_lava: f.eye_in_lava,
             was_eye_in_water: fs.eye_in_water,
         };
-        if f.in_water || f.in_lava {
-            // `update` accumulates the currents in the same box as the fluids (the passenger's modified one).
-            v.0 = mw.pushed_by_currents(bx, v.0);
-        }
         // `BubbleColumnBlock.entityInside`: a column of bubbles in the box lifts or drags it (no cost out of a fluid).
         myriade_engine_lib::motion::bubble_column_push_over(mw.world, mw.registry, mw.facts, mw.collision, b.0, &mut v.0, |_| {});
         if f.in_water {

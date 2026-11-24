@@ -199,8 +199,11 @@ impl MobWorld<'_> {
     /// `Entity.updateFluidInteraction`'s pushes for an entity fluids push
     /// (`isPushedByFluid`) with the box `bounds`: its `velocity` after the
     /// water's and the lava's currents (`EntityFluidInteraction.applyCurrentTo`).
-    pub fn pushed_by_currents(&self, bounds: Aabb, mut velocity: Vec3) -> Vec3 {
-        let (water, lava) = self.fluid_currents(bounds);
+    pub fn pushed_by_currents(&self, bounds: Aabb, velocity: Vec3) -> Vec3 {
+        let cur = self.fluid_currents(bounds);
+        self.apply_currents(cur, velocity)
+    }
+    fn apply_currents(&self, (water, lava): (CurrentAccumulator, CurrentAccumulator), mut velocity: Vec3) -> Vec3 {
         let lava_scale = if self.dimension_type.fast_lava {
             0.007
         } else {
@@ -214,6 +217,16 @@ impl MobWorld<'_> {
             let _ = lava.apply_to(&mut pushed, lava_scale);
         }
         velocity
+    }
+    /// [`Self::fluids`] and [`Self::pushed_by_currents`] in one walk of the box: the fluids, and `velocity` after the currents when the
+    /// box is in water or lava.
+    pub fn fluids_pushed(&self, bounds: Aabb, eye_y: f64, velocity: &mut Vec3) -> Fluids {
+        let mut cur = (CurrentAccumulator::default(), CurrentAccumulator::default());
+        let f = self.fluids_scan(bounds, bounds.min_position().y, eye_y, Some(&mut cur));
+        if f.in_water || f.in_lava {
+            *velocity = self.apply_currents(cur, *velocity);
+        }
+        f
     }
     /// `BlockState.getCollisionShape(level, pos)` (the empty collision
     /// context) as boxes in the world.
