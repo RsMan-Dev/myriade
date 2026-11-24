@@ -251,7 +251,14 @@ pub fn build(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     let Some(Tag::String(id)) = c.get(&JavaString::from("id")) else { return None };
     let id = id.to_string_lossy();
     let (_, flight) = KINDS.iter().find(|(k, _)| *k == id)?;
-    Some(launch(w, *flight, at, Vec3::ZERO, None))
+    let e = launch(w, *flight, at, Vec3::ZERO, None);
+    // A bullet made by data has no target: it falls (`ShulkerBullet.tick` -> `applyGravity`) until a block ends it.
+    if flight.bullet && w.get_entity(e).is_ok() {
+        let born = w.resource::<crate::cow::Clock>().0;
+        let h = crate::behaviours::homing_projectile::Homing { target: crate::targeting::Who::Player(u32::MAX), dir: None, steps: 0, delta: [0.0; 3], seed: e.to_bits() | 1, cfg: &crate::species::shulker::SHOT };
+        w.entity_mut(e).insert((crate::projectile::BornAt(born), h));
+    }
+    Some(e)
 }
 fn bounds(at: Vec3, size: f64) -> Aabb {
     let w = size / 2.0;
