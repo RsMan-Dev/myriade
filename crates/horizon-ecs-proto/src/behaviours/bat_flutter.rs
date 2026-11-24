@@ -120,5 +120,3 @@ fn hang(q: Query<Entity, With<Perching>>, mut cmd: Commands) {
     }
 }
 
-/// `Bat.checkFallDamage` does nothing: a bat never takes fall damage.
-pub static NO_FALL: crate::rules::Rule = crate::rules::Rule { name: "bat_no_fall", equip: |_, _, _| {}, attrs: |_| crate::rules::Attrs { fall_factor: None, immune: IMMUNE_FALL }, interact: crate::rules::no_interact };

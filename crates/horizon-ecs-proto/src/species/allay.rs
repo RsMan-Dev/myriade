@@ -34,6 +34,6 @@ pub static DEF: Def = Def {
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Tamable, Cap::Locomotion]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { max_turn: 20.0, hovers: true, free: true, drive_air: true, ..fly::Params::DEFAULT }))],
-    rules: &[crate::rules::RuleEntry::new(&crate::duplicate_item::DUPLICATE_ITEM, &crate::duplicate_item::DuplicateParams::ALLAY), crate::rules::RuleEntry::new(&crate::hand_over::HAND_OVER, &crate::hand_over::HandOverParams::ALLAY), crate::rules::RuleEntry::new(&crate::allay_heal::HEAL, &())],
+    rules: &[crate::rules::RuleEntry::new(&crate::rules::NO_FALL, &()), crate::rules::RuleEntry::new(&crate::duplicate_item::DUPLICATE_ITEM, &crate::duplicate_item::DuplicateParams::ALLAY), crate::rules::RuleEntry::new(&crate::hand_over::HAND_OVER, &crate::hand_over::HandOverParams::ALLAY), crate::rules::RuleEntry::new(&crate::allay_heal::HEAL, &())],
     ..Def::EMPTY
 };

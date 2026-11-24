@@ -56,7 +56,7 @@ pub static DEF: Def = Def {
         Entry::new(&ambient_sound::MODULE, 6, &ambient_sound::Params { interval: Some(80), choose: Some(ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Rideable, Cap::CollidableWhenStill, Cap::Brain]),
-    rules: &[crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&harness_worn::RULE, &()),RuleEntry::new(&crate::hand_feed::FEED_BABY, &crate::hand_feed::FeedParams::HAPPY_GHAST), RuleEntry::new(&RIDE, &RideParams::GHAST), RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::GHAST), RuleEntry::new(&crate::leash::QUAD_HOLDER, &())],
+    rules: &[crate::rules::RuleEntry::new(&crate::rules::NO_FALL, &()), crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&harness_worn::RULE, &()),RuleEntry::new(&crate::hand_feed::FEED_BABY, &crate::hand_feed::FeedParams::HAPPY_GHAST), RuleEntry::new(&RIDE, &RideParams::GHAST), RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::GHAST), RuleEntry::new(&crate::leash::QUAD_HOLDER, &())],
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Float, free: true, ..fly::Params::DEFAULT }))],
     brain: BrainDef {
         sensors: &[
@@ -91,7 +91,7 @@ pub static DEF: Def = Def {
 pub static BABY: Def = Def {
     name: "minecraft:happy_ghast",
     // `Animal.mobInteract`: the food ages the baby up (the adult cannot fall in love).
-    rules: &[crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&crate::hand_feed::FEED_BABY, &crate::hand_feed::FeedParams::HAPPY_GHAST)],
+    rules: &[crate::rules::RuleEntry::new(&crate::rules::NO_FALL, &()), crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&crate::hand_feed::FEED_BABY, &crate::hand_feed::FeedParams::HAPPY_GHAST)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::CollidableWhenStill, Cap::Brain]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Float, free: true, hovers: true, ..fly::Params::DEFAULT }))],
     brain: BrainDef {

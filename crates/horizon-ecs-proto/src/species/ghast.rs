@@ -8,7 +8,7 @@ use crate::locomotion::{fly, Medium};
 pub static DEF: Def = Def {
     spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::GroundOneIn { bound: 20 }, cluster: 1, ..crate::spawning::SpawnDef::MONSTER }),
     name: "minecraft:ghast",
-    rules: &[crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), crate::rules::RuleEntry::new(&crate::leash::QUAD_HOLDER, &())],
+    rules: &[crate::rules::RuleEntry::new(&crate::rules::NO_FALL, &()), crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), crate::rules::RuleEntry::new(&crate::leash::QUAD_HOLDER, &())],
     targets: &[Entry::new(&nearest_target::MODULE, 1, &nearest_target::Params { max_dy: Some(4.0), ..nearest_target::Params::PLAYER })],
     goals: &[
         Entry::new(&float_around::MODULE, 5, &float_around::Params::DEFAULT),

@@ -24,5 +24,6 @@ pub static DEF: Def = Def {
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { max_turn: 10.0, hovers: false, glide: 0.6, ..fly::Params::DEFAULT }))],
     spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Bright { on: "minecraft:parrots_spawnable_on" }, ..crate::spawning::SpawnDef::ANIMAL }),
     despawn: Some(crate::despawn::DespawnDef::KEPT),
+    rules: &[crate::rules::RuleEntry::new(&crate::rules::NO_FALL, &())],
     ..Def::EMPTY
 };

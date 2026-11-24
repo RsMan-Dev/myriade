@@ -352,3 +352,6 @@ pub mod work_swim;
 pub mod hook_wait;
 pub mod push_rules;
 pub mod seat_rules;
+
+/// `checkFallDamage` overridden to do nothing (bat, bee, parrot, allay, ghast, happy ghast, phantom): no fall damage.
+pub static NO_FALL: Rule = Rule { name: "no_fall", equip: |_, _, _| {}, attrs: |_| Attrs { fall_factor: None, immune: crate::cow::IMMUNE_FALL }, interact: no_interact };
