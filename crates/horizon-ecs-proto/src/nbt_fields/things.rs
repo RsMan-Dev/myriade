@@ -78,6 +78,8 @@ pub fn builders() -> &'static [(&'static str, crate::nbt::Builder)] {
         (crate::species::lists::GLOW_ITEM_FRAME, build_frame),
         (crate::species::lists::PAINTING, build_painting),
         (crate::species::lists::AREA_EFFECT_CLOUD, build_breath_cloud),
+        (crate::species::lists::EVOKER_FANGS, build_fangs),
+        (crate::species::lists::FIREWORK_ROCKET, build_rocket),
     ]
 }
 
@@ -572,6 +574,18 @@ fn build_orb(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     let value = short_or(c, "Value", 0).ok()?;
     let count = match tag(c, "Count") { Some(Tag::Int(n)) => u32::try_from(*n).ok()?, None => 1, _ => return None };
     Some(spawn_orb(w, value, count, at, Vec3::ZERO))
+}
+
+/// `new EvokerFangs`: a summon without data has `warmup` 0, so the fangs bite and end on their own deadlines.
+fn build_fangs(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
+    let warmup = match tag(c, "Warmup") { Some(Tag::Int(v)) => *v, _ => 0 };
+    Some(crate::fangs::spawn_fang(w, at, warmup, None))
+}
+
+/// A summoned rocket without data: flight 1, no explosion; its life is drawn and its end armed as a launched one's.
+fn build_rocket(w: &mut World, at: Vec3, _: &Compound) -> Option<Entity> {
+    let shot = crate::firework::Shot { at, owner: None, flight: 1, explosions: 0, silent: false, carrier: None, angled: None };
+    Some(crate::firework::launch(w, shot))
 }
 
 fn build_tnt(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
