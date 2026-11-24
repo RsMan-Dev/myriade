@@ -916,7 +916,11 @@ impl Game<'_> {
         f: impl FnOnce(&mut Self) -> R,
     ) -> Option<R> {
         // A mob the ECS holds is in the level in place: the ECS is that level's.
-        if let Target::Mob(id) | Target::Frame(id) | Target::Painting(id) = t
+        if let Target::Mob(id)
+        | Target::Frame(id)
+        | Target::Painting(id)
+        | Target::Item(id)
+        | Target::Crystal(id) = t
             && self.ecs.exists(id)
         {
             return Some(f(self));
