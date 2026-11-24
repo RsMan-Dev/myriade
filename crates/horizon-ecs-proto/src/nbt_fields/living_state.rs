@@ -28,6 +28,7 @@ pub const CREATORS: &[Field] = &[
     Field { key: Cow::Borrowed("CustomName"), write: write_name, read: read_name, accepts: accept_name, owner: Some(owner::<CustomName>) },
     Field { key: Cow::Borrowed("CustomNameVisible"), write: write_name_visible, read: read_name_visible, accepts: is_byte, owner: Some(owner::<NameVisible>) },
     Field { key: Cow::Borrowed("NoGravity"), write: write_no_gravity, read: read_no_gravity, accepts: is_byte, owner: Some(owner::<NoGravity>) },
+    Field { key: Cow::Borrowed("NoAI"), write: write_no_ai, read: read_no_ai, accepts: is_byte, owner: Some(owner::<crate::dragon::flight::NoAi>) },
     Field { key: Cow::Borrowed("FallFlying"), write: write_fall_flying, read: read_fall_flying, accepts: is_byte, owner: Some(owner::<FallFlying>) },
     Field { key: Cow::Borrowed("LeftHanded"), write: write_left_handed, read: read_left_handed, accepts: is_byte, owner: Some(owner::<LeftHanded>) },
 ];
@@ -265,6 +266,19 @@ fn write_no_gravity(w: &World, e: Entity, c: &mut Compound) {
 fn read_no_gravity(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Byte(v) = t else { return false };
     no_gravity::set(w, e, *v != 0);
+    true
+}
+
+/// `Mob.setNoAi` (key `NoAI`): the marker `NoAi`, present only while the creature has no AI.
+fn write_no_ai(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<crate::dragon::flight::NoAi>(e).is_some() {
+        c.insert("NoAI".into(), Tag::Byte(1));
+    }
+}
+fn read_no_ai(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    crate::dragon::flight::set_no_ai(w, e, *v != 0);
+    crate::bridge::view::mark(w, e);
     true
 }
 
