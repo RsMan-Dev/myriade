@@ -252,6 +252,19 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     id
 }
 
+/// `/summon` with data does not call `finalizeSpawn`: a phantom has no anchor, the equid keeps the attributes of its type (53 health, the base speed and jump), without
+/// the draws of `AbstractHorse.randomizeAttributes` that `spawn_declared` made.
+pub fn forget_birth_draws(world: &mut World, e: Entity, sp: &Species) {
+    // `Phantom.finalizeSpawn` sets the anchor 5 blocks up; the data a summon is given leaves it null (`anchor_pos` is read, or none).
+    if sp.name == "minecraft:phantom" {
+        world.entity_mut(e).remove::<crate::behaviours::lay_egg::Anchor>();
+    }
+    if !sp.random_max_health && matches!(sp.horse_gen, crate::species::HorseGen::None) {
+        return;
+    }
+    world.entity_mut(e).remove::<crate::attr_mod::AttrMods>().insert(Health(sp.max_health));
+}
+
 /// A new entity of the species of `parent` (a baby), in the index; the framework looks the species up, the module does not.
 pub fn spawn_like(world: &mut World, parent: Entity, x: f64, z: f64, seed: u64) -> Entity {
     let sp = world.resource::<SpeciesTable>().0[world.get::<SpeciesId>(parent).unwrap().0 as usize];

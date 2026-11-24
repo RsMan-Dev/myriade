@@ -348,6 +348,7 @@ impl EcsWorld {
             }
             match nbt {
                 Some(c) => {
+                    crate::cow::forget_birth_draws(w, e, sp);
                     nbt::load(w, e, c);
                     if let Some(horizon_core::nbt::Tag::IntArray(v)) = c.get(&"UUID".into())
                         && let Ok(words) = <[i32; 4]>::try_from(v.as_slice())
