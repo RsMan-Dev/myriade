@@ -41,23 +41,38 @@ impl EcsWorld {
         })
     }
 
-    /// The entities that moved this tick, as (entity, may take a portal with its vehicle, where it is). Only the `Moving` ones are visited.
-    /// None moved: nothing is lent, no query is built (read from the archetypes, no entity visited).
-    pub fn portal_entries(&mut self, mw: &MobWorld<'_>) -> Vec<(Entity, bool, [f64; 3])> {
-        if !self.any_moving() {
+    /// The entities to look at for a portal, as (entity, may take a portal with its vehicle, where it is): the `Moving` ones, those that
+    /// entered the world since the last step, and `extra` (the host's own: an entity held by a portal, one next to a portal just lit).
+    /// None of them: nothing is lent, no query is built (read from the archetypes, no entity visited).
+    pub fn portal_entries(&mut self, mw: &MobWorld<'_>, extra: &[Entity]) -> Vec<(Entity, bool, [f64; 3])> {
+        if !self.any_moving() && !self.any_entered() && extra.is_empty() {
             return Vec::new();
         }
         self.lent(mw, |w| {
-            let movers: Vec<(Entity, [f64; 3])> = w
-                .query_filtered::<(Entity, &Pos), With<Moving>>()
-                .iter(w)
-                .map(|(e, p)| (e, [p.0.x, p.0.y, p.0.z]))
-                .collect();
-            movers
-                .into_iter()
-                .map(|(e, at)| (e, portal::usable(w, e, true), at))
-                .collect()
+            let mut seen = std::collections::HashSet::new();
+            let mut rows: Vec<(Entity, [f64; 3])> = Vec::new();
+            if w.component_id::<Moving>().is_some() {
+                for (e, p) in w.query_filtered::<(Entity, &Pos), With<Moving>>().iter(w) {
+                    if seen.insert(e) {
+                        rows.push((e, [p.0.x, p.0.y, p.0.z]));
+                    }
+                }
+            }
+            let entered: Vec<Entity> = w.get_resource::<crate::bridge::view::Entered>().map(|v| v.0.iter().chain(&v.1).copied().collect()).unwrap_or_default();
+            for e in entered.into_iter().chain(extra.iter().copied()) {
+                if let Some(p) = w.get::<Pos>(e)
+                    && seen.insert(e)
+                {
+                    rows.push((e, [p.0.x, p.0.y, p.0.z]));
+                }
+            }
+            rows.into_iter().map(|(e, at)| (e, portal::usable(w, e, true), at)).collect()
         })
+    }
+
+    /// Whether an entity entered the world since the last step (`Entered`).
+    pub fn any_entered(&self) -> bool {
+        self.world().get_resource::<crate::bridge::view::Entered>().is_some_and(|v| !v.0.is_empty() || !v.1.is_empty())
     }
 
     /// Whether an entity carries `Moving`: an archetype with it holds an entity.

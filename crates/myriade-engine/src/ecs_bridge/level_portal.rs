@@ -14,15 +14,16 @@ impl EcsLevel {
         self.ecs()?.size(self.entity_of(id)?)
     }
     /// The entities that moved, as (id, may take a portal with its vehicle, where it is): `EcsWorld::portal_entries`.
-    pub fn portal_entries(&mut self, mw: &MobWorld<'_>) -> Vec<(u32, bool, [f64; 3])> {
+    pub fn portal_entries(&mut self, mw: &MobWorld<'_>, extra: &[u32]) -> Vec<(u32, bool, [f64; 3])> {
+        let extra: Vec<_> = extra.iter().filter_map(|&id| self.entity_of(id)).collect();
         let Some(b) = self.ecs_mut() else { return Vec::new() };
-        let rows = b.portal_entries(mw);
+        let rows = b.portal_entries(mw, &extra);
         let Some(w) = self.world() else { return Vec::new() };
         rows.into_iter().filter_map(|(e, usable, to)| Some((id_of(w, e)?, usable, to))).collect()
     }
     /// Whether any entity moved (`EcsWorld::any_moving`): read before a mob world is built for `portal_entries`.
     pub fn any_moving(&self) -> bool {
-        self.ecs().is_some_and(|b| b.any_moving())
+        self.ecs().is_some_and(|b| b.any_moving() || b.any_entered())
     }
     /// `EcsWorld::can_use_portal` of the entity `id`.
     pub fn can_use_portal(&self, id: u32) -> bool {

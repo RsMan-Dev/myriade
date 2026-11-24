@@ -23,10 +23,14 @@ impl Game<'_> {
     }
     /// The entities that moved (`EcsLevel::portal_entries`); none moved: no mob world is built.
     pub(in crate::game) fn ecs_portal_entries(&mut self) -> Vec<(u32, bool, [f64; 3])> {
-        if !self.ecs.any_moving() {
+        // Besides the movers: the entities a portal holds (a stationary one is still inside it each tick) and those next to a portal
+        // just lit (`Entity.applyEffectsFromBlocks` runs every tick in vanilla; here an entity enters a block by an event).
+        let mut extra: Vec<u32> = self.portals.entities.keys().copied().collect();
+        extra.extend_from_slice(&self.portals.lit_watch);
+        if extra.is_empty() && !self.ecs.any_moving() {
             return Vec::new();
         }
-        self.ecs_with(|ecs, mw| ecs.portal_entries(mw))
+        self.ecs_with(|ecs, mw| ecs.portal_entries(mw, &extra))
     }
     /// The network id of the ECS entity `e`, linked here when it has none: a listener or a mover is named by the event it posts.
     pub(in crate::game) fn ecs_id_of(&mut self, e: Entity) -> u32 {

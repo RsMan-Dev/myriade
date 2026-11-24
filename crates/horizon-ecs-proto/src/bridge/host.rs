@@ -93,6 +93,7 @@ impl EcsWorld {
         world.remove_resource::<Level>();
         zone::enable(&mut world, setup.simulation_radius);
         world.init_resource::<view::Modified>();
+        world.init_resource::<view::Entered>();
         world.insert_resource(bevy_ecs::error::FallbackErrorHandler(despawned_is_a_no_op));
         world.insert_resource(crate::frame_item::DropRng(crate::flat::Rng(setup.seed as u64 ^ 0x9E37_79B9_7F4A_7C15)));
         world.insert_resource(WorldDimension(setup.dimension));
@@ -128,6 +129,7 @@ impl EcsWorld {
     /// Runs the schedule when a player is online (none: nothing is awake), and returns the host's outputs since the last call, in order.
     pub fn step(&mut self, mw: &MobWorld<'_>) -> Vec<HostEvent> {
         self.scan_fresh_names(mw);
+        self.world.resource_mut::<view::Entered>().rotate();
         let ticking = self.world.resource::<Online>().players().next().is_some();
         self.note_game_time(mw, Some(ticking));
         if ticking {

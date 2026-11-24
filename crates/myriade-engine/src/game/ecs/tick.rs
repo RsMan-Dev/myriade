@@ -42,6 +42,24 @@ impl Game<'_> {
                 ecs.hook_block_changed(&mw, [x, y, z]);
             }
         }
+        // A portal block written (placed, lit): the entities already standing in it enter it (see `ecs_portal_entries`). Held one tick.
+        self.portals.lit_watch.clear();
+        for &((x, y, z), previous, new) in &writes {
+            if previous == new || !self.is_portal_state(new) || self.is_portal_state(previous) {
+                continue;
+            }
+            let q = horizon_ecs_proto::bridge::select::Select { near: Some(([f64::from(x) + 0.5, f64::from(y) + 0.5, f64::from(z) + 0.5], 2.5)), ..Default::default() };
+            for e in ecs.select(&q) {
+                let next = &mut self.next_entity;
+                let id = ecs.id_for(e, &mut || {
+                    *next += 1;
+                    *next
+                });
+                if id != 0 {
+                    self.portals.lit_watch.push(id);
+                }
+            }
+        }
         if let (Some(loot), Some(w)) = (self.server_loot.get(), ecs.ecs_mut()) {
             w.set_loot(loot);
         }

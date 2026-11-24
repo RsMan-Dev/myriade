@@ -98,6 +98,8 @@ pub(super) struct Portals {
     pub(super) entities: HashMap<u32, PortalState>,
     /// Positions before this tick's moves, by entity id.
     pub(super) before: FxHashMap<u32, Vec3>,
+    /// The entities next to a portal block written this tick (`tick_ecs`): looked at once, as an entity entering the block.
+    pub(super) lit_watch: Vec<u32>,
     arrivals: Vec<Arrival>,
     /// The vehicles server players ride that went through a portal this
     /// tick, in their level, with their entry: they carry their riders
@@ -660,7 +662,10 @@ impl Game<'_> {
         });
         }
         self.portals.before = before;
-        self.portals.entities.retain(|id, _| present.contains(id));
+        // The vehicles' pass walks no ECS entity (they all come in the other pass): it must not drop their state.
+        if !(vehicles && self.ecs.is_active()) {
+            self.portals.entities.retain(|id, _| present.contains(id));
+        }
         for (id, allowed, delay) in ids {
             let Some(state) = self.portals.entities.get_mut(&id) else {
                 continue;
@@ -960,7 +965,8 @@ impl Game<'_> {
                 let Some((width, height)) = self.ecs.portal_size(id) else {
                     continue;
                 };
-                if let Some(pos) = self.swept_portal(from, to, width, height, &mut portal_sections) {
+                let r = self.swept_portal(from, to, width, height, &mut portal_sections);
+                if let Some(pos) = r {
                     inside.push((id, pos, self.dimension_changing_delay(id)));
                 }
             }
@@ -1099,7 +1105,7 @@ impl Game<'_> {
         sections.any(&self.world.chunks, |v| self.is_portal_state(v))
     }
     /// A nether or End portal state, by its id in a palette.
-    fn is_portal_state(&self, v: u32) -> bool {
+    pub(in crate::game) fn is_portal_state(&self, v: u32) -> bool {
         let state = horizon_world::registry::BlockStateId(v);
         self.res.behaviours().portal_axis(state).is_some() || self.is_end_portal(state)
     }
@@ -1125,7 +1131,7 @@ impl Game<'_> {
         {
             return Some((Vec3::new(p[0], p[1], p[2]), 0.25, 0.25));
         }
-        if let Some(p) = self.ecs.position(id) {
+        if let Some(p) = self.ecs.position(id).filter(|_| self.ecs.species(id) == Some("minecraft:tnt") || self.ecs_body(id).is_none()) {
             return Some((Vec3::new(p[0], p[1], p[2]), 0.98, 0.98));
         }
         if let Some(p) = self.ecs.position(id).filter(|_| self.ecs.species(id) == Some("minecraft:trident")) {
@@ -1169,8 +1175,10 @@ impl Game<'_> {
         id: u32,
     ) -> Option<Tag> {
         use super::commands::Target;
-        let target = self.level_entity(id as i32)?;
-        if matches!(
+        // An item has no `Target`: it is read by its own branch below.
+        let target = self.level_entity(id as i32).filter(|_| self.ecs.item(id).is_none());
+        if let Some(target) = target
+            && matches!(
             target,
             Target::Stand(_)
                 | Target::Frame(_)

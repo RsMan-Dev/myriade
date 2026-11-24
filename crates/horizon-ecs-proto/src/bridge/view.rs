@@ -90,6 +90,18 @@ pub fn position(world: &World, e: Entity) -> Option<[f64; 3]> {
 #[derive(Resource, Default)]
 pub struct Modified(Vec<Entity>);
 
+/// The entities that entered the world (a `Pos` was added) since the start of the last step: the host looks once at the block each stands
+/// in (an entity in a portal when it spawns or loads is taken by it). Two generations: at the start of a step the new ones become the old
+/// and the old go, so each is read by the passes around two steps (`portal_entries`).
+#[derive(Resource, Default)]
+pub struct Entered(pub Vec<Entity>, pub Vec<Entity>);
+
+impl Entered {
+    pub fn rotate(&mut self) {
+        self.1 = std::mem::take(&mut self.0);
+    }
+}
+
 impl Modified {
     pub fn push(&mut self, e: Entity) {
         self.0.push(e);

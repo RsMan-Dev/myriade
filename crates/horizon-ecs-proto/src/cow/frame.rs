@@ -37,6 +37,9 @@ fn entered(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::
     if let Some(mut m) = world.get_resource_mut::<crate::bridge::view::Modified>() {
         m.push(ctx.entity);
     }
+    if let Some(mut m) = world.get_resource_mut::<crate::bridge::view::Entered>() {
+        m.0.push(ctx.entity);
+    }
 }
 
 #[derive(Component, Clone, Copy, Debug)]
