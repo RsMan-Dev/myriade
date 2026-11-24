@@ -1364,6 +1364,10 @@ impl<'a, 'w> Finder<'a, 'w> {
             e = unsafe { *p };
         }
         let (ty, c, idx) = ((e >> 48) as u8, (e >> 56) as u8, e as u32);
+        if ty == 0 {
+            // `cached_at` leaves the type byte empty when it saw a rail: take the uncached path.
+            return self.find_accepted_slow(x, y, z, jump, node_height, dir, current);
+        }
         if c < 0xFE && ty == PathType::Walkable as u8 + 1 {
             if f64::from(y.saturating_sub(1)) + f64::from(c) / 16.0 - node_height > self.jh {
                 return None;
