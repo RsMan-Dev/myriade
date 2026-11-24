@@ -1123,9 +1123,13 @@ impl Game<'_> {
         &self,
         dim: Dim,
     ) -> &'static horizon_world::dimension_type::DimensionFacts {
-        horizon_world::dimension_type::DimensionFacts::of_level(
-            horizon_core::LevelKey::parse(dim.id()).unwrap_or(horizon_core::LevelKey::OVERWORLD),
-        )
+        // The current level's key is kept with `dim` (`set_dim`); a parked level's is parsed.
+        let key = if dim == self.dim {
+            self.dim_key
+        } else {
+            horizon_core::LevelKey::parse(dim.id()).unwrap_or(horizon_core::LevelKey::OVERWORLD)
+        };
+        horizon_world::dimension_type::DimensionFacts::of_level(key)
     }
     fn eye_position(&self) -> Option<[f64; 3]> {
         let p = self.player.as_ref()?;

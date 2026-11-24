@@ -568,11 +568,8 @@ impl Game<'_> {
     }
     /// The clock the day time of `dim`'s level follows: its dimension type's default clock, else
     /// the Overworld's.
-    pub(in crate::game) fn level_clock_name(&self, dim: crate::game::Dim) -> String {
-        self.dimension_type_of(dim)
-            .default_clock
-            .clone()
-            .unwrap_or_else(|| OVERWORLD_CLOCK.to_owned())
+    pub(in crate::game) fn level_clock_name(&self, dim: crate::game::Dim) -> &'static str {
+        self.dimension_type_of(dim).default_clock.as_deref().unwrap_or(OVERWORLD_CLOCK)
     }
     /// What the LAN hub's time packets need: the Overworld's total while `World.day_time` follows
     /// another clock, and that clock with its rate.

@@ -71,7 +71,7 @@ impl Game<'_> {
         let target = wake_time(current, &adjustment, |id| self.clock_marker(&clock, id))
             .ok()
             .or(morning);
-        target.map(|target| (clock, current, target))
+        target.map(|target| (clock.to_owned(), current, target))
     }
 }
 
