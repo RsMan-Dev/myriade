@@ -473,9 +473,53 @@ pub struct ChunkTickets {
     /// The level changes since the game last took them, in the order the
     /// updates made them.
     changes: Vec<LevelChange>,
+    /// The chunks entity-ticking by a ticket other than a player's (forced, portal, viewed, dragon), sorted; and the changes of it kept
+    /// for the game while `recording` (true: it joined).
+    pinned: Vec<(i32, i32)>,
+    pin_changes: Vec<((i32, i32), bool)>,
 }
 
 impl ChunkTickets {
+    /// The chunks a ticket other than a player's keeps entity-ticking, sorted.
+    pub fn pinned(&self) -> &[(i32, i32)] {
+        &self.pinned
+    }
+    /// The joins (true) and leaves of [`Self::pinned`] since the last call.
+    pub fn take_pin_changes(&mut self) -> Vec<((i32, i32), bool)> {
+        std::mem::take(&mut self.pin_changes)
+    }
+    /// Reads `pinned` again from the sources without their players, when a ticket other than a player's changed.
+    fn refresh_pinned(&mut self, old: Option<&Sources>) {
+        let new = self.sources.as_ref();
+        let same = match (old, new) {
+            (Some(a), Some(b)) => a.forced == b.forced && a.portal == b.portal && a.viewed == b.viewed && a.dragon == b.dragon,
+            (None, None) => true,
+            _ => false,
+        };
+        if same {
+            return;
+        }
+        let mut now: Vec<(i32, i32)> = Vec::new();
+        if let Some(s) = new.filter(|s| !(s.forced.is_empty() && s.portal.is_empty() && s.viewed.is_empty() && s.dragon.is_none())) {
+            let mut alone = s.clone();
+            alone.players.clear();
+            let map = compute(&alone, false);
+            map.for_each_loaded(|x, z, _| {
+                let (loading, simulation) = map.get(x, z);
+                if loading <= ENTITY_TICKING && simulation <= ENTITY_TICKING {
+                    now.push((x, z));
+                }
+            });
+            now.sort_unstable();
+        }
+        if self.recording {
+            let before = &self.pinned;
+            self.pin_changes.extend(before.iter().filter(|c| now.binary_search(c).is_err()).map(|&c| (c, false)));
+            self.pin_changes.extend(now.iter().filter(|c| before.binary_search(c).is_err()).map(|&c| (c, true)));
+        }
+        self.pinned = now;
+    }
+
     /// `None`: tick everywhere.
     pub fn update(&mut self, mut sources: Option<Sources>) {
         // The game submits a fresh `Sources` value every tick even when no
@@ -521,7 +565,8 @@ impl ChunkTickets {
                 .extend(level_changes(self.levels.0.as_deref(), levels.0.as_deref()));
         }
         self.levels = levels;
-        self.sources = sources;
+        let old = std::mem::replace(&mut self.sources, sources);
+        self.refresh_pinned(old.as_ref());
     }
 
     fn portal_matches(&self, sources: &Sources) -> bool {

@@ -42,6 +42,14 @@ impl Game<'_> {
         }
     }
 
+    /// The chunks a ticket other than a player's started or stopped keeping entity-ticking (`ChunkTickets::take_pin_changes`): the
+    /// ECS wakes or sleeps what they hold.
+    pub(in crate::game) fn ecs_pins_changed(&mut self, pins: &[((i32, i32), bool)]) {
+        for &((cx, cz), on) in pins {
+            self.ecs.set_chunk_pinned(cx, cz, on);
+        }
+    }
+
     /// The border's bounds or centre changed.
     pub(in crate::game) fn ecs_border_changed(&mut self) {
         let bounds = self.border.geometry().bounds(0.0);
@@ -58,6 +66,9 @@ impl Game<'_> {
         for &(cx, cz) in self.world.chunks.keys() {
             ecs.set_chunk_structures([cx, cz], self.ecs_chunk_starts([cx, cz]));
             ecs.set_chunk_spawnable(cx, cz, self.block_ticking_at(cx * 16, cz * 16));
+        }
+        for &(cx, cz) in self.tickets.pinned() {
+            ecs.set_chunk_pinned(cx, cz, true);
         }
         ecs.set_world_border(Some(self.border.geometry().bounds(0.0)));
         ecs.set_track_read(crate::ecs_bridge::cart_move::track_read());

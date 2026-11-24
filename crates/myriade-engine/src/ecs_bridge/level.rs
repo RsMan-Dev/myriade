@@ -208,6 +208,12 @@ impl EcsLevel {
             w.set_chunk_spawnable(cx, cz, on);
         }
     }
+    /// `EcsWorld::set_chunk_pinned`: a ticket other than a player's keeps a chunk entity-ticking, or stops. Nothing when inert.
+    pub fn set_chunk_pinned(&mut self, cx: i32, cz: i32, on: bool) {
+        if let Some(w) = self.inner.as_mut() {
+            w.set_chunk_pinned(cx, cz, on);
+        }
+    }
     /// `EcsWorld::set_world_border`: `[min_x, min_z, max_x, max_z]`, or none. Nothing when inert.
     pub fn set_world_border(&mut self, border: Option<[f64; 4]>) {
         if let Some(w) = self.inner.as_mut() {

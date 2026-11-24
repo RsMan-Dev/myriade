@@ -67,6 +67,8 @@ pub struct Zone {
     epoch: u32,
     /// The chunk (absolute coordinates) each player stands in.
     at: Vec<(i32, i32)>,
+    /// The chunks a ticket other than a player's keeps entity-ticking (forced, portal, viewed): each counts as one more cover.
+    pinned: horizon_core::fast_hash::FxHashSet<(i32, i32)>,
 }
 
 const CHUNK: f64 = 16.0;
@@ -77,7 +79,22 @@ impl Zone {
         if !self.on {
             return 0;
         }
-        self.at.iter().filter(|p| (p.0 - cx).abs() <= self.radius && (p.1 - cz).abs() <= self.radius).count() as u16
+        let pin = u16::from(self.pinned.contains(&(cx, cz)));
+        pin + self.at.iter().filter(|p| (p.0 - cx).abs() <= self.radius && (p.1 - cz).abs() <= self.radius).count() as u16
+    }
+    /// A ticket other than a player's starts (`up`) or stops keeping chunk `(cx, cz)` entity-ticking: its count moves by one, by event.
+    /// The transition is read by the next `zone_step` (the caller marks `Players::zone_dirty`).
+    pub(crate) fn pin(&mut self, ch: &mut Chunks, cx: i32, cz: i32, up: bool) -> bool {
+        let moved = if up { self.pinned.insert((cx, cz)) } else { self.pinned.remove(&(cx, cz)) };
+        if !moved || !self.on {
+            return false;
+        }
+        // The pins of one interval share an epoch (`pre` is the count before the first), which `sync_players` keeps while some wait.
+        if self.touched.is_empty() {
+            self.epoch += 1;
+        }
+        self.bump(ch, cx, cz, up);
+        true
     }
     fn bump(&mut self, ch: &mut Chunks, x: i32, z: i32, up: bool) {
         // A chunk that is not loaded has no count: it is worked out when it is made (`Index::chunk_created`).
@@ -119,7 +136,9 @@ impl Zone {
     /// The players moved, came or left: the chunks of the two squares of each are counted again, only the ring they
     /// differ by. Fills `touched`.
     fn sync_players(&mut self, ch: &mut Chunks, list: &[(f64, f64)]) {
-        self.epoch += 1;
+        if self.touched.is_empty() {
+            self.epoch += 1;
+        }
         let n = list.len().max(self.at.len());
         for i in 0..n {
             let new = list.get(i).map(|p| ((p.0 / CHUNK).ifloor(), (p.1 / CHUNK).ifloor()));

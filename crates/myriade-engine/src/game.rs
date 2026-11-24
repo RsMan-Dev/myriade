@@ -1788,6 +1788,8 @@ impl Game<'_> {
         self.tickets.update(sources);
         let changes = self.tickets.take_changes();
         self.ecs_ticket_levels_changed(&changes);
+        let pins = self.tickets.take_pin_changes();
+        self.ecs_pins_changed(&pins);
     }
     /// `ServerLevel.startTickingChunk`: a loaded chunk's saved ticks are
     /// scheduled from the game time at which it becomes a ticking chunk

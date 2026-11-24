@@ -30,6 +30,17 @@ impl EcsWorld {
         let moved = if on { env.spawnable.insert((cx, cz)) } else { env.spawnable.remove(&(cx, cz)) };
         env.changed |= moved;
     }
+    /// A ticket other than a player's (forced, portal, viewed) keeps chunk `(cx, cz)` entity-ticking (`on`) or stops: the creatures and
+    /// objects of the chunk wake, or sleep unless a player covers it. By event, with the ticket changes.
+    pub fn set_chunk_pinned(&mut self, cx: i32, cz: i32, on: bool) {
+        let moved = self.world_mut().resource_scope(|_, mut idx: Mut<crate::cow::Index>| {
+            let ix = &mut *idx;
+            ix.zone.pin(&mut ix.chunks, cx, cz, on)
+        });
+        if moved {
+            self.world_mut().resource_mut::<crate::cow::Players>().zone_dirty = true;
+        }
+    }
     /// The world border `[min_x, min_z, max_x, max_z]`, if any. Written when it changes.
     pub fn set_world_border(&mut self, border: Option<[f64; 4]>) {
         let mut env = spawn_env(self.world_mut());
