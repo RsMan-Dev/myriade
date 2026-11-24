@@ -182,8 +182,8 @@ impl Game<'_> {
                 entity_nbt::painting_to_nbt(&p, uuid, self.persist.raw.get(&id))
             }
             Target::Boat(id) | Target::Cart(id) => {
+                // The ECS tree already carries the riders under `Passengers` (as a mob's does): adding them again listed each one twice.
                 let mut tag = Tag::Compound(self.ecs_mob_tree(id)?);
-                self.put_mob_passengers(&mut tag, id);
                 self.save_portal_cooldown(id, &mut tag);
                 tag
             }
