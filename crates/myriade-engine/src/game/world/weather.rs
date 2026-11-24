@@ -41,9 +41,19 @@ impl Game<'_> {
             );
         }
         // Extra dimensions (data packs) take the overworld's environment: none has its own yet.
+        // The sky light level is a timeline read by name: kept for the clock and weather it was read at (one slot, a fixed cost).
         let (rain, thunder) = self.weather_levels(1.0);
-        let day_time = self.command_clock_time(&self.level_clock_name(self.dim));
-        myriade_engine::environment::sky_darken(self.res.environment(), day_time, rain, thunder)
+        let day_time = self.command_clock_time(self.level_clock_name(self.dim));
+        let env = self.res.environment();
+        let key = (day_time, rain.to_bits(), thunder.to_bits(), std::ptr::from_ref(env) as usize);
+        if let Some((t, r, th, e, v)) = self.sky_darken_memo.get()
+            && (t, r, th, e) == key
+        {
+            return v;
+        }
+        let v = myriade_engine::environment::sky_darken(env, day_time, rain, thunder);
+        self.sky_darken_memo.set(Some((key.0, key.1, key.2, key.3, v)));
+        v
     }
 
     /// Whether precipitation at a column is snow (Biome.coldEnoughToSnow:

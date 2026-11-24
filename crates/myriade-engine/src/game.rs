@@ -528,6 +528,9 @@ struct TickScratch {
     later: Vec<BlockPos>,
 }
 
+/// What `Game::sky_darken` read: the clock, the weather levels (as bits), the environment table, and the answer.
+type SkyDarkenKey = (i64, u32, u32, usize, i32);
+
 struct Game<'a> {
     /// Shared; `collision` and `motion` borrow from it.
     res: Arc<Resources>,
@@ -593,6 +596,8 @@ struct Game<'a> {
     right: bool,
     started: Instant,
     ticks: u64,
+    /// `Level.getSkyDarken`, kept for the inputs it was computed from (see `Game::sky_darken`).
+    sky_darken_memo: std::cell::Cell<Option<SkyDarkenKey>>,
     /// What ends the game with an error; kept as it is, so main can tell a debug crash.
     error: Option<Box<dyn std::error::Error>>,
     message: Option<(String, Instant)>,
@@ -4542,6 +4547,7 @@ impl<'a> Game<'a> {
             right: false,
             started: now,
             ticks: 0,
+            sky_darken_memo: std::cell::Cell::new(None),
             error: None,
             message: None,
             save,
