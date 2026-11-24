@@ -96,7 +96,9 @@ pub fn load(w: &mut World, c: &Compound) -> Option<Entity> {
 pub fn build(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     let Some(Tag::String(id)) = c.get(&JavaString::from("id")) else { return None };
     let (_, wood, chest) = species().find(|s| s.0 == id.to_string_lossy())?;
-    Some(spawn(w, wood, chest, [at.x, at.y, at.z], 0.0))
+    let e = spawn(w, wood, chest, [at.x, at.y, at.z], 0.0);
+    crate::bridge::boats::fit_summoned(w, e);
+    Some(e)
 }
 
 /// Declares the boat state's fields and the recipe of every boat species. Called in the declaration window of the world.

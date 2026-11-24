@@ -18,6 +18,18 @@ use std::collections::HashSet;
 /// The step of the ray through the index, as the carts' aim (`cart_more.rs`).
 const STEP: f64 = 0.5;
 
+/// A boat made by a summon (its recipe's builder): the box, the contact and the index a placed boat has, and awake, so it floats or falls to rest.
+pub(crate) fn fit_summoned(w: &mut World, e: Entity) {
+    let Some(at) = w.get::<Pos>(e).map(|p| p.0) else { return };
+    if !w.contains_resource::<crate::cow::Index>() {
+        return;
+    }
+    w.entity_mut(e).insert((Bounds(bounds_at(at)), Cell(u32::MAX, [i32::MIN; 8], u32::MAX), Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 }, crate::cow::Moving));
+    enter_index(w, e);
+    zone::admit(w, &[e]);
+    view::mark(w, e);
+}
+
 impl EcsWorld {
     /// A boat of `wood` (`oak`, `bamboo`...), with a chest when `chest`, at `at`, facing `yaw`. None when `wood` is no wood of `WOODS`.
     /// The boat is in the spatial index from its apparition.
