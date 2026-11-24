@@ -426,7 +426,7 @@ impl Game<'_> {
         if let Target::Mob(id) = t {
             return self.ecs_set_mob_tags(id, tags);
         }
-        if let Target::Item(id) | Target::Crystal(id) = t
+        if let Some(id) = super::targets::target_id(t)
             && self.ecs.exists(id)
         {
             return self.ecs_set_mob_tags(id, tags);

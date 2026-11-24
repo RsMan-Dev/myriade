@@ -165,7 +165,7 @@ impl Game<'_> {
 }
 
 /// The entity id a target is known by (none for a player or a guest).
-pub(super) fn target_id(t: Target) -> Option<u32> {
+pub(in crate::game) fn target_id(t: Target) -> Option<u32> {
     match t {
         Target::Mob(id)
         | Target::Item(id)

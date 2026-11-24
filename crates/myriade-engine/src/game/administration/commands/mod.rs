@@ -24,6 +24,7 @@ mod raid;
 mod selector_bounds;
 mod summon;
 mod targets;
+pub(in crate::game) use targets::target_id as target_id_of;
 mod terrain_cmds;
 mod test_locate;
 mod test_runs;
