@@ -293,7 +293,7 @@ pub(crate) fn travel(
     plain: ParallelCommands,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, Option<&Gravity>, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>, Has<Stilled>),
-        (With<Moving>, Without<Overlapping>, Without<crate::dragon::flight::NoAi>, Without<crate::mount::Riding>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
+        (With<Moving>, Without<Overlapping>, Without<crate::dragon::flight::NoAi>, Without<crate::mount::Riding>, Without<crate::seat::Seated>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
     >,
 ) {
     let void_y = f64::from(level.mw.0.world.bottom_y() - 64);

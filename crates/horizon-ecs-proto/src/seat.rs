@@ -151,6 +151,12 @@ fn place_riders(w: &mut World, vehicle: Entity) {
 pub fn follow(w: &mut World, vehicle: Entity) {
     place_riders(w, vehicle);
 }
+/// `Entity.tick` of a vehicle that moved (a boat that falls, drifts or is pushed): its riders are placed again at its seats, each tick.
+pub(crate) fn follow_moved(q: bevy_ecs::system::Query<Entity, (bevy_ecs::query::With<Seats>, bevy_ecs::query::Changed<Pos>)>, mut commands: bevy_ecs::system::Commands) {
+    for e in &q {
+        commands.queue(move |w: &mut World| follow(w, e));
+    }
+}
 /// `Entity.startRiding` of a vehicle: the creature `rider` takes seat `slot` (or the first free one); false when it already sits or the
 /// seats are taken.
 pub fn board(w: &mut World, rider: Entity, vehicle: Entity, slot: Option<u8>) -> bool {

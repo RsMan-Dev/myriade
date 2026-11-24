@@ -318,6 +318,7 @@ pub fn schedule() -> Schedule {
     // this tick's physics, as a mob's hurt precedes its tick.
     s.add_systems(((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, fluid_update, pathfind, follow, path_ended, move_control).chain(), (breathing, wall_check, crate::fall_reset::fall_reset, travel, ordered_pass, reindex, hazard_tick, wall_damage, push, apply_pushes).chain()).chain());
     s.add_systems(cramming.after(apply_pushes));
+    s.add_systems(crate::seat::follow_moved.after(apply_pushes));
     s.add_systems(crate::cow::health::rain_out.after(crate::cow::health::hazard_tick));
     s.add_systems(crate::breath_cloud::tick_live.after(apply_pushes));
     crate::goals::register(&mut s);
