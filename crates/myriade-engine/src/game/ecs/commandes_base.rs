@@ -41,6 +41,12 @@ impl Game<'_> {
                 Some("minecraft:end_crystal") => Target::Crystal(id),
                 Some("minecraft:area_effect_cloud") => Target::Cloud(id),
                 Some("minecraft:ominous_item_spawner") => Target::Spawner(id),
+                // The kinds `level_candidates` lists by their own variant: the same entity is one candidate, not two.
+                Some("minecraft:cushion") => Target::Cushion(id),
+                Some("minecraft:item_frame" | "minecraft:glow_item_frame") => Target::Frame(id),
+                Some("minecraft:painting") => Target::Painting(id),
+                Some("minecraft:evoker_fangs") => Target::Fangs(id),
+                Some("minecraft:leash_knot") => Target::Knot(id),
                 _ if dragons.contains(&id) => Target::Dragon(id),
                 _ if boats.contains(&id) => Target::Boat(id),
                 _ if carts.contains(&id) => Target::Cart(id),
