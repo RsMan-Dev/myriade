@@ -151,7 +151,9 @@ pub fn move_events(
                 let speed = ((x * x * 0.2 + y * y + z * z * 0.2).sqrt() as f32 * 0.2).min(1.0);
                 let pitch = splash_pitch(rng.as_deref_mut());
                 let name = names.get(e).map_or("", |n| n.0);
-                ev.host.sound(splash_sound(name, is_monster(name)), at, speed, pitch);
+                // Under 0.25 the species' splash (`getSwimSplashSound`), else `getSwimHighSpeedSplashSound`, which no species overrides: the generic one.
+                let sound = if speed < 0.25 { splash_sound(name, is_monster(name)) } else { "entity.generic.splash" };
+                ev.host.sound(sound, at, speed, pitch);
             }
         }
         if heard && !s.was_ground && c.on_ground && s.fall > 0.0 {
