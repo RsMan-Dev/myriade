@@ -403,6 +403,7 @@ pub(crate) fn assemble_resources(world: &mut World, level: Level, sleep: bool, p
     crate::nbt::register_creators(world, crate::nbt_fields::rides::CREATORS);
     crate::nbt::register_creators(world, crate::nbt_fields::common::CREATORS);
     crate::nbt::register_creators(world, crate::nbt_fields::creatures_more::CREATORS);
+    crate::nbt::register_creators(world, crate::nbt_fields::creatures::CREATORS);
     crate::nbt::register_creators(world, crate::nbt_fields::living_state::CREATORS);
     crate::nbt::register_creators(world, crate::dispense::CREATORS);
     crate::nbt::register_creators(world, crate::behaviours::stew_flower::CREATORS);

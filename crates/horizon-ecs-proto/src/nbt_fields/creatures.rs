@@ -350,10 +350,30 @@ fn write_age(w: &World, e: Entity, c: &mut Compound) {
     }
 }
 
+/// The keys whose presence poses `GrowAt` on an adult (`nbt::register_creators`): a baby made by `/summon` or `/data merge`.
+pub const CREATORS: &[Field] = &[
+    Field { key: Cow::Borrowed("Age"), write: write_age, read: create_age, accepts: accept::int, owner: Some(owner::<GrowAt>) },
+    Field { key: Cow::Borrowed("IsBaby"), write: write_baby, read: read_baby, accepts: byte, owner: Some(owner::<GrowAt>) },
+];
+
+fn species_tags(w: &World, e: Entity) -> u32 {
+    w.get::<crate::cow::SpeciesId>(e).map_or(0, |s| w.resource::<crate::cow::SpeciesTable>().0[s.0 as usize].tags)
+}
+
+/// `Age` of a species that grows up; any other species leaves the key free, as before.
+fn create_age(w: &mut World, e: Entity, t: &Tag) -> bool {
+    species_tags(w, e) & crate::cow::tag::AGEING != 0 && read_age(w, e, t)
+}
+
 fn read_age(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Int(v) = t else { return false };
     if *v < 0 {
-        let at = now_of(w, e) + u64::from(v.unsigned_abs());
+        let ticks = u64::from(v.unsigned_abs());
+        let at = now_of(w, e) + ticks;
+        // `AgeableMob.readAdditionalSaveData`/`setAge`: the baby box and the deadline on the wheel, not only the age.
+        if w.get::<crate::cow::Sizes>(e).is_some() && w.get::<crate::cow::Body>(e).is_some() && w.get::<crate::cow::Pos>(e).is_some() {
+            crate::behaviours::follow_parent::make_baby(w, e, ticks);
+        }
         w.entity_mut(e).insert(GrowAt(at));
         if w.get::<crate::age_lock::AgeLocked>(e).is_some() {
             w.entity_mut(e).insert(crate::age_lock::AgeLocked(u64::from(v.unsigned_abs())));
@@ -571,8 +591,14 @@ fn read_age_locked(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-fn read_baby(_: &mut World, _: Entity, t: &Tag) -> bool {
-    matches!(t, Tag::Byte(_))
+/// `Zombie`/`Piglin.readAdditionalSaveData` `setBaby(IsBaby)`: the baby form that never grows up (the ageing species have `Age`).
+fn read_baby(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let flag = species_tags(w, e) & crate::cow::tag::BABY_FLAG != 0;
+    if *v != 0 && flag && w.get::<GrowAt>(e).is_none() {
+        crate::spawn_finalize::set_baby(w, e, crate::spawn_finalize::NEVER);
+    }
+    true
 }
 
 /// `Trusting` is a marker: written when present; the read of 1 sets it (an ocelot only).
