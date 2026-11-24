@@ -11,9 +11,9 @@ use crate::{explosion, raids};
 use bevy_ecs::prelude::*;
 use horizon_protocol::entity_data::serializer;
 
-/// Creeper.DATA_SWELL_DIR: the fuse's direction, -1 when it falls (sent always, as the Mob does).
+/// Creeper.DATA_SWELL_DIR: the fuse's direction, -1 (its default, not sent) when it falls.
 pub(crate) fn creeper_swell(w: &World, e: Entity) -> Option<SyncValue> {
-    w.get::<explosion::Fuse>(e).map(|f| SyncValue::Int(i32::from(f.dir)))
+    w.get::<explosion::Fuse>(e).filter(|f| f.dir != -1).map(|f| SyncValue::Int(i32::from(f.dir)))
 }
 
 /// Creeper.DATA_IS_POWERED: struck by lightning.
@@ -41,18 +41,30 @@ pub(crate) fn panda_eat(w: &World, e: Entity) -> Option<SyncValue> {
     w.get::<panda_state::PandaState>(e).map(|p| p.eat).filter(|v| *v != 0).map(SyncValue::Int)
 }
 
-/// Panda.MAIN_GENE_ID, the gene the panda shows (vanilla's ids: brown 4 has no component here).
+/// The vanilla id of a gene (brown 4, weak 5, aggressive 6).
+fn gene_id(g: panda_state::Gene) -> i8 {
+    use panda_state::Gene as G;
+    match g {
+        G::Normal => 0,
+        G::Lazy => 1,
+        G::Worried => 2,
+        G::Playful => 3,
+        G::Brown => 4,
+        G::Weak => 5,
+        G::Aggressive => 6,
+    }
+}
+
+/// Panda.MAIN_GENE_ID: the main gene (the shown one when a panda has no `Genes`).
 pub(crate) fn panda_gene(w: &World, e: Entity) -> Option<SyncValue> {
-    let id = match w.get::<panda_state::Gene>(e).copied().unwrap_or_default() {
-        panda_state::Gene::Normal => 0,
-        panda_state::Gene::Lazy => 1,
-        panda_state::Gene::Worried => 2,
-        panda_state::Gene::Playful => 3,
-        panda_state::Gene::Brown => 4,
-        panda_state::Gene::Weak => 5,
-        panda_state::Gene::Aggressive => 6,
-    };
-    (id != 0).then_some(SyncValue::Byte(id))
+    let g = w.get::<crate::behaviours::spawn_draw::Genes>(e).map_or_else(|| panda_state::gene(w, e), |g| g.main);
+    (gene_id(g) != 0).then_some(SyncValue::Byte(gene_id(g)))
+}
+
+/// Panda.HIDDEN_GENE_ID.
+pub(crate) fn panda_hidden(w: &World, e: Entity) -> Option<SyncValue> {
+    let g = w.get::<crate::behaviours::spawn_draw::Genes>(e)?.hidden;
+    (gene_id(g) != 0).then_some(SyncValue::Byte(gene_id(g)))
 }
 
 /// Panda.DATA_ID_FLAGS: what the goals set.

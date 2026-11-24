@@ -100,13 +100,13 @@ pub(crate) fn tame_flags(w: &World, e: Entity) -> Option<SyncValue> {
     (bits != 0).then_some(SyncValue::Byte(bits))
 }
 
-/// TamableAnimal.DATA_OWNERUUID_ID (index 19): the owner's uuid. Only an owner entity's uuid is in P (`EntityUuid`); a player
-/// owner's uuid is the host's, so it sends nothing yet (see the lot's report).
+/// TamableAnimal.DATA_OWNERUUID_ID (index 19): the owner's uuid, an entity's (`EntityUuid`) or a player's (`PlayerUuids`).
 pub(crate) fn tame_owner(w: &World, e: Entity) -> Option<SyncValue> {
-    let Who::Entity(owner) = w.get::<Owner>(e)?.0? else {
-        return None;
+    let uuid = match w.get::<Owner>(e)?.0? {
+        Who::Entity(owner) => w.get::<EntityUuid>(owner)?.0,
+        Who::Player(id) => crate::player_uuids::uuid_of(w, id)?,
     };
-    w.get::<EntityUuid>(owner).map(|u| SyncValue::OptUuid(Some(u.0)))
+    Some(SyncValue::OptUuid(Some(uuid)))
 }
 
 /// The species' rows, by registry id: the slots of the components they own (the core's are in `sync_core`).
@@ -149,10 +149,18 @@ const PROFESSION_IDS: [&str; 15] = [
     "weaponsmith",
 ];
 
-/// Villager.DATA_VILLAGER_DATA_FINALIZED (index 20, default false): true once the data was read from a save or set by `finalizeSpawn`
-/// (`Villager.readAdditionalSaveData`, `finalizeSpawn`), which is every villager here; only a bare `/summon` with a tag leaves it false.
+/// AbstractPiglin / Hoglin DATA_IMMUNE_TO_ZOMBIFICATION: the `IsImmuneToZombification` marker.
+pub(crate) fn zomb_immune(w: &World, e: Entity) -> Option<SyncValue> {
+    w.get::<crate::behaviours::convert_timer::ZombImmune>(e).map(|_| SyncValue::Bool(true))
+}
+
+/// Villager.DATA_VILLAGER_DATA_FINALIZED (index 20, default false): true once `VillagerData` was read (`readAdditionalSaveData`).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
+pub struct VillagerFinalized;
+
 pub(crate) fn villager_finalized(w: &World, e: Entity) -> Option<SyncValue> {
-    w.get::<crate::behaviours::trade_offers::Merchant>(e).filter(|m| !m.wandering).map(|_| SyncValue::Bool(true))
+    w.get::<VillagerFinalized>(e).map(|_| SyncValue::Bool(true))
 }
 
 /// Villager.DATA_VILLAGER_DATA (index 19): the type, the profession and the level, in registry ids. None for a profession or a type of

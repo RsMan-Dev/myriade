@@ -352,9 +352,82 @@ fn write_age(w: &World, e: Entity, c: &mut Compound) {
 
 /// The keys whose presence poses `GrowAt` on an adult (`nbt::register_creators`): a baby made by `/summon` or `/data merge`.
 pub const CREATORS: &[Field] = &[
+    Field { key: Cow::Borrowed("MainGene"), write: write_main_gene, read: read_main_gene, accepts: is_string, owner: Some(owner::<crate::behaviours::spawn_draw::Genes>) },
+    Field { key: Cow::Borrowed("HiddenGene"), write: write_hidden_gene, read: read_hidden_gene, accepts: is_string, owner: Some(owner::<crate::behaviours::spawn_draw::Genes>) },
+    Field { key: Cow::Borrowed("IsImmuneToZombification"), write: write_immune, read: read_immune, accepts: byte, owner: Some(owner::<crate::behaviours::convert_timer::ZombImmune>) },
     Field { key: Cow::Borrowed("Age"), write: write_age, read: create_age, accepts: accept::int, owner: Some(owner::<GrowAt>) },
     Field { key: Cow::Borrowed("IsBaby"), write: write_baby, read: read_baby, accepts: byte, owner: Some(owner::<GrowAt>) },
 ];
+
+fn write_immune(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<crate::behaviours::convert_timer::ZombImmune>(e).is_some() {
+        c.insert("IsImmuneToZombification".into(), Tag::Byte(1));
+    }
+}
+
+/// `IsImmuneToZombification`: for the species that can be zombified (they carry a `Convert`).
+fn read_immune(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if w.get::<crate::behaviours::convert_timer::Convert>(e).is_none() {
+        return false;
+    }
+    if *v != 0 {
+        w.entity_mut(e).insert(crate::behaviours::convert_timer::ZombImmune);
+    } else {
+        w.entity_mut(e).remove::<crate::behaviours::convert_timer::ZombImmune>();
+    }
+    true
+}
+
+const GENES: [&str; 7] = ["normal", "lazy", "worried", "playful", "brown", "weak", "aggressive"];
+
+fn is_string(t: &Tag) -> bool {
+    matches!(t, Tag::String(_))
+}
+
+fn write_main_gene(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(g) = w.get::<crate::behaviours::spawn_draw::Genes>(e) {
+        c.insert("MainGene".into(), Tag::String(GENES[gene_index(g.main)].into()));
+    }
+}
+
+fn write_hidden_gene(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(g) = w.get::<crate::behaviours::spawn_draw::Genes>(e) {
+        c.insert("HiddenGene".into(), Tag::String(GENES[gene_index(g.hidden)].into()));
+    }
+}
+
+fn gene_index(g: crate::behaviours::panda_state::Gene) -> usize {
+    (0..7).find(|&i| crate::behaviours::spawn_draw::gene_of(i as u32) == g).unwrap_or(0)
+}
+
+/// `Panda.readAdditionalSaveData`: a gene by its name, then the shown gene and the attributes from the two.
+fn read_gene(w: &mut World, e: Entity, t: &Tag, main: bool) -> bool {
+    use crate::behaviours::spawn_draw::{gene_of, set_attributes, shown, Genes};
+    let Tag::String(s) = t else { return false };
+    if !w.get::<TypeName>(e).is_some_and(|t| t.0 == "minecraft:panda") {
+        return false;
+    }
+    let name = s.to_string_lossy();
+    let Some(i) = GENES.iter().position(|n| *n == name) else { return false };
+    let mut g = w.get::<Genes>(e).copied().unwrap_or_default();
+    if main {
+        g.main = gene_of(i as u32);
+    } else {
+        g.hidden = gene_of(i as u32);
+    }
+    w.entity_mut(e).insert((g, shown(g)));
+    set_attributes(w, e);
+    true
+}
+
+fn read_main_gene(w: &mut World, e: Entity, t: &Tag) -> bool {
+    read_gene(w, e, t, true)
+}
+
+fn read_hidden_gene(w: &mut World, e: Entity, t: &Tag) -> bool {
+    read_gene(w, e, t, false)
+}
 
 fn species_tags(w: &World, e: Entity) -> u32 {
     w.get::<crate::cow::SpeciesId>(e).map_or(0, |s| w.resource::<crate::cow::SpeciesTable>().0[s.0 as usize].tags)
@@ -541,6 +614,7 @@ fn read_villager(w: &mut World, e: Entity, t: &Tag) -> bool {
         _ => None,
     };
     let (Some(kind), Some(job)) = (text("type"), text("profession")) else { return false };
+    w.entity_mut(e).insert(crate::bridge::sync_a::VillagerFinalized);
     let Some(Tag::Int(level)) = d.get(&JavaString::from("level")) else { return false };
     let (variant, profession) = {
         let ww: &World = w;
@@ -597,6 +671,19 @@ fn read_baby(w: &mut World, e: Entity, t: &Tag) -> bool {
     let flag = species_tags(w, e) & crate::cow::tag::BABY_FLAG != 0;
     if *v != 0 && flag && w.get::<GrowAt>(e).is_none() {
         crate::spawn_finalize::set_baby(w, e, crate::spawn_finalize::NEVER);
+    } else if *v == 0 && flag && w.get::<GrowAt>(e).is_some() {
+        // `setBaby(false)`: the adult box at once, the flag back to false.
+        if let (Some(s), Some(p)) = (w.get::<crate::cow::Sizes>(e).copied(), w.get::<crate::cow::Pos>(e).map(|p| p.0)) {
+            if let Some(mut b) = w.get_mut::<crate::cow::Body>(e) {
+                b.width = s.adult.0;
+                b.height = s.adult.1;
+            }
+            if let Some(mut b) = w.get_mut::<crate::cow::Bounds>(e) {
+                b.0 = crate::cow::box_at(p, s.adult.0, s.adult.1);
+            }
+        }
+        w.entity_mut(e).remove::<GrowAt>();
+        crate::attr_mod::grow_up(w, e);
     }
     true
 }
@@ -658,6 +745,12 @@ fn read_sitting(w: &mut World, e: Entity, t: &Tag) -> bool {
     let next = if *v != 0 { now | OCC_SITTING } else { now & !OCC_SITTING };
     if next != now || w.get::<Occupied>(e).is_some() {
         w.entity_mut(e).insert(Occupied(next));
+    }
+    // TamableAnimal.readAdditionalSaveData: `setInSittingPose(Sitting)` as well as the order.
+    if *v != 0 {
+        w.entity_mut(e).insert(crate::behaviours::sit_when_ordered::SitPose);
+    } else {
+        w.entity_mut(e).remove::<crate::behaviours::sit_when_ordered::SitPose>();
     }
     true
 }

@@ -5,6 +5,9 @@ use crate::bridge::sync_a::*;
 /// Sans équivalent (pas de composant dans P) : guardian, bat, piglin, parrot and cat variants, wolf (collar, variant,
 /// anger), horse family, happy_ghast, villager and zombie_villager data, creeper, sulfur_cube fuse and from_bucket.
 pub static TABLE: &[(&str, &[SyncSlot])] = &[
+    ("minecraft:piglin", &[SyncSlot { index: 16, read: zomb_immune }]),
+    ("minecraft:piglin_brute", &[SyncSlot { index: 16, read: zomb_immune }]),
+    ("minecraft:hoglin", &[SyncSlot { index: 18, read: zomb_immune }]),
     ("minecraft:allay", &[SyncSlot { index: 16, read: dancing }]),
     ("minecraft:sheep", &[SyncSlot { index: 18, read: wool }]),
     ("minecraft:creaking", &[SyncSlot { index: 16, read: can_move }, SyncSlot { index: 17, read: is_active }, SyncSlot { index: 18, read: tearing_down }]),

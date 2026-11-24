@@ -23,6 +23,7 @@ pub static TABLE: &[(&str, &[SyncSlot])] = &[
         &[
             SyncSlot { index: 20, read: panda_eat },
             SyncSlot { index: 21, read: panda_gene },
+            SyncSlot { index: 22, read: panda_hidden },
             SyncSlot { index: 23, read: panda_flags },
         ],
     ),

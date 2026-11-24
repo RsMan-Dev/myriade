@@ -20,7 +20,10 @@ fn shared(w: &World, e: Entity) -> Option<SyncValue> {
 
 /// Entity.DATA_AIR_SUPPLY: sent while the air is below its maximum (`AirLow`).
 fn air(w: &World, e: Entity) -> Option<SyncValue> {
-    w.get::<AirLow>(e)?;
+    // A water animal out of the water (`Dry`) runs its air down on its own (`WaterAnimal.handleAirSupply`).
+    if w.get::<AirLow>(e).is_none() && w.get::<crate::locomotion::swim::Dry>(e).is_none() {
+        return None;
+    }
     w.get::<Air>(e).map(|a| SyncValue::Int(a.0))
 }
 

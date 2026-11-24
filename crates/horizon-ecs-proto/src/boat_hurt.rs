@@ -70,7 +70,8 @@ pub fn hit(w: &mut World, e: Entity, amount: f32, attacker: Option<Who>, creativ
         return HitResult::Ignored;
     }
     let fresh = w.get::<Hurt>(e).is_none();
-    let mut h = w.get::<Hurt>(e).copied().unwrap_or_default();
+    // `VehicleEntity.DATA_ID_HURTDIR` is defined as 1: the first hit turns it to -1.
+    let mut h = w.get::<Hurt>(e).copied().unwrap_or(Hurt { time: 0, dir: 1, damage: 0.0 });
     h.time = 10;
     h.dir = if h.dir > 0 { -1 } else { 1 };
     h.damage += amount * 10.0;

@@ -27,6 +27,11 @@ pub struct Converting {
     pub until: u64,
 }
 
+/// `isImmuneToZombification`: the piglin or hoglin never counts (`IsImmuneToZombification`, synchronized as a flag).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet", on_insert = crate::bridge::view::touched, on_remove = crate::bridge::view::touched)]
+pub struct ZombImmune;
+
 pub static MODULE: Module = Module {
     name: "convert_timer",
     flags: 0,
@@ -47,7 +52,7 @@ fn arm(w: &mut World, e: Entity, i: Inst) {
     goals::arm(w, e, i.slot, 1);
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    w.get::<Converting>(e).is_none() && goals::in_unsafe_place(w, e)
+    w.get::<Converting>(e).is_none() && w.get::<ZombImmune>(e).is_none() && goals::in_unsafe_place(w, e)
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     let after = w.get::<Convert>(e).unwrap().0.after;

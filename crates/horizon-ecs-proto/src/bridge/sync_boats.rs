@@ -19,14 +19,14 @@ fn damage(w: &World, e: Entity) -> Option<SyncValue> {
     w.get::<Hurt>(e).filter(|h| h.damage != 0.0).map(|h| SyncValue::Float(h.damage))
 }
 
-/// AbstractBoat.DATA_ID_PADDLE_LEFT: the left paddle's stroke, always sent so that a stroke that ended is reset.
+/// AbstractBoat.DATA_ID_PADDLE_LEFT: the left paddle's stroke, sent while it runs (false is the default: the tracker resets to it).
 fn paddle_left(w: &World, e: Entity) -> Option<SyncValue> {
-    w.get::<Boat>(e).map(|b| SyncValue::Bool(b.paddling[0]))
+    w.get::<Boat>(e).filter(|b| b.paddling[0]).map(|_| SyncValue::Bool(true))
 }
 
-/// AbstractBoat.DATA_ID_PADDLE_RIGHT: the right paddle's stroke, always sent.
+/// AbstractBoat.DATA_ID_PADDLE_RIGHT: the right paddle's stroke, sent while it runs.
 fn paddle_right(w: &World, e: Entity) -> Option<SyncValue> {
-    w.get::<Boat>(e).map(|b| SyncValue::Bool(b.paddling[1]))
+    w.get::<Boat>(e).filter(|b| b.paddling[1]).map(|_| SyncValue::Bool(true))
 }
 
 /// AbstractBoat.DATA_ID_BUBBLE_TIME: the wobble over a bubble column, back to 0 once the boat is off the column.
