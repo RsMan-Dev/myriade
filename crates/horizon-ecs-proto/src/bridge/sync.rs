@@ -67,6 +67,16 @@ pub struct SyncSlot {
     pub read: fn(&World, Entity) -> Option<SyncValue>,
 }
 
+/// The defaults of `kind`'s entries that are not the zero of their serializer (the entry left out goes back to it).
+pub fn special_defaults(kind: &str) -> &'static [(u8, i32, Value)] {
+    match kind {
+        "minecraft:creeper" => &[(16, serializer::INT, Value::Int(-1))],
+        // VehicleEntity.DATA_ID_HURTDIR is defined as 1.
+        k if k.ends_with("_boat") || k.ends_with("_raft") => &[(9, serializer::INT, Value::Int(1))],
+        _ => &[],
+    }
+}
+
 /// The species' slots for the registry id `kind` (flattened inheritance, built once from `species::sync_a_table` then `sync_b_table`);
 /// an unknown species has none.
 pub fn species_slots(kind: &str) -> &'static [SyncSlot] {
@@ -88,14 +98,15 @@ pub fn sync_entries(world: &World, e: Entity, out: &mut Vec<(u8, SyncValue)>) {
     let Some(v) = view::view(world, e) else {
         return;
     };
-    for slot in sync_core::SLOTS.iter().chain(species_slots(v.kind)) {
+    let species = species_slots(v.kind);
+    for (slot, core) in sync_core::SLOTS.iter().map(|s| (s, true)).chain(species.iter().map(|s| (s, false))) {
         if let Some(value) = (slot.read)(world, e) {
             // Index 17 is AgeableMob.AGE_LOCKED only for an AgeableMob: Zombie's is its special type, Piglin's its baby flag, Zoglin has none.
-            if slot.index == 17 && sync_core::NOT_AGEABLE.contains(&v.kind) {
+            if core && slot.index == 17 && sync_core::NOT_AGEABLE.contains(&v.kind) {
                 continue;
             }
             // Piglin.DATA_BABY_ID is 17: its index 16 is AbstractPiglin.DATA_IMMUNE_TO_ZOMBIFICATION, so the core's baby flag moves up.
-            let index = if slot.index == 16 && v.kind == "minecraft:piglin" { 17 } else { slot.index };
+            let index = if core && slot.index == 16 && v.kind == "minecraft:piglin" { 17 } else { slot.index };
             out.push((index, value));
         }
     }

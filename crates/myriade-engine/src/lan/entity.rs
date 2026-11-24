@@ -34,6 +34,23 @@ pub fn changed_attributes(
         .collect()
 }
 
+/// The value of a serializer when nothing was written: SynchedEntityData.define's usual zero.
+fn zero_of(kind: i32) -> Option<Value> {
+    use serializer as s;
+    Some(match kind {
+        s::BYTE => Value::Byte(0),
+        s::INT => Value::Int(0),
+        s::LONG => Value::Long(0),
+        s::FLOAT => Value::Float(0.0),
+        s::BOOLEAN => Value::Bool(false),
+        s::STRING => Value::String(String::new()),
+        s::OPTIONAL_COMPONENT => Value::OptText(None),
+        s::ITEM_STACK => Value::Item(None),
+        s::OPTIONAL_BLOCK_POS => Value::OptPos(None),
+        _ => return None,
+    })
+}
+
 /// What the game says about one entity this tick.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EntityState {
@@ -98,6 +115,8 @@ pub struct EntityState {
     pub bare: bool,
     /// `meta` was not read this tick (the entity only moved or turned): the tracker keeps the data it sent, as for `attributes` left empty.
     pub keep_meta: bool,
+    /// An entry `meta` leaves out goes back to the zero of its serializer unless `defaults` names it (the ECS sends only what differs).
+    pub zero_defaults: bool,
     /// `Leashable.getLeashHolder`: the entity holding its lead.
     pub leash: Option<i32>,
     /// `ServerPlayer.isSpectator`: a player in spectator mode, whom only the
@@ -141,6 +160,7 @@ impl EntityState {
         self.idle = false;
         self.bare = false;
         self.keep_meta = false;
+        self.zero_defaults = false;
         self.leash = None;
         self.spectator = false;
         self.watching = false;
@@ -757,7 +777,10 @@ impl ServerEntity {
                     (10, serializer::INT) if frame => Value::Int(0),
                     _ => match e.defaults.iter().find(|d| (d.0, d.1) == (*index, *kind)) {
                         Some(d) => d.2.clone(),
-                        None => continue,
+                        None => match zero_of(*kind).filter(|_| e.zero_defaults) {
+                            Some(z) => z,
+                            None => continue,
+                        },
                     },
                 };
                 if !e.meta.iter().any(|m| m.0 == *index) {
@@ -1921,6 +1944,7 @@ mod tests {
             idle: false,
             bare: false,
             keep_meta: false,
+            zero_defaults: false,
             leash: None,
             spectator: false,
             watching: false,

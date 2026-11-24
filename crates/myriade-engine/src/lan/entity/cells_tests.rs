@@ -31,6 +31,7 @@ fn entity(id: i32, kind: &str, at: [f64; 2]) -> EntityState {
         idle: false,
         bare: false,
         keep_meta: false,
+        zero_defaults: false,
         leash: None,
         spectator: false,
         watching: false,

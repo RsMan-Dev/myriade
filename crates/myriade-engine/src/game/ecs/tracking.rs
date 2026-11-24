@@ -4,6 +4,7 @@ use super::super::Game;
 use bevy_ecs::entity::Entity;
 use myriade_engine::{fast_hash::FxHashSet, lan::entity::EntityState};
 use horizon_ecs_proto::bridge::host::Select;
+use horizon_protocol::entity_data::{Value, serializer};
 
 fn section(p: [f64; 3]) -> [i32; 3] {
     p.map(|v| (v.floor() as i32) >> 4)
@@ -27,6 +28,11 @@ impl Game<'_> {
         // The metadata only when it may have changed (`meta`): an entity that only moved or turned leaves what was sent, as for the attributes.
         if meta {
             self.ecs.metadata(e, &mut state.meta);
+            // The ECS sends only what differs from the default: a left-out entry goes back to it (air 300 and health 1 are not zero).
+            state.zero_defaults = true;
+            state.defaults.push((1, serializer::INT, Value::Int(300)));
+            state.defaults.push((9, serializer::FLOAT, Value::Float(1.0)));
+            state.defaults.extend_from_slice(self.ecs.special_defaults(e));
         } else {
             // `fill` wrote the entries of a fishing hook: none of it is a full reading.
             state.meta.clear();

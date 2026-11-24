@@ -422,6 +422,10 @@ impl EcsLevel {
             mount::eject_passengers(w.world_mut(), vehicle);
         }
     }
+    /// The defaults of `e`'s entries that are not the zero of their serializer.
+    pub fn special_defaults(&self, e: Entity) -> &'static [(u8, i32, Value)] {
+        self.world().and_then(|w| horizon_ecs_proto::bridge::view::view(w, e)).map_or(&[], |v| sync::special_defaults(v.kind))
+    }
     /// The entity data of `e` as the tracker sends it: (index, serializer id, value).
     pub fn metadata(&self, e: Entity, out: &mut Vec<(u8, i32, Value)>) {
         let Some(w) = self.world() else { return };
