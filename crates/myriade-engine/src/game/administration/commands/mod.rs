@@ -622,6 +622,9 @@ impl Game<'_> {
                 }
                 // The mobs the ECS holds, found by its index (`EcsLevel::select`).
                 candidates.extend(self.ecs_selector_targets(s, origin));
+                // A kind both lists name (crystal, cloud, boat, dragon) is one entity.
+                let mut seen = std::collections::HashSet::new();
+                candidates.retain(|t| seen.insert(*t));
             }
             out.extend(self.select_in_level(candidates, s, origin));
             if let Some(back) = back {

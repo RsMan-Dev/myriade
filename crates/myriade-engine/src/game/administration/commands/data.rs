@@ -426,6 +426,11 @@ impl Game<'_> {
         if let Target::Mob(id) = t {
             return self.ecs_set_mob_tags(id, tags);
         }
+        if let Target::Item(id) | Target::Crystal(id) = t
+            && self.ecs.exists(id)
+        {
+            return self.ecs_set_mob_tags(id, tags);
+        }
         let Some(raw) = self.raw_mut(t) else {
             return false;
         };

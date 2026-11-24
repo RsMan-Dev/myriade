@@ -31,12 +31,17 @@ impl Game<'_> {
     pub(in crate::game) fn ecs_selector_targets(&mut self, s: &Selector, origin: [f64; 3]) -> Vec<Target> {
         let boats: std::collections::HashSet<u32> = self.ecs.boat_ids().into_iter().collect();
         let carts: std::collections::HashSet<u32> = self.ecs.cart_ids().into_iter().collect();
+        let dragons: std::collections::HashSet<u32> = self.ecs.dragon_views().into_iter().map(|(d, _)| d).collect();
         let ids = self.ecs_mob_candidates(s, origin);
         ids.into_iter()
             .map(|id| match self.ecs.kind(id).as_deref() {
                 Some("minecraft:item") => Target::Item(id),
                 Some("minecraft:experience_orb") => Target::Orb(id),
                 Some("minecraft:tnt") => Target::Tnt(id),
+                Some("minecraft:end_crystal") => Target::Crystal(id),
+                Some("minecraft:area_effect_cloud") => Target::Cloud(id),
+                Some("minecraft:ominous_item_spawner") => Target::Spawner(id),
+                _ if dragons.contains(&id) => Target::Dragon(id),
                 _ if boats.contains(&id) => Target::Boat(id),
                 _ if carts.contains(&id) => Target::Cart(id),
                 _ => Target::Mob(id),
