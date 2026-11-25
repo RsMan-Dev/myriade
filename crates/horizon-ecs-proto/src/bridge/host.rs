@@ -76,6 +76,12 @@ fn chunk_of(v: Vec3) -> (i32, i32) {
 
 /// A command on an entity that a command before it removed (a death and a hit in one batch) does nothing, as vanilla's calls on a removed
 /// entity do; every other error keeps bevy's severity (a panic for a real mistake).
+/// The clock read once when the world is made: the entity seeds of one run start where no other run's do (vanilla's `RandomSupport.generateUniqueSeed`
+/// mixes `System.nanoTime`), the cost is one read per world and none per entity.
+fn start_clock() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64)
+}
+
 fn despawned_is_a_no_op(err: bevy_ecs::error::BevyError, ctx: bevy_ecs::error::ErrorContext) {
     if err.downcast_ref::<bevy_ecs::entity::EntityNotSpawnedError>().is_some() {
         return;
@@ -98,7 +104,7 @@ impl EcsWorld {
         world.insert_resource(bevy_ecs::error::FallbackErrorHandler(despawned_is_a_no_op));
         world.insert_resource(crate::frame_item::DropRng(crate::flat::Rng(setup.seed as u64 ^ 0x9E37_79B9_7F4A_7C15)));
         world.insert_resource(WorldDimension(setup.dimension));
-        EcsWorld { world, schedule: crate::cow::schedule(), occ, spawned: setup.seed as u64, chunks: HashMap::new() }
+        EcsWorld { world, schedule: crate::cow::schedule(), occ, spawned: (setup.seed as u64) ^ start_clock(), chunks: HashMap::new() }
     }
 
     /// The game time of the world's tick 0 (`Clock::set_game_base`), from the host's game time and the ECS clock.
