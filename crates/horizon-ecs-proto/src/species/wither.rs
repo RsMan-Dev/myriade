@@ -33,7 +33,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 7, &random_look::Params::DEFAULT),
     ],
-    locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Path, max_turn: 10.0, hovers: false, ..fly::Params::DEFAULT }))],
+    locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Path, max_turn: 10.0, hovers: false, damp_y: 0.6, ..fly::Params::DEFAULT }))],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune, Cap::WitherImmune, Cap::FreezeImmune, Cap::NeverStuck]),
     not_in_peaceful: true,
     no_portal: true,
