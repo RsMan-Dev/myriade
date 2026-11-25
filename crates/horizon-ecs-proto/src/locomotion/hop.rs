@@ -81,8 +81,8 @@ fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
 }
 /// Each tick of a hop in the air: the speed and the forward input stay (`CubeMobMoveControl`: `setSpeed` also sets the input); when the body is
 /// back on the ground the wait begins.
-fn hop_air(mut q: Query<(Entity, &mut Hop, &mut Drive, &Contact, &Body, &Nav), With<Hopping>>, clock: Res<Clock>, mut wheel: ResMut<Wheel>, mut commands: Commands) {
-    for (e, mut h, mut d, c, body, nav) in &mut q {
+fn hop_air(mut q: Query<(Entity, &mut Hop, &mut Drive, &Contact, &Body, &Nav, Option<&crate::goals::Phase>), With<Hopping>>, clock: Res<Clock>, mut wheel: ResMut<Wheel>, mut commands: Commands) {
+    for (e, mut h, mut d, c, body, nav, phase) in &mut q {
         let now = clock.of(e);
         // The tick of the jump keeps the jump the deadline asked for.
         d.jump = d.jump && now == h.jumped_at && h.p.path.is_none();
@@ -96,7 +96,16 @@ fn hop_air(mut q: Query<(Entity, &mut Hop, &mut Drive, &Contact, &Body, &Nav), W
                 h.pending = path_wait(nav.speed, p.fast_from, p.delay, p.fast_delay);
             }
             h.armed = true;
-            wheel.push(clock.at(e, now + h.pending as u64).max(clock.0 + 1), e, Due::Hop);
+            // `CubeMobMoveControl.tick` counts the wait down only on the ticks where `KeepOnJumping.tick` has set `MOVE_TO`, that is the
+            // ticks of the selector (one in two, the goal does not ask for every tick): `pending` goal ticks make twice as many ticks, the
+            // first one being the landing tick or the next.
+            let due = if h.p.path.is_some() {
+                now + h.pending as u64
+            } else {
+                let first = if now <= 1 || (now + phase.map_or(0, |p| p.0)) % 2 == 0 { now } else { now + 1 };
+                first + 2 * (h.pending.max(1) as u64 - 1)
+            };
+            wheel.push(clock.at(e, due).max(clock.0 + 1), e, Due::Hop);
         } else if h.p.path.is_some() {
             // In the air a body that follows a path keeps what the walk gave it.
             commands.entity(e).insert(Moving);
@@ -128,8 +137,8 @@ pub fn due(w: &mut World, e: Entity) {
         w.entity_mut(e).insert((Hopping, Moving));
         return;
     }
-    // `CubeRandomDirection.tick` runs on each tick on the ground: the ticks of the wait count, the tick of the draw included.
-    let mut left = h.pending + 1;
+    // `CubeRandomDirection.tick` runs on each tick of the selector on the ground: the goal ticks of the wait count, the tick of the draw included.
+    let mut left = h.pending.max(1);
     while left > 0 {
         if h.redirect <= left {
             left -= h.redirect;
