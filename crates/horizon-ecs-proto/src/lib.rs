@@ -55,6 +55,7 @@ pub mod damage_link;
 pub mod guard_alert;
 pub mod reinforcements;
 pub mod hurt_spawn;
+pub mod removed_effects;
 pub mod hiss;
 pub mod fall_passengers;
 pub mod fall_reset;

@@ -131,6 +131,7 @@ fn finish(w: &mut World, e: Entity) {
     {
         w.resource_mut::<crate::cow::Index>().remove(e, c);
     }
+    crate::removed_effects::on_killed(w, e);
     crate::spawn_trial::forget(w, e);
     crate::mount::leave(w, e);
     w.despawn(e);
