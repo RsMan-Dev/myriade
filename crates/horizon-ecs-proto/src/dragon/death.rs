@@ -60,6 +60,15 @@ pub fn tick(w: &mut World, e: Entity) {
     }
 }
 
+/// `EnderDragon.kill` (`/kill`): the dragon goes at once and the fight is told (`updateDragon`, `setDragonKilled`).
+pub fn kill_now(w: &mut World, e: Entity) {
+    let fight = w.resource::<EndFight>().dragon == Some(e);
+    w.despawn(e);
+    if fight {
+        dragon_killed(w);
+    }
+}
+
 /// The fight's dragon is dead (`dragon_killed`): the exit portal opens, a gateway is popped and placed, the egg appears on the first
 /// kill, and the fight is told.
 fn dragon_killed(w: &mut World) {

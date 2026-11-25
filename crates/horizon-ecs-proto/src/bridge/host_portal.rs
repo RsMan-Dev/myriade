@@ -21,8 +21,9 @@ impl EcsWorld {
             }
             // `LivingEntity.hurtServer` of the lethal blow: `makeSound(getDeathSound)` before `die`.
             crate::sound_slots::death(w, e);
-            // The dragon dies by its own 200 ticks (`tick_dragon_death`, then `dragon_killed`): health 0 is all the blow does.
+            // `EnderDragon.kill`: removed at once, `setDragonKilled` (portal, egg), no death animation and no orbs.
             if w.get::<crate::dragon::flight::DragonRng>(e).is_some() {
+                crate::dragon::death::kill_now(w, e);
                 return Vec::new();
             }
             if let Some(c) = w.get::<Cell>(e).map(|c| c.0)
