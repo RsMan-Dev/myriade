@@ -66,5 +66,5 @@ pub const RULES: &[crate::rules::RuleEntry] = &[
     crate::rules::RuleEntry::new(&crate::mount::RIDE, &crate::mount::RideParams::NAUTILUS),
     crate::rules::RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT),
     crate::rules::RuleEntry::new(&crate::leash::GATE, &crate::leash::GateParams(crate::leash::not_angry)),
-    crate::rules::RuleEntry::new(&crate::cow::OWN_AIR, &crate::cow::OwnAirParams { max: 300, full_refill: false, nautilus: true }),
+    crate::rules::RuleEntry::new(&crate::cow::OWN_AIR, &crate::cow::OwnAirParams { max: 300, full_refill: false, nautilus: true, dry: false }),
 ];

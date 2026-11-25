@@ -114,17 +114,20 @@ pub struct OwnAir {
     pub full_refill: bool,
     /// `Nautilus.handleAirSupply`: on land the air is the one before the tick less one, in water the maximum (not without AI).
     pub nautilus: bool,
+    /// `Axolotl.handleAirSupply`: out of the water (or rain) the air runs down by 1 a tick and dries out at -20 (2 damage); in it, the maximum.
+    pub dry: bool,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct OwnAirParams {
     pub max: i32,
     pub full_refill: bool,
     pub nautilus: bool,
+    pub dry: bool,
 }
 pub static OWN_AIR: crate::rules::Rule = crate::rules::Rule { name: "own_air", equip: equip_own_air, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
 fn equip_own_air(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
     let p = crate::rules::params::<OwnAirParams>(p);
-    w.entity_mut(e).insert(OwnAir { max: p.max, full_refill: p.full_refill, nautilus: p.nautilus });
+    w.entity_mut(e).insert(OwnAir { max: p.max, full_refill: p.full_refill, nautilus: p.nautilus, dry: p.dry });
 }
 
 /// Does not drown under water.
@@ -223,6 +226,26 @@ pub(crate) fn breathing(
     for (e, pos, fs, mut air, low, in_fluid, fp, imm, tn, uid, (wet, tag_breathes, holds, own, no_ai, bonus)) in &mut q {
         let max = own.map_or(fp.max_air, |o| o.max);
         let before = air.0;
+        if own.is_some_and(|o| o.dry) {
+            if fs.in_water {
+                air.0 = max;
+            } else {
+                air.0 -= 1;
+                if air.0 <= -20 {
+                    air.0 = 0;
+                    queue.add(e, 2.0, Cause::Drown);
+                }
+            }
+            if air.0 != before {
+                commands.queue(move |w: &mut bevy_ecs::world::World| crate::bridge::view::mark(w, e));
+            }
+            if air.0 < max && !low {
+                commands.entity(e).insert(AirLow);
+            } else if air.0 >= max && low && !in_fluid {
+                commands.entity(e).remove::<AirLow>();
+            }
+            continue;
+        }
         // `Enderman.aiStep`: the water hurts it (1 a tick, through the invulnerability window), and the hurt sends it away.
         if wet && fs.in_water {
             queue.add(e, 1.0, Cause::Drown);

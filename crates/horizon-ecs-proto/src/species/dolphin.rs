@@ -28,7 +28,7 @@ pub static DEF: Def = Def {
         Entry::new(&follow_player_vehicle::MODULE, 8, &follow_player_vehicle::Params::BOAT),
         Entry::new(&follow_player_vehicle::MODULE, 8, &follow_player_vehicle::Params::NAUTILUS),
     ],
-    rules: &[crate::rules::RuleEntry::new(&crate::rules::bite_sound::BITE, &"entity.dolphin.attack"), crate::rules::RuleEntry::new(&crate::cow::OWN_AIR, &crate::cow::OwnAirParams { max: 4800, full_refill: true, nautilus: false }), crate::rules::RuleEntry::new(&crate::moisture::MOISTURE, &())],
+    rules: &[crate::rules::RuleEntry::new(&crate::rules::bite_sound::BITE, &"entity.dolphin.attack"), crate::rules::RuleEntry::new(&crate::cow::OWN_AIR, &crate::cow::OwnAirParams { max: 4800, full_refill: true, nautilus: false, dry: false }), crate::rules::RuleEntry::new(&crate::moisture::MOISTURE, &())],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
     locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: false, breach: true, control: swim::Control::Smooth { max_turn_x: 85.0, max_turn_y: 10.0, in_water: 0.02, outside: 0.1, gravity: true }, push: swim::Push::Speed, sinks: true, ..swim::Params::DEFAULT }))],
     spawn: Some(crate::spawning::SpawnDef { category: crate::spawning::Category::WaterCreature, place: crate::spawning::Place::InWater, rule: crate::spawning::Rule::SurfaceWater, cluster: 4, far: false, peaceful: true, liquid: true, despawn: crate::despawn::DespawnDef::MOB }), despawn: Some(crate::despawn::DespawnDef::MOB),
