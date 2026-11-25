@@ -3,8 +3,8 @@
 //! EVENT: a system of the module looks at the wanted spot each tick of the ghast's flight (a flier does not sleep) and wakes the goal when
 //! the spot is reached, too far, or dropped.
 //! `blocks` (`HappyGhast.RandomFloatAroundGoal`, `FloatAround { blocks }`, `happy_ghast.rs:453-540`): a point is kept only when it is air
-//! with a solid block within `blocks - 1` cells in one of the six directions; `0` keeps any point (the ghast). Not ported: the 64th try's
-//! fallback is the last point drawn, without the surface clamp of `start` (`motion_blocking_height`: DOUTE, no service).
+//! with a solid block within `blocks - 1` cells in one of the six directions; `0` keeps any point (the ghast). When no try is good, the last
+//! point drawn is kept, mirrored below the ghast when the MOTION_BLOCKING surface of its column lies under it (`y = mob.y - |mob.y - y|`).
 use crate::IFloor as _;
 use super::*;
 use crate::rules::float_around as rule;
@@ -66,13 +66,22 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     let p = w.get::<Pos>(e).unwrap().0;
     let blocks = w.get::<FloatBlocks>(e).map_or(0, |b| b.0);
     let mut t = [p.x, p.y, p.z];
+    let mut found = blocks <= 0;
     for _ in 0..64 {
         t = with_rng(w, e, |r| {
             let mut f = || rule::spot_offset(r.next_float());
             [p.x + f(), p.y + f(), p.z + f()]
         });
         if good(w, blocks, t) {
+            found = true;
             break;
+        }
+    }
+    if !found {
+        let mw = w.resource::<Level>().mw.0;
+        let surface = f64::from(mw.motion_blocking_height(t[0].ifloor(), t[2].ifloor()));
+        if surface < t[1] && t[1] > f64::from(mw.world.bottom_y()) {
+            t[1] = p.y - (p.y - t[1]).abs();
         }
     }
     *w.get_mut::<MoveTo>(e).unwrap() = MoveTo { active: true, x: t[0], y: t[1], z: t[2], speed_modifier: 1.0 };
