@@ -115,24 +115,17 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
             return false;
         }
         None => {
-            let (level, pos, nav, walk, in_water) = {
+            let (level, pos, nav, walk) = {
                 let p = w.get::<Pos>(e).unwrap().0;
                 let nav = *w.get::<NavParams>(e).unwrap();
                 let walk = w.get::<crate::spots::WalkValue>(e).copied().unwrap_or(crate::spots::WalkValue::Zero);
-                let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
-                (*w.resource::<Level>(), [p.x, p.y, p.z], nav, walk, in_water)
+                (*w.resource::<Level>(), [p.x, p.y, p.z], nav, walk)
             };
             let mut r = *w.get::<Rng>(e).unwrap();
             let picked = {
                 let mut sp = spotter(&level, pos, &nav, walk, &mut r);
-                let (h, v) = (10, 7);
-                if in_water {
-                    sp.pick(Pick::Land { h: h + 5, v }).or_else(|| sp.pick(Pick::Default { h, v }))
-                } else if sp.rng.next_float() >= 0.001 {
-                    sp.pick(Pick::Land { h, v })
-                } else {
-                    sp.pick(Pick::Default { h, v })
-                }
+                // `RandomStrollGoal.getPosition` (not overridden by the merge goal): `DefaultRandomPos.getPos(mob, 10, 7)`.
+                sp.pick(Pick::Default { h: 10, v: 7 })
             };
             *w.get_mut::<Rng>(e).unwrap() = r;
             match picked {
