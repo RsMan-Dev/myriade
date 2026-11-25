@@ -4077,9 +4077,10 @@ impl Hub {
                             }
                         });
                         let rot = (p.yaw, p.pitch);
+                        // handlePlayerPositionChange gets the packet's position; `at` is the snap.
                         self.position_change(
                             i,
-                            at,
+                            [p.x, p.y, p.z],
                             rot,
                             0,
                             (true, true),
@@ -4429,7 +4430,12 @@ impl Hub {
         // updateAwaitingTeleport: moves wait for the client to accept the
         // teleport, which is sent again after 20 ticks without an answer.
         if let Some((_, at)) = g.awaiting_teleport {
-            if self.ticks - g.teleport_tick > 20 {
+            let look = rot.unwrap_or((g.yaw, g.pitch));
+            let late = self.ticks - g.teleport_tick > 20;
+            // absSnapRotationTo: the look still turns while the teleport is awaited.
+            self.guests
+                .update(i, |g| (g.yaw, g.pitch) = (wrap_degrees(look.0), wrap_degrees(look.1)));
+            if late {
                 self.resend_teleport(i, Some(at));
             }
             return;
