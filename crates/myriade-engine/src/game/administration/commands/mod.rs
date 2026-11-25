@@ -1984,8 +1984,12 @@ impl Game<'_> {
         match t {
             // Stage 3's insertion joins live rows; there is nothing to kill.
             Target::General(_) => {}
-            Target::Guest(_) => {
+            Target::Guest(conn) => {
                 self.for_player(t, |g| g.kill_target(Target::Player));
+                // `ServerPlayer.die` runs inside the kill: its death message precedes the command's feedback.
+                if let Some(gi) = self.guest_index(conn) {
+                    self.guest_die(gi, conn);
+                }
             }
             Target::Player => {
                 if let Some(p) = self.player.as_mut() {
