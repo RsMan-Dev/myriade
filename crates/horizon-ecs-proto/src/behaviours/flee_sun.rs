@@ -2,7 +2,7 @@
 //! blocks. A spot is taken when the sky does not see it and its walk value is below zero (a brightness above 0.5, the
 //! monster's `getWalkTargetValue`). The try is drawn when the goal is asked, 10 tries at most.
 use super::*;
-use crate::{cow::*, goals::*, hostile::Daylight, targeting::Target};
+use crate::{cow::*, goals::*, hostile::Bright, targeting::Target};
 use crate::rules::flee_sun::{bright_enough, centre, hide_offset};
 
 #[derive(Clone, Copy, Debug)]
@@ -53,7 +53,7 @@ fn wake_on_fire(ev: Res<Events>, q: Query<&FleeSunGoal>, mut reqs: ResMut<Reques
     }
 }
 /// The day came or went: the monsters that burn now look at the sun again (the burning ones only).
-fn wake_on_day(day: Res<Daylight>, q: Query<(Entity, &FleeSunGoal), With<Burning>>, mut reqs: ResMut<Requests>) {
+fn wake_on_day(day: Res<Bright>, q: Query<(Entity, &FleeSunGoal), With<Burning>>, mut reqs: ResMut<Requests>) {
     if day.is_changed() {
         for (e, g) in &q {
             reqs.0.push(Req::Start(e, g.slot));
@@ -70,7 +70,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let burning = w.get::<Burning>(e).is_some_and(|b| b.until > now as i64);
     // Not burning, or at night: the ignition and the change of day wake the goal; no ask until then.
-    if !burning || !w.resource::<Daylight>().0 {
+    if !burning || !w.resource::<Bright>().0 {
         return false;
     }
     // The `Mob` asks every other tick: while it burns by day, a target (`Target`) that goes, a roof that is removed or

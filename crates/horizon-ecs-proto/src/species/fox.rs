@@ -12,7 +12,7 @@ use crate::behaviours::{
 use crate::behaviours::{ambient_sound, Cap, Cond, Entry};
 use crate::cow::{Level, Pos, Rng};
 use crate::goals::Online;
-use crate::hostile::{Daylight, PlayerState};
+use crate::hostile::{Bright, PlayerState};
 use bevy_ecs::prelude::*;
 
 /// `Fox.getAmbientSound`: the sleep while asleep; at night (no daylight), one call in ten with no player within 16 blocks, the screech; else the ambient.
@@ -22,7 +22,7 @@ fn ambient(w: &mut World, e: Entity) -> &'static str {
     }
     let at = w.get::<Pos>(e).unwrap().0;
     // `Level.isBrightOutside`: no daylight in a dimension with a fixed time.
-    let day = w.get_resource::<Level>().is_some_and(|l| !l.mw.0.dimension_type.has_fixed_time) && w.get_resource::<Daylight>().is_some_and(|d| d.0);
+    let day = w.get_resource::<Level>().is_some_and(|l| !l.mw.0.dimension_type.has_fixed_time) && w.get_resource::<Bright>().is_some_and(|d| d.0);
     if !day && w.get_mut::<Rng>(e).unwrap().next_u32() % 10 == 0 {
         // `Fox.getAmbientSound`: a player within 16 blocks who is not a spectator keeps the screech off.
         let ps = w.get_resource::<PlayerState>();

@@ -5,7 +5,7 @@
 //! `left_fluid` restarts it, and at night out of the water a slow retry (100 ticks) stands for the missing "day began" event
 //! (a recorded gap: `suivi/ecs-ecarts.md`). In the water nothing is armed: `left_fluid` wakes it.
 use super::*;
-use crate::hostile::Daylight;
+use crate::hostile::Bright;
 use crate::rules::drowned_go_to_water::{block_centre, candidate};
 use crate::{cow::*, goals::*};
 
@@ -74,7 +74,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if in_water(w, e) {
         return false;
     }
-    if !w.resource::<Daylight>().0 {
+    if !w.resource::<Bright>().0 {
         let retry = w.get::<ToWater>(e).map_or(100, |t| t.p.night_retry);
         chain(w, e, retry);
         return false;

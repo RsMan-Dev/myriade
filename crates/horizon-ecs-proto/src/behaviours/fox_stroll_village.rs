@@ -62,9 +62,9 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
 fn fired(_: &mut World, _: Entity, _: Inst) -> bool {
     true
 }
-/// `Level.isBrightOutside` for the overworld: the day is the level's `Daylight`.
+/// `Level.isBrightOutside` for the overworld: the day is the level's `Bright`.
 fn daylight(w: &World) -> bool {
-    w.get_resource::<crate::hostile::Daylight>().is_some_and(|d| d.0)
+    w.get_resource::<crate::hostile::Bright>().is_some_and(|d| d.0)
 }
 /// `Fox.canFoxMove` without the defending flag (not a fox flag here: DOUTE): not asleep, not sitting, no target.
 fn can_fox_move(w: &World, e: Entity) -> bool {
@@ -172,7 +172,7 @@ mod tests {
         assert!(ever_running(&mut h, b, 1500), "a fox near a village at night never started its walk");
 
         let Some((mut day, d)) = world(0.5) else { return };
-        day.world.resource_mut::<crate::hostile::Daylight>().0 = true;
+        day.world.resource_mut::<crate::hostile::Bright>().0 = true;
         assert!(!ever_running(&mut day, d, 1500), "the walk started by day");
 
         let Some((mut far, f)) = world(120.5) else { return };

@@ -3,9 +3,9 @@
 //! around the animal (x, then y, then z; the feet row + 2 - nextInt(8)); the first point that holds water is wanted, and the
 //! walk to it ends with its path (`ends_with_path`). The `Mob` asks it each selector tick and draws nothing unless the place
 //! holds: a background condition (out of the water, and on the ground for the dolphin) keeps a chain of +2 requests going;
-//! the events `landed` and `left_fluid` start the chain again. Daylight (the drowned) is read at each ask: no event announces it.
+//! the events `landed` and `left_fluid` start the chain again. Bright (the drowned) is read at each ask: no event announces it.
 use super::*;
-use crate::hostile::Daylight;
+use crate::hostile::Bright;
 use crate::rules::teleport_on::cell_of;
 use crate::rules::try_find_water::{aim_point, box_point, clear_of_water};
 use crate::{cow::*, goals::*};
@@ -90,7 +90,7 @@ fn out_of_water(w: &World, e: Entity, def: Params) -> bool {
 }
 /// Every test of `canUse` before the draws: the daylight, then the background condition.
 fn place_ok(w: &World, e: Entity, def: Params) -> bool {
-    (!def.needs_day || w.resource::<Daylight>().0) && out_of_water(w, e, def)
+    (!def.needs_day || w.resource::<Bright>().0) && out_of_water(w, e, def)
 }
 fn is_water(w: &World, p: [i32; 3], def: Params) -> bool {
     let mw = w.resource::<Level>().mw.0;
@@ -186,7 +186,7 @@ mod tests {
         let c = spawn_species(&mut h.world, &sp, 0.5, 0.5, 77);
         h.world.get_mut::<ActiveUntil>(c).unwrap().0 = u64::MAX;
         h.world.resource_mut::<crate::goals::Entered>().0.push(c);
-        h.world.resource_mut::<crate::hostile::Daylight>().0 = true;
+        h.world.resource_mut::<crate::hostile::Bright>().0 = true;
         run(&mut h, 4);
         Some((h, c))
     }

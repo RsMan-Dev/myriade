@@ -7,7 +7,7 @@ use crate::cow::Pos;
 use crate::goals::MOVE;
 use crate::goals::{go_to_at, with_rng, Req, Requests};
 use crate::cow::Level;
-use crate::hostile::Daylight;
+use crate::hostile::Bright;
 use crate::poi::PoiRegistry;
 use crate::spots::{WalkValue, walk_target_value};
 use crate::targeting::Target;
@@ -117,7 +117,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         if let Some(mut s) = w.get_mut::<SeekShelter>(e) {
             s.interval = next_interval(left, g.p.interval);
         }
-        left <= 0 && w.get_resource::<Daylight>().is_some_and(|d| d.0) && sees_sky && in_village(w, at)
+        left <= 0 && w.get_resource::<Bright>().is_some_and(|d| d.0) && sees_sky && in_village(w, at)
     };
     ask && match hide_pos(w, e) {
         Some(wanted) => {

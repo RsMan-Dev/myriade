@@ -6,7 +6,7 @@
 use super::*;
 use crate::locomotion::swim::WantsToSwim;
 use crate::move_to_block::MoveToBlock;
-use crate::hostile::Daylight;
+use crate::hostile::Bright;
 use crate::rules::drowned_go_to_beach as rule;
 use crate::{cow::*, goals::*};
 use myriade_engine_lib::blocks::Fluid;
@@ -98,7 +98,7 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
         let found = b.walk.find_nearest(base, mw, beach_valid);
         let p = w.get::<Pos>(e).unwrap().0;
         let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
-        found && !w.resource::<Daylight>().0 && in_water && rule::sea_close(p.y, mw.sea_level)
+        found && !w.resource::<Bright>().0 && in_water && rule::sea_close(p.y, mw.sea_level)
     };
     b.countdown = countdown;
     *w.get_mut::<Beach>(e).unwrap() = b;

@@ -3,7 +3,7 @@
 //! goal ends with its finish sound (pitch drawn on the creature's stream). The goal takes no flag. Nothing is polled: the day changing and an
 //! effect changing wake it, the end is a deadline. Not done: the item in the hand, the dimension with a fixed time (no model of it).
 use super::*;
-use crate::{cow::*, effects::{self, Kind}, goals::*, hostile::Daylight};
+use crate::{cow::*, effects::{self, Kind}, goals::*, hostile::Bright};
 use crate::rules::drink_item::{drink_now, finish_pitch};
 
 #[derive(Clone, Copy, Debug)]
@@ -52,7 +52,11 @@ fn of(w: &World, e: Entity, inst: Inst) -> &'static Params {
 }
 /// `Level.isDarkOutside` / `isBrightOutside` and the effect: the potion in the dark while not invisible, the milk by day while invisible.
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
-    let day = w.resource::<Daylight>().0;
+    let day = w.resource::<Bright>().0;
+    // `Level.isDarkOutside`: never dark in a dimension with a fixed time.
+    if of(w, e, inst).dark && w.get_resource::<Level>().is_some_and(|l| l.mw.0.dimension_type.has_fixed_time) {
+        return false;
+    }
     let invisible = effects::has(w, e, Kind::Invisibility);
     drink_now(of(w, e, inst).dark, day, invisible)
 }
@@ -91,7 +95,7 @@ fn tick(w: &mut World) {
     crate::goals::tick_state(w, wake);
 }
 /// The day came or went, or an effect of the creature changed (the potion given, the milk, the expiry): `can_use` is asked again.
-fn wake(day: Res<Daylight>, ev: Res<Events>, all: Query<(Entity, &Drinks)>, mut reqs: ResMut<Requests>) {
+fn wake(day: Res<Bright>, ev: Res<Events>, all: Query<(Entity, &Drinks)>, mut reqs: ResMut<Requests>) {
     if day.is_changed() {
         for (e, d) in &all {
             reqs.0.extend(d.0.iter().flatten().map(|&(slot, _)| Req::Start(e, slot)));

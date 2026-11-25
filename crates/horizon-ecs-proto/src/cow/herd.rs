@@ -264,6 +264,7 @@ impl Herd {
     /// Day or night for the monsters that burn in daylight (`monsters_burn`): every one of them looks at the sun again.
     pub fn set_day(&mut self, day: bool) {
         self.world.resource_mut::<crate::hostile::Daylight>().0 = day;
+        self.world.resource_mut::<crate::hostile::Bright>().0 = day;
         let all: Vec<Entity> = self.world.query_filtered::<Entity, With<crate::hostile::BurnsInDay>>().iter(&self.world).collect();
         self.world.resource_mut::<crate::hostile::SunDirty>().0.extend(all);
     }

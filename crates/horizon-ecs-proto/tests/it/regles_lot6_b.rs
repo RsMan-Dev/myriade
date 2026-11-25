@@ -345,7 +345,7 @@ fn a_fox_screeches_at_night_with_no_player_near_at_volume_two() {
     }
     assert!(fox_sounds(&mut h).iter().any(|(n, v)| n == "entity.fox.screech" && *v == 2.0), "a spectator within 16 blocks");
     h.world.resource_mut::<Online>().remove(1);
-    h.world.resource_mut::<Daylight>().0 = true;
+    h.world.resource_mut::<horizon_ecs_proto::hostile::Bright>().0 = true;
     for _ in 0..100_000 {
         h.tick();
     }

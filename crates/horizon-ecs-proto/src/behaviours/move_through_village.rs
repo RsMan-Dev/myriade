@@ -5,7 +5,7 @@
 //! Asked each 60 ticks (a deadline of its own), not every other tick.
 use super::door_interact::closer_to_center;
 use super::*;
-use crate::hostile::Daylight;
+use crate::hostile::Bright;
 use crate::poi::PoiRegistry;
 use crate::rules::move_through_village::{arm_wait, crossing_end_radius, is_close_to_village, remember_visited, section_of};
 use crate::{cow::*, goals::*};
@@ -51,7 +51,7 @@ fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(v) = w.get::<Village>(e) else { return false };
-    if v.p.only_at_night && w.get_resource::<Daylight>().is_some_and(|d| d.0) {
+    if v.p.only_at_night && w.get_resource::<Bright>().is_some_and(|d| d.0) {
         return false;
     }
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };

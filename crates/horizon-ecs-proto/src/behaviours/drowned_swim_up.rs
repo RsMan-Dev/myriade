@@ -7,7 +7,7 @@
 use super::*;
 use crate::locomotion::swim::WantsToSwim;
 use crate::spots::Pick;
-use crate::hostile::Daylight;
+use crate::hostile::Bright;
 use crate::rules::drowned_swim_up::{below_surface, close_to_target, deep_enough, rise_target};
 use crate::{cow::*, goals::*};
 
@@ -78,7 +78,7 @@ fn in_water(w: &World, e: Entity) -> bool {
 fn up_ok(w: &World, e: Entity) -> bool {
     let sea = w.resource::<Level>().mw.0.sea_level;
     let y = w.get::<Pos>(e).unwrap().0.y;
-    !w.resource::<Daylight>().0 && in_water(w, e) && deep_enough(y, sea)
+    !w.resource::<Bright>().0 && in_water(w, e) && deep_enough(y, sea)
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     if up_ok(w, e) {

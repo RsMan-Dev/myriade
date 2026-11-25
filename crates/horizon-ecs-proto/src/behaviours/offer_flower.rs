@@ -1,4 +1,4 @@
-//! `IronGolem.OfferFlowerGoal`: by day (`Daylight`), one chance in 8000 per ask (every other tick, a geometric deadline of the wheel), the golem
+//! `IronGolem.OfferFlowerGoal`: by day (`Bright`, `Level.isBrightOutside`), one chance in 8000 per ask (every other tick, a geometric deadline of the wheel), the golem
 //! picks the nearest villager or copper golem within 6 blocks in sight (box inflated 6 / 2 / 6) and holds a poppy out to it for 400 ticks (200 asks),
 //! looking at it. Move + look flags. At the end the poppy goes to a target of tag `accepts_iron_golem_gift` (the copper golem) with an empty
 //! antenna slot (`give_poppy`); not done: the entity events 11 and 34 (the arm raised: no channel to the client yet).
@@ -56,7 +56,7 @@ fn blocked(w: &mut World, e: Entity, _: Inst) {
     next(w, e);
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    if !w.get_resource::<crate::hostile::Daylight>().is_some_and(|d| d.0) {
+    if !w.get_resource::<crate::hostile::Bright>().is_some_and(|d| d.0) {
         return false;
     }
     let (Some(o), Some(pos)) = (w.get::<Offer>(e).copied(), w.get::<Pos>(e).map(|p| p.0)) else { return false };
@@ -128,7 +128,7 @@ fn run(mut q: Query<(Entity, &Offer, &mut Offering, &mut Look, Has<Looking>)>, p
 mod tests {
     use super::*;
     use crate::cow::{spawn_species, Herd, Pos, SpeciesTable};
-    use crate::hostile::Daylight;
+    use crate::hostile::Bright;
 
     /// An iron golem at x 0.5 and a villager at x 4.5 (in reach), and a stone wall at x 2 from z -6 to 8 when `wall`, between y -2 and 6 of the
     /// golem (the origin's wall). `None` without the test resources.
@@ -149,7 +149,7 @@ mod tests {
                 }
             }
         }
-        h.world.insert_resource(Daylight(true));
+        h.world.insert_resource(Bright(true));
         Some((h, g))
     }
 
@@ -162,7 +162,7 @@ mod tests {
             return;
         };
         assert!(can_use(&mut h.world, g, inst), "by day, the villager in sight");
-        h.world.insert_resource(Daylight(false));
+        h.world.insert_resource(Bright(false));
         assert!(!can_use(&mut h.world, g, inst), "the night refuses the poppy");
         let Some((mut walled, gw)) = world(true) else { return };
         assert!(!can_use(&mut walled.world, gw, inst), "a wall between them: no sight, no poppy");

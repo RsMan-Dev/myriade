@@ -7,7 +7,7 @@ use super::*;
 use crate::{
     cow::*,
     goals::*,
-    hostile::{Daylight, PlayerState},
+    hostile::{Bright, PlayerState},
     spots::{walk_target_value, WalkValue},
 };
 use crate::rules::fox_sleep::{alarm_height, alarm_range, countdown_wait, creature_alarm_reach, player_alarm_reach};
@@ -85,7 +85,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     if w.get::<SleepDue>(e).is_some_and(|d| now < d.0) {
         return false;
     }
-    let day = w.resource::<Daylight>().0;
+    let day = w.resource::<Bright>().0;
     if !still(w, e) {
         if day {
             retry(w, e, inst);
@@ -106,7 +106,7 @@ fn can_sleep(w: &World, e: Entity) -> bool {
     let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let mw = w.resource::<Level>().mw.0;
     let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
-    w.resource::<Daylight>().0 && has_shelter(w, e, mw) && !alertable(w, e, p, mw) && mw.block_name(x, y, z) != "minecraft:powder_snow"
+    w.resource::<Bright>().0 && has_shelter(w, e, mw) && !alertable(w, e, p, mw) && mw.block_name(x, y, z) != "minecraft:powder_snow"
 }
 /// `Fox.hasShelter`: the sky does not see the top of the box, and the walk value of the spot is not below zero.
 fn has_shelter(w: &World, e: Entity, mw: &MobWorld) -> bool {
@@ -172,7 +172,7 @@ fn tick(w: &mut World) {
     sleep_run(w);
 }
 /// The day came or went: the foxes waiting for their countdown look at the conditions again.
-fn wake_on_day(day: Res<Daylight>, q: Query<(Entity, &SleepDef), Without<FoxSleeping>>, mut reqs: ResMut<Requests>) {
+fn wake_on_day(day: Res<Bright>, q: Query<(Entity, &SleepDef), Without<FoxSleeping>>, mut reqs: ResMut<Requests>) {
     if day.is_changed() {
         for (e, d) in &q {
             reqs.0.push(Req::Start(e, d.slot));
