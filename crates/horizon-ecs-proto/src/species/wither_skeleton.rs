@@ -13,7 +13,8 @@ pub static DEF: Def = Def {
         Change::Add(Section::Goals, Entry::new(&melee::MODULE, 4, &melee::Params { speed: 1.2, ..melee::Params::DEFAULT })),
         Change::Add(Section::Targets, Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:piglin", "minecraft:piglin_brute"], ..nearest_target::Params::DEFAULT })),
     ],
-    // The wither it puts on what it hits (`on_hit_effects`); fire immune (it does not burn in the day): the skeleton's `sun_burn` is not kept.
+    // The wither it puts on what it hits (`on_hit_effects`). It keeps the skeleton's `sun_burn` (`Mob.aiStep`: it is in `burn_in_daylight`);
+    // fire immune, it is set alight and put out without fire (`hostile::sun_burn`).
     rules: &[
         crate::rules::RuleEntry::new(&crate::effects::ON_HIT, &crate::effects::WITHER_SKELETON),
         crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::WITHER_SKELETON),

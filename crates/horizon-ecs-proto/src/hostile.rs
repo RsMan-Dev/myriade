@@ -214,6 +214,9 @@ pub struct HurtBy(pub Vec<(Entity, Who)>);
 pub fn insert_resources(world: &mut World) {
     world.insert_resource(ChangedBlocks::default());
     world.insert_resource(Daylight::default());
+    world.insert_resource(Bright::default());
+    // `AbstractPiglin.isConverting` / `Hoglin.isConverting`: a piglin or hoglin counts where the dimension's `piglins_zombify` holds (not the Nether).
+    world.insert_resource(crate::goals::UnsafePlace(|w, _| w.get_resource::<Level>().is_some_and(|l| l.mw.0.dimension_type.piglins_zombify)));
     world.insert_resource(SunDirty::default());
     world.insert_resource(SunFired::default());
     world.insert_resource(PlayerState::default());
@@ -598,9 +601,12 @@ pub fn strike(w: &mut World, e: Entity, who: Who, amount: f32) {
 }
 
 // ---- burning in daylight ----------------------------------------------------------------------------------------
-/// `monsters_burn`: the sun is up (the level's day, set by the game).
+/// `monsters_burn` (`Mob.isSunBurnTick`): the day of the dimension's timeline, from `MobWorld.monsters_burn`.
 #[derive(Resource, Default)]
 pub struct Daylight(pub bool);
+/// `Level.isBrightOutside` (no day in a fixed-time dimension): the day of the enderman's flight (`Enderman.customServerAiStep`).
+#[derive(Resource, Default)]
+pub struct Bright(pub bool);
 /// Monsters that must look at the sun again: the day came or went, a block changed in their column.
 #[derive(Resource, Default)]
 pub struct SunDirty(pub Vec<Entity>);
@@ -622,12 +628,14 @@ pub struct BurnsInDay {
 pub struct Exposed {
     token: u64,
 }
-/// The level's day (`Level.isBrightOutside`, which the host gives in `MobWorld.daylight`) into `Daylight`: when it changes, every
-/// monster that burns looks at the sun again (a bool compared per tick, nothing else).
-fn day_sync(level: Res<Level>, mut day: ResMut<Daylight>, mut dirty: ResMut<SunDirty>, burners: Query<Entity, With<BurnsInDay>>) {
-    let now = level.mw.0.daylight;
-    if day.0 != now {
-        day.0 = now;
+/// The day of `MobWorld.monsters_burn` into `Daylight` and that of `MobWorld.daylight` into `Bright`: when one changes, every
+/// monster that burns looks at the sun again (two bools compared per tick, nothing else).
+fn day_sync(level: Res<Level>, mut day: ResMut<Daylight>, mut bright: ResMut<Bright>, mut dirty: ResMut<SunDirty>, burners: Query<Entity, With<BurnsInDay>>) {
+    // `Level.isBrightOutside`: `skyDarken < 4` (`MobWorld.daylight`) and no fixed time.
+    let (burn, sky) = (level.mw.0.monsters_burn, level.mw.0.daylight && !level.mw.0.dimension_type.has_fixed_time);
+    if day.0 != burn || bright.0 != sky {
+        day.0 = burn;
+        bright.0 = sky;
         dirty.0.extend(burners.iter());
     }
 }
@@ -638,6 +646,7 @@ fn sun_eval(
     clock: Res<Clock>,
     level: Res<Level>,
     day: Res<Daylight>,
+    bright: Res<Bright>,
     mut dirty: ResMut<SunDirty>,
     mut now_fired: ResMut<SunFired>,
     mut wheel: ResMut<Wheel>,
@@ -655,7 +664,7 @@ fn sun_eval(
     for e in todo {
         let Ok((pos, mut b, mut rng, exposed)) = watched.get_mut(e) else { continue };
         b.block = eye_block(pos.0, b.eye);
-        let chance = burn_chance(level.mw.0, day.0, b.block);
+        let chance = burn_chance(level.mw.0, if b.flee { bright.0 } else { day.0 }, b.block);
         if chance > 0.0 && !exposed {
             // The draw of THIS tick (the monster has moved already) is the first: it succeeds at tick now + failures.
             let now = clock.of(e);
@@ -690,17 +699,18 @@ fn sun_burn(
     clock: Res<Clock>,
     level: Res<Level>,
     day: Res<Daylight>,
+    bright: Res<Bright>,
     mut fired: ResMut<SunFired>,
     mut wheel: ResMut<Wheel>,
     mut events: ResMut<crate::goals::Events>,
-    mut q: Query<(&Exposed, &BurnsInDay, &FluidState, Option<&Burning>, &mut Rng, Has<crate::inside_effects::WasInPowder>)>,
+    mut q: Query<(&Exposed, &BurnsInDay, &FluidState, Option<&Burning>, &mut Rng, Has<crate::inside_effects::WasInPowder>, Option<&crate::cow::Immune>)>,
     bodies: Query<(&Pos, &Body)>,
     slots: Query<&SunSlot>,
     worn: Query<&crate::equip_stack::Equipment>,
     mut cmd: Commands,
 ) {
     for e in std::mem::take(&mut fired.0) {
-        let Ok((x, b, fs, burning, mut rng, was_in_powder)) = q.get_mut(e) else { continue };
+        let Ok((x, b, fs, burning, mut rng, was_in_powder, immune)) = q.get_mut(e) else { continue };
         let now = clock.of(e);
         if x.token != now {
             continue;
@@ -719,7 +729,8 @@ fn sun_burn(
             cmd.queue(move |w: &mut World| {
                 crate::equip_stack::damage(w, e, shield, 1);
             });
-        } else if !fs.in_water && !wet {
+        } else if !fs.in_water && !wet && !immune.is_some_and(|i| i.has(crate::effects::IMMUNE_FIRE)) {
+            // A fire-immune species is set alight, then put out at its next tick (`Entity.baseTick`): no fire is kept.
             let until = now as i64 + 160;
             match burning {
                 None => {
@@ -733,7 +744,7 @@ fn sun_burn(
                 _ => {}
             }
         }
-        let chance = burn_chance(level.mw.0, day.0, b.block);
+        let chance = burn_chance(level.mw.0, if b.flee { bright.0 } else { day.0 }, b.block);
         if chance > 0.0 {
             // The next draw is the next tick's.
             let at = now + 1 + failures_before(rng.next_f64(), chance);
