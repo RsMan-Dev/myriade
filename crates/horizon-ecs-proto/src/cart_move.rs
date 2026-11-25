@@ -104,7 +104,7 @@ fn step(w: &mut World, e: Entity, level: &Level, read: TrackRead) {
     let ridden = !seat::riders_of(w, e).is_empty() || !seat::players_of(w, e).is_empty();
     let push = w.get::<Furnace>(e).map_or(Vec3::ZERO, |f| f.push);
     let mut fall = w.get::<Fall>(e).map_or(0.0, |f| f.0);
-    let mut vel = Vec3::new(v.x, v.y - GRAVITY, v.z);
+    let mut vel = Vec3::new(v.x, v.y - if crate::no_gravity::get(w, e) { 0.0 } else { GRAVITY }, v.z);
     let found = rail_under(read, mw, p);
     let old_y = found.as_ref().map(|(c, r)| rail_point(r, *c, p).y);
     let mut pos = p;
