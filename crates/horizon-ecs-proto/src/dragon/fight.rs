@@ -83,6 +83,8 @@ pub struct FightView {
     pub respawn: Option<(RespawnStage, u32)>,
     pub gateways: Vec<i32>,
     pub loaded: bool,
+    /// Players within reach of the fight (`EndFight.players`, the last scan).
+    pub players: bool,
 }
 
 /// The fight of a saved world (`load_fight`): the gateways are shuffled from `seed` when the save has none, the players are scanned at the

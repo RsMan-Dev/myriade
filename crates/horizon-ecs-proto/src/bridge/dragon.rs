@@ -193,6 +193,7 @@ impl EcsWorld {
             respawn: f.respawn,
             gateways: f.gateways.clone(),
             loaded: f.loaded,
+            players: f.players,
         })
     }
 
