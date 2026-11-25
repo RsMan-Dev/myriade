@@ -49,10 +49,19 @@ pub fn solid_bundle(sp: &Species, x: f64, z: f64) -> impl Bundle {
     (Bounds(box_at(Vec3::new(x, 1.0, z), sp.width, sp.height)), Cell(u32::MAX, [i32::MIN; 8], u32::MAX))
 }
 
+/// The base `SAFE_FALL_DISTANCE` and `FALL_DAMAGE_MULTIPLIER` of a type (`AbstractHorse.createBaseHorseAttributes`: 6 and 0.5; `Fox`: 5).
+fn base_fall(name: &str) -> (f64, f64) {
+    match name {
+        "minecraft:horse" | "minecraft:donkey" | "minecraft:mule" | "minecraft:skeleton_horse" | "minecraft:zombie_horse" | "minecraft:llama" | "minecraft:trader_llama" | "minecraft:camel" | "minecraft:camel_husk" => (6.0, 0.5),
+        "minecraft:fox" => (5.0, 1.0),
+        _ => (3.0, 1.0),
+    }
+}
+
 /// `Body`: the physics of a body that falls, lands, floats and is pushed by the water and the blocks (`travel`).
 pub fn body_bundle(sp: &Species) -> impl Bundle {
     (
-        Body { width: sp.width, height: sp.height, step_height: sp.step_height, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), safe_fall: 3.0, fall_mult: 1.0, movement_efficiency: 0.0, object: false, orb: false, tnt: false, lava_walker: sp.lava_walker },
+        Body { width: sp.width, height: sp.height, step_height: sp.step_height, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), safe_fall: base_fall(sp.name).0, fall_mult: base_fall(sp.name).1, movement_efficiency: 0.0, object: false, orb: false, tnt: false, lava_walker: sp.lava_walker },
         Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 },
         FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency, max_air: sp.max_air },
         crate::targeting::Eye(sp.eye_height),
