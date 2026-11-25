@@ -34,7 +34,8 @@ fn species_sound_table(types: &'static MobTypes) -> std::collections::HashMap<&'
         .iter()
         .map(|(id, t)| {
             let hurt = if t.sounds[1].is_empty() { sound_slots::Slot::Inherit } else { sound_slots::Slot::Id(t.sounds[1]) };
-            (id.as_str(), Overrides { hurt, ..Default::default() })
+            let death = if t.sounds[2].is_empty() { sound_slots::Slot::Inherit } else { sound_slots::Slot::Id(t.sounds[2]) };
+            (id.as_str(), Overrides { hurt, death, ..Default::default() })
         })
         .collect()
 }

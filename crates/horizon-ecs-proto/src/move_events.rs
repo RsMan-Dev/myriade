@@ -109,7 +109,12 @@ pub fn move_events(
                         let (x, y, z) = (p.0.x.floor() as i32, (p.0.y - 0.2).floor() as i32, p.0.z.floor() as i32);
                         let facts = level.mw.0.facts.get(level.mw.0.world.block(x, y, z));
                         if !(&*facts.name == "minecraft:air" || facts.name.ends_with("_air")) {
-                            ev.host.sound(facts.sounds.step.to_string(), at, facts.sounds.volume * 0.15, facts.sounds.pitch);
+                            let own = names.get(e).ok().and_then(|n| crate::entity_voice::step_of(n.0));
+                            let src = crate::entity_voice::source_of(names.get(e).map_or("", |n| n.0));
+                            match own {
+                                Some((n, v)) => ev.host.sound_from(src, n, at, v, 1.0),
+                                None => ev.host.sound_from(src, facts.sounds.step.to_string(), at, facts.sounds.volume * 0.15, facts.sounds.pitch),
+                            }
                         }
                     }
                     if heard {
@@ -132,7 +137,7 @@ pub fn move_events(
                             }
                             None => ("entity.generic.swim", f),
                         };
-                        ev.host.sound(name.to_string(), at, volume, splash_pitch(rng.as_deref_mut()));
+                        ev.host.sound_from(crate::entity_voice::source_of(names.get(e).map_or("", |n| n.0)), name.to_string(), at, volume, splash_pitch(rng.as_deref_mut()));
                     }
                     if heard {
                         ev.host.game_event_by(e, "minecraft:swim", at, false, sneaking, cfg.dampens);
@@ -153,7 +158,7 @@ pub fn move_events(
                 let name = names.get(e).map_or("", |n| n.0);
                 // Under 0.25 the species' splash (`getSwimSplashSound`), else `getSwimHighSpeedSplashSound`, which no species overrides: the generic one.
                 let sound = if speed < 0.25 { splash_sound(name, is_monster(name)) } else { "entity.generic.splash" };
-                ev.host.sound(sound, at, speed, pitch);
+                ev.host.sound_from(crate::entity_voice::source_of(name), sound, at, speed, pitch);
             }
         }
         if heard && !s.was_ground && c.on_ground && s.fall > 0.0 {

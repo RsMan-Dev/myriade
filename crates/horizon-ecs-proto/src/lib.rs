@@ -222,6 +222,7 @@ pub mod host_out_using;
 pub mod host_out_vehicle_push;
 pub mod left_handed;
 pub mod tear_down;
+pub mod entity_voice;
 pub mod sound_slots;
 pub mod lightning_tick;
 pub mod mount_inventory;

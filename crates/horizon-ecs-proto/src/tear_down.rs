@@ -90,7 +90,10 @@ pub fn voice(w: &mut World, e: Entity, name: &'static str) {
         (a - b) * 0.2 + base
     });
     if w.get::<crate::behaviours::elder_curse::Silent>(e).is_none() {
-        crate::behaviours::act_phase::sound(w, e, name, 1.0, pitch);
+        // `Entity.playSound`: the species' `getSoundVolume` and the entity's own `SoundSource`.
+        let (vol, src) = (crate::entity_voice::volume_of(w, e), crate::entity_voice::source_of(crate::area::species_name(w, e)));
+        let p = w.get::<crate::cow::Pos>(e).unwrap().0;
+        w.resource_mut::<crate::goals::Events>().host.sound_from(src, name, [p.x, p.y, p.z], vol, pitch);
     }
 }
 

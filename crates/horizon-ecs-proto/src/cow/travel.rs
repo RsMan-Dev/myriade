@@ -369,9 +369,10 @@ pub(crate) fn travel(
                         (false, true) => "entity.generic.big_fall",
                         (false, false) => "entity.generic.small_fall",
                     };
-                    w.resource_mut::<crate::goals::Events>().host.sound(small_or_big, at, 1.0, 1.0);
+                    let src = crate::entity_voice::source_of(crate::area::species_name(w, e));
+                    w.resource_mut::<crate::goals::Events>().host.sound_from(src, small_or_big, at, 1.0, 1.0);
                     if let Some((name, volume, pitch)) = block_fall {
-                        w.resource_mut::<crate::goals::Events>().host.sound(name, at, volume, pitch);
+                        w.resource_mut::<crate::goals::Events>().host.sound_from(src, name, at, volume, pitch);
                     }
                     w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall);
                     crate::fall_passengers::propagate(w, e, f64::from(fell), 1.0);
