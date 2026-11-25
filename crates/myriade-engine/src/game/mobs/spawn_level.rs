@@ -582,6 +582,9 @@ impl myriade_engine::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
     fn entity_exists(&self, id: &str) -> bool {
         self.game.res.mob_types().contains_key(id) || self.game.entity_type_exists(id)
     }
+    fn entity_size(&self, id: &str) -> Option<[f32; 2]> {
+        self.game.registered_entity_dimensions(id)
+    }
     fn count_entities(&self, id: &str, bounds: Aabb) -> usize {
         // The ECS index over the box's circumscribed sphere, then the boxes' own test on each position.
         let ecs = &self.game.ecs;

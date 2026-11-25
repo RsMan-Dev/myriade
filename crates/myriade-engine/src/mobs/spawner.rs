@@ -249,6 +249,10 @@ pub trait SpawnerLevel: NaturalLevel {
     fn entity_exists(&self, id: &str) -> bool;
     /// Entities of the exact class of `id` whose box meets `bounds`.
     fn count_entities(&self, id: &str, bounds: Aabb) -> usize;
+    /// The width and height of an entity type that is no mob (`EntityType.getDimensions`); None when unknown.
+    fn entity_size(&self, _id: &str) -> Option<[f32; 2]> {
+        None
+    }
 }
 
 /// `BaseSpawner`'s behaviour, over the data in `chunk::block_entity`.
@@ -508,8 +512,11 @@ impl SpawnerExt for Spawner {
             let kind = l.mob_type(&id);
             let (species, width, height, category) = match kind {
                 Some((s, w, h, c)) => (Some(s), w, h, c),
-                // Entity types Horizon cannot create: a unit box, misc.
-                None => (None, 1.0, 1.0, Category::Misc),
+                // Not a mob: its own box, misc; a unit box when its size is unknown.
+                None => {
+                    let [w, h] = l.entity_size(&id).unwrap_or([1.0, 1.0]);
+                    (None, w, h, Category::Misc)
+                }
             };
             let spawn_box = match species {
                 Some(s) => spawn_place::spawn_aabb(s, at[0], at[1], at[2], width, height),
@@ -535,11 +542,6 @@ impl SpawnerExt for Spawner {
             {
                 continue;
             }
-            // loadEntityRecursive: a type the game cannot create delays.
-            let Some(s) = species else {
-                self.delay(random, events);
-                return;
-            };
             let around = Aabb::new(
                 Vec3::new(f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])),
                 Vec3::new(
@@ -560,7 +562,7 @@ impl SpawnerExt for Spawner {
             let yaw = random.next_float() * 360.0;
             // The entity's own position (Entity.setPos, which a shulker snaps
             // to its block) for its box and its block.
-            let placed = entity_position(s, at);
+            let placed = species.map_or(at, |s| entity_position(s, at));
             let own = [
                 placed[0].floor() as i32,
                 placed[1].floor() as i32,
@@ -578,8 +580,9 @@ impl SpawnerExt for Spawner {
                 yaw,
                 fresh: data.unconfigured(),
             };
-            let position_ok =
-                spawn_place::position_ok(l, &id, Reason::Spawner, placed, pending, || {
+            // Only a mob is checked for its place (`instanceof Mob`).
+            let position_ok = match species {
+                Some(s) => spawn_place::position_ok(l, &id, Reason::Spawner, placed, pending, || {
                     (data.custom_spawn_rules.is_some()
                         || spawn_place::mob_spawn_rules(s, l, own[0], own[1], own[2]))
                         && spawn_place::spawn_obstruction(
@@ -591,7 +594,9 @@ impl SpawnerExt for Spawner {
                             own[1],
                             own[2],
                         )
-                });
+                }),
+                None => true,
+            };
             if !position_ok {
                 continue;
             }
@@ -600,7 +605,7 @@ impl SpawnerExt for Spawner {
                 id: &id,
                 position: placed,
                 yaw,
-                finalize: data.unconfigured(),
+                finalize: species.is_some() && data.unconfigured(),
                 equipment: data.equipment.as_ref(),
                 trial: false,
             };

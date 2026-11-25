@@ -181,10 +181,18 @@ impl Game<'_> {
         r: &SpawnerSpawn,
         planned: &mut Vec<Planned>,
     ) -> Option<SpawnerAdded> {
-        let kind = self.res.mob_types().get(r.id)?.clone();
+        let kind = self.res.mob_types().get(r.id).cloned();
+        let mob = kind.is_some();
         let [x, y, z] = r.position;
         let at = Vec3::new(x, y, z);
-        let (bounds, key) = if r.finalize {
+        // A type that is no mob is loaded from its spawn data at its registry size, and is never finalized.
+        let (width, height) = match &kind {
+            Some(kind) => (kind.width, kind.height),
+            None => self
+                .registered_entity_dimensions(r.id)
+                .map_or((1.0, 1.0), |[w, h]| (f64::from(w), f64::from(h))),
+        };
+        let (bounds, key) = if mob && r.finalize {
             // A new sheet; the spawn data's equipment goes in first.
             let reason = if r.trial {
                 SpawnReason::TrialSpawner
@@ -207,7 +215,7 @@ impl Game<'_> {
                 (Finalized::Done, difficulty) => Some(difficulty.special()),
             };
             let key = l.provisional_id();
-            let bounds = kind_bounds(kind.width, kind.height, at);
+            let bounds = kind_bounds(width, height, at);
             planned.push(Planned::Finalized { kind: r.id.to_owned(), at: [x, y, z], yaw: r.yaw, sheet, reason, special, key });
             (bounds, key)
         } else {
@@ -237,7 +245,7 @@ impl Game<'_> {
             // EntityType.loadEntityRecursive applies the spawner's placement
             // callback to every passenger as well as the root.
             super::commands::place_summoned(&mut tag, r.position);
-            let bounds = kind_bounds(kind.width, kind.height, at);
+            let bounds = kind_bounds(width, height, at);
             let key = l.provisional_id();
             planned.push(Planned::Loaded(tag, r.equipment.cloned(), key));
             (bounds, key)
@@ -247,7 +255,7 @@ impl Game<'_> {
         Some(SpawnerAdded {
             id: key,
             bounds,
-            mob: true,
+            mob,
         })
     }
     /// What a spawner's tick or a spawn egg did, shown and sent.
