@@ -77,6 +77,10 @@ pub fn hurt(world: &mut World, e: Entity) {
     world.resource_mut::<Hurts>().0.push(e);
     world.resource_mut::<HurtKinds>().0.push(Cause::Magic);
 }
+/// `#panic_environmental_causes` (jar).
+fn environment_of(cause: Cause) -> bool {
+    matches!(cause, Cause::Cactus | Cause::InFire | Cause::OnFire | Cause::Lava | Cause::Freeze | Cause::HotFloor | Cause::Lightning)
+}
 /// `PanicGoal.canUse` after a damage: only the types of `#panic_causes` (a fall, a drowning, a wall do not), then a
 /// window of 40 ticks; a burning animal panics as long as it burns.
 pub(crate) fn hurt_events(
@@ -89,8 +93,10 @@ pub(crate) fn hurt_events(
     let kinds = std::mem::take(&mut kinds.0);
     for (i, e) in std::mem::take(&mut h.0).into_iter().enumerate() {
         let cause = kinds.get(i).copied().unwrap_or(Cause::Magic);
-        let panics = !matches!(cause, Cause::Fall | Cause::Drown | Cause::InWall | Cause::Cramming);
-        let environment = matches!(cause, Cause::Cactus | Cause::InFire | Cause::OnFire | Cause::Lava | Cause::Freeze | Cause::HotFloor);
+        // `#panic_causes` (jar): an attacker, magic, wither, explosions and the environmental list; a fall, a drowning, a wall,
+        // cramming, generic, a falling block, sweet berries and a campfire are in neither tag.
+        let panics = matches!(cause, Cause::Entity | Cause::Magic | Cause::Wither | Cause::Blast) || environment_of(cause);
+        let environment = environment_of(cause);
         if let Ok(mut p) = q.get_mut(e)
             && panics
             && (!p.environmental || environment)

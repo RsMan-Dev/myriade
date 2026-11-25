@@ -238,6 +238,8 @@ pub enum Cause {
     Cramming,
     /// A hit by an entity (a player): `Panic` runs from it by the attacker rule, not the environmental list.
     Entity,
+    /// `DamageTypes.GENERIC` (`/damage` without a type): in no panic tag.
+    Generic,
     /// Poison and instant damage (`DamageTypes.MAGIC`).
     Magic,
     /// `DamageTypes.WITHER`.
@@ -466,11 +468,39 @@ pub fn cause_name(cause: Cause, by: Option<crate::targeting::Who>) -> &'static s
         Cause::OutOfWorld => "out_of_world",
         Cause::InWall => "in_wall",
         Cause::Cramming => "cramming",
+        Cause::Generic => "generic",
         Cause::Magic => "magic",
         Cause::Wither => "wither",
         Cause::Blast => "explosion",
         Cause::Lightning => "lightning_bolt",
         Cause::FallingBlock => "falling_block",
+    }
+}
+
+/// The cause of a vanilla damage type's name (`DamageTypes`, with or without `minecraft:`): the inverse of `cause_name`. A name no
+/// environmental cause carries is `Magic`.
+pub fn cause_of_damage_type(name: &str) -> Cause {
+    match name.trim_start_matches("minecraft:") {
+        "generic" => Cause::Generic,
+        "cactus" => Cause::Cactus,
+        "sweet_berry_bush" => Cause::SweetBerry,
+        "campfire" => Cause::Campfire,
+        "hot_floor" => Cause::HotFloor,
+        "in_fire" => Cause::InFire,
+        "on_fire" => Cause::OnFire,
+        "lava" => Cause::Lava,
+        "freeze" => Cause::Freeze,
+        "fall" => Cause::Fall,
+        "drown" => Cause::Drown,
+        "dry_out" => Cause::DryOut,
+        "out_of_world" => Cause::OutOfWorld,
+        "in_wall" => Cause::InWall,
+        "cramming" => Cause::Cramming,
+        "wither" => Cause::Wither,
+        "explosion" | "player_explosion" => Cause::Blast,
+        "lightning_bolt" => Cause::Lightning,
+        "falling_anvil" | "falling_block" => Cause::FallingBlock,
+        _ => Cause::Magic,
     }
 }
 

@@ -9,7 +9,7 @@ use crate::bridge::{
     ids::{self, NetIds},
     players, select, view,
 };
-use crate::cow::{Blocks, Cause, Clock, DamageQueue, Hit, Level, Mw, Pos, host_level, spawn_armed, species_table};
+use crate::cow::{Blocks, Cause, Clock, DamageQueue, Hit, Level, Mw, Pos, cause_of_damage_type, host_level, spawn_armed, species_table};
 use crate::equipment_drop::death_drops;
 pub use super::host_read_living::Flag;
 use crate::goals::{self, Equipment, Events, Online, Player, Slot};
@@ -455,7 +455,7 @@ impl EcsWorld {
             HurtSource::Generic => (Cause::Magic, None, false),
             HurtSource::Typed { by, from: at, .. } => {
                 from = at;
-                (if by.is_some() { Cause::Entity } else { Cause::Magic }, by, by.is_some())
+                (if by.is_some() { Cause::Entity } else { cause_of_damage_type(damage) }, by, by.is_some())
             }
             HurtSource::Player(id) => (Cause::Entity, Some(Who::Player(id)), true),
             HurtSource::Entity(id) => (Cause::Entity, self.entity_of(id).map(Who::Entity), true),
