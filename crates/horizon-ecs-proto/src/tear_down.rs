@@ -65,6 +65,10 @@ pub fn linger(w: &mut World, e: Entity) {
     }
     crate::goals::set_disabled_flags(w, e, crate::goals::MOVE | crate::goals::LOOK | crate::goals::JUMP | crate::goals::TARGET);
     crate::goals::stop_nav(w, e);
+    // The effects end here, but `onMobRemoved` runs when the body goes: Weaving is remembered till then.
+    if crate::effects::has(w, e, crate::effects::Kind::Weaving) {
+        w.entity_mut(e).insert(crate::removed_effects::Woven);
+    }
     let kinds: Vec<_> = w.get::<crate::effects::Effects>(e).map_or_else(Vec::new, |f| f.list.iter().map(|x| x.kind).collect());
     for kind in kinds {
         crate::effects::remove(w, e, kind);
