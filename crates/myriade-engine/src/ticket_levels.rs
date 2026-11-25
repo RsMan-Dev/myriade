@@ -447,6 +447,10 @@ impl Levels {
     pub fn entity_ticking_at(&self, x: i32, z: i32) -> bool {
         self.entity_ticking(x >> 4, z >> 4)
     }
+    /// `FullChunkStatus.FULL` or better (`ChunkLevel.fullStatus`): the chunk's entities are accessible, ticking or not.
+    pub fn full(&self, x: i32, z: i32) -> bool {
+        self.get(x, z).is_none_or(|(l, _)| l <= FULL)
+    }
     /// The same as [`Self::block_ticking`] at a block position.
     pub fn block_ticking_at(&self, x: i32, z: i32) -> bool {
         self.block_ticking(x >> 4, z >> 4)

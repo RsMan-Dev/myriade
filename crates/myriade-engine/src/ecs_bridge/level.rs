@@ -308,6 +308,16 @@ impl EcsLevel {
             w.chunk_hazards(mw, cx, cz);
         }
     }
+    pub fn hold_chunk(&mut self, cx: i32, cz: i32, entities: Vec<Compound>) {
+        if let Some(w) = self.inner.as_mut() {
+            w.hold_chunk(cx, cz, entities);
+        }
+    }
+    pub fn chunk_detach(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32) {
+        if let Some(w) = self.inner.as_mut() {
+            w.chunk_detach(mw, cx, cz);
+        }
+    }
     pub fn chunk_unloaded(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32) {
         if let Some(w) = self.inner.as_mut() {
             w.chunk_unloaded(mw, cx, cz);

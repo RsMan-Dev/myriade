@@ -631,10 +631,38 @@ impl EcsWorld {
         nbt::forget_chunk(&mut self.world, cx, cz);
     }
 
-    /// The NBT of the saved entities of the chunk; a passenger is written inside its mount (`Passengers`), not on its own.
+    /// A chunk loaded in the world whose entities are not accessible yet (its ticket level is below `FULL`): their NBT waits here,
+    /// saved with the chunk, until `chunk_loaded` makes them.
+    pub fn hold_chunk(&mut self, cx: i32, cz: i32, entities: Vec<Compound>) {
+        if !entities.is_empty() {
+            self.chunks.entry((cx, cz)).or_default().extend(entities);
+        }
+    }
+
+    /// The chunk stays loaded but its entities leave the level (its ticket level fell below `FULL`): their NBT is kept as
+    /// `chunk_unloaded` keeps it, and `chunk_loaded` brings them back.
+    pub fn chunk_detach(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32) {
+        let es = self.chunk_entities(cx, cz);
+        if es.is_empty() {
+            return;
+        }
+        let saved: Vec<Compound> = self.lent(mw, |w| {
+            es.iter().filter(|&&e| w.get::<Riding>(e).is_none() && w.get::<crate::seat::Seated>(e).is_none()).filter_map(|&e| nbt::save(w, e)).collect()
+        });
+        for e in es {
+            self.world.despawn(e);
+        }
+        self.chunks.entry((cx, cz)).or_default().extend(saved);
+    }
+
+    /// The NBT of the saved entities of the chunk, and of those it holds out of the level; a passenger is written inside its mount (`Passengers`), not on its own.
     pub fn save_chunk(&mut self, cx: i32, cz: i32) -> Vec<Compound> {
         let es = self.chunk_entities(cx, cz);
-        es.into_iter().filter(|&e| self.world.get::<Riding>(e).is_none() && self.world.get::<crate::seat::Seated>(e).is_none()).filter_map(|e| nbt::save(&self.world, e)).collect()
+        let mut out: Vec<Compound> = es.into_iter().filter(|&e| self.world.get::<Riding>(e).is_none() && self.world.get::<crate::seat::Seated>(e).is_none()).filter_map(|e| nbt::save(&self.world, e)).collect();
+        if let Some(held) = self.chunks.get(&(cx, cz)) {
+            out.extend(held.iter().cloned());
+        }
+        out
     }
 
     /// The entity made from `c` (its `id` and `Pos`), None when no recipe makes it.

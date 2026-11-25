@@ -35,6 +35,12 @@ impl Game<'_> {
     /// Restores chunk (cx, cz) after it loaded. The world gives back the entities it kept when the chunk unloaded in this
     /// session; the file's entities are made only when it gave none back (a restart), so none is made twice.
     pub(in crate::game) fn ecs_load_chunk(&mut self, cx: i32, cz: i32, entities: &[Compound]) {
+        // Only a chunk at `FULL` or better has accessible entities (`ChunkLevel.fullStatus`); the others wait, saved with it, until
+        // a ticket level change brings it there (`ecs_ticket_levels_changed`).
+        if !self.tickets.levels().full(cx, cz) {
+            self.ecs.hold_chunk(cx, cz, entities.to_vec());
+            return;
+        }
         self.ecs_with(|ecs, mw| ecs.chunk_loaded(mw, cx, cz));
         if self.ecs.save_chunk(cx, cz).is_empty() {
             // The fight's crystal count is the ECS's: a loaded crystal is counted there.

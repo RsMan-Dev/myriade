@@ -37,6 +37,13 @@ impl Game<'_> {
         for change in changes {
             let (cx, cz) = change.chunk;
             if self.world.chunks.contains_key(&(cx, cz)) {
+                let (was, now) = (change.old <= crate::ticket_levels::FULL, change.new <= crate::ticket_levels::FULL);
+                if now && !was {
+                    self.ecs_with(|ecs, mw| ecs.chunk_loaded(mw, cx, cz));
+                    self.ecs_resolve_pending_leashes();
+                } else if was && !now {
+                    self.ecs_with(|ecs, mw| ecs.chunk_detach(mw, cx, cz));
+                }
                 self.ecs.set_chunk_spawnable(cx, cz, self.block_ticking_at(cx * 16, cz * 16));
             }
         }
