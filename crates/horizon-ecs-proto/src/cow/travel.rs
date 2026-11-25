@@ -292,12 +292,12 @@ pub(crate) fn travel(
     mut par: crate::cow::OrdCmds,
     plain: ParallelCommands,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, Option<&Gravity>, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>, Has<Stilled>),
+        (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, (Option<&Gravity>, Has<crate::no_gravity::NoGravity>), &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>, Has<Stilled>),
         (With<Moving>, Without<Overlapping>, Without<crate::dragon::flight::NoAi>, Without<crate::mount::Riding>, Without<crate::seat::Seated>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
     >,
 ) {
     let void_y = f64::from(level.mw.0.world.bottom_y() - 64);
-    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, gr: Option<&Gravity>, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>, still: bool| {
+    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, (gr, nog): (Option<&Gravity>, bool), mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>, still: bool| {
         let mut fall = 0.0_f32;
         let jumping = jump.is_some_and(|j| j.0) && !still;
         // A body without walking (an object) has no yaw and no input.
@@ -310,7 +310,7 @@ pub(crate) fn travel(
         let was_in_air = !c.on_ground;
         let was_on_ground = c.on_ground;
         let fell = c.fall_distance;
-        let rest = travel_one(&level, fp.unwrap_or(&FluidParams::DEFAULT), &mut p, &mut v, y.unwrap_or(&Yaw(0.0)), &mut c, dr, b, gr.map(|g| g.0), &mut bb, fs, jumping, &mut fall);
+        let rest = travel_one(&level, fp.unwrap_or(&FluidParams::DEFAULT), &mut p, &mut v, y.unwrap_or(&Yaw(0.0)), &mut c, dr, b, gr.filter(|_| !nog).map(|g| g.0), &mut bb, fs, jumping, &mut fall);
         // The events of landing are the goals' (an object has none: an orb that glides over the ground would queue two a tick).
         if was_on_ground && !c.on_ground && !b.object {
             par.command_scope(e, |mut cmd| {

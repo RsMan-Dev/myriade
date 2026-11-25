@@ -541,11 +541,11 @@ fn travel(
     targets: Query<(), With<crate::targeting::Target>>,
     following: Query<(), With<Following>>,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, &mut Yaw, &mut Contact, &mut Drive, (&Body, Option<&Gravity>), &mut Bounds, &FluidState, &FluidParams, &Immune, &SwimParams, Option<&mut SquidState>, &mut Rng, Has<WantsToSwim>),
+        (Entity, &mut Pos, &mut Vel, &mut Yaw, &mut Contact, &mut Drive, (&Body, Option<&Gravity>, Has<crate::no_gravity::NoGravity>), &mut Bounds, &FluidState, &FluidParams, &Immune, &SwimParams, Option<&mut SquidState>, &mut Rng, Has<WantsToSwim>),
         (With<Moving>, Without<Overlapping>, Without<crate::dragon::flight::NoAi>, With<SwimMode>),
     >,
 ) {
-    for (e, mut p, mut v, mut y, mut c, mut d, (b, gr), mut bb, fs, fp, imm, swp, squid, mut rng, wants) in &mut q {
+    for (e, mut p, mut v, mut y, mut c, mut d, (b, gr, nog), mut bb, fs, fp, imm, swp, squid, mut rng, wants) in &mut q {
         let has_target = targets.contains(e);
         let mut fall = 0.0_f32;
         let was_in_air = !c.on_ground;
@@ -563,7 +563,7 @@ fn travel(
                 in_water = level.mw.0.fluids(bb.0, p.0.y + fp.eye_height).in_water;
             }
             if let Some(mut st) = squid {
-                squid_step(&mut st, &mut v, &mut rng, in_water, gr.map_or(0.0, |g| g.0), &mut *y);
+                squid_step(&mut st, &mut v, &mut rng, in_water, gr.filter(|_| !nog).map_or(0.0, |g| g.0), &mut *y);
             }
             continue;
         }
@@ -588,7 +588,7 @@ fn travel(
             let sink = sink_rate(swp.sinks, swp.control == Control::Guardian, d.speed == 0.0 && !has_target);
             v.0 = swim_drag(m, sink);
         } else {
-            let rest = crate::cow::travel_one_with(&level, fp, &mut p, &mut v, &y, &mut c, &mut d, b, gr.map(|g| g.0), &mut bb, fs, false, &mut fall, false);
+            let rest = crate::cow::travel_one_with(&level, fp, &mut p, &mut v, &y, &mut c, &mut d, b, gr.filter(|_| !nog).map(|g| g.0), &mut bb, fs, false, &mut fall, false);
             // At rest out of the water (on the ground, still) and not following a path: inactive until something moves it, as the cow's physics.
             if rest && !following.contains(e) {
                 par.command_scope(e, |mut cmd| {

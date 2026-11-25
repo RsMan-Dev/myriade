@@ -40,11 +40,11 @@ fn travel(
     level: Res<Level>,
     mut par: crate::cow::OrdCmds,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, Option<&Gravity>, &mut Bounds, &FluidState, &FluidParams, &Immune, Has<Following>),
+        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, (Option<&Gravity>, Has<crate::no_gravity::NoGravity>), &mut Bounds, &FluidState, &FluidParams, &Immune, Has<Following>),
         (With<Moving>, Without<Overlapping>, Without<crate::dragon::flight::NoAi>, With<crate::locomotion::LavaMode>),
     >,
 ) {
-    for (e, mut p, mut v, y, mut c, mut d, b, gr, mut bb, fs, fp, imm, following) in &mut q {
+    for (e, mut p, mut v, y, mut c, mut d, b, (gr, nog), mut bb, fs, fp, imm, following) in &mut q {
         let mut f = *fs;
         let held = standing(&level, &p);
         if held {
@@ -53,7 +53,7 @@ fn travel(
         }
         let (was_on_ground, was_in_air) = (c.on_ground, !c.on_ground);
         let mut fall = 0.0_f32;
-        let rest = travel_one(&level, fp, &mut p, &mut v, y, &mut c, &mut d, b, gr.map(|g| g.0), &mut bb, &f, false, &mut fall);
+        let rest = travel_one(&level, fp, &mut p, &mut v, y, &mut c, &mut d, b, gr.filter(|_| !nog).map(|g| g.0), &mut bb, &f, false, &mut fall);
         if fs.in_lava {
             c.fall_distance = 0.0;
             fall = 0.0;
