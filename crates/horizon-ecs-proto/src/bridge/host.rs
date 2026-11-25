@@ -305,7 +305,14 @@ impl EcsWorld {
             return None;
         }
         self.spawned += 1;
-        let seed = self.spawned;
+        // The counter is mixed (splitmix64): `spawn_species` sets the low bit of the seed, so two consecutive counts would give one random,
+        // and a creature summoned twice at the same place would repeat the walk of the first (vanilla draws a `RandomSource` per entity).
+        let seed = {
+            let mut z = self.spawned.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^ (z >> 31)
+        };
         self.lent(mw, |w| {
             // A sort with a constructor of its own (an item, an orb, a falling block) is made by it, with its keys.
             if let Some(made) = nbt::spawn_built(w, kind, Vec3::new(at[0], at[1], at[2]), nbt) {
