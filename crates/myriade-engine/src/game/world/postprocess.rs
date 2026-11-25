@@ -37,6 +37,9 @@ impl Game<'_> {
                 continue;
             };
             let marks = std::mem::take(&mut Arc::make_mut(chunk).postprocess);
+            // `postProcessGeneration` ends with `markUnsaved`: the saved copy
+            // must lose its marks, even when no block changed.
+            self.world.modified.insert(key);
             self.with_level(|b, level, ticks| {
                 for [x, y, z] in marks {
                     let pos = BlockPos::new(x, y, z);

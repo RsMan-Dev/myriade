@@ -1410,8 +1410,18 @@ pub fn encode_with(
         {
             s.insert("starts".into(), Tag::Compound(starts));
         }
-        map.entry("PostProcessing".into())
-            .or_insert_with(|| Tag::List(vec![Tag::List(Vec::new()); shape.section_count()]));
+        // The marks still pending: a root read back from a proto chunk carries
+        // the ones `postProcessGeneration` has since consumed.
+        let mut marks = vec![Vec::new(); shape.section_count()];
+        for &[x, y, z] in &chunk.postprocess {
+            if let Some(list) = usize::try_from((y - shape.min_y) >> 4)
+                .ok()
+                .and_then(|s| marks.get_mut(s))
+            {
+                list.push(Tag::Short(((x & 15) | (y & 15) << 4 | (z & 15) << 8) as i16));
+            }
+        }
+        map.insert("PostProcessing".into(), Tag::List(marks.into_iter().map(Tag::List).collect()));
     }
     if let Some(t) = tables {
         put(&mut root, "Heightmaps", heightmaps(chunk, t, shape));
