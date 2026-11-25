@@ -85,6 +85,8 @@ fn start(w: &mut World, e: Entity, _: Inst) {
         }
     }
     *w.get_mut::<MoveTo>(e).unwrap() = MoveTo { active: true, x: t[0], y: t[1], z: t[2], speed_modifier: 1.0 };
+    // `canContinueToUse` is false (the default of `Goal`): the goal ends the tick it starts, and is asked again as soon as the spot is gone.
+    end(w, e, &MODULE);
 }
 /// The ghast is asked again when its wanted spot is gone (the tick of the module: only the animals with the float control, read through a kept query).
 fn watch(w: &mut World) {

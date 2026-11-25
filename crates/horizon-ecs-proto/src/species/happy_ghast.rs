@@ -3,14 +3,14 @@
 //! `square_or_face` (0, squares to the world while stilled, else faces its motion); `heal_weather` (3, 1 health every 600 ticks dry,
 //! every 20 wet); `float` (3, waits for the still timeout); `float_around` (5).
 //! Brain (`HappyGhastAi`, javap): core (swim at 0.8, the look and move sinks, the temptation cooldown); panic (`AnimalPanic` 2.0, while
-//! `IS_PANICKING`); idle (`FollowTemptation` 1.25, 3 blocks, looking in the eyes; `RunOne` of the fly stroll 1.0 and the look walk 1.0,
-//! 3 blocks). The baby (`BABY`) follows the nearest player, then the nearest adult, from 3 to 16 blocks at 1.1.
+//! `IS_PANICKING`); idle (`FollowTemptation` 1.25, 3 blocks, looking in the eyes). The adult has no idle stroll of the brain: `customServerAiStep`
+//! ticks the brain of a baby only, the adult wanders by `float_around` alone. The baby (`BABY`) follows the nearest player, then the nearest adult, from 3 to 16 blocks at 1.1.
 //! Not verified against vanilla: the weights of the idle `RunOne`s, the priorities of the goals.
 //! The rule `harness_worn` takes a harness item. Riding: `RIDE` with `RideParams::GHAST`; `mount::ridden_drive` steers the first rider (`Steer::Fly`, harness, no still timeout).
 use super::Def;
 use bevy_ecs::prelude::{Entity, World};
 use crate::behaviours::{ambient_sound, float, float_around, harness_worn, heal_weather, square_or_face, still_under_riders, Cap, Entry};
-use crate::brain::behaviours::{count_down_cooldown_ticks, fly_stroll, follow_adult, follow_temptation, look_at_target_sink, move_to_target_sink, panic, run_one, walk_to_look_target, work_swim};
+use crate::brain::behaviours::{count_down_cooldown_ticks, follow_adult, follow_temptation, look_at_target_sink, move_to_target_sink, panic, walk_to_look_target, work_swim};
 use crate::brain::sensors::{adult, hurt_by, living, nearest_players, tempting};
 use crate::brain::*;
 use crate::locomotion::{fly, Medium};
@@ -38,11 +38,6 @@ const HARNESS_TEMPT: &[&str] = &[
     "minecraft:black_harness",
 ];
 
-/// The idle walks of `RunOne`: a fly stroll (1.0) or a walk to the look target (1.0, 3 blocks).
-static IDLE_KIDS: &[Kid] = &[
-    Kid { behaviour: &fly_stroll::BEHAVIOUR, weight: 1, params: &fly_stroll::Params { speed: 1.0 }, needs: &[(&WALK_TARGET, Need::Absent)], duration: None },
-    Kid { behaviour: &walk_to_look_target::BEHAVIOUR, weight: 1, params: &walk_to_look_target::Params { speed: 1.0, close: 3, needs_same_fluid: false, dry_speed: None }, needs: &[(&WALK_TARGET, Need::Absent), (&LOOK_TARGET, Need::Present)], duration: None },
-];
 
 pub static DEF: Def = Def {
     name: "minecraft:happy_ghast",
@@ -57,7 +52,7 @@ pub static DEF: Def = Def {
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Rideable, Cap::CollidableWhenStill, Cap::Brain]),
     rules: &[crate::rules::RuleEntry::new(&crate::rules::NO_FALL, &()), crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&harness_worn::RULE, &()),RuleEntry::new(&crate::hand_feed::FEED_BABY, &crate::hand_feed::FeedParams::HAPPY_GHAST), RuleEntry::new(&RIDE, &RideParams::GHAST), RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::GHAST), RuleEntry::new(&crate::leash::QUAD_HOLDER, &())],
-    locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Float, free: true, ..fly::Params::DEFAULT }))],
+    locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Float, free: true, careful: true, ..fly::Params::DEFAULT }))],
     brain: BrainDef {
         sensors: &[
             SensorEntry::new(&living::SENSOR, 20),
@@ -80,7 +75,6 @@ pub static DEF: Def = Def {
             // `AnimalPanic` at 2.0: hurt, or panicking until the walk is over.
             BEntry { behaviour: &panic::BEHAVIOUR, activity: "panic", priority: 0, params: &panic::Params { speed: 2.0, threat: None }, needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &follow_temptation::BEHAVIOUR, activity: "idle", priority: 0, params: &follow_temptation::Params { speed: 1.25, close: 3.0, look_in_the_eyes: true, dry_speed: None }, needs: &[(&TEMPTING_PLAYER, Need::Present)], duration: None, kids: &[] },
-            BEntry { behaviour: &run_one::QUIET, activity: "idle", priority: 1, params: &(), needs: &[], duration: None, kids: IDLE_KIDS },
         ],
     },
     ..Def::EMPTY

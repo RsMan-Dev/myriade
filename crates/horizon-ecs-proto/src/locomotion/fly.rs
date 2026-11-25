@@ -53,9 +53,11 @@ pub struct Params {
     pub glide: f64,
     /// `Allay.travel`: the airborne speed of `travelFlying` is the one the move control set this tick (`Drive.speed`), not the type's.
     pub drive_air: bool,
+    /// `GhastMoveControl.careful` (the happy ghast): the box at the wanted spot, grown by one block, must hold no block with a collision shape.
+    pub careful: bool,
 }
 impl Params {
-    pub const DEFAULT: Params = Params { control: Control::Path, free: false, noclip: false, damp_y: 1.0, max_turn: 10.0, hovers: false, glide: 1.0, drive_air: false };
+    pub const DEFAULT: Params = Params { control: Control::Path, free: false, noclip: false, damp_y: 1.0, max_turn: 10.0, hovers: false, glide: 1.0, drive_air: false, careful: false };
 }
 /// What the flight reads of the animal (from its species, once).
 #[derive(Component, Clone, Copy, Debug)]
@@ -68,6 +70,7 @@ pub struct FlyParams {
     pub hovers: bool,
     pub glide: f64,
     pub drive_air: bool,
+    pub careful: bool,
     /// `Attributes.FLYING_SPEED`, the speed of a flier that is not on the ground.
     pub flying_speed: f64,
     /// `LivingEntity.getFlyingSpeed` of the type: the `moveRelative` speed in the air.
@@ -95,7 +98,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
         }
         w.entity_mut(e).insert(Moving);
     }
-    w.entity_mut(e).insert((FlyParams { control: p.control, free: p.free, noclip: p.noclip, damp_y: p.damp_y, max_turn: p.max_turn, hovers: p.hovers, glide: p.glide, drive_air: p.drive_air, flying_speed: sp.flying_speed, air_speed: sp.air_speed, vertical_drag: if sp.omnidirectional { 0.91 } else { 0.98 } },));
+    w.entity_mut(e).insert((FlyParams { control: p.control, free: p.free, noclip: p.noclip, damp_y: p.damp_y, max_turn: p.max_turn, hovers: p.hovers, glide: p.glide, drive_air: p.drive_air, careful: p.careful, flying_speed: sp.flying_speed, air_speed: sp.air_speed, vertical_drag: if sp.omnidirectional { 0.91 } else { 0.98 } },));
 }
 
 fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
@@ -330,6 +333,12 @@ pub fn fly_controls(
                     let dd = Vec3::new(t.x * f, t.y * f, t.z * f);
                     level.no_collision(horizon_core::geometry::Aabb::new(b.0.min_position().add_vector(dd), b.0.max_position().add_vector(dd)))
                 });
+                // `careful`: every block of the box at the spot, grown by one, must have no collision shape (`blockTraversalPossible(null, null)`).
+                let clear = clear
+                    && (!fp.careful || {
+                        let (lo, hi) = (b.0.min_position(), b.0.max_position());
+                        level.no_collision(horizon_core::geometry::Aabb::new(lo.add_vector(t).add_vector(Vec3::new(-1.0, -1.0, -1.0)), hi.add_vector(t).add_vector(Vec3::new(1.0, 1.0, 1.0))))
+                    });
                 if clear {
                     v.0 = float_push(v.0, t, len);
                 } else {
