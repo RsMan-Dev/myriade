@@ -43,7 +43,8 @@ fn equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Syn
     if conductor(&level, bat_flutter::above(p.x, p.y, p.z)) {
         perch(w, e);
     } else {
-        w.entity_mut(e).insert((Fluttering, Moving));
+        // Its first AI step only wakes it (the resting branch returns); it flies from the next tick.
+        w.entity_mut(e).insert((Waking, Moving));
     }
 }
 /// Hangs from the block above: at rest, asleep (`Bat.tick` of a resting bat), watched for a player within 4 blocks.
