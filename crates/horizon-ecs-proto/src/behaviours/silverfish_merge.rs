@@ -78,6 +78,21 @@ fn arm_next(w: &mut World, e: Entity, slot: u8) {
     let asks = asks_until_success(with_rng(w, e, |r| r.next_f64()), p);
     crate::goals::arm(w, e, slot, 2 * asks);
 }
+/// The tick of the last ask at which a player was within 32 blocks (`noActionTime` back to 0 in `checkDespawn`; the silverfish has no rule of going away, so it keeps its own mark).
+#[derive(Component, Clone, Copy, Debug)]
+struct Calm(u64);
+/// `noActionTime`: the ticks since a player was last within 32 blocks, read at the asks of the goal (born at 0 ticks).
+fn idle_ticks(w: &mut World, e: Entity) -> u64 {
+    let (p, now) = (w.get::<Pos>(e).unwrap().0, crate::cow::now_of(w, e));
+    let mut near = false;
+    w.resource::<Online>().for_near(p.x, p.z, 32.0, |q| near |= (q.x - p.x).powi(2) + (q.y - p.y).powi(2) + (q.z - p.z).powi(2) <= 1024.0);
+    let since = match w.get::<Calm>(e) {
+        Some(c) if !near => c.0,
+        _ => now,
+    };
+    w.entity_mut(e).insert(Calm(since));
+    now - since
+}
 /// A deadline that is not the goal's own (the replay of a start) asks `canUse`; a walking animal has none.
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
     w.get::<Strolling>(e).is_none()
@@ -94,6 +109,11 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let u = with_rng(w, e, |r| r.next_f64()) * total;
     let choice = match merge_pick(u, per_dir, hosts.len()) {
         Some(i) => Choice::Merge(hosts[i]),
+        // `RandomStrollGoal.canUse`: a creature idle for 100 ticks or more (`noActionTime`) does not stroll.
+        None if idle_ticks(w, e) >= 100 => {
+            arm_next(w, e, inst.slot);
+            return false;
+        }
         None => {
             let (level, pos, nav, walk, in_water) = {
                 let p = w.get::<Pos>(e).unwrap().0;
