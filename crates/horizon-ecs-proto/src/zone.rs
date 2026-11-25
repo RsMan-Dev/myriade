@@ -353,6 +353,25 @@ pub fn enable(world: &mut World, radius: i32) {
     world.resource_mut::<Players>().dirty = true;
 }
 
+/// The simulation distance changed (a server's properties, `/setsimulationdistance`): the zone is counted again at `radius`; the creatures
+/// of chunks that no longer tick sleep, those of chunks that now tick wake.
+pub fn resize(world: &mut World, radius: i32) {
+    if world.resource::<Index>().zone.radius == radius.max(2) {
+        return;
+    }
+    enable(world, radius);
+    let now = world.resource::<Clock>().0;
+    let list: Vec<Entity> = world
+        .query_filtered::<(Entity, &crate::cow::Cell), (With<Dormant>, Allow<Disabled>)>()
+        .iter(world)
+        .filter(|(_, c)| world.resource::<Index>().simulated_cell(c.0))
+        .map(|(e, _)| e)
+        .collect();
+    for e in list {
+        wake(world, e, now);
+    }
+}
+
 /// New creatures (armed, in the index): the ones whose chunk does not tick go to sleep at once.
 pub fn admit(world: &mut World, fresh: &[Entity]) {
     let now = world.resource::<Clock>().0;

@@ -5,7 +5,7 @@ use crate::type_tags::{self, TagId};
 use bevy_ecs::{entity::Entity, entity_disabling::Disabled, prelude::*};
 
 /// The filters of a query: the species' name (`kind`), a tag (`tag`), a sphere (`near`: centre and radius), and at most `limit` results
-/// (0: no limit). Sleeping entities are never returned.
+/// (0: no limit). Sleeping creatures are returned, the others disabled never.
 #[derive(Clone, Debug, Default)]
 pub struct Select {
     pub kind: Option<String>,
@@ -14,7 +14,7 @@ pub struct Select {
     pub limit: usize,
 }
 
-/// The awake entities that match `q`, in entity order.
+/// The entities that match `q`, in entity order.
 pub fn select(world: &World, q: &Select) -> Vec<Entity> {
     let Some(tag) = tag_of(q) else { return Vec::new() };
     let candidates: Vec<Entity> = match q.near {
@@ -69,7 +69,8 @@ fn tag_of(q: &Select) -> Option<Option<TagId>> {
 
 fn keep(world: &World, q: &Select, tag: Option<TagId>, e: Entity) -> bool {
     let Ok(r) = world.get_entity(e) else { return false };
-    if r.contains::<Disabled>() {
+    // A sleeping creature (its chunk does not tick) is still in the world, and selected as any entity of a loaded chunk is.
+    if r.contains::<Disabled>() && !r.contains::<crate::zone::Dormant>() {
         return false;
     }
     if q.kind.as_deref().is_some_and(|k| r.get::<TypeName>().map(|t| t.0) != Some(k)) {

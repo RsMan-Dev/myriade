@@ -30,6 +30,10 @@ impl EcsWorld {
         let moved = if on { env.spawnable.insert((cx, cz)) } else { env.spawnable.remove(&(cx, cz)) };
         env.changed |= moved;
     }
+    /// The simulation distance changed: the chunks that tick are counted again.
+    pub fn set_simulation_radius(&mut self, radius: i32) {
+        crate::zone::resize(self.world_mut(), radius);
+    }
     /// A ticket other than a player's (forced, portal, viewed) keeps chunk `(cx, cz)` entity-ticking (`on`) or stops: the creatures and
     /// objects of the chunk wake, or sleep unless a player covers it. By event, with the ticket changes.
     pub fn set_chunk_pinned(&mut self, cx: i32, cz: i32, on: bool) {

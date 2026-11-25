@@ -40,6 +40,15 @@ pub struct HookView {
     pub biting: bool,
 }
 
+/// The kind of `e`, asleep (`Dormant`) or not: a creature in a chunk that does not tick is still an entity of the world.
+pub fn kind(world: &World, e: Entity) -> Option<&'static str> {
+    let r = world.get_entity(e).ok()?;
+    if r.contains::<Disabled>() && !r.contains::<crate::zone::Dormant>() {
+        return None;
+    }
+    r.get::<TypeName>().map(|t| t.0)
+}
+
 /// The view of `e`, or None when it has no position or sleeps (`Disabled`: not ticked, not tracked).
 pub fn view(world: &World, e: Entity) -> Option<EntityView> {
     let r = world.get_entity(e).ok()?;
@@ -79,7 +88,7 @@ pub fn view(world: &World, e: Entity) -> Option<EntityView> {
 /// The position of `e` alone (a live entity), for the events that need where it stands.
 pub fn position(world: &World, e: Entity) -> Option<[f64; 3]> {
     let r = world.get_entity(e).ok()?;
-    if r.contains::<Disabled>() {
+    if r.contains::<Disabled>() && !r.contains::<crate::zone::Dormant>() {
         return None;
     }
     let p = r.get::<Pos>()?.0;

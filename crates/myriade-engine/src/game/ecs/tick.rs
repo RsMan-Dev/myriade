@@ -129,9 +129,20 @@ impl Game<'_> {
         self.host_events(kept)
     }
 
+    /// The chunks around a player that tick: within the simulation distance and the view distance (the chunk must be loaded).
+    pub(in crate::game) fn ecs_zone_radius(&self) -> i32 {
+        self.settings.simulation_distance.min(self.settings.view_distance).max(2)
+    }
+
+    /// The view or simulation distance changed: the ECS zone follows.
+    pub(in crate::game) fn ecs_zone_radius_changed(&mut self) {
+        let radius = self.ecs_zone_radius();
+        self.ecs.set_simulation_radius(radius);
+    }
+
     /// The ECS world of `dim`, seeded as its level is.
     pub(in crate::game) fn new_ecs_level(&self, dim: Dim, seed: i64) -> EcsLevel {
-        self.build_ecs_level(HostSetup { seed, dimension: dim.id(), simulation_radius: self.settings.simulation_distance.max(2) })
+        self.build_ecs_level(HostSetup { seed, dimension: dim.id(), simulation_radius: self.ecs_zone_radius() })
     }
 
     /// An active level of the overworld, seed 0, whatever the role (the tests').

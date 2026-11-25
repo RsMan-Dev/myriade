@@ -18,10 +18,10 @@ pub struct Motion {
     pub on_ground: bool,
 }
 
-/// The entity `e`, unless it is gone or sleeps.
+/// The entity `e`, unless it is gone. A creature asleep in a chunk that does not tick (`Dormant`) is still in the world.
 fn awake(w: &World, e: Entity) -> Option<EntityRef<'_>> {
     let r = w.get_entity(e).ok()?;
-    (!r.contains::<Disabled>()).then_some(r)
+    (!r.contains::<Disabled>() || r.contains::<crate::zone::Dormant>()).then_some(r)
 }
 
 pub fn bounds(w: &World, e: Entity) -> Option<Aabb> {

@@ -18,13 +18,13 @@ impl EcsLevel {
         mount::rider_of(self.world()?, vehicle)
     }
     pub fn kind(&self, id: u32) -> Option<&'static str> {
-        Some(view::view(self.world()?, self.entity_of(id)?)?.kind)
+        view::kind(self.world()?, self.entity_of(id)?)
     }
     pub fn position(&self, id: u32) -> Option<[f64; 3]> {
         view::position(self.world()?, self.entity_of(id)?)
     }
     pub fn exists(&self, id: u32) -> bool {
-        self.world().zip(self.entity_of(id)).is_some_and(|(w, e)| view::view(w, e).is_some())
+        self.world().zip(self.entity_of(id)).is_some_and(|(w, e)| view::kind(w, e).is_some())
     }
     /// The ids of the followed entities within `r` of `at`, from the spatial index.
     pub fn ids_near(&self, at: [f64; 3], r: f64) -> Vec<u32> {

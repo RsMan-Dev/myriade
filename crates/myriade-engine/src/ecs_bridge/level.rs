@@ -208,6 +208,12 @@ impl EcsLevel {
             w.set_chunk_spawnable(cx, cz, on);
         }
     }
+    /// `EcsWorld::set_simulation_radius`: the simulation distance changed. Nothing when inert.
+    pub fn set_simulation_radius(&mut self, radius: i32) {
+        if let Some(w) = self.inner.as_mut() {
+            w.set_simulation_radius(radius);
+        }
+    }
     /// `EcsWorld::set_chunk_pinned`: a ticket other than a player's keeps a chunk entity-ticking, or stops. Nothing when inert.
     pub fn set_chunk_pinned(&mut self, cx: i32, cz: i32, on: bool) {
         if let Some(w) = self.inner.as_mut() {

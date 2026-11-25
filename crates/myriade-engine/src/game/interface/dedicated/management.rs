@@ -743,6 +743,7 @@ impl Game<'_> {
     fn management_simulation_distance(&mut self, distance: i32) {
         self.set_simulation_distance(distance);
         self.settings.simulation_distance = distance;
+        self.ecs_zone_radius_changed();
     }
 
     /// `DedicatedServer.setViewDistance`, through `PlayerList.setViewDistance`: the players are told and
@@ -751,6 +752,7 @@ impl Game<'_> {
     fn management_view_distance(&mut self, distance: i32) {
         self.set_view_distance(distance);
         self.settings.view_distance = distance;
+        self.ecs_zone_radius_changed();
     }
 
     /// `addUserBan`, then the banned player, if online, is sent away.
