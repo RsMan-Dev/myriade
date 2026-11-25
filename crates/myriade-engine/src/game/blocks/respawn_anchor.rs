@@ -11,7 +11,6 @@ use myriade_engine::{
     items::ItemStack,
     mobs::Who,
     stand_up::{StandUpLevel, StandUpType, bed_forward, stand_up_fallback},
-    text::Text,
 };
 use horizon_core::{
     geometry::{Aabb, Axis, Vec3, VoxelShape},
@@ -209,7 +208,7 @@ impl Game<'_> {
         if !same {
             // setRespawnPosition(config, true): the message, the point; the
             // anchor replaces a bed.
-            self.system_message(Text::translate("block.minecraft.set_spawn", &[]));
+            self.tell_sleeper("block.minecraft.set_spawn", "Respawn point set", false);
             self.respawn_config = Some(config);
             if let Some([x, y, z]) = self.level.world_spawn {
                 self.spawn = Some(Vec3::new(

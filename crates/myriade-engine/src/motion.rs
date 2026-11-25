@@ -2706,8 +2706,16 @@ impl crate::block_contact::InsideWalk for PlayerInside<'_, '_, '_, '_> {
             return InsideShape::Full;
         };
         let name = definition.name.as_str();
-        if matches!(name, "minecraft:end_portal" | "minecraft:tripwire") {
+        if name == "minecraft:tripwire" {
             return InsideShape::Empty;
+        }
+        if name == "minecraft:end_portal" {
+            // EndPortalBlock.getEntityInsideCollisionShape = getShape, `Block.column(16, 6, 12)`.
+            let offset = Vec3::new(f64::from(p.x), f64::from(p.y), f64::from(p.z));
+            return InsideShape::Boxes(vec![Aabb::new(
+                Vec3::new(0.0, 6.0 / 16.0, 0.0).add_vector(offset),
+                Vec3::new(1.0, 12.0 / 16.0, 1.0).add_vector(offset),
+            )]);
         }
         let powder_snow = name == "minecraft:powder_snow";
         // A filled cauldron's content top in blocks: the lava's 15/16
