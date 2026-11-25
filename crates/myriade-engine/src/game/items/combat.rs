@@ -272,8 +272,11 @@ impl Game<'_> {
     /// The display name of a mob: its custom name or its type's name.
     pub(in crate::game) fn mob_display_name(&self, id: u32) -> Option<Text> {
         self.ecs.kind(id)?;
-        // RESTE-SANS-ECS: the custom name of a mob is not on the bridge yet.
-        Some(self.ecs_mob_name(id))
+        // `Entity.getDisplayName`: the CustomName as a legacy string, else the type's name.
+        Some(match self.ecs.custom_name(id) {
+            Some(name) => Text::untrusted_legacy(&name),
+            None => self.ecs_mob_name(id),
+        })
     }
     /// `getLastHurtByMob`: the last mob to hurt the player, for 100 ticks.
     pub(super) fn player_hurt_by(&self) -> Option<(myriade_engine::mobs::Who, i64)> {
