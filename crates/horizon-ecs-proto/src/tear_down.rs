@@ -69,6 +69,12 @@ pub fn linger(w: &mut World, e: Entity) {
     if crate::effects::has(w, e, crate::effects::Kind::Weaving) {
         w.entity_mut(e).insert(crate::removed_effects::Woven);
     }
+    if crate::effects::has(w, e, crate::effects::Kind::Oozing) {
+        w.entity_mut(e).insert(crate::removed_effects::Oozed);
+    }
+    if crate::effects::has(w, e, crate::effects::Kind::WindCharged) {
+        w.entity_mut(e).insert(crate::removed_effects::WindBorne);
+    }
     let kinds: Vec<_> = w.get::<crate::effects::Effects>(e).map_or_else(Vec::new, |f| f.list.iter().map(|x| x.kind).collect());
     for kind in kinds {
         crate::effects::remove(w, e, kind);
@@ -139,6 +145,8 @@ fn finish(w: &mut World, e: Entity) {
         w.resource_mut::<crate::cow::Index>().remove(e, c);
     }
     crate::removed_effects::on_killed(w, e);
+    crate::removed_effects::oozing_on_killed(w, e);
+    crate::removed_effects::wind_on_killed(w, e);
     crate::spawn_trial::forget(w, e);
     crate::mount::leave(w, e);
     w.despawn(e);
