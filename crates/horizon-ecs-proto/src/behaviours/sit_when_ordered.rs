@@ -38,7 +38,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
     w.entity_mut(e).insert(SitRules(params::<Params>(p)));
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((wake_events.after(apply_damage), stand_when_hurt.after(apply_damage)).in_set(slot));
+    s.add_systems((wake_events.after(apply_damage::<false>), stand_when_hurt.after(apply_damage::<false>)).in_set(slot));
 }
 /// A hit stands a sitting pet up when its species says so: the order is released and its goal asked to end.
 fn stand_when_hurt(ev: Res<Events>, mut occ: Query<&mut Occupied>, rules: Query<&SitRules>, mut reqs: ResMut<Requests>, goals: Query<&GoalSet>) {

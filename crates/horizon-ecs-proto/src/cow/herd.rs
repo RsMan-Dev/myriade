@@ -354,7 +354,7 @@ impl Herd {
         t!(8, path_ended);
         t!(9, apply_pushes);
         t!(10, hazard_tick);
-        t!(11, apply_damage);
+        t!(11, apply_damage::<false>);
         self.world.clear_trackers();
     }
     pub const SYSTEMS: [&'static str; 12] = ["due", "player_near", "pathfind", "follow", "move_control", "travel", "reindex", "push", "path_ended", "apply_pushes", "hazard_tick", "apply_damage"];

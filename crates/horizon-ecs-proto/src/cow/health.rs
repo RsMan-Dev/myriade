@@ -520,7 +520,7 @@ pub struct Intake(pub fn(&mut World, Entity, Cause));
 /// love (`Animal.actuallyHurt`), and `noActionTime` back to 0 (`ai::after_hurt`: the stroll goal is allowed again for
 /// 100 ticks). The goals read the hit through `Hurts` and `HurtCauses` (Panic).
 #[allow(clippy::type_complexity)]
-pub(crate) fn apply_damage(
+pub(crate) fn apply_damage<const LATE: bool>(
     clock: Res<Clock>,
     mut queue: ResMut<DamageQueue>,
     mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>, Option<&SpeciesId>, Has<crate::behaviours::guardian_thorns::Spiky>, Has<Dying>, Has<crate::item::BlastResist>, Option<&crate::effects::Resistance>)>,

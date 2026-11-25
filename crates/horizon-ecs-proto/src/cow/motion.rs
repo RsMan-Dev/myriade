@@ -511,18 +511,24 @@ pub(crate) fn cramming(
     riders: Query<(Has<Riding>, Has<Unpushable>, Has<Ridden>, Has<crate::tear_down::Crumbling>, Has<crate::cow::Dying>), Allow<Disabled>>,
     mut q: Query<(Entity, &Bounds, &mut Rng, &Health, &HurtAt), With<Crowded>>,
     healths: Query<&Health, Allow<Disabled>>,
+    bodies: Query<&Body, Allow<Disabled>>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
     let limit = cramming_limit(&level).unwrap_or(usize::MAX);
     let mut dying: Vec<Entity> = Vec::new();
     for (e, b, mut rng, health, hurt) in &mut q {
+        // A dead one no longer ticks (`LivingEntity.tick` is not called once `isDeadOrDying`).
+        if health.0 <= 0.0 {
+            continue;
+        }
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let mut n = 0;
         idx.for_near((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0, |o| {
             // `getPushableEntities` drops a mount that has a rider (`isPushable`), and the count drops a passenger (`isPassenger`).
             // A dead one in its death animation is not pushable either (`isPushable` needs `isAlive`).
-            let out = healths.get(o).is_ok_and(|h| h.0 <= 0.0) || riders.get(o).is_ok_and(|(riding, unpushable, ridden, crumbling, dying)| riding || crumbling || dying || (unpushable && ridden));
+            // An item or an orb is no `LivingEntity` pushable (`Entity.isPushable` is false): it does not count.
+            let out = bodies.get(o).is_ok_and(|b| b.object) || healths.get(o).is_ok_and(|h| h.0 <= 0.0) || riders.get(o).is_ok_and(|(riding, unpushable, ridden, crumbling, dying)| riding || crumbling || dying || (unpushable && ridden));
             if o != e && !out && !dying.contains(&o) && boxes.get(o).is_ok_and(|ob| b.0.intersects(ob.0)) {
                 n += 1;
             }
@@ -531,8 +537,8 @@ pub(crate) fn cramming(
             commands.entity(e).remove::<Crowded>();
         } else if rng.next_int(4) == 0 {
             queue.add(e, 6.0, Cause::Cramming);
-            // The hit is applied at the start of the next tick.
-            let in_window = clock.of(e) + 1 < hurt.at + 10 && hurt.at != 0;
+            // The hit is applied by `apply_damage` right after, in the same tick (the cramming of `pushEntities` hurts at once).
+            let in_window = clock.of(e) < hurt.at + 10 && hurt.at != 0;
             let applied = if in_window { (6.0 - hurt.last).max(0.0) } else { 6.0 };
             if health.0 - applied <= 0.0 {
                 dying.push(e);

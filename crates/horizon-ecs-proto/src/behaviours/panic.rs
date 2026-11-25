@@ -66,7 +66,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
     w.entity_mut(e).insert(Panic { p, until: 0, slot: inst.slot, pick: (0.0, 1, 0.0) });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(hurt_events.after(apply_damage).in_set(slot));
+    s.add_systems(hurt_events.after(apply_damage::<false>).in_set(slot));
 }
 /// Damage that makes the animal panic (`DamageType.causes_panic`): call from the damage code.
 pub fn hurt(world: &mut World, e: Entity) {

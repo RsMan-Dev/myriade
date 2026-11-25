@@ -149,7 +149,7 @@ fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
         pathfind.after(crate::cow::pathfind).before(crate::cow::follow),
         follow.after(crate::cow::follow).before(crate::cow::path_ended),
         move_control.after(crate::cow::move_control),
-        dry_air.before(crate::cow::apply_damage),
+        dry_air.before(crate::cow::apply_damage::<false>),
         dry.after(crate::cow::wall_check).before(crate::cow::travel),
         travel.after(crate::cow::travel).before(crate::cow::ordered_pass),
     ));

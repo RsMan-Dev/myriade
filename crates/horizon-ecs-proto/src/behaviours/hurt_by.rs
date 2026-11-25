@@ -81,7 +81,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
     w.entity_mut(e).insert(HurtByGoal { p, slot: inst.slot, last: None, handled: u64::MAX, alert_types, alert_except, ignore, called_by: None });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems(hurt_events.after(apply_damage).in_set(slot));
+    s.add_systems(hurt_events.after(apply_damage::<false>).in_set(slot));
 }
 /// `DidShot` was just set (the hook of the component, so no system runs when nobody shoots): a creature that shoots while its hunt
 /// (this goal's target) runs ends the hunt, `ends_on_shot`.

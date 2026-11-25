@@ -773,7 +773,7 @@ pub fn register(s: &mut Schedule) {
     s.add_systems(player_watch.after(online_events).before(player_near).run_if(watch_due));
     s.add_systems((entered_events, arbitrate).chain().before(pathfind));
     s.add_systems((arbitrate_end, look_control).chain().after(arbitrate).before(pathfind));
-    s.add_systems((crate::targeting::sight_eval, crate::targeting::target_continue).chain().after(apply_damage));
+    s.add_systems((crate::targeting::sight_eval, crate::targeting::target_continue).chain().after(apply_damage::<false>));
     let modules = &crate::species::registry().modules;
     // `Mob.serverAiStep` ticks the target selector, then the goal selector: the target selectors (`TARGET`) run before the
     // starts of the tick, the others after them, so a goal's `canUse` sees the target of its own tick. Each class keeps the registry order.

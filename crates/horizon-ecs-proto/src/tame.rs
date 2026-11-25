@@ -50,7 +50,7 @@ pub fn insert_resources(w: &mut World) {
 /// Only a world with a species that can have an owner has the system that answers the owner's combat record.
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     if crate::species::registry().species.iter().any(|r| r.caps.contains(&crate::behaviours::Cap::Tamable)) {
-        s.add_systems(owner_events.after(apply_damage));
+        s.add_systems(owner_events.after(apply_damage::<false>));
     }
 }
 fn equip(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {

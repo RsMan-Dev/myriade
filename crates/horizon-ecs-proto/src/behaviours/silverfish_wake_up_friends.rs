@@ -56,7 +56,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<WakingFriends>();
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((wake_on_hit.after(apply_damage), wake_run).in_set(slot));
+    s.add_systems((wake_on_hit.after(apply_damage::<false>), wake_run).in_set(slot));
 }
 /// `Silverfish.hurtServer`: a hit by an entity starts the countdown of an animal that has none (magic is not a cause here).
 fn wake_on_hit(causes: Res<HurtCauses>, mut q: Query<(&mut WakeCount, &Friends, &GoalSet)>, mut reqs: ResMut<Requests>) {

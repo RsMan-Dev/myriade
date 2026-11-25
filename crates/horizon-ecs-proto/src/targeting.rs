@@ -269,5 +269,5 @@ pub fn sees(w: &World, e: Entity, who: Who) -> bool {
 }
 /// The framework's systems of the targeting service (registered by the modules that choose targets, once).
 pub fn register(s: &mut bevy_ecs::schedule::Schedule, slot: GoalSlot) {
-    s.add_systems((sight_eval, target_continue).chain().after(apply_damage).in_set(slot));
+    s.add_systems((sight_eval, target_continue).chain().after(apply_damage::<false>).in_set(slot));
 }
