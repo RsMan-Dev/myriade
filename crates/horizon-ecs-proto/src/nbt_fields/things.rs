@@ -617,10 +617,10 @@ fn with_block_pos(at: Vec3, c: &Compound) -> Compound {
 
 /// An item frame or a glow frame hung on its saved face (`frame_item::load`).
 fn build_frame(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
-    // `HangingEntity.DEFAULT_DIRECTION` is south (3D data value 3) when `Facing` is absent.
+    // `ItemFrame.readAdditionalSaveData`: an absent `Facing` is `Direction.DOWN` (data value 0), not the hanging default (south).
     let mut c = with_block_pos(at, c);
     if !c.contains_key(&JavaString::from("Facing")) {
-        c.insert("Facing".into(), Tag::Byte(3));
+        c.insert("Facing".into(), Tag::Byte(0));
     }
     crate::frame_item::load(w, &c)
 }
