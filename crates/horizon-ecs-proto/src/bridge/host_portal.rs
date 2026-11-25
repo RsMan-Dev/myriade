@@ -19,6 +19,8 @@ impl EcsWorld {
             if let Some(mut h) = w.get_mut::<crate::cow::Health>(e) {
                 h.0 = 0.0;
             }
+            // `LivingEntity.hurtServer` of the lethal blow: `makeSound(getDeathSound)` before `die`.
+            crate::sound_slots::death(w, e);
             if let Some(c) = w.get::<Cell>(e).map(|c| c.0)
                 && c != u32::MAX
             {
