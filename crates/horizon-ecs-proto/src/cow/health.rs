@@ -526,6 +526,7 @@ pub(crate) fn apply_damage<const LATE: bool>(
     mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>, Option<&SpeciesId>, Has<crate::behaviours::guardian_thorns::Spiky>, Has<Dying>, Has<crate::item::BlastResist>, Option<&crate::effects::Resistance>)>,
     species: Res<SpeciesTable>,
     mut hurts: ResMut<crate::goals::Hurts>,
+    mut kinds: ResMut<crate::behaviours::panic::HurtKinds>,
     mut ps: ResMut<crate::hostile::PlayerState>,
     mut by: ResMut<crate::hostile::HurtBy>,
     mut causes: ResMut<HurtCauses>,
@@ -662,6 +663,7 @@ pub(crate) fn apply_damage<const LATE: bool>(
             continue;
         }
         hurts.0.push(e);
+        kinds.0.push(hit.cause);
         commands.queue(move |w: &mut World| crate::sound_slots::hurt(w, e));
         events.hurt.push(e);
         if let Ok(&crate::bridge::ids::NetId(id)) = netids.get(e) {

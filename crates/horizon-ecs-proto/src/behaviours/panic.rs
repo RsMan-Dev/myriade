@@ -58,8 +58,12 @@ pub static MODULE: Module = Module {
 /// The animals hurt this tick, in the order the damage was applied (written by `apply_damage`).
 #[derive(Resource, Default)]
 pub struct Hurts(pub Vec<Entity>);
+/// The cause of each entry of `Hurts`, same order (`HurtCauses` is cleared by the next damage step, before a slot that runs later reads it).
+#[derive(Resource, Default)]
+pub struct HurtKinds(pub Vec<Cause>);
 fn resources(w: &mut World) {
     w.insert_resource(Hurts::default());
+    w.insert_resource(HurtKinds::default());
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
@@ -71,19 +75,22 @@ fn systems(s: &mut Schedule, slot: GoalSlot) {
 /// Damage that makes the animal panic (`DamageType.causes_panic`): call from the damage code.
 pub fn hurt(world: &mut World, e: Entity) {
     world.resource_mut::<Hurts>().0.push(e);
+    world.resource_mut::<HurtKinds>().0.push(Cause::Magic);
 }
 /// `PanicGoal.canUse` after a damage: only the types of `#panic_causes` (a fall, a drowning, a wall do not), then a
 /// window of 40 ticks; a burning animal panics as long as it burns.
 pub(crate) fn hurt_events(
     clock: Res<Clock>,
     mut h: ResMut<Hurts>,
-    causes: Res<HurtCauses>,
+    mut kinds: ResMut<HurtKinds>,
     mut q: Query<&mut Panic>,
     mut reqs: ResMut<Requests>,
 ) {
+    let kinds = std::mem::take(&mut kinds.0);
     for (i, e) in std::mem::take(&mut h.0).into_iter().enumerate() {
-        let panics = causes.0.get(i).filter(|c| c.0 == e).is_none_or(|c| !matches!(c.1, Cause::Fall | Cause::Drown | Cause::InWall | Cause::Cramming));
-        let environment = causes.0.get(i).filter(|c| c.0 == e).is_none_or(|c| matches!(c.1, Cause::Cactus | Cause::InFire | Cause::OnFire | Cause::Lava | Cause::Freeze | Cause::HotFloor));
+        let cause = kinds.get(i).copied().unwrap_or(Cause::Magic);
+        let panics = !matches!(cause, Cause::Fall | Cause::Drown | Cause::InWall | Cause::Cramming);
+        let environment = matches!(cause, Cause::Cactus | Cause::InFire | Cause::OnFire | Cause::Lava | Cause::Freeze | Cause::HotFloor);
         if let Ok(mut p) = q.get_mut(e)
             && panics
             && (!p.environmental || environment)
