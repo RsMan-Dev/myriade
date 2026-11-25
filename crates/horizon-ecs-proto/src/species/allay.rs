@@ -4,7 +4,8 @@
 //! species: the throw at arrival (a brain step), the duplication, the deposit at the liked block (`event_listen::liked_deposit` is not
 //! called by `give_to_owner` yet), the wool occlusion of vibrations, and the `interact` entry point (not called yet: the owner is set
 //! by `tame::set_owner`).
-//! DOUBT: the glide damping of the allay's flight is not checked against vanilla (the default value is used).
+//! The idle stroll is the brain's `RunOne` (`RandomStroll.fly(1.0)` weight 2, `SetWalkTargetFromLookTarget` weight 2, `DoNothing(30, 60)` weight 1), drawn again at each
+//! arrival: a goal with a mean wait of about 12 ticks (calibrated on the path walked in 90 s: 95 blocks in vanilla) stands for it (a plain wander waits 120). DOUBT: the glide damping of the allay's flight is not checked against vanilla (the default value is used).
 use super::Def;
 use crate::behaviours::{animal_panic, event_listen, fly_stroll, give_to_owner, go_to_wanted, look_at_player, random_look, stay_close_to_owner, Cap, Entry};
 use crate::locomotion::{fly, Medium};
@@ -17,7 +18,7 @@ pub static DEF: Def = Def {
         Entry::new(&go_to_wanted::MODULE, 1, &go_to_wanted::Params { hand: true, range: 32.0, speed: 1.75, ..go_to_wanted::Params::DEFAULT }),
         Entry::new(&give_to_owner::MODULE, 2, &give_to_owner::Params::DEFAULT),
         Entry::new(&stay_close_to_owner::MODULE, 3, &stay_close_to_owner::Params::DEFAULT),
-        Entry::new(&fly_stroll::MODULE, 4, &fly_stroll::Params { reach: Some((10, 7)), ..fly_stroll::Params::DEFAULT }),
+        Entry::new(&fly_stroll::MODULE, 4, &fly_stroll::Params { reach: Some((10, 7)), interval: 12, ..fly_stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 5, &look_at_player::Params { range: 6.0, species: look_at_player::Params::ALL, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 6, &random_look::Params { interval: Some((150, 250)), ..random_look::Params::DEFAULT }),
         Entry::new(&event_listen::MODULE, 7, &event_listen::Params {
