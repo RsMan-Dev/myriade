@@ -508,8 +508,9 @@ pub(crate) fn cramming(
     level: Res<Level>,
     idx: Res<Index>,
     boxes: Query<&Bounds, Allow<Disabled>>,
-    riders: Query<(Has<Riding>, Has<Unpushable>, Has<Ridden>), Allow<Disabled>>,
+    riders: Query<(Has<Riding>, Has<Unpushable>, Has<Ridden>, Has<crate::tear_down::Crumbling>, Has<crate::cow::Dying>), Allow<Disabled>>,
     mut q: Query<(Entity, &Bounds, &mut Rng, &Health, &HurtAt), With<Crowded>>,
+    healths: Query<&Health, Allow<Disabled>>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
 ) {
@@ -520,7 +521,8 @@ pub(crate) fn cramming(
         let mut n = 0;
         idx.for_near((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0, |o| {
             // `getPushableEntities` drops a mount that has a rider (`isPushable`), and the count drops a passenger (`isPassenger`).
-            let out = riders.get(o).is_ok_and(|(riding, unpushable, ridden)| riding || (unpushable && ridden));
+            // A dead one in its death animation is not pushable either (`isPushable` needs `isAlive`).
+            let out = healths.get(o).is_ok_and(|h| h.0 <= 0.0) || riders.get(o).is_ok_and(|(riding, unpushable, ridden, crumbling, dying)| riding || crumbling || dying || (unpushable && ridden));
             if o != e && !out && !dying.contains(&o) && boxes.get(o).is_ok_and(|ob| b.0.intersects(ob.0)) {
                 n += 1;
             }
