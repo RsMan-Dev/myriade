@@ -17,7 +17,10 @@ impl Game<'_> {
         };
         let near = s.distance.and_then(|(_, hi)| hi).map(|h| (origin, h));
         let q = Select { kind, tag: None, near, limit: usize::MAX };
-        let mut ids: Vec<u32> = self.ecs.select(&q).into_iter().map(|e| self.ecs_link(e)).collect();
+        // `@e` and `@n` skip the dead (`Entity::isAlive` in `EntitySelector`): a body lingering its 20 ticks is not selected.
+        let alive_only = matches!(s.kind, 'e' | 'n');
+        let found: Vec<_> = self.ecs.select(&q).into_iter().filter(|&e| !(alive_only && self.ecs.is_dead(e))).collect();
+        let mut ids: Vec<u32> = found.into_iter().map(|e| self.ecs_link(e)).collect();
         // Projectiles are not in the spatial index yet: a bounded query on their marker, per command (goes with the lot P index).
         let (min, max) = match s.distance.and_then(|(_, hi)| hi) {
             Some(h) => ([origin[0] - h, origin[1] - h, origin[2] - h], [origin[0] + h, origin[1] + h, origin[2] + h]),

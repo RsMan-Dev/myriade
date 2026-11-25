@@ -360,6 +360,10 @@ impl EcsLevel {
     pub fn merge_nbt(&mut self, e: Entity, patch: &Compound) -> bool {
         self.inner.as_mut().is_some_and(|w| w.merge_nbt(e, patch))
     }
+    /// `Entity.isAlive` false: the body lingers (`LivingEntity.tickDeath`) or the host holds the death.
+    pub fn is_dead(&self, e: Entity) -> bool {
+        self.world().is_some_and(|w| horizon_ecs_proto::tear_down::is_dead(w, e))
+    }
     pub fn select(&self, q: &Select) -> Vec<Entity> {
         self.inner.as_ref().map_or_else(Vec::new, |w| w.select(q))
     }
