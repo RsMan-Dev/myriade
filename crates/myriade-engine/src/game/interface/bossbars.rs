@@ -533,7 +533,7 @@ impl Game<'_> {
             self.bosses.dragon_name = Some(json_to_tag(&myriade_engine::entity_nbt::name_text(&custom).component()));
         }
     }
-    fn boss_viewers(&self) -> Vec<Viewer> {
+    pub(in crate::game) fn boss_viewers(&self) -> Vec<Viewer> {
         let mut out: Vec<Viewer> = Vec::new();
         if let Some(host) = &self.lan {
             for g in host
@@ -733,12 +733,12 @@ enum Scope {
     Global,
     Level(Dim),
 }
-struct Viewer {
+pub(in crate::game) struct Viewer {
     uuid: u128,
     ints: [i32; 4],
-    at: [f64; 3],
-    alive: bool,
-    here: bool,
+    pub at: [f64; 3],
+    pub alive: bool,
+    pub here: bool,
     local: bool,
     conn: Option<u32>,
     view_chunks: i32,

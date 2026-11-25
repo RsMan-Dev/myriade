@@ -1772,9 +1772,14 @@ impl Game<'_> {
                 forced: self.streaming.forced.iter().copied().collect(),
                 // Filled from the `PORTAL` tickets by `update`.
                 portal: Vec::new(),
-                // EnderDragonFight.tick: a watched arena holds a `DRAGON` ticket at (0, 0). Not yet
-                // read from the ECS fight: its FightView has no watchers.
-                dragon: None,
+                // EnderDragonFight.tick: an arena whose boss bar has a watcher (a player within 192 blocks of
+                // the island's centre) holds a `DRAGON` ticket at (0, 0).
+                dragon: (self.dimension_type().has_ender_dragon_fight
+                    && self
+                        .boss_viewers()
+                        .iter()
+                        .any(|v| v.here && self.dragon_boss_progress(v.at, v.alive).is_some()))
+                .then_some((0, 0)),
                 viewed: self.viewed_tickets(),
                 view_distance: self.settings.view_distance.clamp(2, 32),
                 simulation_distance: self.settings.simulation_distance.max(2),
