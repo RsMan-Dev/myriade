@@ -1022,6 +1022,13 @@ impl Game<'_> {
                     self.lan_crafting_left(&mut guest);
                     if guest.placed {
                         self.award_leave_game(guest.conn, guest.uuid, &guest.name);
+                        // `ServerGamePacketListenerImpl.onDisconnect`: the console logs the reason, then
+                        // `PlayerList.remove` broadcasts "left the game" (`sendSystemMessage` logs it).
+                        let why = if guest.left_reason.is_empty() { "Disconnected" } else { &guest.left_reason };
+                        super::dedicated::log("INFO", &format!("{} lost connection: {why}", guest.name));
+                        if !guest.quiet_leave {
+                            super::dedicated::log("INFO", &format!("System chat: {} left the game", guest.name));
+                        }
                     }
                     // PlayerList.remove: the vehicle it alone rides goes too.
                     self.take_parent_vehicle(&mut guest);

@@ -245,6 +245,8 @@ impl Game<'_> {
             return;
         }
         for text in std::mem::take(&mut self.adv.announced) {
+            // `PlayerList.broadcastSystemMessage` also reaches the console (`sendSystemMessage`).
+            crate::game::dedicated::log("INFO", &format!("System chat: {}", text.plain()));
             if let Some(host) = self.lan.as_mut() {
                 host.hub
                     .system_message(myriade_engine::lan::data::component_nbt(&text.component()));

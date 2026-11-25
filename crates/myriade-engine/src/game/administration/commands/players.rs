@@ -257,6 +257,8 @@ impl Game<'_> {
         };
         let source = self.chat_capture.replace(Vec::new());
         let out = f(self);
+        // What the turn earned (advancements) is broadcast, console line included.
+        self.announce_guest_advancements();
         let told = std::mem::replace(&mut self.chat_capture, source).unwrap_or_default();
         self.leave_guest(swap);
         for line in told {
