@@ -74,6 +74,10 @@ pub struct Zone {
 const CHUNK: f64 = 16.0;
 
 impl Zone {
+    /// Whether some ticket other than a player's keeps a chunk entity-ticking.
+    pub(crate) fn has_pins(&self) -> bool {
+        self.on && !self.pinned.is_empty()
+    }
     /// How many players cover chunk `(cx, cz)` (0 while the zone is off).
     pub(crate) fn covering(&self, cx: i32, cz: i32) -> u16 {
         if !self.on {

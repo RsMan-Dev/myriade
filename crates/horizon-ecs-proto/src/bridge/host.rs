@@ -127,11 +127,14 @@ impl EcsWorld {
         }
     }
 
-    /// Runs the schedule when a player is online (none: nothing is awake), and returns the host's outputs since the last call, in order.
+    /// Runs the schedule when a player is online or a ticket keeps a chunk ticking (none: nothing is awake), and returns the host's outputs since the last call, in order.
     pub fn step(&mut self, mw: &MobWorld<'_>) -> Vec<HostEvent> {
         self.scan_fresh_names(mw);
         self.world.resource_mut::<view::Entered>().rotate();
-        let ticking = self.world.resource::<Online>().players().next().is_some();
+        // Entities tick where a player is, and in the chunks a ticket other than a player's keeps entity-ticking (a forced chunk):
+        // vanilla ticks those with no player online.
+        let ticking = self.world.resource::<Online>().players().next().is_some()
+            || self.world.resource::<crate::cow::Index>().zone.has_pins();
         self.note_game_time(mw, Some(ticking));
         if ticking {
             let level = Level { mw: Mw(lend(mw)), blocks: Blocks(std::ptr::null_mut()), occ: self.occ, half: 0 };

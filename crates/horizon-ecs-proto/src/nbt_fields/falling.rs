@@ -28,7 +28,12 @@ fn compound(t: &Tag) -> bool {
 /// `Time`: the entity's own ticks since it fell. The load re-arms the deadline with what the jar's limit leaves of it.
 fn write_time(w: &World, e: Entity, c: &mut Compound) {
     if let Some(f) = w.get::<FallingBlock>(e) {
-        c.insert("Time".into(), Tag::Int(now_of(w, e).saturating_sub(f.born) as i32));
+        // An entity asleep (its chunk does not tick) stands at the tick it fell asleep: its `Time` does not run.
+        let now = match w.get::<crate::zone::Dormant>(e) {
+            Some(d) => now_of(w, e).saturating_sub(w.resource::<crate::cow::Clock>().0.saturating_sub(d.since)),
+            None => now_of(w, e),
+        };
+        c.insert("Time".into(), Tag::Int(now.saturating_sub(f.born) as i32));
     }
 }
 
