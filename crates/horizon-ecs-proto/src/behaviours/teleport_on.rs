@@ -47,6 +47,10 @@ pub static MODULE: Module = Module {
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert((Spot { cfg: params::<Params>(p) }, Unchecked));
 }
+/// The body found no support at its last check: `Shulker.tick` asks again every tick until one holds.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+struct Unsupported;
 /// The body has not been asked yet whether its support holds (its first tick).
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -56,6 +60,32 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(check_supports.after(crate::cow::block_changes).run_if(
         |fresh: Query<(), With<Unchecked>>, b: Option<Res<crate::block_events::BlockEvents>>| !fresh.is_empty() || b.is_some_and(|b| !b.changed.is_empty()),
     ));
+    s.add_systems(retry_unsupported.after(check_supports).run_if(|q: Query<(), With<Unsupported>>| !q.is_empty()));
+}
+/// Every tick, the bodies still without support look again (`Shulker.tick` runs `canStayAt` each tick).
+fn retry_unsupported(w: &mut World) {
+    let all: Vec<Entity> = w.query_filtered::<Entity, With<Unsupported>>().iter(w).collect();
+    for e in all {
+        recheck(w, e);
+    }
+}
+/// A body without a holding support looks for one; the marker stays while none holds.
+fn recheck(w: &mut World, e: Entity) {
+    if w.get_entity(e).is_err() {
+        return;
+    }
+    if crate::bridge::host_vehicle::is_passenger(w, e) || can_stay(w, e) {
+        w.entity_mut(e).remove::<Unsupported>();
+        return;
+    }
+    find_new_attachment(w, e);
+    if w.get_entity(e).is_ok() {
+        if can_stay(w, e) {
+            w.entity_mut(e).remove::<Unsupported>();
+        } else {
+            w.entity_mut(e).insert(Unsupported);
+        }
+    }
 }
 /// `Shulker.tick`: a body that is not a passenger and whose support does not hold looks for another (`findNewAttachment`). By event: on its
 /// first tick, and when a block changes in the world.
@@ -68,7 +98,7 @@ fn check_supports(w: &mut World) {
     }
     for e in all {
         if !crate::bridge::host_vehicle::is_passenger(w, e) && !can_stay(w, e) {
-            find_new_attachment(w, e);
+            recheck(w, e);
         }
     }
 }
