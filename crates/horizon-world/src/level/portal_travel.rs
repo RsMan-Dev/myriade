@@ -546,7 +546,8 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         let spot = match full.or(partial) {
             Some((_, spot)) => spot,
             None => {
-                let min_start = (min_y + 1).max(70);
+                // PortalForcer.createPortal: max(getMinY() - 1, 70).
+                let min_start = (min_y - 1).max(70);
                 let max_start = max_placeable - 9;
                 if max_start < min_start {
                     return None;
