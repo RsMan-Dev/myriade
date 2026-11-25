@@ -5,7 +5,8 @@
 //! called by `give_to_owner` yet), the wool occlusion of vibrations, and the `interact` entry point (not called yet: the owner is set
 //! by `tame::set_owner`).
 //! The idle stroll is the brain's `RunOne` (`RandomStroll.fly(1.0)` weight 2, `SetWalkTargetFromLookTarget` weight 2, `DoNothing(30, 60)` weight 1), drawn again at each
-//! arrival: a goal with a mean wait of about 12 ticks (calibrated on the path walked in 90 s: 95 blocks in vanilla) stands for it (a plain wander waits 120). DOUBT: the glide damping of the allay's flight is not checked against vanilla (the default value is used).
+//! arrival. Without a look target the fly is drawn 2/3 of the time, the wait 1/3 (45 ticks mean): 0.5 x 45 = 22.5 ticks, and `idle_wait(12)` = 2 x (12 - 1) = 22 (95 blocks in 90 s, as vanilla).
+//! The glide is the free flight's drag 0.91 (`LivingEntity.travelFlying`, `FlyingMoveControl(20, true)`).
 use super::Def;
 use crate::behaviours::{animal_panic, event_listen, fly_stroll, give_to_owner, go_to_wanted, look_at_player, random_look, stay_close_to_owner, Cap, Entry};
 use crate::locomotion::{fly, Medium};

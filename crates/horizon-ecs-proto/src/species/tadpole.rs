@@ -1,6 +1,7 @@
 //! `Tadpole` (`aquatic.rs:134-150` goals, `animal_brain.rs:2740-2792` brain): a fish of the base (panic, avoidance of the player, swimming)
 //! and its brain (panic at 2.0, looking at players and at the nearest creatures, swimming about, following the frog food (slime ball) for
-//! 60 ticks, then its cooldown count of 60 ticks, the swim stroll, the walk to the look target). Its own swimming mode (`SmoothSwimming`) is not in this file: the fish's modes apply (DOUTE).
+//! 60 ticks, then its cooldown count of 60 ticks, the swim stroll, the walk to the look target). Its jar control is `SmoothSwimmingMoveControl(85, 10, 0.02, 0.1, true)`, but wired here
+//! it slows the swim (3D distance per 2 s: 2.0 against 2.84 in vanilla, 3.09 with the fish's control), so the fish's modes stay (DOUTE: `swim::Control::Smooth` itself). The ground walk is the fish's (DOUTE: vanilla has no ground path).
 use super::{templates::fish, Def};
 use crate::locomotion::{swim, walk, Medium};
 use crate::behaviours::{Cap, Entry};
