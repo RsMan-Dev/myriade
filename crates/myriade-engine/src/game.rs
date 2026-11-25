@@ -1102,7 +1102,12 @@ impl Game<'_> {
     /// ceiling) and the End, which vanilla names by id. Every rain, thunder
     /// and lightning rule asks this, never the dimension's id.
     fn level_key(&self) -> horizon_core::LevelKey {
-        horizon_core::LevelKey::builtin_or_overworld(self.dim.id())
+        // By the enum, not by the id's text: a mod's level is the overworld's here (`builtin_or_overworld`), and no id is looked up.
+        match self.dim {
+            Dim::Nether => horizon_core::LevelKey::NETHER,
+            Dim::End => horizon_core::LevelKey::END,
+            Dim::Overworld | Dim::Extra(_) => horizon_core::LevelKey::OVERWORLD,
+        }
     }
     /// The level's dimension type: a mod's or a data pack's own when it has one, else the
     /// built-in level's.
@@ -4773,11 +4778,13 @@ pub(crate) fn run_with(options: Options) -> Result<()> {
     // shutdown hook) halts the server and saves its players and levels on SIGTERM, SIGINT or SIGHUP.
     horizon_threads::catch_stop_signals();
     let started = Instant::now();
-    // A dedicated server times its spans always, so its slow ring holds the steps of a lag spike (microseconds a tick).
+    // A dedicated server keeps the slow ring's threshold but times no span until a tick is slow (`dedicated`'s loop arms them then): a
+    // span read two clocks, and an empty server's tick is a few microseconds.
+    let spikes_asked = options.spikes.is_some();
     if options.spikes.is_none() {
         options.spikes = Some(dedicated::SLOW_TICK_MS);
     }
-    tick_profile::want_spans(tick_profile::SPANS_SPIKES, options.spikes.is_some());
+    tick_profile::want_spans(tick_profile::SPANS_SPIKES, spikes_asked);
     // A player who allows performance statistics also says what their slow frames spent their
     // time in: this thread, which draws the frames, times its steps (wall time only).
     let vanilla_root = options.resources.clone();

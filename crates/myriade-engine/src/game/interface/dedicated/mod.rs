@@ -767,6 +767,8 @@ const LEGACY_PRESET_NAMES: [(&str, myriade_engine::save::WorldPreset); 2] = [
 const FAR_PROPERTY: &str = "horizon-max-view-distance";
 /// A tick slower than this, in milliseconds, enters the slow ring (five ticks' worth, a stall players feel) unless `HORIZON_SPIKES` names another.
 pub(super) const SLOW_TICK_MS: f32 = 250.0;
+/// How many ticks after a slow one the spans stay timed, so a lag spike's neighbours are described.
+const SPAN_ARM_TICKS: u32 = 200;
 /// `MinecraftServer.OVERLOADED_WARNING_INTERVAL_NANOS` plus 100 ticks: the
 /// "Can't keep up!" warning comes at most this often.
 const OVERLOAD_WARNING_INTERVAL: Duration = Duration::from_secs(15);
@@ -1483,6 +1485,9 @@ impl Game<'_> {
         let _stop_watchdog = StopWatchdog(watchdog.clone());
         let mut braked = Instant::now();
         let mut overload_warned: Option<Instant> = None;
+        // Spans are timed only after a slow tick (for `SPAN_ARM_TICKS` ticks), or always when `--spikes` asked.
+        let spikes_asked = super::tick_profile::wanted(super::tick_profile::SPANS_SPIKES);
+        let mut span_arm = 0_u32;
         // `/stop`, or a stop signal (the shutdown hook's `halt`): either way the players and levels are
         // saved below, after the wait `[transfer]` may make (transfer.rs).
         while !self.stop_now(&state) {
@@ -1515,7 +1520,7 @@ impl Game<'_> {
                 self.clock.sprinting(),
             );
             state.paused = paused;
-            self.give_memory_back_when_empty(&mut state, players, Instant::now());
+            self.give_memory_back_when_empty(&mut state, players, tick_start);
             if paused && state.empty_ticks == pause_after {
                 log(
                     "INFO",
@@ -1588,10 +1593,23 @@ impl Game<'_> {
                 self.kick_idle(idle_timeout);
             }
             // MinecraftServer.tickServer records each tick's time, for /tick query (and the status).
-            self.clock.record(tick_start.elapsed());
+            // One clock reading ends the tick: its length, its time on the capture's clock and the server's idle mark come from it.
+            let tick_end = Instant::now();
+            let tick_len = tick_end.duration_since(tick_start);
+            self.clock.record(tick_len);
+            let slow = tick_len.as_secs_f32() * 1000.0 > slow_ms;
+            if slow {
+                span_arm = SPAN_ARM_TICKS;
+                super::tick_profile::want_spans(super::tick_profile::SPANS_SPIKES, true);
+            } else if span_arm > 0 {
+                span_arm -= 1;
+                if span_arm == 0 && !spikes_asked {
+                    super::tick_profile::want_spans(super::tick_profile::SPANS_SPIKES, false);
+                }
+            }
             state.perf.tick(
-                state.perf_epoch.elapsed().as_secs_f64(),
-                tick_start.elapsed().as_secs_f32() * 1000.0,
+                tick_end.duration_since(state.perf_epoch).as_secs_f64(),
+                tick_len.as_secs_f32() * 1000.0,
                 tick_detail.take(),
                 || self.perf_world_counts(),
                 || self.wire_bytes(),
@@ -1606,7 +1624,7 @@ impl Game<'_> {
                 let mspt = self.clock.average_nanos() as f64 / 1e6;
                 far.brake(mspt, host.hub.config.view_distance);
             }
-            state.ticked(Instant::now());
+            state.ticked(tick_end);
             // MinecraftServer.runServer: a server more than a second's ticks
             // behind skips them and says so, at most every 15 seconds.
             if let Some(behind) = self.wait_for_next_server_tick(&mut next, paused)
