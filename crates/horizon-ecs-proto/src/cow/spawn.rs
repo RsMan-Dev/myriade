@@ -316,7 +316,7 @@ pub fn schedule() -> Schedule {
     // The order is explicit: due, index, stroll, pathfind, follow, move control, travel, push, resume, sleep.
     // The damage queued since the last tick (a blow, a fall, a hazard) is applied first: its recoil is integrated by
     // this tick's physics, as a mob's hurt precedes its tick.
-    s.add_systems(((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, fluid_update, pathfind, follow, path_ended, move_control).chain(), (breathing, wall_check, crate::fall_reset::fall_reset, travel, ordered_pass, reindex, crate::item::item_fluids_again, hazard_tick, wall_damage, push, apply_pushes).chain()).chain());
+    s.add_systems(((crate::zone::zone_step.run_if(crate::zone::zone_on), due, apply_damage, block_changes, recompute, player_near, crate::cow::born_in_fluid, fluid_update, pathfind, follow, path_ended, move_control).chain(), (breathing, wall_check, crate::fall_reset::fall_reset, travel, ordered_pass, reindex, crate::item::item_fluids_again, hazard_tick, wall_damage, push, apply_pushes).chain()).chain());
     s.add_systems(cramming.after(apply_pushes));
     s.add_systems(crate::seat::follow_moved.after(apply_pushes));
     s.add_systems(crate::cow::health::rain_out.after(crate::cow::health::hazard_tick));

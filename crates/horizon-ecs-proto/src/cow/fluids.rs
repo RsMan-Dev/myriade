@@ -45,6 +45,20 @@ pub struct FluidState {
 #[component(on_add = crate::behaviours::drink_potion::thirst_hook)]
 pub struct InFluid;
 
+/// Laid with `InFluid` at birth: `reindex` still owes the entry (events, mode of the water), which it does once, then takes this off.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct FluidNew;
+
+/// `Entity.tick` measures the fluid before the first move, so an entity born in water (a cow summoned, a projectile, a falling block)
+/// is `InFluid` from tick 1 and not one tick late (`reindex` runs after the move). Runs once per new box, before `fluid_update`.
+pub(crate) fn born_in_fluid(level: Res<Level>, q: Query<(Entity, &Bounds), (Added<Bounds>, Without<InFluid>)>, mut commands: Commands) {
+    for (e, b) in &q {
+        if level.mw.0.contains_any_liquid(b.0) {
+            commands.entity(e).insert((InFluid, FluidNew));
+        }
+    }
+}
+
 /// `Entity.getAirSupply`.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Air(pub i32);

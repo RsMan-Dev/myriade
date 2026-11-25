@@ -372,14 +372,14 @@ pub(crate) fn reindex(
     mut moves: ResMut<crate::goals::CellMoves>,
     hazards: Res<Hazards>,
     mut events: ResMut<crate::goals::Events>,
-    mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, &mut FluidState, Has<crate::bridge::ids::NetId>), Changed<Bounds>>,
+    mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, Has<super::fluids::FluidNew>, &mut FluidState, Has<crate::bridge::ids::NetId>), Changed<Bounds>>,
     // A followed entity that moved is sent again (the tracker reads `Modified`); absent when no player ever followed one.
     mut sent: Option<ResMut<crate::bridge::view::Modified>>,
     // Read only when the entity enters or leaves a fluid (rare): not part of the query that runs over every moved entity.
     all_modes: Query<&crate::locomotion::Modes>,
     mut commands: Commands,
 ) {
-    for (e, b, mut c, hz, in_fluid, mut fs, followed) in &mut q {
+    for (e, b, mut c, hz, in_fluid, fresh, mut fs, followed) in &mut q {
         if followed && let Some(m) = sent.as_mut() {
             m.push_motion(e);
         }
@@ -400,7 +400,10 @@ pub(crate) fn reindex(
         idx.set_box(e, cell, (mn.x, mn.z), (mx.x, mx.z));
         let bits = hazards.of_box_kept(&idx.chunks, &b.0, c.bypass_change_detection(), hz.map_or(0, |h| h.0));
         let fluid = bits & (HAZ_WATER | HAZ_LAVA) != 0;
-        if fluid && !in_fluid {
+        if fresh {
+            commands.entity(e).remove::<super::fluids::FluidNew>();
+        }
+        if fluid && (!in_fluid || fresh) {
             // A cow that enters a fluid (placed water, a push) needs its physics at once.
             commands.entity(e).insert((InFluid, Moving));
             events.entered_fluid.push(e);
