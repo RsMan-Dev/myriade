@@ -874,7 +874,8 @@ impl Game<'_> {
         // The End crystals and the dragon (EndCrystal and EnderDragon
         // are entities of their own).
         candidates.extend(self.ecs.crystal_views().into_iter().map(|(id, _)| Target::Crystal(id)));
-        candidates.extend(self.ecs.dragon_views().into_iter().map(|(id, _)| Target::Dragon(id)));
+        // `EntitySelector` keeps only `isAlive` entities: the dragon in its dying flight and its death animation (health 0) is not listed.
+        candidates.extend(self.ecs.dragon_views().into_iter().filter(|(id, _)| !self.ecs.entity_of(*id).is_some_and(|e| self.ecs.is_dead(e))).map(|(id, _)| Target::Dragon(id)));
         candidates.extend(self.ominous_ids().into_iter().map(Target::Spawner));
         candidates.extend(self.ecs.species_ids("minecraft:area_effect_cloud").into_iter().map(Target::Cloud));
         candidates.extend(self.natural_knot_ids().into_iter().map(Target::Knot));

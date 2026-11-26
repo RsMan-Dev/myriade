@@ -363,7 +363,8 @@ impl EcsLevel {
     }
     /// `Entity.isAlive` false: the body lingers (`LivingEntity.tickDeath`) or the host holds the death.
     pub fn is_dead(&self, e: Entity) -> bool {
-        self.world().is_some_and(|w| horizon_ecs_proto::tear_down::is_dead(w, e))
+        // `isAlive` is false at health 0 too (the dragon's dying flight, a mob between its last hit and its `die`); `tear_down::is_dead` stays the guard of `die`.
+        self.world().is_some_and(|w| horizon_ecs_proto::tear_down::is_dead(w, e) || w.get::<horizon_ecs_proto::cow::Health>(e).is_some_and(|h| h.0 <= 0.0))
     }
     pub fn select(&self, q: &Select) -> Vec<Entity> {
         self.inner.as_ref().map_or_else(Vec::new, |w| w.select(q))

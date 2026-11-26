@@ -249,7 +249,7 @@ impl Game<'_> {
             Target::Player | Target::Guest(_) => {
                 return Err(err("commands.data.entity.invalid", &[]));
             }
-            Target::General(id) | Target::Projectile(id) => {
+            Target::General(id) | Target::Projectile(id) | Target::Dragon(id) => {
                 let Tag::Compound(patch) = &tag else {
                     return Err(stale());
                 };
