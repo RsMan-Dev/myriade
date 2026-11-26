@@ -44,6 +44,8 @@ fn due(w: &mut World, e: Entity, id: u16) -> bool {
         Some(n) if now < n => return false,
         Some(_) => (now + 20 + goals::with_rng(w, e, |r| r.next_int(20)) as u64, true),
     };
+    // The brain may sleep until then: `AcquirePoi` is asked every tick in the jar, so its scheduled start wakes the brain.
+    crate::cow::arm_at(w, e, at, crate::cow::Due::BrainWake);
     let mut scan = w.get::<Scan>(e).cloned().unwrap_or(Scan(Vec::new()));
     scan.0.retain(|x| x.0 != id);
     scan.0.push((id, at));
