@@ -803,6 +803,11 @@ pub fn brain_step(world: &mut World) {
         if crate::tear_down::is_dead(world, e) {
             continue;
         }
+        // `LivingEntity.aiStep` runs `serverAiStep` (the brain) only under effective AI: kept awake, not stepped, under `NoAi` or a pause.
+        if world.get::<crate::dragon::flight::NoAi>(e).is_some() || world.get::<crate::goals::AiPaused>(e).is_some() {
+            world.resource_mut::<BrainAwake>().0.push(e);
+            continue;
+        }
         step(world, e);
     }
 }
