@@ -3,7 +3,12 @@
 //! retry and the loss are `poi_claim`'s.
 use crate::behaviours::poi_claim;
 use crate::brain::*;
-use crate::goals::Events;
+use crate::goals::{self, Events};
+
+/// `AcquirePoi`'s `nextScheduledStart`, one per entry of the plan (its `Ctx::id`): the tick of the next search; none before the first one.
+#[derive(Component, Clone, Debug, Default)]
+#[component(storage = "SparseSet")]
+pub struct Scan(pub Vec<(u16, u64)>);
 
 pub struct Params {
     pub claim: &'static poi_claim::Params,
@@ -26,7 +31,24 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     if p.adult && (p.baby)(w, e) {
         return false;
     }
-    (poi_claim::BEHAVIOUR.can_start)(w, e, &inner(c, p))
+    // The schedule is tested before the search: a search runs only when due, then the next one is set 20 to 39 ticks on.
+    due(w, e, c.id) && (poi_claim::BEHAVIOUR.can_start)(w, e, &inner(c, p))
+}
+
+/// `AcquirePoi.create`'s gate: the first call only draws `nextInt(20)`; later, a call is due at the scheduled tick.
+fn due(w: &mut World, e: Entity, id: u16) -> bool {
+    let now = now_of(w, e);
+    let next = w.get::<Scan>(e).and_then(|s| s.0.iter().find(|x| x.0 == id).map(|x| x.1));
+    let (at, due) = match next {
+        None => (now + goals::with_rng(w, e, |r| r.next_int(20)) as u64, false),
+        Some(n) if now < n => return false,
+        Some(_) => (now + 20 + goals::with_rng(w, e, |r| r.next_int(20)) as u64, true),
+    };
+    let mut scan = w.get::<Scan>(e).cloned().unwrap_or(Scan(Vec::new()));
+    scan.0.retain(|x| x.0 != id);
+    scan.0.push((id, at));
+    w.entity_mut(e).insert(scan);
+    due
 }
 
 fn start(w: &mut World, e: Entity, c: &Ctx) {

@@ -101,6 +101,8 @@ impl Game<'_> {
                     self.golem_chest_open(chest, open, id)
                 }
                 HostEvent::ChestSlot { chest, slot, stack } => self.golem_chest_slot(chest, slot, stack),
+                HostEvent::BedOccupied { pos, occupied } => self.set_bed_occupied(pos, occupied),
+                HostEvent::CuredZombieVillager { villager, player } => self.ecs_cured_zombie_villager(villager, player),
                 HostEvent::Arrow(ev) => self.ecs_arrow_event(ev),
                 HostEvent::Inside(ev) => self.ecs_inside_event(ev),
                 HostEvent::BoatEffect(ev) => self.ecs_boat_effect_event(ev),
@@ -252,6 +254,21 @@ impl Game<'_> {
         self.ecs.push(id, [v.x, v.y, v.z]);
     }
 
+    /// `CuredZombieVillagerTrigger` for the player `by` (a guest, else the acting player): the zombie, read as the villager's position
+    /// and kind `zombie_villager` (the zombie left at the cure), and the villager it became.
+    fn ecs_cured_zombie_villager(&mut self, villager: Entity, by: u32) {
+        let id = self.entity_id(villager);
+        let Some(v) = self.ecs_host_view(id) else { return };
+        let zombie = myriade_engine::advancements::EntityView { kind: "minecraft:zombie_villager".into(), position: v.position, ..Default::default() };
+        let guest = self.lan.as_ref().and_then(|h| h.hub.guests.iter().find(|g| g.entity_id as u32 == by).map(|g| g.conn));
+        match guest {
+            Some(conn) => {
+                self.as_guest(conn, |g| g.trigger_cured_zombie(&zombie, &v));
+            }
+            None if self.player.as_ref().is_some_and(|me| me.entity_id as u32 == by) => self.trigger_cured_zombie(&zombie, &v),
+            None => {}
+        }
+    }
     /// `ThrownEnderpearl`: 5% endermite where the player stood (when monsters spawn), the teleport, 5 damage. The ECS
     /// has already rolled the endermite, so `endermite` is that roll.
     fn pearl_lands(&mut self, to: [f64; 3], damage: f32, endermite: bool) {

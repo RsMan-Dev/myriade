@@ -53,6 +53,10 @@ pub enum HostEvent {
     PullEntity { entity: bevy_ecs::entity::Entity, velocity: [f64; 3] },
     /// `MobEvent::ChestOpen`: a chest's lid moves for the mob `entity`.
     ChestOpen { chest: [i32; 3], open: bool, entity: bevy_ecs::entity::Entity },
+    /// `MobEvent::BedOccupied`: `LivingEntity.startSleeping` / `stopSleeping` set the bed head at `pos` occupied or not.
+    BedOccupied { pos: [i32; 3], occupied: bool },
+    /// `ZombieVillager.finishConversion`: the villager `villager` is cured by the player `player` (`CuredZombieVillagerTrigger`).
+    CuredZombieVillager { villager: bevy_ecs::entity::Entity, player: u32 },
     /// `MobEvent::WorkAtComposter`: the villager `entity` works at the composter `pos` (`WorkAtComposter.compostItems`): the host
     /// applies the effect on the block (its level, the extraction at 8, the level events) from the villager's stacks.
     ComposterWork { entity: bevy_ecs::entity::Entity, pos: [i32; 3] },
@@ -162,6 +166,12 @@ impl HostOut {
     }
     pub fn chest_open(&mut self, chest: [i32; 3], open: bool, entity: bevy_ecs::entity::Entity) {
         self.out.push(HostEvent::ChestOpen { chest, open, entity });
+    }
+    pub fn bed_occupied(&mut self, pos: [i32; 3], occupied: bool) {
+        self.out.push(HostEvent::BedOccupied { pos, occupied });
+    }
+    pub fn cured_zombie_villager(&mut self, villager: bevy_ecs::entity::Entity, player: u32) {
+        self.out.push(HostEvent::CuredZombieVillager { villager, player });
     }
     pub fn chest_slot(&mut self, chest: [i32; 3], slot: usize, stack: Option<ItemStack>) {
         self.out.push(HostEvent::ChestSlot { chest, slot, stack });

@@ -1182,6 +1182,18 @@ impl Game<'_> {
             adv::killed(c, &me, &target, blow.as_ref(), w)
         });
     }
+    /// `CuredZombieVillagerTrigger`: the zombie and the villager it became, both judged with the player.
+    pub(in crate::game) fn trigger_cured_zombie(&mut self, zombie: &EntityView, villager: &EntityView) {
+        let name = "minecraft:cured_zombie_villager";
+        let me = self.player_entity_for(name);
+        let (zombie, villager) = (zombie.clone(), villager.clone());
+        self.trigger(name, move |c, w| {
+            let pctx = adv::Entities { this: Some(&me), origin: me.position, tool: None, block_pos: None };
+            let zctx = adv::Entities { this: Some(&zombie), origin: me.position, tool: None, block_pos: None };
+            let vctx = adv::Entities { this: Some(&villager), origin: me.position, tool: None, block_pos: None };
+            adv::conditions(&c["player"], &pctx, w) && adv::conditions(&c["zombie"], &zctx, w) && adv::conditions(&c["villager"], &vctx, w)
+        });
+    }
     /// `KilledByArrowTrigger`: what the arrow killed and the weapon it came from.
     pub(in crate::game) fn trigger_killed_by_arrow(
         &mut self,

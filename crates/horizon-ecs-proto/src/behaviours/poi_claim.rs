@@ -33,8 +33,19 @@ pub struct Params {
 
 /// Les prises d'un villageois : rare, sparse.
 #[derive(Component, Clone)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_remove = release_claims)]
 pub struct Claims(pub Vec<Claim>);
+
+/// `Villager.die` / removal: the tickets still held go back to the registry (`releasePoi`), and the entity leaves the index.
+fn release_claims(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let Some(cs) = world.get::<Claims>(ctx.entity).cloned() else { return };
+    for c in cs.0 {
+        world.resource_mut::<PoiRegistry>().release(c.pos);
+        if let Some(owners) = world.resource_mut::<ClaimIndex>().0.get_mut(&c.pos) {
+            owners.retain(|&x| x != ctx.entity);
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 pub struct Claim {

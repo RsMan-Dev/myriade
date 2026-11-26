@@ -12,7 +12,7 @@ pub static NEAREST_BED: MemKey = MemKey::new("minecraft:nearest_bed", Shape::Blo
 
 /// Le dormeur est couché dans ce lit.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet", on_add = box_changed, on_remove = box_changed)]
+#[component(storage = "SparseSet", on_add = sleeping_added, on_remove = sleeping_removed)]
 pub struct Sleeping(pub [i32; 3]);
 
 /// `Villager.addAdditionalSaveData` writes `sleeping_pos` only while asleep; the position is the bed's block, read back as is.
@@ -34,6 +34,20 @@ fn read_sleeping(w: &mut World, e: Entity, t: &Tag) -> bool {
     let [x, y, z] = v.as_slice() else { return false };
     w.entity_mut(e).insert(Sleeping([*x, *y, *z]));
     true
+}
+
+/// `LivingEntity.startSleeping` / `stopSleeping`: the bed's head is marked occupied (or freed) by the host, once per change of state.
+fn sleeping_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    bed_occupied(&mut world, ctx.entity, true);
+    box_changed(world, ctx);
+}
+fn sleeping_removed(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    bed_occupied(&mut world, ctx.entity, false);
+    box_changed(world, ctx);
+}
+fn bed_occupied(world: &mut bevy_ecs::world::DeferredWorld, e: Entity, occupied: bool) {
+    let Some(&Sleeping(pos)) = world.get::<Sleeping>(e) else { return };
+    world.commands().queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().host.bed_occupied(pos, occupied));
 }
 
 /// The sleeper's box changes with the bed (`refresh_box`): queued, so that the removal is over when it runs.

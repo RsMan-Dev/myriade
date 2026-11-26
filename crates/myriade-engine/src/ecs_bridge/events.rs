@@ -135,6 +135,7 @@ pub fn to_mob_event(world: &World, ev: HostEvent) -> Option<MobEvent> {
         HostEvent::Xp { at, amount } => MobEvent::Experience { at, amount },
         HostEvent::LevelEvent { event, at, data } => MobEvent::LevelEvent { id: event, pos: at, data },
         HostEvent::ChestOpen { chest, open, entity } => MobEvent::ChestOpen { chest, open, mob: id_of(world, entity)? },
+        HostEvent::BedOccupied { pos, occupied } => MobEvent::BedOccupied { pos, occupied },
         HostEvent::ChestSlot { chest, slot, stack } => MobEvent::ChestSlot { chest, slot, stack },
         HostEvent::ParrotToShoulder { parrot, .. } => MobEvent::ParrotToShoulder { mob: id_of(world, parrot)? },
         HostEvent::PullEntity { entity, velocity } => MobEvent::Push { target: Who::Mob(id_of(world, entity)?), velocity },
@@ -152,6 +153,7 @@ pub fn to_mob_event(world: &World, ev: HostEvent) -> Option<MobEvent> {
         | HostEvent::BlockPlace { .. }
         | HostEvent::Pearl { .. }
         | HostEvent::Death { .. }
+        | HostEvent::CuredZombieVillager { .. }
         | HostEvent::ConversionAsk { .. }
         | HostEvent::TargetChanged { target: None, .. }
         | HostEvent::Spawned { .. }
