@@ -766,6 +766,12 @@ fn category_for_position(w: &mut World, sp: &mut Spawner, cx: &Ctx, cat: Categor
     let _ = cx.time;
 }
 /// A creature of the wild is born: in the world, in the index, its timers armed, counted, and given its rule of going away.
+/// `Phantom.finalizeSpawn`: the anchor is 5 blocks above where it stands; the modules that read the position ran before its height was set.
+pub fn reseat_anchor(w: &mut World, e: Entity, at: [f64; 3]) {
+    if w.get::<crate::cow::Anchor>(e).is_some() && crate::nbt::id_of_entity(w, e) == Some("minecraft:phantom") {
+        w.entity_mut(e).insert(crate::cow::Anchor([at[0].floor() as i32, at[1].floor() as i32 + 5, at[2].floor() as i32]));
+    }
+}
 pub fn born(w: &mut World, sp: &crate::cow::Species, at: [f64; 3], seed: u64, nearest_sqr: f64) -> Entity {
     ensure(w);
     let e = crate::cow::spawn_species(w, sp, at[0], at[2], seed);
@@ -774,6 +780,7 @@ pub fn born(w: &mut World, sp: &crate::cow::Species, at: [f64; 3], seed: u64, ne
     if let Some(mut b) = w.get_mut::<crate::cow::Bounds>(e) {
         b.0 = box_at(Vec3::new(at[0], at[1], at[2]), sp.width, sp.height);
     }
+    reseat_anchor(w, e, at);
     crate::goals::arm_timers(w, e);
     crate::zone::admit(w, &[e]);
     if let Some(def) = spawn_def(sp) {
