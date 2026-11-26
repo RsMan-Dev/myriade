@@ -304,7 +304,8 @@ fn explode_full(w: &mut World, b: Blast, breaks_blocks: bool, skull: bool) {
         v
     };
     for (id, bx) in players {
-        let feet = bx.min_position();
+        // `Entity.position()`: the middle of the box's bottom, not its corner.
+        let feet = Vec3::new((bx.min_position().x + bx.max_position().x) / 2.0, bx.min_position().y, (bx.min_position().z + bx.max_position().z) / 2.0);
         let dist = distance_share(feet, b.at, diameter);
         if dist > 1.0 {
             continue;
