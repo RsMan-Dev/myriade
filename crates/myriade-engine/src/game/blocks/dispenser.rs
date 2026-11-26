@@ -342,18 +342,11 @@ impl Game<'_> {
 
     /// The dispenser level events: 1000 click, 1001 fail, 1002 launch, 1004
     /// firework shoot, 1018 blaze shoot and 2000 smoke shot out of the front.
-    pub(super) fn dispenser_event(&mut self, id: i32, pos: Pos, _data: i32) {
+    pub(super) fn dispenser_event(&mut self, id: i32, pos: Pos, data: i32) {
         let c = Self::center(pos);
         match id {
-            1000 => self
-                .audio
-                .play("minecraft:block.dispenser.dispense", Some(c), 1.0, 1.0),
-            1001 => self
-                .audio
-                .play("minecraft:block.dispenser.fail", Some(c), 1.0, 1.2),
-            1002 => self
-                .audio
-                .play("minecraft:block.dispenser.launch", Some(c), 1.0, 1.2),
+            // Vanilla's events: the clients play the click, fail and launch sounds and the smoke.
+            1000..=1002 | 2000 => self.level_event_at(id, [pos.0, pos.1, pos.2], data),
             1004 => self
                 .audio
                 .play("minecraft:entity.firework_rocket.shoot", Some(c), 1.0, 1.2),
