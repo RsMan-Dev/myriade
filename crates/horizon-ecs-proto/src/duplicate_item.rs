@@ -40,6 +40,7 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
     if let Some(mut q) = w.get_mut::<Pos>(copy) {
         q.0 = at;
     }
+    crate::brain::start(w, copy);
     let until = now + p.cooldown;
     w.entity_mut(e).insert(Cooldown(until));
     let copy_now = now_of(w, copy);

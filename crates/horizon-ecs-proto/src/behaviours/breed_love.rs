@@ -89,6 +89,9 @@ pub fn birth(w: &mut World, e: Entity, items: &Items) -> Option<Entity> {
     // `VillagerMakeLove.breed`: the child is snapped to the first parent (the one whose brain ticks).
     let at = w.get::<Pos>(e).unwrap().0;
     let baby = spawn_like(w, e, at.x, at.z, seed);
+    if let Some(mut p) = w.get_mut::<Pos>(baby) {
+        p.0.y = at.y;
+    }
     crate::species::goat::inherit_screaming(w, baby, e, m.partner);
     w.entity_mut(baby).insert(GrowAt(now + GROWN));
     crate::attr_mod::apply_load(w, baby);
@@ -98,6 +101,8 @@ pub fn birth(w: &mut World, e: Entity, items: &Items) -> Option<Entity> {
         w.entity_mut(p).insert(Resting(now + REST));
     }
     inherit_type(w, baby, e, m.partner);
+    // The child's brain equips its behaviours (`spawn_like` leaves that to the caller, as `breed::give_birth` does).
+    crate::brain::start(w, baby);
     // Entity event 12 on the child (hearts).
     w.resource_mut::<Events>().host.entity_event(baby, 12);
     Some(baby)
