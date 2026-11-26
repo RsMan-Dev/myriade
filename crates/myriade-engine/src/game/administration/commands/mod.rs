@@ -2116,9 +2116,14 @@ impl Game<'_> {
         }
         let name;
         if kind == "minecraft:ender_dragon" || self.res.mob_types().contains_key(&kind) {
-            let id = self
-                .ecs_spawn(&kind, pos, None)
-                .ok_or_else(|| err("commands.summon.failed.uuid", &[]))?;
+            // `SummonCommand.createEntity(.., finalize = true)`: a mob without an NBT argument is finalized (its gear, size, variant).
+            let id = if kind != "minecraft:ender_dragon" && self.ecs.is_active() {
+                let site = super::creatures::SpawnSite::Finalizing(myriade_engine::mobs::spawn_rules::Reason::Command);
+                self.ecs_spawn_mob(&kind, pos, false, None, site)
+            } else {
+                self.ecs_spawn(&kind, pos, None)
+            }
+            .ok_or_else(|| err("commands.summon.failed.uuid", &[]))?;
             name = self.target_name(Target::Mob(id));
         } else {
             match short.as_str() {

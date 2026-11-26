@@ -100,7 +100,10 @@ fn write_size(w: &World, e: Entity, c: &mut Compound) {
 /// The jar's `setSize(getInt + 1)`, clamped to 1..=127 as the Horizon client does.
 fn read_size(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Int(v) = t else { return false };
-    w.entity_mut(e).insert(Size((v + 1).clamp(1, 127)));
+    let size = (v + 1).clamp(1, 127);
+    w.entity_mut(e).insert(Size(size));
+    // `setSize(size, false)`: the box, speed, damage and maximum health follow the size, not only the number.
+    crate::size::set_size(w, e, size);
     true
 }
 
