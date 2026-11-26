@@ -247,6 +247,10 @@ impl Game<'_> {
             }
         };
         let (Some(e), Some(pos)) = (self.ecs.entity_of(id), self.ecs.position(id)) else { return false };
+        // Only an armor stand is this click's target: any other entity goes on to its own interaction.
+        if self.ecs.world().is_none_or(|w| w.get::<EcsStand>(e).is_none()) {
+            return false;
+        }
         let at = pos;
         let held = self.held().cloned();
         if let Some(stack) = held.as_ref().filter(|h| &*h.item == "minecraft:name_tag") {
