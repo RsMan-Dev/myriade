@@ -17,8 +17,8 @@ pub struct NextToPoi(pub u64);
 #[derive(Component, Default, Clone, Copy)]
 pub struct NextToPoiList(pub u64);
 
-pub static TO_POI: Behaviour = Behaviour { name: "minecraft:villager_stroll_to_poi", mems: &[&JOB_SITE, &WALK_TARGET], one_shot: true, can_start: to_poi, start: nothing, ..Behaviour::DEFAULT };
-pub static TO_POI_LIST: Behaviour = Behaviour { name: "minecraft:villager_stroll_to_poi_list", mems: &[&SECONDARY_JOB_SITE, &JOB_SITE, &WALK_TARGET], one_shot: true, can_start: to_list, start: nothing, ..Behaviour::DEFAULT };
+pub static TO_POI: Behaviour = Behaviour { name: "minecraft:villager_stroll_to_poi", mems: &[&JOB_SITE, &WALK_TARGET], one_shot: true, can_start: to_poi, start: nothing, reset: |w, e, _| { w.entity_mut(e).remove::<NextToPoi>(); }, ..Behaviour::DEFAULT };
+pub static TO_POI_LIST: Behaviour = Behaviour { name: "minecraft:villager_stroll_to_poi_list", mems: &[&SECONDARY_JOB_SITE, &JOB_SITE, &WALK_TARGET], one_shot: true, can_start: to_list, start: nothing, reset: |w, e, _| { w.entity_mut(e).remove::<NextToPoiList>(); }, ..Behaviour::DEFAULT };
 
 fn nothing(_: &mut World, _: Entity, _: &Ctx) {}
 

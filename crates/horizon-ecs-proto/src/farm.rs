@@ -110,6 +110,10 @@ pub fn on_grown(w: &mut World) {
             arm_egg(w, e);
         }
         crate::gift_drop::on_grown(w, e);
+        // `Villager.ageBoundaryReached`: the brain is built again for the adult.
+        if w.get::<crate::cow::TypeName>(e).is_some_and(|n| n.0 == "minecraft:villager") {
+            crate::brain::refresh(w, e);
+        }
     }
 }
 /// The wings: `flapSpeed` rises in the air and falls on the ground, `flapping` restarts at 1 in the air and decays, and

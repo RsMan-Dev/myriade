@@ -21,6 +21,7 @@ pub static BEHAVIOUR: Behaviour = Behaviour {
     can_start,
     start,
     tick,
+    reset: |w, e, _| { w.entity_mut(e).remove::<LastCheck>(); },
     ..Behaviour::DEFAULT
 };
 

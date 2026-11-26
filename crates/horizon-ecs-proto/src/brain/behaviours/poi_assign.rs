@@ -29,6 +29,7 @@ fn site(w: &World, e: Entity, k: &MemKey) -> Option<[i32; 3]> {
     }
 }
 
+use crate::brain::refresh as refresh_brain;
 fn keep(_: &mut World, _: Entity) {}
 
 fn can_assign(w: &mut World, e: Entity, c: &Ctx) -> bool {
@@ -42,12 +43,14 @@ fn assign(w: &mut World, e: Entity, c: &Ctx) {
     let Some(s) = site(w, e, p.potential) else { return };
     erase(w, e, p.potential);
     set(w, e, p.job, MemValue::Block(s), None);
+    let mut refresh = false;
     if w.get::<Profession>(e).is_none() {
         profession::on_acquired(w, e, s);
         let kind = w.get::<Profession>(e).map(|j| j.0);
         let name = p.professions.iter().find(|(k, _)| Some(*k) == kind).map(|&(_, n)| n);
         if let Some(i) = name.and_then(|n| (0..=u8::MAX).find(|&i| trade_offers::profession_name(w, i).trim_start_matches("minecraft:") == n)) {
             trade_offers::set_profession(w, e, i);
+            refresh = true;
         }
     }
     if let Some(mut cs) = w.get_mut::<Claims>(e) {
@@ -57,6 +60,10 @@ fn assign(w: &mut World, e: Entity, c: &Ctx) {
         }
     }
     happy_particles(w, e);
+    // `AssignProfessionFromJobSite`: `setVillagerData` then `Villager.refreshBrain`.
+    if refresh {
+        refresh_brain(w, e);
+    }
 }
 
 fn can_reset(w: &mut World, e: Entity, c: &Ctx) -> bool {
@@ -67,6 +74,8 @@ fn can_reset(w: &mut World, e: Entity, c: &Ctx) -> bool {
 fn reset(w: &mut World, e: Entity, _: &Ctx) {
     trade_offers::set_profession(w, e, NONE);
     w.entity_mut(e).remove::<Profession>();
+    // `ResetProfession`: `setVillagerData` then `Villager.refreshBrain`.
+    refresh_brain(w, e);
 }
 
 pub static ASSIGN: Behaviour = Behaviour { name: "minecraft:assign_profession", one_shot: true, can_start: can_assign, start: assign, ..Behaviour::DEFAULT };

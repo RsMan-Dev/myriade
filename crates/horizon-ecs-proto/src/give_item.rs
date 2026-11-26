@@ -144,6 +144,8 @@ fn finish_cure(w: &mut World, e: Entity) {
     if finalized {
         w.entity_mut(n).insert(crate::bridge::sync_a::VillagerFinalized);
     }
+    // `ZombieVillager.finishConversion`: `Villager.refreshBrain` after the profession is given.
+    crate::brain::refresh(w, n);
     effects::add(w, n, Kind::Nausea, 0, 200);
     if let Some(at) = at.filter(|_| !silent) {
         w.resource_mut::<Events>().host.level_event(1027, at, 0);

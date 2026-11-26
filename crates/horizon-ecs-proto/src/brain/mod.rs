@@ -278,6 +278,8 @@ pub struct Behaviour {
     pub sleeps: fn(&World, Entity, &Ctx) -> bool,
     pub gate: Option<Gate>,
     pub equip: fn(&mut World, Entity, &Ctx),
+    /// Its own state as a new instance has it (`Villager.refreshBrain` builds the behaviours again): timers and last checks forgotten.
+    pub reset: fn(&mut World, Entity, &Ctx),
     pub can_start: fn(&mut World, Entity, &Ctx) -> bool,
     pub start: fn(&mut World, Entity, &Ctx),
     /// Every tick while it runs, after the timeout check; false = stop.
@@ -305,6 +307,7 @@ impl Behaviour {
         gate: None,
         sleeps: no,
         equip: nothing,
+        reset: nothing,
         can_start: yes,
         start: nothing,
         tick: yes,
@@ -511,6 +514,8 @@ pub struct Brain {
     sight: Vec<(Who, bool)>,
     /// The entity carries [`Extra`] (read with the brain, so an entity without any pays no lookup).
     extra: bool,
+    /// `refresh` ran in this step: the new brain starts nothing before the next one.
+    refreshed: bool,
 }
 impl Brain {
     fn holds(&self, needs: &[(u16, bool)]) -> bool {
@@ -519,7 +524,7 @@ impl Brain {
     /// `active && !running && needs` of a top-level behaviour (the step's start loop).
     fn ready(&self, id: u16) -> bool {
         let i = &self.plan.insts[id as usize];
-        (i.act == 0 || self.activity == i.act) && !self.run[id as usize].running && self.holds(&i.needs_l)
+        !self.refreshed && (i.act == 0 || self.activity == i.act) && !self.run[id as usize].running && self.holds(&i.needs_l)
     }
     fn kid_ready(&self, id: u16) -> bool {
         !self.run[id as usize].running && self.holds(&self.plan.insts[id as usize].needs_l)
@@ -591,7 +596,7 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 /// The components of the capability (the plan is the species' resolved brain).
 pub fn bundle(plan: &'static Plan) -> Brain {
     let slots = plan.mems.iter().map(|_| Slot { v: None, token: 0, until: u64::MAX }).collect();
-    Brain { plan, slots, run: vec![Run::default(); plan.insts.len()], activity: plan.pick.last().copied().unwrap_or(0), awake: false, armed: vec![false; plan.sensors.len()], sight: Vec::new(), extra: false }
+    Brain { plan, slots, run: vec![Run::default(); plan.insts.len()], activity: plan.pick.last().copied().unwrap_or(0), awake: false, armed: vec![false; plan.sensors.len()], sight: Vec::new(), extra: false, refreshed: false }
 }
 /// Creation: the starting memories, the behaviours' own state, the sensors' first scans (a random phase each, as `Mob`).
 pub fn start(w: &mut World, e: Entity) {
@@ -607,6 +612,49 @@ pub fn start(w: &mut World, e: Entity) {
         (plan.sensors[i].sensor.equip)(w, e, &sensor_ctx(plan, i));
     }
     arm(w, e);
+    wake(w, e);
+}
+/// The memories `MemoryModuleType` registers without a codec (`register(String)`, read at the jar): `Brain.pack` leaves them out.
+const VOLATILE: &[&str] = &[
+    "secondary_job_site", "mobs", "visible_mobs", "visible_villager_babies", "nearest_players", "nearest_visible_player", "nearest_visible_targetable_player",
+    "nearest_visible_targetable_players", "walk_target", "look_target", "attack_target", "attack_cooling_down", "interaction_target", "breed_target", "ride_target",
+    "path", "doors_to_close", "nearest_bed", "hurt_by", "hurt_by_entity", "avoid_target", "nearest_hostile", "nearest_attackable", "hiding_place", "heard_bell_time",
+    "cant_reach_walk_target_since", "nearest_visible_adult", "nearest_visible_wanted_item", "nearest_visible_nemesis", "tempting_player", "long_jump_mid_jump",
+    "ram_target", "unreachable_tongue_targets", "transport_items_cooldown_ticks", "spear_fleeing_time", "spear_fleeing_position", "spear_charge_position",
+    "spear_engage_time", "spear_status", "time_trying_to_reach_admire_item", "disable_walk_to_admire_item", "celebrate_location", "dancing",
+    "nearest_visible_huntable_hoglin", "nearest_visible_baby_hoglin", "nearest_targetable_player_not_wearing_gold", "nearby_adult_piglins",
+    "nearest_visible_adult_piglins", "nearest_visible_adult_hoglins", "nearest_visible_adult_piglin", "nearest_visible_zombified", "visible_adult_piglin_count",
+    "visible_adult_hoglin_count", "nearest_player_holding_wanted_item", "ate_recently", "nearest_repellent", "pacified", "roar_target", "disturbance_location",
+    "sniffer_sniffing_target", "sniffer_digging", "sniffer_happy",
+];
+/// `Villager.refreshBrain` (profession given or lost, a baby grown up, a zombie villager cured): `Brain.stopAll` (the stop of what runs),
+/// the brain built again from `Brain.pack` (the memories without a codec are lost, the behaviours are new instances), then the activity of
+/// the schedule. The new brain starts nothing before the next step. A fixed cost, paid by the call, nothing at rest.
+pub fn refresh(w: &mut World, e: Entity) {
+    let Some(plan) = w.get::<Brain>(e).map(|b| b.plan) else { return };
+    for &id in &plan.order {
+        if running(w, e, id) {
+            do_stop(w, e, plan, id);
+        }
+    }
+    if let Some(mut b) = w.get_mut::<Brain>(e) {
+        for (s, k) in b.slots.iter_mut().zip(&plan.mems) {
+            if s.v.is_some() && k.name.strip_prefix("minecraft:").is_some_and(|n| VOLATILE.contains(&n)) {
+                s.v = None;
+                s.token += 1;
+            }
+        }
+        b.run.iter_mut().for_each(|r| *r = Run::default());
+        b.sight.clear();
+        b.activity = plan.pick.last().copied().unwrap_or(0);
+        b.refreshed = true;
+    }
+    for (id, inst) in plan.insts.iter().enumerate() {
+        let c = Ctx { id: id as u16, nth: inst.nth, params: inst.params };
+        (inst.b.equip)(w, e, &c);
+        (inst.b.reset)(w, e, &c);
+    }
+    update_activity(w, e, plan);
     wake(w, e);
 }
 /// `Brain.setActivity` by name: the activity holds until `update_activity` picks the next one. Costs nothing unless called.
@@ -818,6 +866,7 @@ pub fn is_active(w: &World, e: Entity, name: &str) -> bool {
 fn step(w: &mut World, e: Entity) {
     let Some(mut b) = w.get_mut::<Brain>(e) else { return };
     b.awake = false;
+    b.refreshed = false;
     let (plan, extra) = (b.plan, b.extra);
     drop(b);
     bp!("step", "total");

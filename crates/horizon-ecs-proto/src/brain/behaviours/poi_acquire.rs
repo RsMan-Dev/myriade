@@ -61,4 +61,4 @@ fn start(w: &mut World, e: Entity, c: &Ctx) {
     }
 }
 
-pub static BEHAVIOUR: Behaviour = Behaviour { name: "minecraft:acquire_poi", one_shot: true, can_start, start, ..Behaviour::DEFAULT };
+pub static BEHAVIOUR: Behaviour = Behaviour { name: "minecraft:acquire_poi", one_shot: true, can_start, start, reset: |w, e, _| { w.entity_mut(e).remove::<Scan>(); }, ..Behaviour::DEFAULT };

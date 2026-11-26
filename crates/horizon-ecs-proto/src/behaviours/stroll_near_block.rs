@@ -59,4 +59,4 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
 }
 fn nothing(_: &mut World, _: Entity, _: &Ctx) {}
 
-pub static BEHAVIOUR: Behaviour = Behaviour { name: "stroll_near_block", mems: &[&WALK_TARGET], one_shot: true, can_start, start: nothing, ..Behaviour::DEFAULT };
+pub static BEHAVIOUR: Behaviour = Behaviour { name: "stroll_near_block", mems: &[&WALK_TARGET], one_shot: true, can_start, start: nothing, reset: |w, e, _| { w.entity_mut(e).remove::<NextStroll>(); }, ..Behaviour::DEFAULT };
