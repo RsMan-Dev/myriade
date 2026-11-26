@@ -102,9 +102,10 @@ pub fn hit(w: &mut World, e: Entity, by: Option<u32>, fire: bool, creative: bool
 
 /// The crystal nearest to `p` whose box meets `reach` (`nearest_crystal_to`). Read when a fight needs it, never per tick.
 pub fn nearest_to(w: &mut World, p: Vec3, reach: Aabb) -> Option<Entity> {
-    let mut q = w.query::<(Entity, &Pos, &EndCrystal)>();
+    // The world's crystals are `end_crystal::EndCrystal` (placed by the level, loaded from NBT), the dragon's own ones are `EndCrystal`.
+    let mut q = w.query_filtered::<(Entity, &Pos), Or<(With<EndCrystal>, With<crate::end_crystal::EndCrystal>)>>();
     q.iter(w)
-        .filter(|(_, c, _)| bounds(c.0).intersects(reach))
+        .filter(|(_, c)| bounds(c.0).intersects(reach))
         .min_by(|a, b| a.1 .0.distance_squared(p).total_cmp(&b.1 .0.distance_squared(p)))
-        .map(|(e, _, _)| e)
+        .map(|(e, _)| e)
 }

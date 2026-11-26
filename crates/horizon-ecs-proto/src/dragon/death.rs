@@ -1,4 +1,4 @@
-//! The dragon's death (`D/death.rs`, `tick_dragon_death`; `dragon_killed` D:3035). Two hundred ticks driven by the flight tick (health 0): rays at 180..=200, orbs from tick 150 every 5 ticks, the rise, the level event 1028 at tick 1,
+//! The dragon's death (`D/death.rs`, `tick_dragon_death`; `dragon_killed` D:3035). Two hundred ticks driven by the flight tick (health 0): no particle (vanilla's rays are client-side), orbs from tick 150 every 5 ticks, the rise, the level event 1028 at tick 1,
 //! and at tick 200 the last orbs, the removal and, for the fight's dragon, `dragon_killed`.
 use crate::cow::*;
 use crate::dragon::fight::{DragonKilled, EndFight, FightEvents};
@@ -24,20 +24,12 @@ pub fn tick(w: &mut World, e: Entity) {
     w.entity_mut(e).insert(DeathTime(t));
     let at = w.get::<Pos>(e).unwrap().0;
     let mut rng = w.entity_mut(e).take::<DragonRng>().expect("dragon rng");
-    if rule::is_blast_tick(t) {
-        let o = rule::jitter(&mut rng.0, [8.0, 4.0, 8.0]);
-        w.resource_mut::<Events>().host.particles("explosion_emitter", [at.x + o[0], at.y + 2.0 + o[1], at.z + o[2]], [0.0; 3], 0.0, 1);
-    }
     let xp = xp_of(w, e);
     let drops = crate::blocks::world_of(w).mob_drops;
     if rule::is_orb_tick(t) && drops {
         crate::orb::award(w, at, rule::orb_share(xp, 0.08), &mut rng.1);
     }
     if t == 1 {
-        // `LivingEntity.die`: entity event 3 (the death animation) for the guests.
-        if let Some(id) = w.get::<crate::bridge::ids::NetId>(e).map(|n| n.0) {
-            w.resource_mut::<Events>().host.death_animation(id, [at.x, at.y, at.z]);
-        }
         w.resource_mut::<Events>().host.level_event(1028, [at.x, at.y, at.z].map(|v| v.floor() as i32), 0);
     }
     w.entity_mut(e).insert(rng);
