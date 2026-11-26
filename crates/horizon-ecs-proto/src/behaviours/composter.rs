@@ -16,9 +16,11 @@ use bevy_ecs::prelude::Component;
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:villager_work_at_poi",
     mems: &[&JOB_SITE],
-    one_shot: true,
+    // `WorkAtPoi` is a timed `Behavior` (60 ticks, `canStillUse`: still within 1.73 of the site): it holds the work `RunOne` meanwhile.
+    passive: true,
     can_start,
     start,
+    tick,
     ..Behaviour::DEFAULT
 };
 
@@ -81,6 +83,11 @@ fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
     w.entity_mut(e).insert(LastCheck(now));
     let Some(at) = w.get::<Pos>(e).map(|q| q.0) else { return false };
     at_site(centre_dist_sq(p, at))
+}
+
+fn tick(w: &mut World, e: Entity, _: &Ctx) -> bool {
+    let Some(p) = site(w, e) else { return false };
+    w.get::<Pos>(e).is_some_and(|q| at_site(centre_dist_sq(p, q.0)))
 }
 
 fn start(w: &mut World, e: Entity, _: &Ctx) {

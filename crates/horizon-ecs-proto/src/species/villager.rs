@@ -246,8 +246,8 @@ const ACQUIRE_MEETING: poi_acquire::Params = poi_acquire::Params { claim: &CLAIM
 /// The work `RunOne` of `VillagerGoalPackages.getWorkPackage` for a farmer (weights 7, 2, 5, 5, 2).
 static WORK_KIDS: &[Kid] = &[
     // lot V4 : `WorkAtPoi` (7 pour tous) ; le composteur est celui du fermier (`farmer`, ici le poste secondaire)
-    Kid { behaviour: &composter::BEHAVIOUR, weight: 7, params: &composter::Params { composter: true }, needs: &[(&JOB_SITE, Need::Present), (&SECONDARY_JOB_SITE, Need::Present)], duration: None },
-    Kid { behaviour: &composter::BEHAVIOUR, weight: 7, params: &composter::Params { composter: false }, needs: &[(&JOB_SITE, Need::Present), (&SECONDARY_JOB_SITE, Need::Absent)], duration: None },
+    Kid { behaviour: &composter::BEHAVIOUR, weight: 7, params: &composter::Params { composter: true }, needs: &[(&JOB_SITE, Need::Present), (&SECONDARY_JOB_SITE, Need::Present)], duration: Some((60, 60)) },
+    Kid { behaviour: &composter::BEHAVIOUR, weight: 7, params: &composter::Params { composter: false }, needs: &[(&JOB_SITE, Need::Present), (&SECONDARY_JOB_SITE, Need::Absent)], duration: Some((60, 60)) },
     // lot V4 : `UseBonemeal` (4 fermier, 7 autres)
     Kid { behaviour: &bonemeal::BEHAVIOUR, weight: 4, params: &BONEMEAL, needs: &[(&SECONDARY_JOB_SITE, Need::Present)], duration: Some((60, 60)) },
     Kid { behaviour: &bonemeal::BEHAVIOUR, weight: 7, params: &BONEMEAL, needs: &[(&SECONDARY_JOB_SITE, Need::Absent)], duration: Some((60, 60)) },
