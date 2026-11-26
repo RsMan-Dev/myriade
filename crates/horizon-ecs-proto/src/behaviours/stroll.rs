@@ -155,9 +155,9 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         None => {
             let nav = w.get::<NavParams>(e).copied();
             let walk = w.get::<crate::spots::WalkValue>(e).copied().unwrap_or(crate::spots::WalkValue::Zero);
-            let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
+            let (in_water, in_lava) = w.get::<FluidState>(e).map_or((false, false), |f| (f.in_water, f.in_lava));
             match nav {
-                Some(nav) => pick_spot(&level, &Pos(pos), &mut s, &mut r, &nav, walk, in_water),
+                Some(nav) => pick_spot(&level, &Pos(pos), &mut s, &mut r, &nav, walk, in_water, in_lava),
                 None => false,
             }
         }

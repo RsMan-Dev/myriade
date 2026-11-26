@@ -64,14 +64,16 @@ pub(crate) fn arm_stroll(wheel: &mut Wheel, clock: &Clock, e: Entity, s: &mut St
 /// `RandomStrollGoal.canUse` and `LandRandomPos`, at the tick the attempt was due: 10 tries of a spot within
 /// 10 x 7 (the first valid one wins as all the ground weighs the same); the path to it is made by `pathfind`.
 /// Returns whether a spot was picked.
-pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng, nav: &NavParams, walk: crate::spots::WalkValue, in_water: bool) -> bool {
+pub(crate) fn pick_spot(level: &Level, pos: &Pos, s: &mut Stroll, r: &mut Rng, nav: &NavParams, walk: crate::spots::WalkValue, in_water: bool, in_lava: bool) -> bool {
     use crate::spots::{spotter, Pick};
     let (h, v) = (s.horizontal_range, s.vertical_range);
     let mut sp = spotter(level, [pos.0.x, pos.0.y, pos.0.z], nav, walk, r);
+    sp.in_lava = in_lava;
     // `WaterAvoidingRandomStrollGoal.getPosition`: in water a land spot first, else a land spot, a plain one 1 time in 1000.
+    // `RandomStrollGoal.getPosition` (`plain` 1.0, no draw): `DefaultRandomPos.getPos` alone.
     let picked = if in_water {
         sp.pick(Pick::Land { h: h + 5, v }).or_else(|| sp.pick(Pick::Default { h, v }))
-    } else if sp.rng.next_float() >= s.plain {
+    } else if s.plain < 1.0 && sp.rng.next_float() >= s.plain {
         sp.pick(Pick::Land { h, v })
     } else {
         sp.pick(Pick::Default { h, v })

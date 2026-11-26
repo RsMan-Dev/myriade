@@ -31,7 +31,7 @@ pub enum WalkValue {
     HappyGhast,
     /// `Hoglin.getWalkTargetValue`: crimson nylium 10, else 0 (the repellent's -1 is not modelled: no entity keeps one).
     Hoglin,
-    /// `Strider.getWalkTargetValue`: lava 10, else 0 (the -infinity of a strider already in lava is not modelled).
+    /// `Strider.getWalkTargetValue`: lava 10, else 0, or -infinity when the strider is in lava (`Spotter.in_lava`).
     Strider,
     /// `Silverfish.getWalkTargetValue`: an infested host under the spot 10, else the monster's.
     Silverfish,
@@ -150,6 +150,8 @@ pub struct Spotter<'a> {
     pub rng: &'a mut Rng,
     /// The stable destination of the navigation in use (a swimmer's is not a walker's).
     pub stable: Stable,
+    /// The entity is in lava (`Entity.isInLava`): for a strider, the spots out of lava weigh -infinity.
+    pub in_lava: bool,
 }
 /// The forms of the vanilla position pickers.
 #[derive(Clone, Copy, Debug)]
@@ -219,8 +221,12 @@ impl Spotter<'_> {
     fn in_height(&self, p: [i32; 3]) -> bool {
         p[1] >= self.mw.world.bottom_y() && p[1] < self.mw.world.top_y()
     }
+    /// `PathNavigation.isStableDestination`: a strider's navigation also takes a lava spot as stable (`StriderPathNavigation`).
+    fn stable_at(&self, p: [i32; 3]) -> bool {
+        stable_for(self.stable, self.mw, p) || (matches!(self.walk, WalkValue::Strider) && self.mw.fluid(p[0], p[1], p[2]) == myriade_engine_lib::blocks::Fluid::Lava)
+    }
     fn default_check(&self, h: f64, p: [i32; 3]) -> bool {
-        self.in_height(p) && !self.restricted(h, p) && stable_for(self.stable, self.mw, p) && self.malus_is_zero(p)
+        self.in_height(p) && !self.restricted(h, p) && self.stable_at(p) && self.malus_is_zero(p)
     }
     /// `LandRandomPos.movePosUpOutOfSolid` and the water / malus refusal.
     fn land_up_out_of_solid(&self, mut p: [i32; 3]) -> Option<[i32; 3]> {
@@ -256,7 +262,7 @@ impl Spotter<'_> {
             Pick::Land { h, v } => {
                 let d = self.direction(h, v);
                 let p = self.toward(d);
-                if !self.in_height(p) || self.restricted(f64::from(h), p) || !stable_for(self.stable, self.mw, p) {
+                if !self.in_height(p) || self.restricted(f64::from(h), p) || !self.stable_at(p) {
                     return None;
                 }
                 self.land_up_out_of_solid(p)
@@ -321,7 +327,7 @@ impl Spotter<'_> {
         self.best_of_ten(|s| {
             let d = s.direction_within(min_h, max_h, v, xd, zd, f64::from(std::f32::consts::FRAC_PI_2))?;
             let p = s.toward(d);
-            if !s.in_height(p) || s.restricted(max_h, p) || !stable_for(s.stable, s.mw, p) {
+            if !s.in_height(p) || s.restricted(max_h, p) || !s.stable_at(p) {
                 return None;
             }
             s.land_up_out_of_solid(p)
@@ -333,7 +339,8 @@ impl Spotter<'_> {
         let mut best_weight = f64::NEG_INFINITY;
         for _ in 0..10 {
             if let Some(p) = supplier(self) {
-                let v = f64::from(walk_target_value(self.mw, self.walk, p));
+                let lava = matches!(self.walk, WalkValue::Strider) && self.mw.fluid(p[0], p[1], p[2]) != myriade_engine_lib::blocks::Fluid::Lava;
+                let v = if self.in_lava && lava { f64::NEG_INFINITY } else { f64::from(walk_target_value(self.mw, self.walk, p)) };
                 if v > best_weight {
                     best_weight = v;
                     best = Some(p);
@@ -375,7 +382,7 @@ impl Spotter<'_> {
 }
 /// Everything a system needs to build a `Spotter` for an entity.
 pub fn spotter<'a>(level: &'a Level, pos: [f64; 3], nav: &'a NavParams, walk: WalkValue, rng: &'a mut Rng) -> Spotter<'a> {
-    Spotter { home: None, mw: level.mw.0, pos, nav, walk, rng, stable: Stable::Ground }
+    Spotter { home: None, mw: level.mw.0, pos, nav, walk, rng, stable: Stable::Ground, in_lava: false }
 }
 /// The call a module makes: a position for the entity `e` by the vanilla picker `pick`, drawn from its own random stream
 /// (written back), with its position, its path maluses and its walk preference read from its components. `None` when the
@@ -387,9 +394,11 @@ pub fn pick_for(w: &mut World, e: Entity, pick: Pick) -> Option<[f64; 3]> {
     let level = *w.get_resource::<Level>()?;
     let mut rng = Rng(w.get::<Rng>(e)?.0);
     let stable = if w.get::<crate::locomotion::SwimMode>(e).is_some() { Stable::Water } else { Stable::Ground };
+    let in_lava = w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.in_lava);
     crate::pathsearch::adjacent_reset();
     let mut sp = spotter(&level, [pos.x, pos.y, pos.z], &nav, walk, &mut rng);
     sp.stable = stable;
+    sp.in_lava = in_lava;
     sp.home = w.get::<Home>(e).copied();
     let out = sp.pick(pick);
     w.get_mut::<Rng>(e)?.0 = rng.0;
