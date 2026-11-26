@@ -27,10 +27,11 @@ impl Times {
     /// The day time now, without the wrap at 24000 (what the restock counts days from).
     pub fn absolute(w: &World) -> i64 {
         let clock = w.resource::<crate::cow::Clock>().0;
-        // A host that never says the time: the world's own (`MobWorld.day_time`), moving with the clock.
+        // A host that never says the time: the world's own (`MobWorld.day_time`), read again by the host each tick (frozen when the
+        // daylight cycle is off), so the clock is not added to it.
         match w.get_resource::<Times>() {
             Some(t) => t.day + (clock - t.set_at) as i64,
-            None => w.resource::<crate::cow::Level>().mw.0.day_time + clock as i64,
+            None => w.resource::<crate::cow::Level>().mw.0.day_time,
         }
     }
     /// The time of day now (0..24000).
