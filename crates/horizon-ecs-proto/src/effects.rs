@@ -724,6 +724,56 @@ pub fn custom_color(stack: &myriade_engine_lib::items::ItemStack) -> Option<i32>
         _ => None,
     })
 }
+/// `ThrownSplashPotion.applySplash` for the players within reach of `at` (the dedicated server's remote players are outside the ECS): the
+/// same scale as a creature, timed brews leave as `CloudEffect` for the host, instants hurt (by the thrower's creature) or heal.
+pub fn splash_players(w: &mut World, at: horizon_core::geometry::Vec3, hit: Option<u32>, brews: &[Brew], owner: Option<crate::targeting::Who>) {
+    use crate::host_out_misc::MiscEvent;
+    let mut near: Vec<crate::goals::Player> = Vec::new();
+    w.resource::<crate::goals::Online>().for_near(at.x, at.z, 4.0, |p| near.push(p));
+    let area = horizon_core::geometry::Aabb::new(at, at).inflate(horizon_core::geometry::Vec3::new(4.0, 2.0, 4.0));
+    for p in near {
+        if !crate::targeting::player_box(&p).intersects(area) || !w.resource::<crate::hostile::PlayerState>().alive(p.id) {
+            continue;
+        }
+        let d2 = (p.x - at.x).powi(2) + (p.y - at.y).powi(2) + (p.z - at.z).powi(2);
+        let direct = hit == Some(p.id);
+        if !rule::splash_reaches(d2, direct) {
+            continue;
+        }
+        let scale = rule::splash_scale(d2, direct);
+        for &brew in brews {
+            match brew {
+                Brew::Timed(kind, amp, ticks) | Brew::Flagged(kind, amp, ticks, _) => {
+                    let flags = if let Brew::Flagged(.., f) = brew { f } else { 0 };
+                    let t = rule::timed_ticks(scale, ticks);
+                    if t > 0 {
+                        // What the witch reads (`player_has`) before it picks its next potion.
+                        add_player_flagged(w, p.id, kind, amp, t, flags);
+                        w.get_resource_or_insert_with(crate::colony_register::MiscOut::default).0.push(MiscEvent::CloudEffect {
+                            target: crate::targeting::Who::Player(p.id),
+                            effect: kind,
+                            amplifier: amp,
+                            ticks: t,
+                            hidden: flags & HIDDEN != 0,
+                            ambient: flags & AMBIENT != 0,
+                            source: owner,
+                            owner,
+                        });
+                    }
+                }
+                Brew::Harm(amp) | Brew::Heal(amp) => {
+                    let harm = matches!(brew, Brew::Harm(_));
+                    let amount = rule::harm_amount(scale, if harm { 6 } else { 4 }, amp);
+                    match (harm, owner) {
+                        (true, Some(crate::targeting::Who::Entity(o))) => crate::area::hurt_player(w, p.id, amount, o),
+                        (true, _) => {}
+                        (false, _) => crate::cloud_tick::heal_player(w, p.id, amount),
+                    }
+                }
+            }
+        }
+    }
+}
 /// `ThrownSplashPotion.onHit` / `applySplash`: the creatures within 4 blocks (2 up and down) of `at` and nearer than 4 take the brews, scaled
 /// by `1 - distance / 4` (the creature hit itself takes them whole); a timed effect lasts `(int)(scale * ticks * 0.75 + 0.5)`.
 pub fn splash(w: &mut World, at: horizon_core::geometry::Vec3, hit: Option<Entity>, brews: &[Brew], owner: Option<crate::targeting::Who>) {

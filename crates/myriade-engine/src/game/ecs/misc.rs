@@ -77,7 +77,9 @@ impl Game<'_> {
                     self.play_fang_bite(at);
                 }
                 MiscEvent::CloudEffect { target: Who::Player(p), effect, amplifier, ticks, hidden, ambient, source: _, owner: _ } => {
-                    let mut inst = EffectInstance::new(effect_name(effect), ticks, amplifier);
+                    // The client's effect ids carry no namespace, which the periodic effects (poison, wither) are matched by.
+                    let name = effect_name(effect);
+                    let mut inst = EffectInstance::new(name.strip_prefix("minecraft:").unwrap_or(name), ticks, amplifier);
                     inst.visible = !hidden;
                     inst.ambient = ambient;
                     let guest = self.lan.as_ref().and_then(|host| host.hub.guests.iter().find(|g| g.entity_id as u32 == p).map(|g| g.conn));

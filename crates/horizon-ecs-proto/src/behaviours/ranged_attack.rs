@@ -214,7 +214,7 @@ fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
     if p.witch {
         let health = match who {
             Who::Entity(t) => w.get::<Health>(t).map_or(20.0, |h| h.0),
-            Who::Player(_) => 20.0,
+            Who::Player(id) => w.resource::<crate::hostile::PlayerState>().health_of(id),
         };
         use crate::effects::{Brew, Kind};
         let has = |w: &World, kind| match who {

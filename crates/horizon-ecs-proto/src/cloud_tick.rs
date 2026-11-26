@@ -202,7 +202,7 @@ fn flags(c: &CloudSpec, kind: Kind) -> u8 {
 }
 
 /// A player healed by `amount`: its health as the host reads it (`PlayerState`), at most 20.
-fn heal_player(w: &mut World, id: u32, amount: f32) {
+pub(crate) fn heal_player(w: &mut World, id: u32, amount: f32) {
     let mut ps = w.resource_mut::<PlayerState>();
     let i = id as usize;
     if ps.health.len() <= i {

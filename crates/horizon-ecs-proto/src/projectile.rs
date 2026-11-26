@@ -508,7 +508,11 @@ pub fn fly(
             }
             if let Some(brews) = splash_of(f.hit, potion.get(e).ok()) {
                 let (hit, owner) = (if let Who::Entity(t) = who { Some(t) } else { None }, p.owner);
-                commands.queue(move |w: &mut World| crate::effects::splash(w, at, hit, &brews, owner));
+                let hit_player = if let Who::Player(id) = who { Some(id) } else { None };
+                commands.queue(move |w: &mut World| {
+                    crate::effects::splash(w, at, hit, &brews, owner);
+                    crate::effects::splash_players(w, at, hit_player, &brews, owner);
+                });
             }
             if f.hit.thrown() {
                 let (h, o, prev) = (f.hit, p.owner, original);
@@ -555,7 +559,10 @@ pub fn fly(
                     }
                     if let Some(brews) = splash_of(f.hit, potion.get(e).ok()) {
                         let (at, owner) = (pos.0, p.owner);
-                        commands.queue(move |w: &mut World| crate::effects::splash(w, at, None, &brews, owner));
+                        commands.queue(move |w: &mut World| {
+                            crate::effects::splash(w, at, None, &brews, owner);
+                            crate::effects::splash_players(w, at, None, &brews, owner);
+                        });
                     }
                     if matches!(f.hit, OnHit::LingeringPotion) {
                         let at = pos.0;
