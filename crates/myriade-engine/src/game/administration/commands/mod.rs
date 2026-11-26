@@ -2296,7 +2296,6 @@ impl Game<'_> {
         // (UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS); the new block gets a fresh one.
         let key = (pos[0], pos[1], pos[2]);
         if old != new {
-            self.jukebox_removed(pos);
             self.world.block_entities.remove(&key);
         }
         if strict {
