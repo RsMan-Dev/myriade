@@ -5,10 +5,10 @@
 use bevy_ecs::prelude::Entity;
 use bevy_ecs::prelude::World;
 use super::block_reach::{centre_dist_sq, look_block};
-use super::trade_restock;
+use crate::brain::behaviours::trade_restock_work;
 use crate::brain::*;
 use crate::rules::composter::{at_site, check_due};
-use crate::cow::{now_of, Pos};
+use crate::cow::{game_now, Pos};
 use crate::goals::with_rng;
 use crate::species::villager::JOB_SITE;
 use bevy_ecs::prelude::Component;
@@ -70,7 +70,7 @@ fn site(w: &World, e: Entity) -> Option<[i32; 3]> {
 
 fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
     let Some(p) = site(w, e) else { return false };
-    let now = now_of(w, e);
+    let now = game_now(w) as u64;
     let last = w.get::<LastCheck>(e).map_or(0, |l| l.0);
     if !check_due(now, last) {
         return false;
@@ -90,5 +90,5 @@ fn start(w: &mut World, e: Entity, _: &Ctx) {
         make_bread(w, e);
         w.resource_mut::<crate::goals::Events>().host.composter_work(e, p);
     }
-    trade_restock::on_work(w, e);
+    trade_restock_work::restock_if_due(w, e);
 }

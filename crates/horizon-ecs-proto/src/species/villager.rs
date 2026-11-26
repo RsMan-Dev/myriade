@@ -21,7 +21,7 @@ use crate::brain::sensors::village_hostile;
 use crate::behaviours::{hide, sky_spot};
 // lot V2
 use crate::behaviours::trade_offers::{self, Merchant};
-use crate::brain::behaviours::{social_gift_hero, social_socialize_bell, trade_follow_player, trade_go_to_wanted, trade_restock_work, trade_show_offers, trade_with_villager};
+use crate::brain::behaviours::{social_gift_hero, social_socialize_bell, trade_follow_player, trade_go_to_wanted, trade_show_offers, trade_with_villager};
 // lot V1
 use crate::behaviours::poi_claim;
 use crate::brain::behaviours::{poi_acquire, poi_assign, poi_competitor_scan, poi_go_to_site, poi_validate, poi_yield_site};
@@ -349,7 +349,6 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &trade_show_offers::BEHAVIOUR, activity: "work", priority: 10, params: &(), needs: &[], duration: Some((400, 1600)), kids: &[] },
             BEntry { behaviour: &trade_show_offers::BEHAVIOUR, activity: "meet", priority: 10, params: &(), needs: &[], duration: Some((400, 1600)), kids: &[] },
             BEntry { behaviour: &trade_show_offers::BEHAVIOUR, activity: "idle", priority: 3, params: &(), needs: &[], duration: Some((400, 1600)), kids: &[] },
-            BEntry { behaviour: &trade_restock_work::BEHAVIOUR, activity: "work", priority: 5, params: &(), needs: &[(&JOB_SITE, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &trade_with_villager::BEHAVIOUR, activity: "meet", priority: 3, params: &(), needs: &[(&INTERACTION_TARGET, Need::Present)], duration: Some((60, 60)), kids: &[] },
             BEntry { behaviour: &trade_with_villager::BEHAVIOUR, activity: "idle", priority: 3, params: &(), needs: &[(&INTERACTION_TARGET, Need::Present)], duration: Some((60, 60)), kids: &[] },
             BEntry { behaviour: &run_one::BEHAVIOUR, activity: "meet", priority: 2, params: &(), needs: &[(&MEETING_POINT, Need::Present)], duration: None, kids: SOCIAL_KIDS },

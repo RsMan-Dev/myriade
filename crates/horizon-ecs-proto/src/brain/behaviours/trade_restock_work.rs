@@ -1,23 +1,13 @@
-//! The restock of `WorkAtPoi.start` (`villager_brain.rs:3345`, `restock_if_due`): a villager with a trader, when the day is due, restocks
-//! its offers. One shot; the due test and the restock are `behaviours::trade_restock`'s, on the game time of `trade_offers::clock`.
-use crate::behaviours::trade_offers::clock;
+//! The restock of `WorkAtPoi.start` (`restock_if_due`): called by the work at the site (`composter`), after it, not by a behaviour of
+//! its own. The due test and the restock are `behaviours::trade_restock`'s, on the game time of the world.
 use crate::behaviours::trade_restock::{due_at, restock_at};
-use crate::brain::*;
+use crate::cow::game_now;
+use bevy_ecs::prelude::{Entity, World};
 
-pub static BEHAVIOUR: Behaviour = Behaviour {
-    name: "minecraft:villager_restock",
-    one_shot: true,
-    can_start,
-    start,
-    ..Behaviour::DEFAULT
-};
-
-fn can_start(w: &mut World, e: Entity, _: &Ctx) -> bool {
-    let (game, _) = clock(w, e);
-    due_at(w, e, game)
-}
-
-fn start(w: &mut World, e: Entity, _: &Ctx) {
-    let (game, _) = clock(w, e);
-    restock_at(w, e, game);
+/// `Villager.shouldRestock` then `restock`: a villager with a trader restocks its offers when the day is due.
+pub fn restock_if_due(w: &mut World, e: Entity) {
+    let game = game_now(w);
+    if due_at(w, e, game) {
+        restock_at(w, e, game);
+    }
 }

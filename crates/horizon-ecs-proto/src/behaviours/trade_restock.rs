@@ -1,9 +1,10 @@
 //! Réapprovisionnement des offres (`Villager.shouldRestock` et `restock`, dans `Trader` du client : les constantes d'intervalle y
-//! sont, pas recopiées ici). Rien ne scrute : l'événement de travail réveille le but (`on_work`), et le but se réarme sur une
+//! sont, pas recopiées ici). Appelé par le travail au poste (`trade_restock_work::restock_if_due`) ; le but se réarme sur une
 //! échéance de roue, au prochain instant où un réapprovisionnement est permis (`Trader::next_check`, ASSUMED).
 use super::schedule::Times;
-use super::trade_offers::{clock, Merchant};
+use super::trade_offers::Merchant;
 use super::*;
+use crate::cow::game_now;
 use crate::goals::*;
 use crate::rules::trade_restock::{next_check_at, ticks_until};
 
@@ -20,7 +21,7 @@ pub static MODULE: Module = Module {
 
 /// Ticks avant le prochain contrôle, selon l'état de réapprovisionnement du marchand.
 fn delay(w: &World, e: Entity) -> i32 {
-    let (game, _) = clock(w, e);
+    let game = game_now(w);
     w.get::<Merchant>(e).map_or(1, |m| ticks_until(next_check_at(m.trade.last_restock, m.trade.restocks_today, game), game))
 }
 
@@ -43,21 +44,16 @@ pub fn restock_at(w: &mut World, e: Entity, game: i64) {
 }
 
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    let (game, _) = clock(w, e);
+    let game = game_now(w);
     due_at(w, e, game)
 }
 
 fn start(w: &mut World, e: Entity, inst: Inst) {
-    let (game, _) = clock(w, e);
+    let game = game_now(w);
     restock_at(w, e, game);
     w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
 }
 
 fn stop(w: &mut World, e: Entity, inst: Inst) {
     arm(w, e, inst);
-}
-
-/// Le villageois est allé à son poste (`AtWork`) : le réapprovisionnement est demandé maintenant, pas à l'échéance suivante.
-pub fn on_work(w: &mut World, e: Entity) {
-    wake(w, e, &MODULE);
 }
