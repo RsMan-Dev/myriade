@@ -49,7 +49,7 @@ static ACTIVITIES: &[ActivityDef] = &[
     ActivityDef { name: "idle", slot: 5, requires: &[] },
     ActivityDef { name: "pre_raid", slot: 6, requires: &[(&raid::PRE_RAID_ON, Need::Present)] },
     ActivityDef { name: "work", slot: 7, requires: &[(&SCHEDULE_WORK, Need::Present), (&JOB_SITE, Need::Present)] },
-    ActivityDef { name: "panic", slot: 8, requires: &[(&HURT_BY, Need::Present)] },
+    ActivityDef { name: "panic", slot: 8, requires: &[(&panic_golem::PANIC_ON, Need::Present)] },
     ActivityDef { name: "raid", slot: 9, requires: &[(&raid::RAID_ON, Need::Present)] },
 ];
 static PICK: &[&str] = &["panic", "raid", "pre_raid", "hide", "rest", "meet", "work", "play", "idle"];
