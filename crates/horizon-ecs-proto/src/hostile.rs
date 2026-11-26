@@ -449,7 +449,7 @@ pub fn melee_run(
             }
             // `LivingEntity.doHurtTarget` reads ATTACK_DAMAGE, which the held item's modifier adds to the species' base.
             let base = a.damage + crate::items::attack_damage_of(main.get(e).map_or(0, |q| q.main)) as f32;
-            let damage = if a.spread { spread_damage(base, |n| rng.next_int(n)) } else { base };
+            let damage = if a.spread && !baby { spread_damage(base, |n| rng.next_int(n)) } else { base };
             // `EnchantmentHelper.modifyDamage` of the held weapon, by the host's table, once per blow.
             let damage = match (gear.as_deref(), held.get(e).ok().and_then(|q| q.slots[0].as_ref())) {
                 (Some(gear), Some(stack)) => {

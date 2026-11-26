@@ -32,6 +32,8 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
     if let Some(mut attack) = w.get_mut::<Attack>(e) {
         attack.on_blow = Some(blow);
         attack.on_hit = Some(hit);
+        // `HoglinBase.hurtAndThrowTarget`: an adult strikes for half the attack plus a draw below its integer part.
+        attack.spread = true;
     }
 }
 

@@ -11,7 +11,7 @@ use crate::brain::behaviours::{
     stop_attacking_if_target_invalid, stop_being_angry_if_target_dead, stop_holding_item_if_no_longer_admiring, stroll as brain_stroll,
     walk_away as avoid_walk, walk_to_look_target,
 };
-use crate::brain::sensors::{hurt_by as hurt_by_sensor, living, nearest_wanted_item, piglin_specific};
+use crate::brain::sensors::{hurt_by as hurt_by_sensor, living, nearest_players, nearest_wanted_item, piglin_specific};
 use crate::brain::*;
 use crate::cow::Pos;
 use crate::brain::behaviours::look_at_entity::species_id;
@@ -129,6 +129,7 @@ pub static DEF: Def = Def {
             SensorEntry::new(&living::SENSOR, 20),
             SensorEntry::new(&hurt_by_sensor::SENSOR, 20),
             SensorEntry::new(&nearest_wanted_item::SENSOR, 20).with(&nearest_wanted_item::Params { tag: "minecraft:piglin_loved", range: 9.0 }),
+            SensorEntry::new(&nearest_players::SENSOR, 20),
             SensorEntry::new(&piglin_specific::SENSOR, 20),
         ],
         activities: &[
@@ -184,7 +185,7 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &dismount_or_skip_mounting::BEHAVIOUR, activity: "ride", priority: 2, params: &dismount_or_skip_mounting::Params { range: 8.0, stop: wants_to_stop_riding }, needs: &[], duration: None, kids: &[] },
             // `PiglinAi.initIdleActivity`: the start of a hunt on a hoglin, the baby's ride of a baby hoglin, the idle look and move,
             // and the look and interaction with a player within 4 blocks.
-            BEntry { behaviour: &start_attacking::BEHAVIOUR, activity: "idle", priority: 0, params: &start_attacking::Params { finder: start_attacking::Finder::Piglin, ..start_attacking::Params::DEFAULT }, needs: &[], duration: None, kids: &[] },
+            BEntry { behaviour: &start_attacking::BEHAVIOUR, activity: "idle", priority: 0, params: &start_attacking::Params { finder: start_attacking::Finder::PiglinAdult, ..start_attacking::Params::DEFAULT }, needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &start_hunting_hoglin::BEHAVIOUR, activity: "idle", priority: 1, params: &(), needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &run_one::QUIET, activity: "idle", priority: 3, params: &(), needs: &[], duration: None, kids: LOOK_KIDS },
             BEntry { behaviour: &run_one::QUIET, activity: "idle", priority: 4, params: &(), needs: &[], duration: None, kids: MOVE_KIDS },

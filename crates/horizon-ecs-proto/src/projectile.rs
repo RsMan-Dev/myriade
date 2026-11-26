@@ -487,6 +487,12 @@ pub fn fly(
                     commands.queue(move |w: &mut World| linger(w, e, at));
                 }
             }
+            if let (Who::Player(player), OnHit::Ignite(ticks)) = (who, f.hit) {
+                // `SmallFireball.onHitEntity`: `igniteForSeconds(5)` on a player as on a creature; the host sets the fire.
+                commands.queue(move |w: &mut World| {
+                    w.get_resource_or_insert_with(crate::colony_register::MiscOut::default).0.push(crate::host_out_misc::MiscEvent::PlayerIgnite { player, ticks: ticks as i32 });
+                });
+            }
             if let (Who::Player(id), true) = (who, f.wither) {
                 commands.queue(move |w: &mut World| wither_player(w, id));
             }

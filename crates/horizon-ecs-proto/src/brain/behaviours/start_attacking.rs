@@ -24,6 +24,9 @@ pub enum Finder {
     NearestAttackable,
     /// `PiglinBruteAi`'s `StartAttacking`: the anger target, then the nearest visible player, then the nemesis (baby piglin).
     Piglin,
+    /// `PiglinAi.findNearestValidAttackTarget`: the anger target, the nemesis, then the nearest player not wearing gold
+    /// (the zombified-near and universal-anger branches are not ported).
+    PiglinAdult,
 }
 
 /// `active` is the creaking's `isActive` rule. It is read only by `NearestVisiblePlayer`; the frame has no such rule yet,
@@ -62,6 +65,7 @@ fn target(w: &World, e: Entity, p: &Params) -> Option<Who> {
             _ => return None,
         },
         Finder::Piglin => return piglin_target(w, e, p),
+        Finder::PiglinAdult => return piglin_adult_target(w, e, p),
         Finder::NearestVisiblePlayer => {
             if !(p.active)(w, e) {
                 return None;
@@ -78,6 +82,13 @@ fn target(w: &World, e: Entity, p: &Params) -> Option<Who> {
 /// The first of the piglin memories that holds an attackable entity.
 fn piglin_target(w: &World, e: Entity, p: &Params) -> Option<Who> {
     [&ANGRY_AT, &NEAREST_VISIBLE_TARGETABLE_PLAYER, &NEAREST_VISIBLE_NEMESIS].into_iter().find_map(|k| match get(w, e, k) {
+        Some(MemValue::Who(who)) if can_attack(w, *who) && (p.allowed)(w, *who) => Some(*who),
+        _ => None,
+    })
+}
+
+fn piglin_adult_target(w: &World, e: Entity, p: &Params) -> Option<Who> {
+    [&ANGRY_AT, &NEAREST_VISIBLE_NEMESIS, &crate::brain::NEAREST_TARGETABLE_PLAYER_NOT_WEARING_GOLD].into_iter().find_map(|k| match get(w, e, k) {
         Some(MemValue::Who(who)) if can_attack(w, *who) && (p.allowed)(w, *who) => Some(*who),
         _ => None,
     })
