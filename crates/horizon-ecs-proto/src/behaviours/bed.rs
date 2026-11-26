@@ -66,6 +66,8 @@ pub fn lie_down(w: &mut World, e: Entity, p: [i32; 3]) {
     if let Some(mut pos) = w.get_mut::<Pos>(e) {
         pos.0 = lie_spot(p);
     }
+    // `LivingEntity.aiStep`: an immobile (sleeping) body runs no `serverAiStep`, so no navigation moves it; a walk to the bed ends here.
+    crate::goals::stop_nav(w, e);
     w.entity_mut(e).insert(Sleeping(p));
 }
 
