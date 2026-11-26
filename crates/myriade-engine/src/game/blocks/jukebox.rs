@@ -369,8 +369,6 @@ impl Game<'_> {
             if let Some(BlockEntity::Jukebox(j)) = self.world.block_entities.get_mut(&key) {
                 j.loaded_clock = false;
             }
-        } else if ticks == 0 {
-            self.start_song(pos, &song);
         }
         if ticks % 20 == 0 {
             // `JukeboxSongPlayer.tick`: `gameEvent(JUKEBOX_PLAY, pos,
