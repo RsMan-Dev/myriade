@@ -154,6 +154,16 @@ fn write_equipment(w: &World, e: Entity, c: &mut Compound) {
     if w.get::<crate::behaviours::eat_held::Eats>(e).is_some() {
         slots[0] = crate::goals::main_hand(w, e).cloned();
     }
+    // The pieces a spawn sets are bare item ids (`goals::Equipment`): a slot without a stack saves the item of its id.
+    if let Some(g) = w.get::<crate::goals::Equipment>(e) {
+        for (i, id) in [g.main, g.off, g.head, g.chest, g.legs, g.feet, g.body, g.saddle].into_iter().enumerate() {
+            if slots[i].is_none()
+                && let Some(name) = crate::items::item_name(id)
+            {
+                slots[i] = Some(ItemStack::new(name, 1));
+            }
+        }
+    }
     if slots.iter().all(Option::is_none) {
         return;
     }
