@@ -96,6 +96,25 @@ impl Game<'_> {
         let v = self.ecs_view(id)?;
         Some(myriade_engine::advancements::EntityView { kind: v.kind.into(), position: v.position, ..Default::default() })
     }
+    /// `ServerPlayer.awardKillScore` for the player `by` (a guest, else the acting player), on `victim` killed by no
+    /// blow the host reads: the killer's stats, scores and `player_killed_entity`.
+    pub(in crate::game) fn ecs_award_kill(&mut self, by: u32, victim: &myriade_engine::advancements::EntityView, blow: Option<&myriade_engine::advancements::DamageView>) {
+        let guest = self.lan.as_ref().and_then(|h| h.hub.guests.iter().find(|g| g.entity_id as u32 == by).map(|g| g.conn));
+        match guest {
+            Some(conn) => {
+                self.as_guest(conn, |g| g.award_kill_score(victim, blow));
+            }
+            None if self.player.as_ref().is_some_and(|me| me.entity_id as u32 == by) => self.award_kill_score(victim, blow),
+            None => {}
+        }
+    }
+    /// `Player.awardKillScore` then `ServerPlayer.awardKillScore` on the acting player (a mob: no player kill, no team).
+    fn award_kill_score(&mut self, victim: &myriade_engine::advancements::EntityView, blow: Option<&myriade_engine::advancements::DamageView>) {
+        self.award_stat("killed", &victim.kind, 1);
+        self.score_player_killed_named(None, false);
+        self.award_custom_stat("mob_kills", 1);
+        self.trigger_killed_as("minecraft:player_killed_entity", victim, blow);
+    }
     /// `Level.gameEvent` for the allays of P: each allay that hears `event` at `at` (its vibration listening or, for a jukebox
     /// event, its jukebox listening) is P's to apply.
     pub(in crate::game) fn ecs_allays_hear(&mut self, event: &'static str, at: [f64; 3]) {

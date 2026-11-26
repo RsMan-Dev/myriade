@@ -18,14 +18,22 @@ impl Game<'_> {
     /// `HostEvent::Death`: the game event is posted where it died. While a mod hears `living_death_post` P keeps the entity `Dying`
     /// (`set_death_vetoable`): the loot leaves (`loot_dying`), the hook reads the entity still there, then `despawn`. The attacker is
     /// the mob's id, 0 for a player or none.
-    pub(in crate::game) fn ecs_death_event(&mut self, e: Entity, _cause: &str, _attacker: Option<Who>, at: [f64; 3]) {
+    pub(in crate::game) fn ecs_death_event(&mut self, e: Entity, cause: &str, _attacker: Option<Who>, at: [f64; 3]) {
         let ctx = self.who_context(None, None);
         self.post_game_event("minecraft:entity_die", at, ctx);
         if self.ecs.world().is_none_or(|w| w.get_entity(e).is_err()) {
             return;
         }
         let id = self.entity_id(e);
+        // `LivingEntity.getKillCredit`: the player hurt within 100 ticks; the view is read before the death removes the entity.
+        let credited = self.ecs.world().and_then(|w| horizon_ecs_proto::credit::player_of(w, e));
+        let victim = self.ecs_host_view(id);
         self.ecs_with(|ecs, mw| ecs.resolve_death(mw, id, None));
+        if let (Some(by), Some(victim)) = (credited, victim) {
+            let me = myriade_engine::advancements::EntityView { kind: "minecraft:player".into(), ..Default::default() };
+            let blow = myriade_engine::advancements::DamageView { kind: format!("minecraft:{}", cause.trim_start_matches("minecraft:")), is_direct: true, direct: Some(me.clone()), source: Some(me), ..Default::default() };
+            self.ecs_award_kill(by, &victim, Some(&blow));
+        }
     }
 
     /// `HostEvent::TotemAsk`: no mod cancels the totem of a lethal hit, so P uses it up.

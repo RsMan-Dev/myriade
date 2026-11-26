@@ -529,13 +529,7 @@ impl Game<'_> {
         );
     }
     /// `ServerPlayer.awardKillScore`: total kills, the player kills and the
-    /// team kill counts, for the victim `victim`.
-    pub(super) fn score_player_killed(&mut self, victim: Target) {
-        let name = self.holder_name(victim);
-        self.score_player_killed_named(name, matches!(victim, Target::Player | Target::Guest(_)));
-    }
-    /// [`score_player_killed`](Self::score_player_killed) with the victim's
-    /// scoreboard name at hand: a guest's record is out of `self.lan` during
+    /// team kill counts, with the victim's scoreboard name at hand: a guest's record is out of `self.lan` during
     /// its turn (`ServerPlayer.die` runs there).
     pub(super) fn score_player_killed_named(&mut self, victim_name: Option<String>, player: bool) {
         let display = self.player_display_comp();

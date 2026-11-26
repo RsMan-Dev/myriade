@@ -438,10 +438,14 @@ impl Game<'_> {
     /// `ServerPlayer.awardKillScore` for the dragon, on the killer's state (`credit_dragon_kill`'s
     /// stat, score and advancement; the blow's view is the ECS's `Cause`, not rebuilt here).
     fn award_dragon_kill(&mut self, by: u32, by_player: bool) {
-        self.award_stat("killed", "minecraft:ender_dragon", 1);
-        self.award_custom_stat("mob_kills", 1);
-        self.score_player_killed(Target::Mob(by));
         let _ = by_player;
+        // The dragon's position is not in the Credit event: the fight's centre, as its other events.
+        let dragon = myriade_engine::advancements::EntityView {
+            kind: "minecraft:ender_dragon".into(),
+            position: [0.0, 128.0, 0.0],
+            ..Default::default()
+        };
+        self.ecs_award_kill(by, &dragon, None);
     }
     /// The victims of a breath cloud this tick (`HostEvent::CloudHit`).
     pub(in crate::game) fn ecs_cloud_hit(&mut self, at: [f64; 3], amount: f32, amplifier: u32, players: Vec<u32>, mobs: Vec<u32>) {
