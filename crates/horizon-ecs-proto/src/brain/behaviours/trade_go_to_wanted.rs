@@ -1,10 +1,10 @@
 //! `GoToWantedItem` (`villager_brain.rs:1828`, `:4052`, `:4483`): with no walk target, the nearest pickable item within 4 blocks whose kind
 //! is in the item tag `minecraft:villager_picks_up` is walked to (speed 0.5, reach 0) and looked at at its eye height (0.2125). At arrival,
-//! within reach, it is taken into the main hand. The pick-up is `item::pick_up`'s, the tag is `items::has_tag`'s.
+//! within reach, it is taken into the villager's stock (`food_inventory`). The pick-up is `item::pick_up`'s, the tag is `items::has_tag`'s.
 use crate::brain::sensors::nearest_wanted_item::NEAREST_WANTED_ITEM;
 use crate::brain::*;
 use crate::cow::Pos;
-use crate::goals::set_main_hand;
+use crate::behaviours::food_inventory;
 use crate::item;
 use crate::targeting::Who;
 
@@ -45,8 +45,9 @@ fn tick(w: &mut World, e: Entity, _: &Ctx) -> bool {
     erase(w, e, &WALK_TARGET);
     let Some(me) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let reached = wanted_near(w, e).filter(|&it| w.get::<Pos>(it).is_some_and(|q| q.0.distance_squared(me) <= 2.25));
+    // `pickUpItem`: the stack goes into the 8-slot stock, not the hand; what does not fit is dropped (no room check yet).
     if let Some(stack) = reached.and_then(|it| item::pick_up(w, e, it, u32::MAX)) {
-        set_main_hand(w, e, Some(stack));
+        food_inventory::insert(w, e, &stack.item, stack.count.min(255) as u8);
     }
     false
 }
