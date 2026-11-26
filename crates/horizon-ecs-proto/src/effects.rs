@@ -765,7 +765,7 @@ pub fn splash_players(w: &mut World, at: horizon_core::geometry::Vec3, hit: Opti
                     let harm = matches!(brew, Brew::Harm(_));
                     let amount = rule::harm_amount(scale, if harm { 6 } else { 4 }, amp);
                     match (harm, owner) {
-                        (true, Some(crate::targeting::Who::Entity(o))) => crate::area::hurt_player(w, p.id, amount, o),
+                        (true, Some(crate::targeting::Who::Entity(o))) => crate::area::hurt_player_as(w, p.id, amount, o, "minecraft:indirect_magic"),
                         (true, _) => {}
                         (false, _) => crate::cloud_tick::heal_player(w, p.id, amount),
                     }

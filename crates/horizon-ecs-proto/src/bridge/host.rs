@@ -519,7 +519,7 @@ impl EcsWorld {
 
     /// The blows the creatures dealt to players since the last call (`PlayerState.hits`): the player, the amount, where it came from
     /// and the creature that dealt it. The host applies them (armour, effects, knock-back, death).
-    pub fn take_player_hits(&mut self) -> Vec<(u32, f32, [f64; 3], Option<Entity>)> {
+    pub fn take_player_hits(&mut self) -> Vec<(u32, f32, [f64; 3], Option<Entity>, Option<&'static str>)> {
         let hits = std::mem::take(&mut self.world.resource_mut::<crate::hostile::PlayerState>().hits);
         // The host owns the health: the copy counted down by these blows goes back to what the host last said (`PlayerFact.alive`).
         for h in &hits {
@@ -536,7 +536,7 @@ impl EcsWorld {
                     _ => None,
                 };
                 let y = by.and_then(|e| self.world.get::<Pos>(e)).map_or(0.0, |p| p.0.y);
-                (h.player, h.amount, [h.from.0, y, h.from.1], by)
+                (h.player, h.amount, [h.from.0, y, h.from.1], by, h.kind)
             })
             .collect()
     }

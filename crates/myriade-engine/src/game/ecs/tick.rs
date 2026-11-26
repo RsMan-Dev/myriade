@@ -103,11 +103,15 @@ impl Game<'_> {
         self.ecs = ecs;
         self.handle_mob_events_reusable(&mut mob)?;
         // The blows the creatures landed on players (`Mob.doHurtTarget` on a player): each is the hit of the player it names.
-        for (player, amount, from, by) in self.ecs.take_player_hits() {
+        for (player, amount, from, by, kind) in self.ecs.take_player_hits() {
             let mob = by.map(|e| self.ecs_id_of(e));
             self.with_player(player, |g| {
                 g.combat.melee_mob = mob;
-                let _ = g.handle_mob_events(vec![myriade_engine::mobs::MobEvent::AttackPlayer(amount, from)]);
+                let event = match kind {
+                    Some(kind) => myriade_engine::mobs::MobEvent::DamagePlayer { amount, from, kind },
+                    None => myriade_engine::mobs::MobEvent::AttackPlayer(amount, from),
+                };
+                let _ = g.handle_mob_events(vec![event]);
                 g.combat.melee_mob = None;
             });
         }

@@ -288,7 +288,7 @@ impl EcsLevel {
             w.set_block_event(pos);
         }
     }
-    pub fn take_player_hits(&mut self) -> Vec<(u32, f32, [f64; 3], Option<Entity>)> {
+    pub fn take_player_hits(&mut self) -> Vec<(u32, f32, [f64; 3], Option<Entity>, Option<&'static str>)> {
         self.inner.as_mut().map_or_else(Vec::new, |w| w.take_player_hits())
     }
     pub fn take_player_pushes(&mut self) -> Vec<(u32, [f64; 3], (f64, f64, f64), Entity)> {

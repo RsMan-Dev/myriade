@@ -66,6 +66,8 @@ pub struct PlayerHit {
     pub from: (f64, f64),
     /// Who dealt it, when a creature or a player did.
     pub by: Option<Who>,
+    /// The damage type when it is not a melee blow (`indirect_magic` of a thrown potion).
+    pub kind: Option<&'static str>,
 }
 /// The players' health (20 until set), and the log of the hits they took. `immortal`: the health never drops below
 /// 1 (the benches keep the players alive to measure a long chase).
@@ -200,7 +202,7 @@ impl PlayerState {
             self.health.resize(i + 1, 20.0);
         }
         self.health[i] = health_after(self.health[i], amount, self.immortal);
-        self.hits.push(PlayerHit { tick, player, amount, from, by });
+        self.hits.push(PlayerHit { tick, player, amount, from, by, kind: None });
     }
     /// The extra push of the blow just dealt to `player` (`Hit.extra`), drained by the host with the hits.
     pub(crate) fn push(&mut self, player: u32, extra: (f64, f64, f64), by: Entity) {

@@ -49,6 +49,13 @@ pub fn hurt_player(w: &mut World, id: u32, amount: f32, by: Entity) {
     let from = creature_xz(w, by);
     w.resource_mut::<PlayerState>().hurt(tick, id, amount, from, Some(Who::Entity(by)));
 }
+/// `hurt_player` as `kind` (a thrown potion's `minecraft:indirect_magic`), the thrower named as the killer.
+pub fn hurt_player_as(w: &mut World, id: u32, amount: f32, by: Entity, kind: &'static str) {
+    hurt_player(w, id, amount, by);
+    if let Some(h) = w.resource_mut::<PlayerState>().hits.last_mut() {
+        h.kind = Some(kind);
+    }
+}
 /// `by` hurts the creature `c` (its knock-back comes from `by`'s position).
 pub fn hurt_creature(w: &mut World, c: Entity, by: Entity, amount: f32) {
     let from = creature_xz(w, by);
