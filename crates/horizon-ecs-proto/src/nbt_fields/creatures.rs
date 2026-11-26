@@ -43,6 +43,7 @@ fn byte_or_int(t: &Tag) -> bool {
 
 /// The declared fields, by behaviour: sized (`Size`), creeper (`Fuse`, `ExplosionRadius`, `powered`), wither (`Invul`), llama (`Strength`).
 pub const FIELDS: &[Field] = &[
+    Field { key: Cow::Borrowed("VillagerData"), write: write_zombie_data, read: keep_zombie_data, accepts: compound, owner: Some(owner::<crate::bridge::sync_a::ZombieVillagerData>) },
     Field { key: Cow::Borrowed("ConversionTime"), write: write_conversion_time, read: read_conversion_time, accepts: accept::int, owner: Some(owner::<crate::bridge::sync_a::ZombieVillagerData>) },
     Field { key: Cow::Borrowed("ConversionPlayer"), write: write_conversion_player, read: read_conversion_player, accepts: accept::any, owner: Some(owner::<crate::bridge::sync_a::ZombieVillagerData>) },
     Field { key: Cow::Borrowed("Size"), write: write_size, read: read_size, accepts: accept::int, owner: Some(owner::<Size>) },
@@ -390,6 +391,11 @@ fn write_zombie_data(w: &World, e: Entity, c: &mut Compound) {
     m.insert("profession".into(), Tag::String(JavaString::from(format!("minecraft:{}", PROFESSION_IDS[d.0[1] as usize]).as_str())));
     m.insert("level".into(), Tag::Int(d.0[2]));
     c.insert("VillagerData".into(), Tag::Compound(m));
+}
+
+/// `VillagerData` of a zombie villager that exists: saved (`data get`), and left as it is on a load (the creator above reads it).
+fn keep_zombie_data(_: &mut World, _: Entity, t: &Tag) -> bool {
+    matches!(t, Tag::Compound(_))
 }
 
 fn read_zombie_data(w: &mut World, e: Entity, t: &Tag) -> bool {
