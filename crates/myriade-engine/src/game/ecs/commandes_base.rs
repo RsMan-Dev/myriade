@@ -78,6 +78,12 @@ impl Game<'_> {
     /// of the host's mob are not read here (the ECS holds no name yet).
     pub(in crate::game) fn ecs_mob_name(&self, id: u32) -> Text {
         let ty = self.ecs.kind(id).unwrap_or_default();
+        // `Villager.getTypeName`: the profession's name, `entity.minecraft.villager.<profession>`.
+        if ty == "minecraft:villager" {
+            if let Some(profession) = self.ecs.trade_profession(id).filter(|p| !p.is_empty()) {
+                return Text::translate(&format!("entity.minecraft.villager.{profession}"), &[]);
+            }
+        }
         Text::translate(&format!("entity.{}", ty.replace(':', ".")), &[])
     }
 
