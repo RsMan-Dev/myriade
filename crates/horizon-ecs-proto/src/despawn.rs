@@ -142,7 +142,9 @@ fn removable(w: &World, e: Entity, d: &Despawn) -> bool {
     // A trusting ocelot counts as tamed (`Ocelot.isTrusting`), a cat by its owner (`Cat.isTame`).
     let tamed = w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0.is_some()) || w.get::<crate::behaviours::cat_state::Trusting>(e).is_some();
     let named = w.get::<crate::custom_name::CustomName>(e).is_some();
-    rule::removable(d.def.removable, tamed, named, crate::cow::now_of(w, e) - d.born)
+    // `ZombieVillager.removeWhenFarAway`: never while it is being cured.
+    let curing = w.get::<crate::give_item::Curing>(e).is_some();
+    !curing && rule::removable(d.def.removable, tamed, named, crate::cow::now_of(w, e) - d.born)
 }
 /// The resources of the service, made when the first creature that may go away is given its rule (a world that has none does not carry them).
 pub fn ensure(w: &mut World) {

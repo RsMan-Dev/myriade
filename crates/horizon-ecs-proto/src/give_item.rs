@@ -1,5 +1,6 @@
 //! The rule `GIVE`: a player gives the entity an item it accepts; it heals, cures, or both. One rule for "an item that heals" (iron golem
 //! ingot) and "an item that cures under an effect" (golden apple on a zombie villager under Weakness). Nothing here is about one species.
+use crate::behaviours::convert_timer::{self, Converting};
 use crate::cow::*;
 use crate::effects::{self, Kind};
 use crate::goals::*;
@@ -45,18 +46,23 @@ impl GiveParams {
         ..Self::NONE
     };
 }
-/// The cure under way (rare: only while it lasts).
+/// The cure under way (rare: only while it lasts), with its count in `Converting`; `starter` is the player's uuid (`ConversionPlayer`).
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Curing {
     pub into: &'static str,
+    pub starter: Option<u128>,
 }
 pub static GIVE: Rule = Rule { name: "give_item", equip: |_, _, _| {}, attrs: no_attrs, interact };
 
 fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i: &crate::behaviours::Interaction) -> bool {
     let p = *params::<GiveParams>(p);
-    if i.item == 0 || !p.items.iter().any(|n| crate::items::is(n, i.item)) || w.get::<Curing>(e).is_some() {
+    if i.item == 0 || !p.items.iter().any(|n| crate::items::is(n, i.item)) {
         return false;
+    }
+    if w.get::<Curing>(e).is_some() {
+        take_from_hand(w, i);
+        return true;
     }
     if p.needs.is_some_and(|k| !effects::has(w, e, k)) {
         return p.swallow;
@@ -79,12 +85,8 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
     }
     if let Some(c) = p.cure {
         let ticks = c.base + with_rng(w, e, |r| r.next_int(c.spread)) as i32;
-        if let Some(k) = c.grants {
-            effects::add(w, e, k, 0, ticks);
-        }
-        w.entity_mut(e).insert(Curing { into: c.into });
-        after(w, e, ticks, finish_cure);
-        w.resource_mut::<Events>().host.entity_event(e, c.event);
+        let starter = crate::player_uuids::uuid_of(w, i.player);
+        start_cure(w, e, c, ticks, starter);
     }
     if let Some(s) = p.sound {
         let (a, b) = with_rng(w, e, |r| (r.next_int(1000), r.next_int(1000)));
@@ -94,10 +96,63 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
     take_from_hand(w, i);
     true
 }
-/// The deadline of the cure: the entity becomes what the gift made it, keeping what it wears.
+/// `ZombieVillager.startConverting`: the count runs from `ticks`, Weakness goes, Strength lasts as long, the client shakes (event 16).
+pub fn start_cure(w: &mut World, e: Entity, c: Cure, ticks: i32, starter: Option<u128>) {
+    effects::remove(w, e, Kind::Weakness);
+    if let Some(k) = c.grants {
+        effects::add(w, e, k, 0, ticks);
+    }
+    let until = crate::cow::now_of(w, e) + ticks as u64;
+    w.entity_mut(e).insert((Converting { until }, Curing { into: c.into, starter }));
+    after(w, e, 1, cure_tick);
+    w.resource_mut::<Events>().host.entity_event(e, c.event);
+}
+/// `ZombieVillager.tick`: the count drops by `getConversionProgress` each tick. `until` moves by `1 - progress`, so that `until - now` is
+/// the count left, as in vanilla.
+fn cure_tick(w: &mut World, e: Entity) {
+    let Some(c) = w.get::<Converting>(e).copied() else { return };
+    if w.get::<Curing>(e).is_none() {
+        return;
+    }
+    let progress = convert_timer::cure_progress(w, e);
+    let until = (c.until + 1).saturating_sub(progress as u64);
+    if crate::rules::convert_timer::count_over(crate::cow::now_of(w, e), until) {
+        finish_cure(w, e);
+    } else {
+        if let Some(mut t) = w.get_mut::<Converting>(e) {
+            t.until = until;
+        }
+        after(w, e, 1, cure_tick);
+    }
+}
+/// `ZombieVillager.finishConversion`: the villager keeps the type, profession, level and finalized flag of the zombie, and the equipment;
+/// it is nauseous for 200 ticks, the level event 1027 sounds unless the zombie is silent, and the starter gets the cure criterion
+/// (host event) and the reputation (`ZOMBIE_VILLAGER_CURED`: major +20, minor +25).
 fn finish_cure(w: &mut World, e: Entity) {
     let Some(c) = w.get::<Curing>(e).copied() else { return };
-    crate::conversion::convert(w, e, c.into, crate::conversion::ConvertKeep::ALL);
+    w.entity_mut(e).remove::<(Converting, Curing)>();
+    let carried = crate::nbt_fields::creatures::carried_villager(w, e);
+    let finalized = w.get::<crate::bridge::sync_a::VillagerFinalized>(e).is_some();
+    let silent = w.get::<crate::behaviours::elder_curse::Silent>(e).is_some();
+    let at = w.get::<Pos>(e).map(|p| [p.0.x.floor() as i32, p.0.y.floor() as i32, p.0.z.floor() as i32]);
+    let Some(n) = crate::conversion::convert(w, e, c.into, crate::conversion::ConvertKeep::ALL) else { return };
+    if let Some((variant, profession, level)) = carried
+        && let Some(mut m) = w.get_mut::<crate::behaviours::trade_offers::Merchant>(n)
+    {
+        (m.variant, m.profession, m.level) = (variant, profession, level);
+    }
+    if finalized {
+        w.entity_mut(n).insert(crate::bridge::sync_a::VillagerFinalized);
+    }
+    effects::add(w, n, Kind::Nausea, 0, 200);
+    if let Some(at) = at.filter(|_| !silent) {
+        w.resource_mut::<Events>().host.level_event(1027, at, 0);
+    }
+    if let Some(player) = c.starter.and_then(|u| crate::player_uuids::id_of(w, u)) {
+        w.resource_mut::<Events>().host.cured_zombie_villager(n, player);
+        crate::behaviours::gossip::add(w, n, player, crate::rules::gossip::Kind::MajorPositive, 20);
+        crate::behaviours::gossip::add(w, n, player, crate::rules::gossip::Kind::MinorPositive, 25);
+    }
 }
 /// One item leaves the player's hand: in the mirror (`Online`), and on the host by `HostEvent::HeldUsed`.
 pub fn take_from_hand(w: &mut World, i: &crate::behaviours::Interaction) {

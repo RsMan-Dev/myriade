@@ -94,3 +94,29 @@ fn drop_carried(w: &mut World, e: Entity) {
     let stacks = crate::item_store::death_stacks(w, e);
     crate::behaviours::shear::drop_stacks(w, stacks, at);
 }
+/// `ZombieVillager.getConversionProgress`: a tick counts 1. On the 1% of ticks that pass the gate, each bed or iron bars found in the
+/// 8-block box around the zombie (the first 14 found) adds 1 at 30%.
+pub fn cure_progress(w: &mut World, e: Entity) -> i32 {
+    if goals::with_rng(w, e, |r| r.next_f64()) >= 0.01 {
+        return 1;
+    }
+    let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return 1 };
+    let (x0, y0, z0) = (p.x as i32, p.y as i32, p.z as i32);
+    let (mut progress, mut found) = (1, 0);
+    'scan: for x in x0 - 4..x0 + 4 {
+        for y in y0 - 4..y0 + 4 {
+            for z in z0 - 4..z0 + 4 {
+                if found == 14 {
+                    break 'scan;
+                }
+                if crate::level::has_block_tag(w, "minecraft:speeds_up_zombie_villager_curing", [x, y, z]) {
+                    found += 1;
+                    if goals::with_rng(w, e, |r| r.next_f64()) < 0.3 {
+                        progress += 1;
+                    }
+                }
+            }
+        }
+    }
+    progress
+}

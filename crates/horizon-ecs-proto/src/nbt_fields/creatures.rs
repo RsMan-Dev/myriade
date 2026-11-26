@@ -43,6 +43,8 @@ fn byte_or_int(t: &Tag) -> bool {
 
 /// The declared fields, by behaviour: sized (`Size`), creeper (`Fuse`, `ExplosionRadius`, `powered`), wither (`Invul`), llama (`Strength`).
 pub const FIELDS: &[Field] = &[
+    Field { key: Cow::Borrowed("ConversionTime"), write: write_conversion_time, read: read_conversion_time, accepts: accept::int, owner: Some(owner::<crate::bridge::sync_a::ZombieVillagerData>) },
+    Field { key: Cow::Borrowed("ConversionPlayer"), write: write_conversion_player, read: read_conversion_player, accepts: accept::any, owner: Some(owner::<crate::bridge::sync_a::ZombieVillagerData>) },
     Field { key: Cow::Borrowed("Size"), write: write_size, read: read_size, accepts: accept::int, owner: Some(owner::<Size>) },
     Field { key: Cow::Borrowed("Fuse"), write: write_fuse, read: read_fuse, accepts: accept::short, owner: Some(owner::<Fuse>) },
     Field { key: Cow::Borrowed("ExplosionRadius"), write: write_radius, read: read_radius, accepts: byte, owner: Some(owner::<Fuse>) },
@@ -426,6 +428,57 @@ fn read_immune(w: &mut World, e: Entity, t: &Tag) -> bool {
         w.entity_mut(e).remove::<crate::behaviours::convert_timer::ZombImmune>();
     }
     true
+}
+
+/// `ZombieVillager.addAdditionalSaveData`: `ConversionTime`, the count left, or -1 when no cure runs.
+fn write_conversion_time(w: &World, e: Entity, c: &mut Compound) {
+    let left = w.get::<crate::behaviours::convert_timer::Converting>(e).map_or(-1, |t| t.until.saturating_sub(crate::cow::now_of(w, e)) as i32);
+    c.insert("ConversionTime".into(), Tag::Int(left));
+}
+
+/// `ZombieVillager.readAdditionalSaveData`: a count (not -1) resumes the cure with the count left (`startConverting`).
+fn read_conversion_time(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(left) = t else { return false };
+    if w.get::<crate::bridge::sync_a::ZombieVillagerData>(e).is_none() {
+        return false;
+    }
+    if *left == -1 {
+        w.entity_mut(e).remove::<(crate::behaviours::convert_timer::Converting, crate::give_item::Curing)>();
+    } else if let Some(c) = crate::give_item::GiveParams::VILLAGER_CURE.cure {
+        crate::give_item::start_cure(w, e, c, *left, None);
+    }
+    true
+}
+
+/// `ConversionPlayer`: the uuid of the player who started the cure, when one did.
+fn write_conversion_player(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(u) = w.get::<crate::give_item::Curing>(e).and_then(|k| k.starter) {
+        c.insert("ConversionPlayer".into(), Tag::IntArray(crate::bridge::uuids::to_words(u).to_vec()));
+    }
+}
+
+fn read_conversion_player(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::IntArray(v) = t else { return false };
+    if v.len() != 4 {
+        return false;
+    }
+    let uuid = v.iter().fold(0u128, |acc, &x| (acc << 32) | u128::from(x as u32));
+    if let Some(mut k) = w.get_mut::<crate::give_item::Curing>(e) {
+        k.starter = Some(uuid);
+    }
+    true
+}
+
+/// The villager a cured zombie becomes takes its type, profession and level (`ZombieVillager.finishConversion` copies `VillagerData`),
+/// found by name in the tables a `Merchant` reads.
+pub fn carried_villager(w: &World, e: Entity) -> Option<(u8, u8, u8)> {
+    use crate::bridge::sync_a::{PROFESSION_IDS, VILLAGER_TYPE_IDS, ZombieVillagerData};
+    let d = w.get::<ZombieVillagerData>(e)?.0;
+    let kind = format!("minecraft:{}", VILLAGER_TYPE_IDS[d[0] as usize]);
+    let job = format!("minecraft:{}", PROFESSION_IDS[d[1] as usize]);
+    let variant = (0..=u8::MAX).find(|&i| crate::rules::trade_offers::variant_name(i) == kind)?;
+    let profession = (0..=u8::MAX).find(|&p| crate::behaviours::trade_offers::profession_name(w, p) == job)?;
+    Some((variant, profession, d[2] as u8))
 }
 
 const GENES: [&str; 7] = ["normal", "lazy", "worried", "playful", "brown", "weak", "aggressive"];
