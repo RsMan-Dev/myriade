@@ -232,6 +232,31 @@ impl Game<'_> {
     /// `Entity.load` of new data (`EntityDataAccessor.setData`): the entity is
     /// rebuilt from its compound, keeping its id and UUID. Also what
     /// `TypedEntityData.loadInto` is: a spawn egg's data on the mob it spawned.
+    /// A trading screen open on `id` holds its own copy of the offers and the experience (newer than the mob's until it
+    /// closes): a `/data modify` of those keys goes to that copy too, or `/data get` and the next trade would read the old ones.
+    fn refresh_open_trade(&mut self, id: u32, tag: &Tag) {
+        let offers = tag.get("Offers").map(entity_nbt::offers_from_nbt);
+        let xp = match tag.get("Xp") {
+            Some(Tag::Int(x)) => Some(*x),
+            _ => None,
+        };
+        if offers.is_none() && xp.is_none() {
+            return;
+        }
+        let edit = |s: &mut myriade_engine::merchant::Session| {
+            if let Some(o) = offers.clone() {
+                s.offers = o;
+            }
+            if let Some(x) = xp {
+                s.xp = x;
+            }
+        };
+        if let Some(conn) = self.lan_trade_conn(id) {
+            self.lan_trade_edit(conn, edit);
+        } else if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()).filter(|m| m.mob == Some(id)) {
+            edit(&mut *m.session);
+        }
+    }
     pub(in crate::game) fn apply_entity_nbt(&mut self, t: Target, mut tag: Tag) -> R<()> {
         let stale = || err("commands.data.merge.failed", &[]);
         // `Entity.load` keeps only the fields it reads, so vanilla drops a key it
@@ -270,6 +295,7 @@ impl Game<'_> {
                 if !self.ecs_merge_mob(id, patch) {
                     return Err(stale());
                 }
+                self.refresh_open_trade(id, &tag);
             }
             Target::Fangs(id) => {
                 // RESTE: Warmup et Owner ne sont pas dans le composant ECS du croc, seuls la place et le cap sont écrits.
