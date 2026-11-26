@@ -56,6 +56,9 @@ pub fn set_size(w: &mut World, e: Entity, size: i32) {
     }
     if let Some(mut h) = w.get_mut::<Health>(e) {
         h.0 = health_of(r.p.health, s);
+        let max = h.0;
+        // The `max_health` attribute follows the size (`setSize` sets its base), not only the current health.
+        crate::tame::write_max_health_base(w, e, max);
     }
     if let Some(mut d) = w.get_mut::<AttackDamage>(e) {
         d.0 = damage_of(r.p.damage_per_size, s);

@@ -126,7 +126,7 @@ pub fn tame(w: &mut World, e: Entity, owner: Who, health: f32) {
 }
 /// The max health base `applyTamingSideEffects` sets, written over the species' and saved (`AttrMods`, the modifiers kept); a base equal to
 /// the species' is not written.
-fn write_max_health_base(w: &mut World, e: Entity, health: f32) {
+pub(crate) fn write_max_health_base(w: &mut World, e: Entity, health: f32) {
     let default = w.get::<SpeciesId>(e).map(|s| w.resource::<SpeciesTable>().0[s.0 as usize].max_health);
     let base = if default == Some(health) { f64::NAN } else { f64::from(health) };
     let mut list = w.get::<crate::attr_mod::AttrMods>(e).cloned().unwrap_or_default();
