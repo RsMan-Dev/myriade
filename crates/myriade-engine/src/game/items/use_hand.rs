@@ -160,6 +160,8 @@ impl Game<'_> {
                 let sign_consumes = self.sign_consumes_click(hit.pos);
                 use horizon_world::level::{InteractionResult, UseBranch};
                 let item_result = match block_answer {
+                    // TRY_WITH_EMPTY_HAND is not a result: the block's own empty-hand method runs next.
+                    Some(myriade_types::InteractionResult::TryWithEmptyHand) => None,
                     Some(answer) => Some(level_result(answer)),
                     None => self.with_level(|b, level, ticks| {
                         b.block_use_item_on(level, ticks, state, block_hit, player, item.as_deref())
