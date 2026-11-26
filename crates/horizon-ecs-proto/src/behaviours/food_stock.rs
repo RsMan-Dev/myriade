@@ -1,7 +1,7 @@
 //! Réserve de nourriture (`Villager.foodLevel` + points de l'inventaire) : ce qui permet de se reproduire (`canBreed`, 12) et ce
 //! qui est digéré. Les points de l'inventaire viennent de `food_inventory::points`, lus dans les données.
 use crate::behaviours::food_inventory::{self as inv, Stock};
-use crate::nbt::{accept, owner, Field};
+use crate::nbt::{accept, Field};
 use bevy_ecs::prelude::*;
 use crate::cow::Level;
 use myriade_engine_lib::items::Items;
@@ -18,15 +18,22 @@ pub struct Food(pub i32);
 
 /// `Villager.addAdditionalSaveData` writes `FoodLevel` as a byte; `readAdditionalSaveData` reads it with `getByteOr`, so an int or a
 /// long keeps its low 8 bits (`(byte)(value & 255)`).
-pub const FIELDS: &[Field] = &[Field { key: Cow::Borrowed("FoodLevel"), write: write_food, read: read_food, accepts: accept::any, owner: Some(owner::<Food>) }];
+pub const FIELDS: &[Field] = &[Field { key: Cow::Borrowed("FoodLevel"), write: write_food, read: read_food, accepts: accept::any, owner: None }];
 
 fn write_food(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(f) = w.get::<Food>(e) {
-        c.insert("FoodLevel".into(), Tag::Byte(f.0 as i8));
-    }
+    // A villager always saves its `FoodLevel`; the store has no component at 0.
+    let level = match w.get::<Food>(e) {
+        Some(f) => f.0,
+        None if w.get::<crate::cow::TypeName>(e).is_some_and(|n| n.0 == "minecraft:villager") => 0,
+        None => return,
+    };
+    c.insert("FoodLevel".into(), Tag::Byte(level as i8));
 }
 
 fn read_food(w: &mut World, e: Entity, t: &Tag) -> bool {
+    if !w.get::<crate::cow::TypeName>(e).is_some_and(|n| n.0 == "minecraft:villager") {
+        return false;
+    }
     let v = match t {
         Tag::Byte(v) => i64::from(*v),
         Tag::Short(v) => i64::from(*v),
