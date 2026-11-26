@@ -294,6 +294,16 @@ impl Game<'_> {
         self.ecs.set_trade_random(id, session.random.clone());
         self.ecs.set_ambient_timer(id, session.ambient_sound_time);
         self.ecs.trade_store(id, session.offers.clone(), session.xp);
+        // `ServerPlayer.closeContainer` -> `Merchant.setTradingPlayer(null)`: the screen's end ends the merchant's trade state.
+        self.ecs.trade_close(id);
+    }
+    /// `AbstractVillager.stillValid` for the local screen: the merchant is alive and its box within the entity interaction range plus 4.
+    pub(in crate::game) fn tick_merchant_reach(&mut self) {
+        let Some(id) = self.station.as_ref().and_then(|s| s.merchant.as_ref()).and_then(|m| m.mob) else { return };
+        let valid = self.ecs.alive(id) && self.ecs.bounds(id).is_some_and(|b| self.within_entity_interaction_range(&b, 4.0));
+        if !valid {
+            self.close_container();
+        }
     }
     fn open_merchant_state(&mut self, state: MerchantState) {
         let mut s = Station::new_kind(Kind::Merchant, [0, 0, 0]);

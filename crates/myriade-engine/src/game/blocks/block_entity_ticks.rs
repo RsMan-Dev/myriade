@@ -130,6 +130,7 @@ impl Game<'_> {
         let this = &mut *enclosing.game;
         this.tick_craft_table();
         this.tick_container_reach();
+        this.tick_merchant_reach();
         this.load_entity_types();
         if !this.world.block_entities.has_states() {
             let states = this.ticking_states();
