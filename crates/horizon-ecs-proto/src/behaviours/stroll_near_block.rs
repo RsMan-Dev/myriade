@@ -47,15 +47,16 @@ fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {
     if now <= n.0[i].1 && n.0[i].0 == k {
         return true;
     }
-    let Some(at) = w.get::<Pos>(e).map(|pos| pos.0) else { return false };
-    let dx = with_rng(w, e, |r| r.next_int(2 * H + 1)) - H;
-    let dy = with_rng(w, e, |r| r.next_int(2 * V + 1)) - V;
-    let dz = with_rng(w, e, |r| r.next_int(2 * H + 1)) - H;
-    walk_to(w, e, [at.x + f64::from(dx), at.y + f64::from(dy), at.z + f64::from(dz)], p.speed);
+    // `StrollAroundPoi`: the land pick (8 sideways, 6 up or down) becomes the WALK_TARGET (close 1), or the target is erased when
+    // there is none; the move-to-target sink walks it (and sees it change), no navigation is asked from here.
+    match pick(w, e, crate::spots::Pick::Land { h: H, v: V }) {
+        Some(to) => set(w, e, &WALK_TARGET, MemValue::Walk(WalkTarget { target: Tracker::Point(to), speed: p.speed as f32, close: 1 }), None),
+        None => erase(w, e, &WALK_TARGET),
+    }
     n.0[i] = (k, now + 180);
     w.entity_mut(e).insert(n);
     true
 }
 fn nothing(_: &mut World, _: Entity, _: &Ctx) {}
 
-pub static BEHAVIOUR: Behaviour = Behaviour { name: "stroll_near_block", mems: &[], one_shot: true, can_start, start: nothing, ..Behaviour::DEFAULT };
+pub static BEHAVIOUR: Behaviour = Behaviour { name: "stroll_near_block", mems: &[&WALK_TARGET], one_shot: true, can_start, start: nothing, ..Behaviour::DEFAULT };
