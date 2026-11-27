@@ -38,11 +38,7 @@ pub fn set_slot(w: &mut World, e: Entity, slot: Slot, item: u32) -> u32 {
         return old;
     }
     match slot {
-        Slot::Saddle => {
-            if let Some(mut m) = w.get_mut::<crate::mount::Mount>(e) {
-                m.saddled = item != 0;
-            }
-        }
+        Slot::Saddle => set_saddled(w, e, item != 0),
         Slot::Head | Slot::Chest | Slot::Legs | Slot::Feet | Slot::Body => refresh_armor(w, e),
         Slot::Main | Slot::Off => {}
     }
@@ -68,6 +64,12 @@ pub fn set_slot(w: &mut World, e: Entity, slot: Slot, item: u32) -> u32 {
         w.resource_mut::<crate::goals::Entered>().0.push(e);
     }
     old
+}
+/// `AbstractHorse.isSaddled`: the saddle slot's state, whoever writes the slot (`set_slot`, a saved equipment read back).
+pub(crate) fn set_saddled(w: &mut World, e: Entity, saddled: bool) {
+    if let Some(mut m) = w.get_mut::<crate::mount::Mount>(e) {
+        m.saddled = saddled;
+    }
 }
 /// `LivingEntity.setItemSlot` of the slot left empty; what it held.
 pub fn take_slot(w: &mut World, e: Entity, slot: Slot) -> u32 {

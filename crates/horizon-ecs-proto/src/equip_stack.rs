@@ -45,6 +45,10 @@ pub fn set(world: &mut World, e: Entity, slot: usize, stack: Option<ItemStack>) 
     if empty {
         world.entity_mut(e).remove::<Equipment>();
     }
+    // The saddle slot (the last) saddles the mount, as `equipment::set_slot` does.
+    if slot == SLOTS - 1 {
+        crate::equipment::set_saddled(world, e, stack.is_some());
+    }
     crate::equip_attrs::changed(world, e, slot, stack.as_ref());
     push(world, EquipmentEvent::Changed { entity: e, slot, from, to: stack });
     true

@@ -4284,7 +4284,7 @@ impl Game<'_> {
         let others = self
             .lan
             .as_ref()
-            .map(|h| self.ridden_by_others(&h.hub.guests, self.dim.id(), None, false))
+            .map(|h| self.ridden_by_others(&h.hub.guests, self.dim.id(), self.lan_acting_uuid, false))
             .unwrap_or_default();
         let vehicle = self.parent_vehicle_tag(self.riding, &others);
         let level = &mut self.level;
@@ -4307,6 +4307,12 @@ impl Game<'_> {
                     .get_or_insert_with(|| horizon_core::nbt::Tag::Compound(Default::default()));
                 if let horizon_core::nbt::Tag::Compound(map) = extra {
                     map.insert("RootVehicle".into(), tag);
+                }
+            }
+            // Not riding and no ride waiting to be restored: a RootVehicle kept from an earlier ride is stale.
+            None if self.pending_vehicle.is_none() => {
+                if let Some(horizon_core::nbt::Tag::Compound(map)) = level.player_extra.as_mut() {
+                    map.remove(&"RootVehicle".into());
                 }
             }
             None => {}

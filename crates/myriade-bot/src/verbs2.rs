@@ -65,7 +65,7 @@ pub fn verb_attack(s: &mut Session, args: &Value) -> Result<Value, String> {
 pub fn verb_interact(s: &mut Session, args: &Value) -> Result<Value, String> {
     let id = num_arg(args, "id")? as i32;
     let location = [0.0; 3];
-    s.send(S::Interact(play::Interact { id, hand: 0, location, secondary: false }))?;
+    s.send(S::Interact(play::Interact { id, hand: 0, location, secondary: args.get("secondary").and_then(Value::as_bool).unwrap_or(false) }))?;
     Ok(json!({}))
 }
 

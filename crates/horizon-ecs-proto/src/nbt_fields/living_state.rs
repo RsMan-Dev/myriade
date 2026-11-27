@@ -204,6 +204,8 @@ fn read_equipment(w: &mut World, e: Entity, t: &Tag) -> bool {
             *slot = Some(stack);
         }
     }
+    // The saddle is the last key of `SLOT_KEYS`: the mount is saddled as `set_slot` makes it.
+    crate::equipment::set_saddled(w, e, slots[SLOTS - 1].is_some());
     if slots.iter().all(Option::is_none) {
         w.entity_mut(e).remove::<Equipment>();
         w.entity_mut(e).remove::<crate::equip_attrs::WornModifiers>();

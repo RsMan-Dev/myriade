@@ -27,12 +27,14 @@ pub struct StepState {
     fall: f64,
 }
 
-/// `moveDist` / `nextStep` kept while the creature stands (the fields live as long as the entity): the walk goes on from them.
+/// `moveDist` / `nextStep` and `wasTouchingWater` kept while the creature stands (the fields live as long as the entity): the walk goes on from
+/// them, and the next movement sees the water it left.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct StepCarry {
     dist: f32,
     next: f32,
+    was_water: bool,
 }
 
 /// `Pose.CROUCHING` and `Pose.SWIMMING`.
@@ -89,11 +91,13 @@ pub fn move_events(
             continue;
         }
         let cfg: Params = cfg.map_or(Params::DEFAULT, |c| *c.0);
-        let (d0, n0) = carry.get(e).map_or((0.0, 1.0), |k| (k.dist, k.next));
-        let fresh = StepState { last: p.0, dist: d0, next: n0, was_ground: c.on_ground, was_water: fs.in_water, fall: 0.0 };
-        let Some(mut s) = st else {
-            cmd.entity(e).insert(fresh);
-            continue;
+        // A first sight takes the water the last stop left; an entity never seen before starts in its current water (no splash on its first tick).
+        let (d0, n0, w0) = carry.get(e).map_or((0.0, 1.0, fs.in_water), |k| (k.dist, k.next, k.was_water));
+        let first = st.is_none();
+        let mut fresh = StepState { last: p.0, dist: d0, next: n0, was_ground: c.on_ground, was_water: w0, fall: 0.0 };
+        let s: &mut StepState = match st {
+            Some(s) => s.into_inner(),
+            None => &mut fresh,
         };
         let at = [p.0.x, p.0.y, p.0.z];
         let pose = pose.map_or(0, |o| o.0);
@@ -180,7 +184,9 @@ pub fn move_events(
         (s.last, s.was_ground, s.was_water) = (p.0, c.on_ground, fs.in_water);
         // The tick that stopped it (`travel` took `Moving` off) is the last one seen: a landing is in it.
         if !moving {
-            cmd.entity(e).remove::<StepState>().insert(StepCarry { dist: s.dist, next: s.next });
+            cmd.entity(e).remove::<StepState>().insert(StepCarry { dist: s.dist, next: s.next, was_water: s.was_water });
+        } else if first {
+            cmd.entity(e).insert(*s);
         }
     }
 }
