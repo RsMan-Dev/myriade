@@ -18,12 +18,13 @@ pub struct Params {
 impl Params {
     pub const DEFAULT: Self = Self { adult_asks: 500, baby_asks: 25, ticks: 40, eat_at: 34 };
 }
-/// The data of the grazing, on the animal; `armed`: its ask is in the wheel.
+/// The data of the grazing, on the animal; `armed`: its ask is in the wheel, due at `due` (an older entry is stale).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Graze {
     pub def: &'static Params,
     pub armed: bool,
     pub slot: u8,
+    pub due: u64,
 }
 /// The animal is grazing: when the block goes, when the head comes up, whether the block went.
 #[derive(Component, Clone, Copy, Debug)]
@@ -48,7 +49,7 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Graze { def: params::<Params>(p), armed: false, slot: inst.slot });
+    w.entity_mut(e).insert(Graze { def: params::<Params>(p), armed: false, slot: inst.slot, due: 0 });
 }
 fn arm_graze_inst(w: &mut World, e: Entity, _: Inst) {
     arm_graze(w, e);
@@ -62,9 +63,13 @@ fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
         graze_deadline(w, e);
         return false;
     }
-    if let Some(mut g) = w.get_mut::<Graze>(e) {
-        g.armed = false;
+    let now = crate::cow::now_of(w, e);
+    let Some(mut g) = w.get_mut::<Graze>(e) else { return true };
+    // An entry left by a re-draw (`rearm`) is stale: the ask is the one due at `g.due`.
+    if g.armed && now != g.due {
+        return false;
     }
+    g.armed = false;
     true
 }
 fn block_at(w: &World, x: i32, y: i32, z: i32) -> &'static str {
@@ -91,8 +96,25 @@ pub fn arm_graze(w: &mut World, e: Entity) {
         let mut r = w.get_mut::<Rng>(e).unwrap();
         2 * geometric(&mut r, n)
     };
+    let due = crate::cow::now_of(w, e) + wait.max(1) as u64;
     arm(w, e, g.slot, wait);
-    w.get_mut::<Graze>(e).unwrap().armed = true;
+    let mut g = w.get_mut::<Graze>(e).unwrap();
+    g.armed = true;
+    g.due = due;
+}
+/// The age changed (a baby grows up, or a grown animal is a baby again) while its ask is armed: the wait is drawn again with the
+/// law of the new age, from now. Memoryless, so the asks left are drawn with the new law as vanilla's are, one per ask.
+pub fn rearm(w: &mut World, e: Entity) {
+    if w.get::<Grazing>(e).is_some() {
+        return;
+    }
+    if let Some(mut g) = w.get_mut::<Graze>(e) {
+        if !g.armed {
+            return;
+        }
+        g.armed = false;
+    }
+    arm_graze(w, e);
 }
 /// `EatBlockGoal.canUse` once the draw has come up: the block at its feet is short grass (or a fern), or the one under
 /// it is a grass block. Otherwise the next ask is armed.

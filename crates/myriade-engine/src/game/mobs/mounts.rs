@@ -78,7 +78,20 @@ impl Game<'_> {
         let Some(player) = self.acting_player_uuid_id() else {
             return false;
         };
-        self.ecs.entity_of(id).is_some_and(|e| self.ecs.mount_interact(e, player, item, sneaking))
+        let Some(e) = self.ecs.entity_of(id) else {
+            return false;
+        };
+        if !self.ecs.mount_interact(e, player, item, sneaking) {
+            return false;
+        }
+        // The ride is the ECS's write only (`mount::ride` pushes no seat event): the host takes it as the boat's `Mounted` does. A saddle leaves no rider.
+        let rode = self.ecs.world().and_then(|w| horizon_ecs_proto::mount::rider_of(w, e));
+        if rode == Some(horizon_ecs_proto::targeting::Who::Player(player)) {
+            // `Entity.startRiding` leaves the mount the player rides, once the seat is taken.
+            self.stop_riding();
+            self.start_riding(id);
+        }
+        true
     }
     /// Shears on the ECS mount `id`'s saddle: P takes it off (`EcsLevel::shear_saddle`, missing); the drop and the sound stay the host's.
     pub(in crate::game) fn shear_saddle_ecs(&mut self, id: u32, item: &str) -> Option<bool> {

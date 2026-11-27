@@ -1,8 +1,7 @@
 # Fidélité des espèces contre vanilla 26.3
 
 **Espèces 100 % vertes : 0 sur 6** (mesure 51). Vache, mouton, cochon et poule : l'apparition naturelle à la génération du chunk est
-ROUGE (Myriade en fait nettement moins que vanilla) ; au cochon, la monte (interaction à main vide sur un cochon sellé) est rouge ;
-au mouton, le broutage de l'herbe par un bébé est rouge. Morue : deux cases rouges (nage des 100 premiers ticks ; éclaboussures de la chute dans l'eau, 1 contre 17). Chauve-souris :
+ROUGE (Myriade en fait nettement moins que vanilla, cause non trouvée : les tables de biome sont identiques au jar, voir plus bas) ; cochon : la monte à main vide est corrigée (mesure 55) ; mouton : le broutage du bébé est corrigé (mesure 55). Morue : nage corrigée (mesure 55) ; éclaboussures de la chute : petites éclaboussures encore absentes. Chauve-souris :
 toutes les cases du cahier vertes, restes listés plus bas. Cahiers : `suivi/cahiers/cod.md`, `suivi/cahiers/bat.md`.
 
 Légende : V vert (identique, ou dans la loi à N répétitions), R rouge (écart prouvé), - sans objet (au jar), ? non mesuré ou non concluant.
@@ -42,7 +41,7 @@ Les tests unitaires de `horizon-ecs-proto` (cible `it`) ne compilent pas à ce H
 | sons | V | pas : `StepCarry` garde `moveDist`/`nextStep` entre les arrêts (loi `Entity.applyMovementEmissionAndPlaySound`) : `pig.step` 42 et 75 contre 63 et 58 (deux relevés, avant : 32 contre 55) ; ambiance 24 contre 20 ; bébé : `baby_pig.ambient` 21 contre 20, `baby_pig.step` 75 contre 58, blessure et mort dans la loi de hauteur (base 1,5) |
 | dégâts, panique | V | |
 | mort | V | dans la loi |
-| interactions | V | carotte, patate, betterave : InLove 580 contre 579, ForcedAge identique ; selle d'un adulte V ; monte R (l'interaction à main vide sur un cochon sellé ne fait pas monter) ; bébé non sellé, identique |
+| interactions | V | carotte, patate, betterave : InLove 580 contre 579, ForcedAge identique ; selle d'un adulte V ; monte V (mesure 55 : la monte à main vide d'un cochon sellé prend, 10 sur 10 comme vanilla ; un cochon sellé par commande ou NBT ne monte pas encore, `Mount.saddled` ne suit pas `read_equipment`, `nbt_fields/living_state.rs` 198-220) ; bébé non sellé, identique |
 | croissance | V | |
 | sauvegarde | V | |
 | apparition naturelle | R | voir la vache (même banc, mêmes chiffres) ; UUID présent |
@@ -52,7 +51,7 @@ Les tests unitaires de `horizon-ecs-proto` (cible `it`) ne compilent pas à ce H
 |---|---|---|
 | apparition, eau, mort, sauvegarde | V | |
 | déplacement, sons | V | déplacement N = 76 : 2,4/7,9 contre 2,7/7,7 |
-| interactions | V | blé comme la vache ; tonte : 1 à 3 laines, N = 24 (10/11/3) contre 15 tontes vanilla non nulles (9/5/1) ; teinture : identique (V) ; herbe broutée adulte 10 sur 24 contre 10 sur 24 (V) ; herbe broutée du bébé R : 3 sur 24 contre environ 23 sur 24 en 300 ticks |
+| interactions | V | blé comme la vache ; tonte : 1 à 3 laines, N = 24 (10/11/3) contre 15 tontes vanilla non nulles (9/5/1) ; teinture : identique (V) ; herbe broutée adulte 10 sur 24 contre 10 sur 24 (V) ; herbe broutée du bébé V (mesure 55) : bébés 24 sur 24 ayant brouté en 300 ticks contre 23 sur 24 en vanilla (avant : 3 sur 24) ; adulte en 1500 ticks 16 sur 24 contre 13 sur 24 |
 | croissance | V | |
 | apparition naturelle | R | voir la vache (même banc, mêmes chiffres) ; UUID présent |
 
@@ -74,9 +73,9 @@ Les tests unitaires de `horizon-ecs-proto` (cible `it`) ne compilent pas à ce H
 |---|---|---|
 | apparition | V | 43, clés identiques |
 | déplacement | R | 100 ticks : 0,1 contre 3,7 : à 40 puis 140 ticks la position (y 103,0 exact) ne bouge pas du tout, même pas la dérive de -0,005 ; à 600 ticks 6,3 contre 7,1 (V) ; cause non trouvée (but `fish_swim` armé à la naissance, `travel` ne tourne que sous `Moving` : piste, non vérifiée) |
-| eau, chute | R | volume de `playSwimSound` corrigé (vitesse, pas `min(0,1, 25 f)` qui est celui du cheval squelette ; tortue 1,5 f) ; `fish.swim` 0,00 à 0,01 comme vanilla ; éclaboussures de chute : 1 contre 17 (cause non creusée) |
+| eau, chute | R | volume de `playSwimSound` corrigé (vitesse, pas `min(0,1, 25 f)` qui est celui du cheval squelette ; tortue 1,5 f) ; `fish.swim` 0,00 à 0,01 comme vanilla ; nage V (mesure 55 : déplacement à 100 et 600 ticks 3,6 et 4,8 blocs contre 4,8 et 5,2) ; éclaboussures de chute : 1 contre 6, les petites (volume 0,02) manquent encore (cause lue, non prouvée : `move_events.rs` 93-95 recrée `StepState` avec `was_water = in_water`, l'entrée dans l'eau d'un poisson immobile ou d'un poisson qui reste à la surface n'est donc jamais vue) |
 | sons | V | ambiance (intervalle 120) 16 contre 20 ; blessure et mort présentes |
-| dégâts, mort | V | PV 2,0 identiques ; XP dans la loi ; un os de farine à 5 % observé chez Myriade seulement (N = 24, loi du butin non relue) |
+| dégâts, mort | V | PV 2,0 identiques ; XP dans la loi ; un os de farine à 5 % : la table vanilla `cod` le prévoit, pas un écart |
 | interactions | V | seau d'eau : `cod_bucket` avec `bucket_entity_data {Health: 3.0f, PersistenceRequired: 1b, NoAI: 1b}` identique |
 | croissance | - | pas d'âge |
 | sauvegarde | V | `Motion` identique après rechargement (seul l'ordre des étiquettes diffère) |
@@ -95,8 +94,8 @@ Les tests unitaires de `horizon-ecs-proto` (cible `it`) ne compilent pas à ce H
 | interactions, croissance | - | sans objet |
 
 ## Écarts connus non corrigés
-- Apparition naturelle à la génération : rouge pour les quatre espèces d'élevage (Myriade bien en dessous de vanilla), cause non cherchée ; tirage continu non concluant (rien des deux côtés) ; UUID posé par le flux propre de l'hôte (`bridge/host.rs`, `persist.rs`), vérifié sur des mobs apparus seuls.
-- Cochon : la monte d'un cochon sellé à main vide ; mouton : le broutage de l'herbe par un bébé.
-- Morue : éclaboussures de la chute (1 contre 17) ; nage des 100 premiers ticks (aucun mouvement avant ~140 ticks) ; apparition naturelle des poissons non mesurée.
+- Apparition naturelle à la génération : rouge pour les quatre espèces d'élevage (Myriade bien en dessous de vanilla), cause non trouvée : les tables de biome (`resources/worldgen/biomes.json`, 67 biomes) sont identiques au jar, la génération du code reprend `spawnMobsForChunkGeneration`, 289 chunks donnent bien vache 17, mouton 10, cochon 8, poule 8 ; banc des positions joué (mesure 55) : mêmes coordonnées que vanilla pour les groupes (17 vaches, 10 contre 6 moutons, 8 contre 5 cochons, 8 poules des deux côtés, N = 1 zone), donc pas de manque constaté à la génération dans ce banc, l'écart des mesures précédentes reste inexpliqué ; tirage continu non concluant (rien des deux côtés) ; UUID posé par le flux propre de l'hôte (`bridge/host.rs`, `persist.rs`), vérifié sur des mobs apparus seuls.
+- Cochon : un cochon sellé par commande ou par NBT (`item replace`, `equipment`, rechargement d'une sauvegarde) ne monte pas : `read_equipment` ne met pas `Mount.saddled` ; `data get entity <joueur> RootVehicle` en cours de monte ne rend rien (`persist.rs` `parent_vehicle_tag`, `parent_vehicle_root` rend None) alors que la sauvegarde à la déconnexion contient RootVehicle ; l'accroupissement refusé n'est pas mesuré (le banc n'a pas de verbe d'accroupissement).
+- Morue : petites éclaboussures (0,02) de la chute et de la mort ; apparition naturelle des poissons non mesurée.
 - Chauve-souris : le réveil avant un coup mortel n'est pas reproduit ; suspension spontanée à confirmer sur plus de répétitions.
 - Seau : données propres au saumon, au poisson tropical, à l'axolotl et au têtard non écrites (seule la morue est vérifiée).

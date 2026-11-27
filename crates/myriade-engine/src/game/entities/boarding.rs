@@ -27,7 +27,7 @@ impl Game<'_> {
     /// `Entity.startRiding` for the acting player: the rider link, then
     /// `CriteriaTriggers.START_RIDING_TRIGGER` for every server player the
     /// vehicle carries.
-    pub(super) fn start_riding(&mut self, vehicle: u32) {
+    pub(in crate::game) fn start_riding(&mut self, vehicle: u32) {
         self.riding = Some(vehicle);
         self.seat_acting_player(vehicle);
         self.note_started_riding(vehicle);

@@ -80,6 +80,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
         Some([x, f64::from(s.ty), z])
     } else {
         let mut sp = spotter(&level, [pos.x, pos.y, pos.z], &nav, walk, &mut r);
+        sp.stable = crate::spots::Stable::Water;
         let mut p = sp.pick(Pick::Default { h: 10, v: 7 });
         let mut count = 0;
         while let Some(q) = p {

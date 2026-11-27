@@ -282,6 +282,7 @@ fn grow_in(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::
     let e = ctx.entity;
     watch_in::<WATCH_FOLLOW_PARENT>(world.reborrow(), ctx);
     world.commands().queue(move |w: &mut World| crate::cow::refresh_box(w, e));
+    world.commands().queue(move |w: &mut World| crate::behaviours::eat_block::rearm(w, e));
     crate::bridge::view::touched(world, ctx);
 }
 
@@ -289,6 +290,7 @@ fn grow_out(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle:
     let e = ctx.entity;
     watch_out::<WATCH_FOLLOW_PARENT>(world.reborrow(), ctx);
     world.commands().queue(move |w: &mut World| crate::cow::refresh_box(w, e));
+    world.commands().queue(move |w: &mut World| crate::behaviours::eat_block::rearm(w, e));
     crate::bridge::view::touched(world, ctx);
 }
 
