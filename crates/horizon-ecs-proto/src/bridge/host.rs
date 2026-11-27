@@ -605,6 +605,12 @@ impl EcsWorld {
         }
     }
 
+    /// The chunk's record in the spatial index, made when it was not (generation places its animals before the chunk's pass of
+    /// `chunk_hazards`: born without a record they are in no column, so no selector, zone or search reaches them).
+    pub fn ensure_chunk(&mut self, cx: i32, cz: i32) {
+        self.world.resource_mut::<crate::cow::Index>().chunk_created(cx, cz);
+    }
+
     /// Restores the NBT the chunk was saved with (its entities come back; none when it was never unloaded).
     pub fn chunk_loaded(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32) {
         let saved = self.chunks.remove(&(cx, cz)).unwrap_or_default();
