@@ -84,15 +84,12 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
     st.armed = true;
     st.next = -st.interval;
 }
-/// A deadline came up: the ask happens only if the animal is active (a sleeping animal lets the cycle lapse; its
-/// arming resumes when it enters the active zone).
+/// A deadline came up: the ask happens (`RandomStandGoal` does not read `noActionTime`, whatever the distance to a player).
 fn fired(w: &mut World, e: Entity, _: Inst) -> bool {
-    let now = crate::cow::now_of(w, e);
-    let active = w.get::<ActiveUntil>(e).is_some_and(|a| a.0 > now);
     if let Some(mut s) = w.get_mut::<Stand>(e) {
         s.armed = false;
     }
-    active
+    true
 }
 /// `RandomStandGoal.canUse` after the draw: no rear while the animal stands (`immobile`), else the one-in-ten draw.
 /// A refusal starts the next cycle.

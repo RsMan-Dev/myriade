@@ -6,7 +6,7 @@ use crate::spawn_biome::biome_at;
 use crate::spawn_finalize::Group;
 use crate::spawn_natural::born_finalized_with;
 use crate::spawn_reason::SpawnReason;
-use crate::spawning::{obstructed, place_ok, rule_ok, spawn_def, Category, Entry, Spawner};
+use crate::spawning::{place_ok, rule_ok, spawn_def, Category, Entry, Spawner};
 use bevy_ecs::prelude::*;
 use myriade_engine_lib::mobs::data::{PathComputationType, Placement};
 use myriade_engine_lib::mobs::spawn_rules::SpawnLevel;
@@ -64,8 +64,9 @@ pub fn spawn_chunk_packs(w: &mut World, mw: &MobWorld<'_>, cx: i32, cz: i32, reg
                         // The yaw of `snapTo`: drawn here as the jar does; `born` takes no yaw yet.
                         random.next_float();
                         let probe = box_at(Vec3::new(fx, fy, fz), sp.width, sp.height);
-                        // `Mob.checkSpawnObstruction`: no liquid in the box unless the species lives in it, and nothing in the way.
-                        if (def.liquid || !mw.contains_any_liquid(probe)) && !obstructed(w, probe) {
+                        // `Mob.checkSpawnObstruction`: no liquid in the box unless the species lives in it; `WorldGenRegion.getEntities` is empty,
+                        // so no creature of the pack is ever "in the way" while a chunk is generated.
+                        if def.liquid || !mw.contains_any_liquid(probe) {
                             let seed = region.next_long() as u64;
                             success = born_finalized_with(w, mw, &sp, [fx, fy, fz], seed, f64::INFINITY, SpawnReason::ChunkGeneration, &mut group, region).is_some();
                         }
