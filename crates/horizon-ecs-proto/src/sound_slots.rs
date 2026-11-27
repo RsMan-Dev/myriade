@@ -42,6 +42,7 @@ pub fn sound(w: &World, e: Entity, slot: fn(&Overrides) -> Slot, vanilla: Option
 
 /// `LivingEntity.playHurtSound`: the declared hurt voice of `e`, at its place with its own pitch (`tear_down::voice`).
 pub fn hurt(w: &mut World, e: Entity) {
+    crate::behaviours::ambient_sound::reset_on_hurt(w, e);
     if let Some(name) = sound(w, e, |o| o.hurt, None) {
         crate::tear_down::voice(w, e, name);
     }

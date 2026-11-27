@@ -39,13 +39,13 @@ impl Game<'_> {
         // a ticket level change brings it there (`ecs_ticket_levels_changed`).
         if !self.tickets.levels().full(cx, cz) {
             // The world kept this chunk's entities when it unloaded in this session: the file's are the same, held once.
-            if self.ecs.save_chunk(cx, cz).is_empty() {
+            if !self.ecs.chunk_holds(cx, cz) {
                 self.ecs.hold_chunk(cx, cz, entities.to_vec());
             }
             return;
         }
         self.ecs_with(|ecs, mw| ecs.chunk_loaded(mw, cx, cz));
-        if self.ecs.save_chunk(cx, cz).is_empty() {
+        if !self.ecs.chunk_holds(cx, cz) {
             // The fight's crystal count is the ECS's: a loaded crystal is counted there.
             self.ecs_with(|ecs, mw| {
                 for c in entities {

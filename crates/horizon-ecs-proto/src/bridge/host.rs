@@ -679,6 +679,15 @@ impl EcsWorld {
     }
 
     /// The NBT of the saved entities of the chunk, and of those it holds out of the level; a passenger is written inside its mount (`Passengers`), not on its own.
+    /// Whether `save_chunk` would give something: a saved entity (not a rider) stands in the chunk, or the chunk holds NBT. Writes and
+    /// builds nothing.
+    pub fn chunk_holds(&mut self, cx: i32, cz: i32) -> bool {
+        if self.chunks.get(&(cx, cz)).is_some_and(|h| !h.is_empty()) {
+            return true;
+        }
+        let mut q = self.world.query_filtered::<(&Pos, Has<Riding>, Has<crate::seat::Seated>), (With<Saved>, Allow<Disabled>)>();
+        q.iter(&self.world).any(|(p, riding, seated)| !riding && !seated && chunk_of(p.0) == (cx, cz))
+    }
     pub fn save_chunk(&mut self, cx: i32, cz: i32) -> Vec<Compound> {
         let es = self.chunk_entities(cx, cz);
         let mut out: Vec<Compound> = es.into_iter().filter(|&e| self.world.get::<Riding>(e).is_none() && self.world.get::<crate::seat::Seated>(e).is_none()).filter_map(|e| nbt::save(&self.world, e)).collect();

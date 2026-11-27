@@ -17,6 +17,10 @@ use horizon_core::random::{LegacyRandom, RandomSource, WorldgenRandom};
 
 /// The creature packs of the chunk `(cx, cz)`, placed into `w`: each creature is born and finalized as it is placed.
 pub fn spawn_chunk_packs(w: &mut World, mw: &MobWorld<'_>, cx: i32, cz: i32, region: &mut impl RandomSource) {
+    // `NaturalSpawner.spawnMobsForChunkGeneration`: nothing with the `spawn_mobs` rule off.
+    if w.get_resource::<crate::spawn_env::SpawnEnv>().is_some_and(|e| !e.spawn_mobs) {
+        return;
+    }
     let Some(spawner) = w.get_resource::<Spawner>() else { return };
     let (zoom, max_y) = (spawner.zoom, mw.world.shape.max_y() - 1);
     let (xo, zo) = (cx * 16, cz * 16);

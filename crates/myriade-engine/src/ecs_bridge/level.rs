@@ -324,6 +324,9 @@ impl EcsLevel {
             w.chunk_unloaded(mw, cx, cz);
         }
     }
+    pub fn chunk_holds(&mut self, cx: i32, cz: i32) -> bool {
+        self.inner.as_mut().is_some_and(|w| w.chunk_holds(cx, cz))
+    }
     pub fn save_chunk(&mut self, cx: i32, cz: i32) -> Vec<Compound> {
         self.inner.as_mut().map_or_else(Vec::new, |w| w.save_chunk(cx, cz))
     }

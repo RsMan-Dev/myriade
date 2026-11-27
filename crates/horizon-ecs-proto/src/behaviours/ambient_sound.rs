@@ -53,7 +53,7 @@ fn delay(w: &mut World, e: Entity) -> i32 {
 /// The tick of the entity's own time at which the one pending deadline falls: `arm_timers` may run again (a player arrives, the
 /// zone wakes the animal) and must not start a second chain of sounds.
 #[derive(Component, Clone, Copy)]
-struct Armed(u64);
+struct Armed(u64, Inst);
 /// The creature has played a sound once: its counter then restarts at `-interval`, not at 0 as in a new creature.
 #[derive(Component, Clone, Copy)]
 struct Played;
@@ -63,7 +63,7 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
         return;
     }
     let at = now + delay(w, e) as u64;
-    w.entity_mut(e).insert(Armed(at));
+    w.entity_mut(e).insert(Armed(at, inst));
     arm_at(w, e, at, Due::Goal(inst.slot));
 }
 fn can_use(_: &mut World, _: Entity, _: Inst) -> bool {
@@ -91,7 +91,25 @@ pub fn play(w: &mut World, e: Entity) -> bool {
     w.resource_mut::<Events>().host.sound(name, [at.x, at.y, at.z], 2.0, 1.0);
     true
 }
+/// `Mob.playHurtSound` calls `resetAmbientSoundTime`: a hurt creature's counter restarts at `-interval`, and the sound already pending is
+/// replaced by a later one. Only the `interval` law has the counter.
+pub fn reset_on_hurt(w: &mut World, e: Entity) {
+    let Some(Ambient(p)) = w.get::<Ambient>(e).copied() else { return };
+    let Some(Armed(_, inst)) = w.get::<Armed>(e).copied() else { return };
+    if p.interval.is_none() {
+        return;
+    }
+    w.entity_mut(e).insert(Played);
+    let at = now_of(w, e) + delay(w, e) as u64;
+    w.entity_mut(e).insert(Armed(at, inst));
+    arm_at(w, e, at, Due::Goal(inst.slot));
+}
 fn start(w: &mut World, e: Entity, inst: Inst) {
+    // A timer of before a hurt: the deadline is later now.
+    if w.get::<Armed>(e).is_some_and(|a| a.0 > now_of(w, e)) {
+        w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
+        return;
+    }
     w.entity_mut(e).remove::<Armed>().insert(Played);
     play(w, e);
     w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
