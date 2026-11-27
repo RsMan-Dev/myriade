@@ -826,7 +826,7 @@ mod tests {
         ("minecraft:giant", &[]),
         ("minecraft:mannequin", &[]),
         ("minecraft:ghast", &[("nearest_target", 1), ("float_around", 5), ("ghast_look", 7), ("charged_shot", 7)]),
-        ("minecraft:bat", &[("bat_flutter", 0), ("move_emission", 0)]),
+        ("minecraft:bat", &[("bat_flutter", 0), ("ambient_sound", 2), ("move_emission", 0)]),
         ("minecraft:trader_llama", &[("hurt_by", 1), ("nearest_target", 2), ("defend_leash_holder", 1), ("nearest_target", 2), ("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("ranged_attack", 3), ("follow_caravan", 2), ("panic", 3), ("breed", 4), ("tempt", 5), ("follow_parent", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 9)]),
         ("minecraft:wandering_trader", &[("float", 0), ("drink_item", 0), ("drink_item", 0), ("trade", 1), ("avoid_entity", 1), ("avoid_entity", 1), ("avoid_entity", 1), ("avoid_entity", 1), ("avoid_entity", 1), ("avoid_entity", 1), ("avoid_entity", 1), ("panic", 1), ("wander_to_position", 2), ("move_towards_restriction", 4), ("stroll", 8), ("interact_player", 9), ("look_at_player", 10)]),
         ("minecraft:strider", &[("move_emission", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("strider_go_to_lava", 4), ("follow_parent", 5), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("look_at_player", 9)]),

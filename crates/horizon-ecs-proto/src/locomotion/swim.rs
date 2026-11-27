@@ -496,7 +496,7 @@ fn dry(
             c.on_ground = false;
         } else if c.on_ground && !swp.squid {
             // The flop is `AbstractFish.aiStep`'s: a squid only suffocates.
-            let (a, b) = (rng.next_f64() as f32, rng.next_f64() as f32);
+            let (a, b) = (rng.next_float(), rng.next_float());
             v.0 = flop_velocity(v.0, a, b);
             c.on_ground = false;
             // `makeSound(getFlopSound())`: the pitch's two draws come whether the fish is silent or not.

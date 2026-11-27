@@ -145,7 +145,7 @@ pub fn move_events(
                                     Some(b) if baby => b,
                                     _ => swim_sound(&sw.sounds, c.on_ground, ridden, &mut sw.steps),
                                 };
-                                (name, splash_volume(c.on_ground, f))
+                                (name, splash_volume(sw.law, c.on_ground, f))
                             }
                             None => ("entity.generic.swim", f),
                         };

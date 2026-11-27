@@ -25,6 +25,15 @@ pub struct SwimSounds {
     pub sounds: Sounds,
     pub steps: u32,
     pub baby: Option<&'static str>,
+    pub law: Volume,
+}
+
+/// `playSwimSound`'s volume: `Entity` passes the speed on, the turtle's is x1.5, the skeleton horse's is 0.3 on the ground and `min(0.1, f * 25)` in water.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Volume {
+    Plain,
+    Turtle,
+    SkeletonHorse,
 }
 
 /// `getSwimSound`: in the air it swims; on the ground an unridden one splashes, a ridden one counts its gallop: the first five
@@ -47,11 +56,12 @@ pub fn swim_sound(s: &Sounds, on_ground: bool, ridden: bool, steps: &mut u32) ->
     }
 }
 
-/// `playSwimSound`: 0.3 on the ground, and in the water `min(0.1, f * 25)`, which saturates at 0.1 for any speed a swim sound plays at.
-pub fn splash_volume(on_ground: bool, f: f32) -> f32 {
-    if on_ground {
-        0.3
-    } else {
-        (f * 25.0).min(0.1)
+/// `playSwimSound`'s volume for the speed `f` (see [`Volume`]).
+pub fn splash_volume(law: Volume, on_ground: bool, f: f32) -> f32 {
+    match law {
+        Volume::Plain => f,
+        Volume::Turtle => f * 1.5,
+        Volume::SkeletonHorse if on_ground => 0.3,
+        Volume::SkeletonHorse => (f * 25.0).min(0.1),
     }
 }

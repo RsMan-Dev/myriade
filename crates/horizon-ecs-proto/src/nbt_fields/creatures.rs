@@ -1024,8 +1024,13 @@ fn write_bat_flags(w: &World, e: Entity, c: &mut Compound) {
     c.insert("BatFlags".into(), Tag::Byte(i8::from(w.get::<Hanging>(e).is_some())));
 }
 
-fn read_bat_flags(_: &mut World, _: Entity, t: &Tag) -> bool {
-    matches!(t, Tag::Byte(_))
+/// `Bat.readAdditionalSaveData`: bit 0 hangs the bat; a bat without it is already flying (`equip`).
+fn read_bat_flags(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if (*v & 1) != 0 {
+        crate::behaviours::bat_flutter::perch(w, e);
+    }
+    true
 }
 
 /// `still_timeout`: the ticks left of the stillness (an int), from `StillUntil` (its own time); 0 without it. `Slot` (the goal's

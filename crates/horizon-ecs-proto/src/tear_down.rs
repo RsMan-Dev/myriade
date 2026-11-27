@@ -96,7 +96,7 @@ pub fn voice(w: &mut World, e: Entity, name: &'static str) {
         let a = (r.next_u32() >> 8) as f32 / 16_777_216.0;
         let b = (r.next_u32() >> 8) as f32 / 16_777_216.0;
         (a - b) * 0.2 + base
-    });
+    }) * w.get::<crate::behaviours::ambient_sound::Ambient>(e).map_or(1.0, |a| a.0.voice_pitch);
     if w.get::<crate::behaviours::elder_curse::Silent>(e).is_none() {
         // `Entity.playSound`: the species' `getSoundVolume` and the entity's own `SoundSource`.
         let (vol, src) = (crate::entity_voice::volume_of(w, e), crate::entity_voice::source_of(crate::area::species_name(w, e)));

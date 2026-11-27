@@ -17,9 +17,11 @@ pub struct Params {
     pub choose: Option<fn(&mut World, Entity) -> &'static str>,
     /// The sounds of this list are played at volume 2 (`Fox.playAmbientSound`: the screech).
     pub loud: &'static [&'static str],
+    /// Multiplied onto the voice pitch of the creature (`Bat.getVoicePitch`: 0.95 times the living pitch).
+    pub voice_pitch: f32,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { sounds: &[], min: 200, max: 400, interval: None, choose: None, loud: &[] };
+    pub const DEFAULT: Self = Self { sounds: &[], min: 200, max: 400, interval: None, choose: None, loud: &[], voice_pitch: 1.0 };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Ambient(pub &'static Params);

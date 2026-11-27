@@ -188,7 +188,7 @@ fn applicable(w: &World, e: Entity, key: &str) -> Option<Field> {
 }
 
 /// The indices of the fields that apply to `e`, in declaration order, from the cache of its archetype: computed once per archetype, where
-/// two fields of one key are a mistake of the declarations (a panic).
+/// two fields of one key are a mistake of the declarations (a panic), unless one has an owner and the other none.
 fn applicable_indices(w: &World, e: Entity) -> Arc<[usize]> {
     let (Some(reg), Some(arch)) = (w.get_resource::<NbtFields>(), archetype(w, e)) else { return Arc::from(Vec::new()) };
     let mut cache = reg.cache.lock().unwrap();
@@ -196,6 +196,12 @@ fn applicable_indices(w: &World, e: Entity) -> Arc<[usize]> {
         return v.clone();
     }
     let list: Vec<usize> = (0..reg.fields.len()).filter(|&i| reg.owns(arch, i)).collect();
+    // A field with an owner of its own (the painting's `variant`) takes the key from the general one (no owner) of the same key.
+    let list: Vec<usize> = list
+        .iter()
+        .copied()
+        .filter(|&i| reg.fields[i].1.is_some() || !list.iter().any(|&j| reg.fields[j].1.is_some() && reg.fields[j].0.key == reg.fields[i].0.key))
+        .collect();
     let mut keys = BTreeSet::new();
     for &i in &list {
         let key = &reg.fields[i].0.key;

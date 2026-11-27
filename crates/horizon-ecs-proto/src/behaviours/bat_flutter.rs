@@ -29,37 +29,65 @@ pub struct Hanging;
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Waking;
+/// The tick of the next head turn of a hanging bat (`Bat.tick` draws `nextInt(200)` each resting tick; the count is drawn at the perch).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct HeadTurn(pub u64);
 /// Hangs at the end of this tick (after the move, as the `Mob` does).
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Perching;
 
 pub static MODULE: Module = Module { name: "bat_flutter", equip, systems, requires: &[Cap::Locomotion], ..Module::DEFAULT };
-/// `Bat(EntityType, Level)` rests; its first AI step wakes it unless a redstone conductor is above it (`customServerAiStep`).
+/// `Bat(EntityType, Level)`: `BatFlags` 0, not resting; it flies from its first AI step, with no target.
 fn equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Flutter::default());
-    let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };
-    let level = *w.resource::<Level>();
-    if conductor(&level, bat_flutter::above(p.x, p.y, p.z)) {
-        perch(w, e);
-    } else {
-        // Its first AI step only wakes it (the resting branch returns); it flies from the next tick.
-        w.entity_mut(e).insert((Waking, Moving));
-    }
+    w.entity_mut(e).insert((Flutter::default(), Fluttering, Moving));
 }
 /// Hangs from the block above: at rest, asleep (`Bat.tick` of a resting bat), watched for a player within 4 blocks.
 pub fn perch(w: &mut World, e: Entity) {
     let (Some(mut p), Some(b)) = (w.get::<Pos>(e).copied(), w.get::<Body>(e).copied()) else { return };
     p.0.y = p.0.y.floor() + 1.0 - f64::from(b.height);
     w.entity_mut(e).insert((p, Bounds(box_at(p.0, b.width, b.height)), Vel(Vec3::ZERO), Hanging, PlayerWatch::new(4.0))).remove::<(Perching, Fluttering, Waking, Moving)>();
+    head_turn_at(w, e);
+}
+/// The head turns of a resting bat: `nextInt(200)` per tick until 0 (`Bat.tick`), drawn here once as the count of ticks, then `after` calls `turn_head`.
+fn head_turn_at(w: &mut World, e: Entity) {
+    let Some(mut r) = w.get_mut::<Rng>(e) else { return };
+    let mut ticks = 1u64;
+    while r.next_int(200) != 0 {
+        ticks += 1;
+    }
+    drop(r);
+    let at = crate::cow::now_of(w, e) + ticks;
+    w.entity_mut(e).insert(HeadTurn(at));
+    crate::cow::after(w, e, ticks as i32, turn_head);
+}
+/// `Bat.tick`'s `yHeadRot` draw (`nextInt(360)`), then the next count; a call for a bat that flies again or whose count moved on does nothing.
+fn turn_head(w: &mut World, e: Entity) {
+    let now = crate::cow::now_of(w, e);
+    if w.get::<Hanging>(e).is_none() || !w.get::<HeadTurn>(e).is_some_and(|t| t.0 == now) {
+        return;
+    }
+    let yaw = w.get_mut::<Rng>(e).map_or(0, |mut r| r.next_int(360)) as f32;
+    if let Some(mut h) = w.get_mut::<crate::goals::Head>(e) {
+        h.yaw = yaw;
+    }
+    head_turn_at(w, e);
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     // The decisions are the goal's (its slot's systems run while a bat that carries it lives); the steering is the flight's.
-    s.add_systems((wake.before(decide), decide.in_set(slot), steer.after(decide).before(crate::locomotion::fly::travel), (hang, woke).after(crate::locomotion::fly::travel)));
+    s.add_systems((wake.before(decide), block_wake.after(crate::cow::block_changes).before(crate::block_events::drain_block_events), decide.in_set(slot), steer.after(decide).before(crate::locomotion::fly::travel), (hang, woke).after(crate::locomotion::fly::travel)));
 }
 fn conductor(level: &Level, p: [i32; 3]) -> bool {
     let mw = level.mw.0;
     mw.data.state(mw.world.block(p[0], p[1], p[2])).flags & myriade_engine_lib::mobs::data::REDSTONE_CONDUCTOR != 0
+}
+/// A player within 4 blocks or a block under it: the `bat.takeoff` level event unless it is silent (`Bat.customServerAiStep`), then it takes off.
+fn wake_by(w: &mut World, e: Entity) {
+    if w.get::<crate::behaviours::elder_curse::Silent>(e).is_none() {
+        let p = w.get::<Pos>(e).map_or([0, 0, 0], |p| [p.0.x.floor() as i32, p.0.y.floor() as i32, p.0.z.floor() as i32]);
+        w.resource_mut::<Events>().host.level_event(1025, p, 0);
+    }
+    take_off(w, e);
 }
 /// A player within 4 blocks, or a hit: the bat takes off.
 pub fn take_off(w: &mut World, e: Entity) {
@@ -68,7 +96,7 @@ pub fn take_off(w: &mut World, e: Entity) {
 fn wake(ev: Res<Events>, hanging: Query<(), With<Hanging>>, mut cmd: Commands) {
     for (e, _) in ev.player_entered.iter() {
         if hanging.contains(e) {
-            cmd.queue(move |w: &mut World| take_off(w, e));
+            cmd.queue(move |w: &mut World| wake_by(w, e));
         }
     }
     for e in ev.hurt.iter() {
@@ -106,6 +134,18 @@ fn steer(mut q: Query<(&Flutter, &mut Vel, &mut Yaw, &Pos), With<Fluttering>>) {
         crate::locomotion::fly::drop_tiny_motion(&mut v);
         v.0 = bat_flutter::steer(v.0, dx, dy, dz);
         yaw.0 += crate::cow::wrap(horizon_core::geometry::trig::atan2_degrees(v.0.z, v.0.x) - 90.0 - yaw.0);
+    }
+}
+/// A block changed under a hanging bat (`Bat.customServerAiStep`: the block above no longer conducts): it takes off.
+fn block_wake(changed: Option<Res<crate::block_events::BlockEvents>>, level: Res<Level>, hanging: Query<(Entity, &Pos), With<Hanging>>, mut cmd: Commands) {
+    let Some(changed) = changed else { return };
+    for c in &changed.changed {
+        for (e, p) in &hanging {
+            let above = bat_flutter::above(p.0.x, p.0.y, p.0.z);
+            if above == *c && !conductor(&level, above) {
+                cmd.queue(move |w: &mut World| wake_by(w, e));
+            }
+        }
     }
 }
 /// After the move: a bat that woke this tick is steered from the next.
