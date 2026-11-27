@@ -367,6 +367,7 @@ pub fn enter_index(world: &mut World, e: Entity) {
     }
     world.get_mut::<Cell>(e).unwrap().0 = cell;
     world.resource_mut::<crate::goals::CellMoves>().0.push(e);
+    crate::despawn::admit_counter(world, e);
 }
 
 /// The index follows the boxes that changed (the cows that moved): only a change of column touches it; a change of

@@ -113,7 +113,7 @@ pub static DEF: Def = Def {
         Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(80), choose: Some(ambient), loud: &["entity.fox.screech"], ..ambient_sound::Params::DEFAULT }),
     ],
     changes: &[],
-    rules: &[crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::FOX)],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::FOX)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::IgnoresBerryBush]),
     brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[],

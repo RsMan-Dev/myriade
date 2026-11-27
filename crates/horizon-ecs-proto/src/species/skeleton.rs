@@ -25,7 +25,7 @@ pub static DEF: Def = Def {
         ),
     ],
     caps: Some(super::FREEZE_IMMUNE_CAPS),
-    rules: &[RuleEntry::new(&crate::hostile::SUN_BURN, &()), RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::SKELETON)],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), RuleEntry::new(&crate::hostile::SUN_BURN, &()), RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::SKELETON)],
     not_in_peaceful: true,
     sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY

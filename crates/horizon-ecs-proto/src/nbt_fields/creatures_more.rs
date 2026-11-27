@@ -29,6 +29,7 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Sheared"), write: write_sheared, read: read_sheared, accepts: is_byte, owner: Some(owner::<Wool>) },
     Field { key: Cow::Borrowed("Temper"), write: write_temper, read: read_temper, accepts: accept::int, owner: Some(owner::<Mount>) },
     Field { key: Cow::Borrowed("Pumpkin"), write: write_pumpkin, read: read_pumpkin, accepts: is_byte, owner: Some(owner::<Pumpkin>) },
+    Field { key: Cow::Borrowed("CollarColor"), write: write_collar, read: read_collar, accepts: is_byte, owner: None },
 ];
 
 /// `Pumpkin`: a byte, 1 while the snow golem wears its pumpkin.
@@ -58,7 +59,6 @@ pub const CREATORS: &[Field] = &[
     Field { key: Cow::Borrowed("Tame"), write: write_tamed, read: read_tamed, accepts: is_byte, owner: Some(owner::<Tamed>) },
     Field { key: Cow::Borrowed("SkeletonTrap"), write: write_trap, read: read_trap, accepts: is_byte, owner: Some(owner::<Armed>) },
     Field { key: Cow::Borrowed("SkeletonTrapTime"), write: write_trap_time, read: read_trap_time, accepts: accept::int, owner: Some(owner::<Springs>) },
-    Field { key: Cow::Borrowed("CollarColor"), write: write_collar, read: read_collar, accepts: is_byte, owner: Some(owner::<Collar>) },
 ];
 
 /// `Tame`: a horse tamed without an owner.
@@ -105,16 +105,27 @@ fn read_trap_time(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-/// `CollarColor`: the dyed collar of a wolf or a cat, a byte (the `DyeColor` id); absent while it is red.
+/// `CollarColor`: the dyed collar of a wolf or a cat, a byte (the `DyeColor` id); always written by a species that wears one (red until dyed).
+fn wears_collar(w: &World, e: Entity) -> bool {
+    let Some(id) = w.get::<crate::cow::SpeciesId>(e).map(|s| s.0 as usize) else { return false };
+    let Some(sp) = w.get_resource::<crate::cow::SpeciesTable>().and_then(|t| t.0.get(id).copied()) else { return false };
+    sp.rules.iter().any(|r| r.rule.name == "dye" && matches!(crate::rules::params::<crate::dye::DyeParams>(r.params).paints, crate::dye::Paints::Collar))
+}
+
 fn write_collar(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(v) = w.get::<Collar>(e) {
-        c.insert("CollarColor".into(), Tag::Byte(v.0 as i8));
+    if !wears_collar(w, e) {
+        return;
     }
+    let v = w.get::<Collar>(e).map_or(crate::dye::DEFAULT_COLLAR, |v| v.0);
+    c.insert("CollarColor".into(), Tag::Byte(v as i8));
 }
 
 fn read_collar(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Byte(v) = t else { return false };
-    if (0..16).contains(v) {
+    if !wears_collar(w, e) {
+        return false;
+    }
+    if (0..16).contains(v) && *v as u8 != crate::dye::DEFAULT_COLLAR {
         w.entity_mut(e).insert(Collar(*v as u8));
     }
     true

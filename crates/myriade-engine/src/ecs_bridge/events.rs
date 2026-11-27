@@ -125,8 +125,8 @@ fn who_of(world: &World, w: horizon_ecs_proto::targeting::Who) -> Option<Who> {
 pub fn to_mob_event(world: &World, ev: HostEvent) -> Option<MobEvent> {
     Some(match ev {
         HostEvent::SetBlock { pos, state } => MobEvent::SetBlock { pos, state },
-        HostEvent::Sound { name: std::borrow::Cow::Borrowed(name), at, volume, pitch, .. } => MobEvent::Sound(name, at, volume, pitch),
-        // A block's sound name is read at run time: the game plays it from the host events (`MobEvent::Sound` takes a literal).
+        HostEvent::Sound { name: std::borrow::Cow::Borrowed(name), at, volume, pitch, source: None } => MobEvent::Sound(name, at, volume, pitch),
+        // A block's sound name is read at run time, and a sound with its own `SoundSource` has no place in `MobEvent::Sound`: the game plays both from the host events.
         HostEvent::Sound { .. } => return None,
         HostEvent::BlockParticles { state, at, count, speed } => MobEvent::LandingDust { state, at, count, speed },
         HostEvent::Particles { kind, at, spread, speed, count } => MobEvent::LevelParticles { kind, at, spread, speed, count },

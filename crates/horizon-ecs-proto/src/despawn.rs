@@ -175,6 +175,27 @@ pub fn admit(w: &mut World, e: Entity, def: DespawnDef, nearest_sqr: f64) {
     // Born past its distance (a mod's spawn, a creature loaded far away): the first measure decides, as the first check of Horizon's tick.
     far_check(w, e);
 }
+/// Every creature has its `noActionTime` (`Mob`), whatever made it (summon, generation, file, breeding, spawner): the one entry
+/// (`enter_index`) gives the counter to a creature that has none, as a rule that never removes it (`KEPT`: `Mob.checkDespawn` of a
+/// summoned creature is not ported) and the light count of a monster. The spawner replaces it with the real rule (`admit`).
+pub fn admit_counter(w: &mut World, e: Entity) {
+    if w.get::<Despawn>(e).is_some() {
+        return;
+    }
+    let Some(id) = w.get::<crate::cow::SpeciesId>(e).map(|s| s.0 as usize) else { return };
+    let Some(sp) = w.get_resource::<crate::cow::SpeciesTable>().and_then(|t| t.0.get(id).copied()) else { return };
+    let Some(pos) = w.get::<crate::cow::Pos>(e).map(|p| p.0) else { return };
+    let mut best = f64::INFINITY;
+    if let Some(on) = w.get_resource::<crate::goals::Online>() {
+        on.for_near(pos.x, pos.z, f64::from(DespawnDef::KEPT.near), |p| {
+            best = best.min((p.x - pos.x).powi(2) + (p.y - pos.y).powi(2) + (p.z - pos.z).powi(2));
+        });
+    }
+    admit(w, e, DespawnDef::KEPT, best);
+    if crate::spawning::spawn_def(&sp).is_some_and(|d| matches!(d.category, crate::spawning::Category::Monster)) {
+        rate_light(w, e, crate::spawning::light_lit(&sp));
+    }
+}
 /// The chance of going comes up `idle + 1` ticks from now, then the first success of the per-tick draw.
 fn arm(w: &mut World, e: Entity) {
     let Some(d) = w.get::<Despawn>(e).copied() else { return };

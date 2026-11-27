@@ -74,7 +74,7 @@ pub static DEF: Def = Def {
         Entry::new(&ambient_sound::MODULE, 11, &ambient_sound::Params { interval: Some(80), choose: Some(ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     changes: &[],
-    rules: &[RuleEntry::new(&crate::dye::DYE,&crate::dye::DyeParams::WOLF), RuleEntry::new(&crate::body_armor::WEAR, &crate::body_armor::WearParams::WOLF), RuleEntry::new(&TAME, &TameParams::WOLF),RuleEntry::new(&crate::credit::CREDITS_OWNER, &())],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), RuleEntry::new(&crate::dye::DYE,&crate::dye::DyeParams::WOLF), RuleEntry::new(&crate::body_armor::WEAR, &crate::body_armor::WearParams::WOLF), RuleEntry::new(&TAME, &TameParams::WOLF),RuleEntry::new(&crate::credit::CREDITS_OWNER, &())],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable]),
     brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[],

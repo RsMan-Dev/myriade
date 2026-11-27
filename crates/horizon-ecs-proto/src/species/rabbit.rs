@@ -50,6 +50,7 @@ pub static DEF: Def = Def {
     name: "minecraft:rabbit",
     draws: Some(&DRAWS),
     reference: None,
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 })],
     variant: Some(&VARIANT),
     // The killer bunny's target goals (`Rabbit.setVariant(EVIL)`): hurt by (no alert), then the nearest player and wolf, both seen.
     targets: &[
