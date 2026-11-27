@@ -25,6 +25,10 @@ pub struct StepState {
     was_ground: bool,
     was_water: bool,
     fall: f64,
+    /// The velocity of the last row seen and of the row before it: a splash reads the second (`checkFallDamage` runs at the end of `move`,
+    /// before the velocity is updated, so it sees the velocity the movement used; the water is read one row later here).
+    v1: [f64; 3],
+    v2: [f64; 3],
 }
 
 /// `moveDist` / `nextStep` and `wasTouchingWater` kept while the creature stands (the fields live as long as the entity): the walk goes on from
@@ -94,7 +98,11 @@ pub fn move_events(
         // A first sight takes the water the last stop left; an entity never seen before starts in its current water (no splash on its first tick).
         let (d0, n0, w0) = carry.get(e).map_or((0.0, 1.0, fs.in_water), |k| (k.dist, k.next, k.was_water));
         let first = st.is_none();
-        let mut fresh = StepState { last: p.0, dist: d0, next: n0, was_ground: c.on_ground, was_water: w0, fall: 0.0 };
+        let mut fresh = StepState { last: p.0, dist: d0, next: n0, was_ground: c.on_ground, was_water: w0, fall: 0.0, v1: [0.0; 3], v2: [0.0; 3] };
+        let cur = vel.map_or([0.0; 3], |v| [v.0.x, v.0.y, v.0.z]);
+        if first {
+            (fresh.v1, fresh.v2) = (cur, cur);
+        }
         let s: &mut StepState = match st {
             Some(s) => s.into_inner(),
             None => &mut fresh,
@@ -168,7 +176,7 @@ pub fn move_events(
             }
             // `Entity.doWaterSplashSound`: the species' splash, its volume the speed (`min(1, 0.2 * |v|)`) and a pitch from the entity's stream.
             if !silent {
-                let [x, y, z] = vel.map_or([0.0; 3], |v| [v.0.x, v.0.y, v.0.z]);
+                let [x, y, z] = s.v2;
                 let speed = ((x * x * 0.2 + y * y + z * z * 0.2).sqrt() as f32 * 0.2).min(1.0);
                 let pitch = splash_pitch(rng.as_deref_mut());
                 let name = names.get(e).map_or("", |n| n.0);
@@ -180,6 +188,7 @@ pub fn move_events(
         if heard && !s.was_ground && c.on_ground && s.fall > 0.0 {
             ev.host.game_event_by(e, "minecraft:hit_ground", at, true, sneaking, cfg.dampens);
         }
+        (s.v2, s.v1) = (s.v1, cur);
         s.fall = if c.on_ground { 0.0 } else { c.fall_distance.max(s.fall) };
         (s.last, s.was_ground, s.was_water) = (p.0, c.on_ground, fs.in_water);
         // The tick that stopped it (`travel` took `Moving` off) is the last one seen: a landing is in it.
