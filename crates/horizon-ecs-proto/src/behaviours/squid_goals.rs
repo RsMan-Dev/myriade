@@ -1,7 +1,7 @@
 //! The goals of the squid (`Squid.SquidRandomMovementGoal`, `SquidFleeGoal`): they only set the vector the tentacle cycle pushes it along
 //! (`swim::SquidState.vector`, `Mob.extra.vector`). No flag: they never conflict. Both tick without a system of their own (called by
 //! `arbitrate` while a squid lives): the random movement on the ticks where tick + id is even (the selector's cadence), the flee every tick.
-//! Not ported: `noActionTime > 100` zeroing the vector (the despawn counter is not in the frame).
+//! `noActionTime > 100` (no player within 32 blocks for 100 ticks) zeroes the vector and draws nothing (`despawn::idle_for`).
 use super::*;
 use crate::locomotion::swim::SquidState;
 use crate::{cow::*, goals::*};
@@ -41,6 +41,11 @@ fn wander_tick(w: &mut World) {
         }
         let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
         let Some(mut st) = w.get::<SquidState>(e).copied() else { continue };
+        if crate::despawn::idle_for(w, e).is_some_and(|n| n > 100) {
+            st.vector = [0.0; 3];
+            *w.get_mut::<SquidState>(e).unwrap() = st;
+            continue;
+        }
         let (roll, a, y) = with_rng(w, e, |r| {
             let roll = r.next_int(halved_use(50, true)) == 0;
             // The angle and the height are drawn only when the condition needs them (the `||` of the `Mob`).

@@ -213,8 +213,12 @@ pub fn zone_step(world: &mut World) {
         // A creature that walked into a chunk that does not tick goes to sleep (its tick that moved it was its last).
         for &(e, _) in &idx.crossed {
             let Some(c) = world.get::<crate::cow::Cell>(e) else { continue };
-            if !idx.simulated_cell(c.0) && !world.entity(e).contains::<Dormant>() {
+            let asleep = world.entity(e).contains::<Dormant>();
+            if !idx.simulated_cell(c.0) && !asleep {
                 slept.push(e);
+            } else if asleep && idx.simulated_cell(c.0) && !woke.contains(&e) {
+                // Born (or put to sleep) with no chunk record, listed into a chunk that ticks: nothing else wakes it.
+                woke.push(e);
             }
         }
         for e in slept {
@@ -441,6 +445,7 @@ pub fn wake(world: &mut World, e: Entity, now: u64) {
     }
     crate::despawn::on_wake(world, e);
     crate::spring_trap::on_wake(world, e);
+    crate::behaviours::nearest_target::on_wake(world, e);
     // A creaking back in the ticking zone asks its heart again (`Creaking.tick`).
     crate::bridge::host_creaking::ask_heart(world, e);
     // A brain that was due a step when it fell asleep (or that never sleeps) was left out of the list: it is queued again.

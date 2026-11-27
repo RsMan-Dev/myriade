@@ -274,6 +274,16 @@ pub fn unpark(w: &mut World, sp: u8) {
         }
     }
 }
+/// A creature wakes: the instances parked for a species that was born while it slept (`unpark` does not see a sleeper) are armed again.
+pub fn on_wake(w: &mut World, e: Entity) {
+    let Some(ts) = w.get::<NearestTargets>(e) else { return };
+    let hits: Vec<(u8, u8)> = ts.0.iter().enumerate().filter(|(_, n)| n.parked && !n.p.players).map(|(i, n)| (n.slot, i as u8)).collect();
+    for (slot, nth) in hits {
+        let inst = Inst { slot, nth };
+        edit(w, e, inst, |n| n.parked = false);
+        arm(w, e, inst);
+    }
+}
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(hear_hurt.in_set(slot));
 }

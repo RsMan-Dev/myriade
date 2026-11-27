@@ -606,14 +606,16 @@ struct Ctx<'a> {
 fn nearest_sqr(players: &[[f64; 3]], x: f64, y: f64, z: f64) -> Option<f64> {
     players.iter().map(|p| (p[0] - x).powi(2) + (p[1] - y).powi(2) + (p[2] - z).powi(2)).reduce(f64::min)
 }
-/// Whether a creature's box meets another's (`isUnobstructed`): the index lists the creatures by column.
+/// Whether the box meets an entity that `blocksBuilding` (`isUnobstructed`): every living entity, boats, carts; not the items, the
+/// experience orbs nor the projectiles the index lists beside them.
 pub(crate) fn obstructed(w: &World, bounds: horizon_core::geometry::Aabb) -> bool {
     let idx = w.resource::<Index>();
     let c = bounds.min_position();
     let mut hit = false;
     idx.for_radius(c.x, c.z, 3.0, |e| {
         if !hit && let Some(b) = w.get::<crate::cow::Bounds>(e) {
-            hit = b.0.intersects(bounds);
+            hit = b.0.intersects(bounds)
+                && !(w.get::<crate::item::Item>(e).is_some() || w.get::<crate::orb::Orb>(e).is_some() || w.get::<crate::projectile::Projectile>(e).is_some());
         }
     });
     hit
