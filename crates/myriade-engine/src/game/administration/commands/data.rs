@@ -145,6 +145,15 @@ impl Game<'_> {
                 // `saveWithoutId` writes the entity as saved, riders under
                 // `Passengers`: `/data get` reads the same tree persistence does (arismoko/horizon#1519).
                 let mut tag = Tag::Compound(self.ecs_mob_tree(id)?);
+                // `Entity.saveWithoutId` always writes the UUID: the ECS holds one only once the host names it.
+                if tag.get("UUID").is_none() {
+                    let uuid = self.uuid_for(id);
+                    // The ECS keeps it too, so the save writes the one the commands showed.
+                    if let Some(e) = self.ecs.entity_of(id) {
+                        self.ecs.set_uuid(e, uuid);
+                    }
+                    set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
+                }
                 let session = self
                     .lan_trade_conn(id)
                     .and_then(|conn| self.lan_trade_session(conn))
@@ -922,8 +931,9 @@ impl Game<'_> {
         let canceled = self.persist.joins_canceled;
         let uuid = entity_nbt::uuid(&tag);
         let target = self.spawn_entity_from_nbt(tag);
-        // The UUID a summoned mob was given is what `target_with_uuid` looks up.
-        if let (Some(Target::Mob(id)), Some(uuid)) = (target, uuid) {
+        // The UUID a summoned mob was given is what `target_with_uuid` looks up; `Entity`'s constructor draws one for the others.
+        if let Some(Target::Mob(id)) = target {
+            let uuid = uuid.unwrap_or_else(|| self.uuid_for(id));
             if let Some(e) = self.ecs.entity_of(id) {
                 self.ecs.set_uuid(e, uuid);
             }

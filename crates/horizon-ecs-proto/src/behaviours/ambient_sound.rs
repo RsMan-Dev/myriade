@@ -40,15 +40,24 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 }
 fn delay(w: &mut World, e: Entity) -> i32 {
     let p = w.get::<Ambient>(e).unwrap().0;
-    let r = w.get_mut::<Rng>(e).unwrap().next_u32();
+    let mut rng = w.get_mut::<Rng>(e).unwrap();
     match p.interval {
-        Some(i) => ambient_sound::vanilla_delay(i, r),
-        None => ambient_sound::delay(p.min, p.max, r),
+        Some(i) => ambient_sound::base_tick_delay(i, || rng.next_int(1000) as u32),
+        None => ambient_sound::delay(p.min, p.max, rng.next_u32()),
     }
 }
+/// The tick of the entity's own time at which the one pending deadline falls: `arm_timers` may run again (a player arrives, the
+/// zone wakes the animal) and must not start a second chain of sounds.
+#[derive(Component, Clone, Copy)]
+struct Armed(u64);
 fn arm(w: &mut World, e: Entity, inst: Inst) {
-    let d = delay(w, e);
-    arm_at(w, e, now_of(w, e) + d as u64, Due::Goal(inst.slot));
+    let now = now_of(w, e);
+    if w.get::<Armed>(e).is_some_and(|a| a.0 > now) {
+        return;
+    }
+    let at = now + delay(w, e) as u64;
+    w.entity_mut(e).insert(Armed(at));
+    arm_at(w, e, at, Due::Goal(inst.slot));
 }
 fn can_use(_: &mut World, _: Entity, _: Inst) -> bool {
     true
@@ -66,12 +75,17 @@ pub fn play(w: &mut World, e: Entity) -> bool {
         return false;
     }
     let Some(name) = crate::sound_slots::sound(w, e, |o| o.ambient, Some(name)) else { return false };
+    if !p.loud.contains(&name) {
+        // `Mob.playAmbientSound`: the species' `getSoundVolume`, its own source and the voice pitch (a baby's raised).
+        crate::tear_down::voice(w, e, name);
+        return true;
+    }
     let at = w.get::<Pos>(e).unwrap().0;
-    let volume = if p.loud.contains(&name) { 2.0 } else { 1.0 };
-    w.resource_mut::<Events>().host.sound(name, [at.x, at.y, at.z], volume, 1.0);
+    w.resource_mut::<Events>().host.sound(name, [at.x, at.y, at.z], 2.0, 1.0);
     true
 }
 fn start(w: &mut World, e: Entity, inst: Inst) {
+    w.entity_mut(e).remove::<Armed>();
     play(w, e);
     w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
 }

@@ -332,7 +332,9 @@ impl EcsWorld {
             view::mark(w, e);
             return true;
         }
-        if baby || sneaking {
+        // `Pig.mobInteract` / `Strider.mobInteract`: only a saddled adult is boarded, and never with its food in hand (the feeding is the breed's).
+        let stick = w.get::<Mount>(e).is_some_and(|m| matches!(m.steer, Steer::Stick { .. }));
+        if baby || sneaking || !w.get::<Mount>(e).is_some_and(|m| m.by_player) || (stick && (!w.get::<Mount>(e).is_some_and(|m| m.saddled) || crate::behaviours::breed::is_food(w, e, id))) {
             return false;
         }
         let ridden = mount::ride(w, e, Who::Player(player));

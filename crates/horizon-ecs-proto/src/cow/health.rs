@@ -685,6 +685,9 @@ pub(crate) fn apply_damage<const LATE: bool>(
         commands.queue(move |w: &mut World| crate::credit::record(w, e, by_who));
         commands.queue(move |w: &mut World| crate::reinforcements::on_hurt(w, e, by_who));
         commands.queue(move |w: &mut World| crate::hurt_spawn::on_hurt(w, e));
+        if matches!(hit.cause, Cause::Lava) {
+            commands.queue(move |w: &mut World| burn(w, e));
+        }
         if h.0 <= 0.0 {
             // A totem may save it, the host may keep it `Dying`: `using::lethal` ends the hit once the commands run.
             let (damage, at, left) = (hit.damage, [pos.0.x, pos.0.y, pos.0.z], h.0);
@@ -765,6 +768,14 @@ pub(crate) fn apply_damage<const LATE: bool>(
             }
         }
     }
+}
+
+/// `Entity.lavaHurt`, once `hurtServer` landed: `generic.burn` at volume 0.4 and pitch `2 + 0.4 * nextFloat`, in the entity's own source.
+fn burn(w: &mut World, e: Entity) {
+    let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };
+    let pitch = w.get_mut::<Rng>(e).map_or(2.0, |mut r| 2.0 + r.next_float() * 0.4);
+    let src = crate::entity_voice::source_of(crate::area::species_name(w, e));
+    w.resource_mut::<crate::goals::Events>().host.sound_from(src, "entity.generic.burn", [p.x, p.y, p.z], 0.4, pitch);
 }
 
 /// `Entity.playEntityOnFireExtinguishedSound`: volume 0.7, pitch 1.6 and two draws of the body's generator times 0.4.

@@ -75,6 +75,8 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("PuffState"), write: write_puff, read: read_puff, accepts: accept::int, owner: Some(owner::<Puff>) },
     Field { key: Cow::Borrowed("Sitting"), write: write_sitting, read: read_sitting, accepts: byte, owner: Some(owner::<crate::behaviours::sit_when_ordered::SitRules>) },
     Field { key: Cow::Borrowed("flower_pos"), write: write_flower, read: read_flower, accepts: int_array, owner: Some(owner::<Bee>) },
+    Field { key: Cow::Borrowed("ForcedAge"), write: write_forced_age, read: read_forced_age, accepts: accept::int, owner: Some(owner::<crate::age_lock::ForcedAge>) },
+    Field { key: Cow::Borrowed("IsChickenJockey"), write: write_jockey, read: read_jockey, accepts: byte, owner: Some(owner::<Egg>) },
     Field { key: Cow::Borrowed("EggLayTime"), write: write_egg_time, read: read_egg_time, accepts: accept::int, owner: Some(owner::<Egg>) },
     Field { key: Cow::Borrowed("scute_time"), write: write_scute_time, read: read_scute_time, accepts: accept::int, owner: Some(owner::<crate::gift_drop::GiftDue>) },
     Field { key: Cow::Borrowed("size"), write: write_phantom_size, read: read_phantom_size, accepts: accept::int, owner: None },
@@ -381,6 +383,22 @@ pub const CREATORS: &[Field] = &[
     Field { key: Cow::Borrowed("Age"), write: write_age, read: create_age, accepts: accept::int, owner: Some(owner::<GrowAt>) },
     Field { key: Cow::Borrowed("IsBaby"), write: write_baby, read: read_baby, accepts: byte, owner: Some(owner::<GrowAt>) },
 ];
+
+/// `ForcedAge`: the growth given by feeding; a saved zero is no component.
+fn write_forced_age(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(f) = w.get::<crate::age_lock::ForcedAge>(e) {
+        c.insert("ForcedAge".into(), Tag::Int(f.0));
+    }
+}
+fn read_forced_age(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    if *v == 0 {
+        w.entity_mut(e).remove::<crate::age_lock::ForcedAge>();
+    } else {
+        w.entity_mut(e).insert(crate::age_lock::ForcedAge(*v));
+    }
+    true
+}
 
 /// `ZombieVillager.readAdditionalSaveData`: `VillagerData` (type, profession, level), by registry name.
 fn write_zombie_data(w: &World, e: Entity, c: &mut Compound) {
@@ -749,7 +767,8 @@ fn read_villager(w: &mut World, e: Entity, t: &Tag) -> bool {
 
 /// `IsBaby` is `GrowAt` (the baby's `Age` carries the time): written as a byte, read as given, the age does the work.
 fn write_baby(w: &World, e: Entity, c: &mut Compound) {
-    if w.get::<GrowAt>(e).is_some() {
+    // Only the species whose `addAdditionalSaveData` writes `IsBaby` (the baby-flag species); an `AgeableMob` keeps `Age`.
+    if w.get::<GrowAt>(e).is_some() && species_tags(w, e) & crate::cow::tag::BABY_FLAG != 0 {
         c.insert("IsBaby".into(), Tag::Byte(1));
     }
 }
@@ -1045,4 +1064,12 @@ fn read_pickup(w: &mut World, e: Entity, t: &Tag) -> bool {
         w.entity_mut(e).insert(SearchAfter(until));
     }
     true
+}
+
+/// `Chicken.addAdditionalSaveData`: `IsChickenJockey`, a byte (the jockey rides a zombie: no marker here, so read as given and written 0).
+fn write_jockey(_w: &World, _e: Entity, c: &mut Compound) {
+    c.insert("IsChickenJockey".into(), Tag::Byte(0));
+}
+fn read_jockey(_w: &mut World, _e: Entity, t: &Tag) -> bool {
+    matches!(t, Tag::Byte(_))
 }

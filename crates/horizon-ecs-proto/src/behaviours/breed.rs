@@ -104,6 +104,10 @@ fn interact(w: &mut World, e: Entity, _: Inst, i: &Interaction) -> bool {
     }
     fed
 }
+/// `Animal.isFood`: whether `item` is one of the breeding foods of `e`.
+pub fn is_food(w: &World, e: Entity, item: u32) -> bool {
+    w.get::<BreedData>(e).is_some_and(|b| b.foods.iter().any(|f| crate::items::is(f, item)))
+}
 /// `Animal.actuallyHurt`: damage taken ends love.
 fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
     w.entity_mut(e).remove::<Love>();
@@ -132,8 +136,12 @@ pub fn feed(world: &mut World, e: Entity) -> bool {
         return false;
     }
     if let Some(g) = world.get::<GrowAt>(e).map(|g| g.0) {
-        let left = g.saturating_sub(now);
-        world.entity_mut(e).insert(GrowAt(g - left / 10));
+        // `ageUp(trunc(-age / 20 * 0.1) seconds)`: whole seconds, in ticks.
+        let left = (((g.saturating_sub(now) as i32 / 20) as f32 * 0.1) as u64) * 20;
+        world.entity_mut(e).insert(GrowAt(g - left));
+        // `AgeableMob.ageUp(.., true)`: the age gained joins `forcedAge` (saved as `ForcedAge`).
+        let kept = world.get::<crate::age_lock::ForcedAge>(e).map_or(0, |f| f.0);
+        world.entity_mut(e).insert(crate::age_lock::ForcedAge(kept.saturating_add(i32::try_from(left).unwrap_or(i32::MAX))));
         return true;
     }
     // An animal that died is not fed.

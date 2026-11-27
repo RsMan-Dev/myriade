@@ -64,3 +64,8 @@ fn pulse(w: &mut World, e: Entity) {
         after(w, e, 2, pulse);
     }
 }
+
+/// `AgeableMob.forcedAge`: the ticks of growth given by feeding, saved as `ForcedAge`; absent while nothing was given.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[component(storage = "SparseSet")]
+pub struct ForcedAge(pub i32);

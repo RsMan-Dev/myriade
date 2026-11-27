@@ -143,10 +143,10 @@ fn read_sound(w: &mut World, e: Entity, t: &Tag) -> bool {
 pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("sound_variant"), write: write_sound, read: read_sound, accepts: accept::string, owner: None },
     Field { key: Cow::Borrowed("RabbitType"), write: write_rabbit_type, read: read_rabbit_type, accepts: accept::int, owner: Some(owner::<Variant>) },
-    Field { key: Cow::Borrowed("Type"), write: write_type, read: read_type, accepts: accept::string, owner: Some(owner::<Variant>) },
-    Field { key: Cow::Borrowed("variant"), write: write_variant, read: read_variant, accepts: accept::string, owner: Some(owner::<Variant>) },
-    Field { key: Cow::Borrowed("Variant"), write: write_variant_int, read: read_variant_int, accepts: accept::int, owner: Some(owner::<Variant>) },
-    Field { key: Cow::Borrowed("type"), write: write_salmon_type, read: read_salmon_type, accepts: accept::string, owner: Some(owner::<Variant>) },
+    Field { key: Cow::Borrowed("Type"), write: write_type, read: read_type, accepts: accept::string, owner: None },
+    Field { key: Cow::Borrowed("variant"), write: write_variant, read: read_variant, accepts: accept::string, owner: None },
+    Field { key: Cow::Borrowed("Variant"), write: write_variant_int, read: read_variant_int, accepts: accept::int, owner: None },
+    Field { key: Cow::Borrowed("type"), write: write_salmon_type, read: read_salmon_type, accepts: accept::string, owner: None },
     Field { key: Cow::Borrowed("Variant"), write: write_wide, read: read_wide, accepts: accept::int, owner: Some(owner::<super::spawn_draw::WholeVariant>) },
 ];
 
@@ -197,13 +197,15 @@ fn read_variant_int(w: &mut World, e: Entity, t: &Tag) -> bool {
 }
 
 fn write_key(key: &str, w: &World, e: Entity, c: &mut Compound) {
-    let (Some(v), Some(t)) = (w.get::<Variant>(e), table_of(w, e)) else { return };
+    let Some(t) = table_of(w, e) else { return };
     if t.key != key {
         return;
     }
+    // A creature never given a variant (no spawn draw, as after a `/summon` with NBT) saves the registry's default: the first.
+    let id = w.get::<Variant>(e).map_or_else(|| t.ids.first().copied().unwrap_or(0), |v| v.0);
     let tag = match t.names.is_empty() {
-        true => Tag::Int(i32::from(v.0)),
-        false => Tag::String(JavaString::from(t.names[t.ids.iter().position(|x| *x == v.0).unwrap_or(0)])),
+        true => Tag::Int(i32::from(id)),
+        false => Tag::String(JavaString::from(t.names[t.ids.iter().position(|x| *x == id).unwrap_or(0)])),
     };
     c.insert(key.into(), tag);
 }

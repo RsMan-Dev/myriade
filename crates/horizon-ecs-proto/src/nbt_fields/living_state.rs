@@ -22,7 +22,7 @@ pub const FIELDS: &[Field] = &[];
 /// The keys whose presence poses their component (`nbt::register_creators`).
 pub const CREATORS: &[Field] = &[
     Field { key: Cow::Borrowed("AbsorptionAmount"), write: write_absorption, read: read_absorption, accepts: accept::float, owner: Some(owner::<Absorption>) },
-    Field { key: Cow::Borrowed("attributes"), write: write_attributes, read: read_attributes, accepts: is_list, owner: Some(owner::<AttrMods>) },
+    Field { key: Cow::Borrowed("attributes"), write: write_attributes, read: read_attributes, accepts: is_list, owner: None },
     Field { key: Cow::Borrowed("equipment"), write: write_equipment, read: read_equipment, accepts: is_compound, owner: None },
     Field { key: Cow::Borrowed("drop_chances"), write: write_drop_chances, read: read_drop_chances, accepts: is_compound, owner: Some(owner::<DropChances>) },
     Field { key: Cow::Borrowed("CustomName"), write: write_name, read: read_name, accepts: accept_name, owner: Some(owner::<CustomName>) },
@@ -67,7 +67,8 @@ fn read_absorption(w: &mut World, e: Entity, t: &Tag) -> bool {
 /// `attributes`: a list of { id, base (omitted when the species' base applies), modifiers: [{ id, amount, operation }] }, the entries of
 /// `AttrMods` only.
 fn write_attributes(w: &World, e: Entity, c: &mut Compound) {
-    let Some(a) = w.get::<AttrMods>(e) else { return };
+    let none = AttrMods::default();
+    let a = w.get::<AttrMods>(e).unwrap_or(&none);
     let list = a
         .0
         .iter()
@@ -78,11 +79,28 @@ fn write_attributes(w: &World, e: Entity, c: &mut Compound) {
             if !base.is_nan() {
                 m.insert("base".into(), Tag::Double(base.to_bits()));
             }
-            let mods = mods.iter().filter(|md| md.permanent).map(|md| modifier_tag(md)).collect();
-            m.insert("modifiers".into(), Tag::List(mods));
+            let mods: Vec<Tag> = mods.iter().filter(|md| md.permanent).map(|md| modifier_tag(md)).collect();
+            if !mods.is_empty() {
+                m.insert("modifiers".into(), Tag::List(mods));
+            }
             Tag::Compound(m)
         })
-        .collect();
+        .collect::<Vec<_>>();
+    // `LivingEntity.setSprinting` asks for the movement speed at the first tick, so every living mob saves that instance at its base.
+    let mut list = list;
+    let named = |t: &Tag| matches!(t, Tag::Compound(m) if matches!(m.get(&"id".into()), Some(Tag::String(s)) if s.to_string_lossy() == "minecraft:movement_speed"));
+    let living = w.get::<crate::cow::Health>(e).is_some();
+    if living && !list.iter().any(named) {
+        if let Some(b) = w.get::<crate::cow::Body>(e).filter(|b| !b.object && !b.orb && !b.tnt) {
+            let mut m = Compound::default();
+            m.insert("id".into(), Tag::String(format!("{MINECRAFT}movement_speed").as_str().into()));
+            m.insert("base".into(), Tag::Double(b.speed.to_bits()));
+            list.insert(0, Tag::Compound(m));
+        }
+    }
+    if a.0.is_empty() && list.is_empty() && w.get::<AttrMods>(e).is_none() {
+        return;
+    }
     c.insert("attributes".into(), Tag::List(list));
 }
 

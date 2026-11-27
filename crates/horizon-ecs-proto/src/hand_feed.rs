@@ -95,6 +95,10 @@ pub fn age_up(w: &mut World, e: Entity, i: &crate::behaviours::Interaction) -> b
     let seconds = ((g.0.saturating_sub(now) as i32 / 20) as f32 * 0.1) as u64;
     crate::give_item::take_from_hand(w, i);
     let at = g.0.saturating_sub(seconds * 20).max(now + 1);
+    // `AgeableMob.ageUp(.., true)`: the age gained is added to `forcedAge`, saved as `ForcedAge`.
+    let gained = i32::try_from(g.0 - at).unwrap_or(i32::MAX);
+    let kept = w.get::<crate::age_lock::ForcedAge>(e).map_or(0, |f| f.0);
+    w.entity_mut(e).insert(crate::age_lock::ForcedAge(kept.saturating_add(gained)));
     w.get_mut::<GrowAt>(e).unwrap().0 = at;
     arm_at(w, e, at, Due::Grow);
     true

@@ -55,6 +55,7 @@ pub const CREATORS: &[Field] = &[
 pub const DEFAULTS: &[(&str, fn() -> Tag)] = &[
     ("Rotation", zero_rotation),
     ("OnGround", zero_byte),
+    ("Invulnerable", zero_byte),
     ("PortalCooldown", zero_int),
     ("fall_distance", zero_double),
     ("Fire", zero_short),
