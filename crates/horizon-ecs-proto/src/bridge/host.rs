@@ -587,8 +587,28 @@ impl EcsWorld {
             idx.chunk_created(cx, cz);
             w.resource_mut::<crate::cow::Hazards>().scan_chunk(&mut idx.chunks, mw, cx, cz);
         });
+        self.adopt_unplaced(mw, cx, cz);
         self.world.resource_mut::<crate::poi::PoiRegistry>().scan_chunk(mw, cx, cz);
         self.world.resource_mut::<crate::block_watch::BlockWatch>().scan_chunk(mw, cx, cz);
+    }
+
+    /// The entities that were made in chunk (`cx`, `cz`) before its record existed take their column now (`enter_index`), whatever made
+    /// them (generation, summon, spawner, breeding, a file): the one guard of the index.
+    fn adopt_unplaced(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32) {
+        let pending = std::mem::take(&mut self.world.resource_mut::<crate::cow::Index>().unplaced);
+        if pending.is_empty() {
+            return;
+        }
+        let (mut here, mut rest) = (Vec::new(), Vec::new());
+        for e in pending {
+            let Some(p) = self.world.get::<Pos>(e).map(|p| p.0) else { continue };
+            if self.world.get::<crate::cow::Cell>(e).is_none_or(|c| c.0 != u32::MAX) {
+                continue;
+            }
+            if chunk_of(p) == (cx, cz) { here.push(e) } else { rest.push(e) }
+        }
+        self.world.resource_mut::<crate::cow::Index>().unplaced = rest;
+        self.lent(mw, |w| here.into_iter().for_each(|e| crate::cow::enter_index(w, e)));
     }
 
     /// The blocks named since the last call (`BlockWatch::watch`) are read from every loaded chunk (a rare event: nothing when none is new).
@@ -605,17 +625,12 @@ impl EcsWorld {
         }
     }
 
-    /// The chunk's record in the spatial index, made when it was not (generation places its animals before the chunk's pass of
-    /// `chunk_hazards`: born without a record they are in no column, so no selector, zone or search reaches them).
-    pub fn ensure_chunk(&mut self, cx: i32, cz: i32) {
-        self.world.resource_mut::<crate::cow::Index>().chunk_created(cx, cz);
-    }
-
     /// Restores the NBT the chunk was saved with (its entities come back; none when it was never unloaded).
     pub fn chunk_loaded(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32) {
         let saved = self.chunks.remove(&(cx, cz)).unwrap_or_default();
         // The record is made by `chunk_hazards` before this call; made here when it was not, so the entities find their chunk.
         self.world.resource_mut::<crate::cow::Index>().chunk_created(cx, cz);
+        self.adopt_unplaced(mw, cx, cz);
         self.lent(mw, |w| {
             for c in &saved {
                 nbt::restore(w, c);

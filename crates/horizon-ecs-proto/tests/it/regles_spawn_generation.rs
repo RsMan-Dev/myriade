@@ -27,7 +27,7 @@ fn a_generated_plains_chunk_gets_its_packs_on_the_top_ground() {
     };
     // The chunk at x -16..-1, z 0..15: plains (`Kind::TwoBiomes`).
     let mut region = LegacyRandom::new(1234);
-    spawn_chunk_packs(&mut h.world, mw, -1, 0, &mut region);
+    spawn_chunk_packs(&mut h.world, mw, -1, 0, &mut region, None);
     let mut q = h.world.query::<(&Pos, &SpeciesId)>();
     let placed: Vec<(String, [f64; 3])> = q
         .iter(&h.world)

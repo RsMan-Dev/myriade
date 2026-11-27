@@ -43,6 +43,8 @@ pub struct Index {
     pub(crate) watch: [Watch; WATCHERS],
     /// By entity index: the consumers (bit `WATCH_*`) the entity is a watcher of.
     pub(crate) watching: Vec<u8>,
+    /// The entities that came into the index while their chunk had no record (`enter_index`): `adopt_unplaced` lists them when it is made.
+    pub(crate) unplaced: Vec<Entity>,
 }
 
 /// The consumers of the moves of columns that wake the watchers around a mover. A consumer registers its watchers (an entity
@@ -346,9 +348,12 @@ pub fn enter_index(world: &mut World, e: Entity) {
     let (mn, mx) = (b.0.min_position(), b.0.max_position());
     let old = world.get::<Cell>(e).unwrap().0;
     let cell = world.resource::<Index>().cell_near(old, (mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
-    debug_assert!(cell != u32::MAX, "an entity is made in a chunk that is not loaded");
     {
         let mut idx = world.resource_mut::<Index>();
+        // No record for its chunk yet (generation, a summon beside a chunk still loading): it is listed when the record is made.
+        if cell == u32::MAX && !idx.unplaced.contains(&e) {
+            idx.unplaced.push(e);
+        }
         if old != u32::MAX {
             idx.remove(e, old);
         }

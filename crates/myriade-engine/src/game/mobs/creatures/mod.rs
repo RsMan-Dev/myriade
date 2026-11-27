@@ -622,10 +622,17 @@ impl Game<'_> {
         let any = region.as_any();
         let mut ecs = std::mem::replace(&mut self.ecs, EcsLevel::inert());
         let mw = self.mob_world_base(&[]);
+        // The jar reads the biome through the generation region, whose neighbours are all there; a chunk at the edge of a forced area has
+        // none loaded yet, so the generator is asked at the zoomed corner cell.
+        let biome = {
+            let zoom = horizon_core::biome::BiomeZoom::new(horizon_core::biome::obfuscate_seed(mw.world_seed));
+            let [x, y, z] = crate::mobs::zoomed_block(zoom, cx * 16, mw.world.shape.max_y() - 1, cz * 16);
+            terrain.noise_biomes(&[[x >> 2, y >> 2, z >> 2]]).into_iter().next().flatten().and_then(|n| mw.biomes.index.get(n.as_str()).copied())
+        };
         if let Some(r) = any.downcast_mut::<LegacyRandom>() {
-            ecs.spawn_chunk_packs(&mw, cx, cz, r);
+            ecs.spawn_chunk_packs(&mw, cx, cz, r, biome);
         } else if let Some(r) = any.downcast_mut::<XoroshiroRandom>() {
-            ecs.spawn_chunk_packs(&mw, cx, cz, r);
+            ecs.spawn_chunk_packs(&mw, cx, cz, r, biome);
         }
         drop(mw);
         self.ecs = ecs;
