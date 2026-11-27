@@ -44,8 +44,12 @@ fn assign(w: &mut World, e: Entity, c: &Ctx) {
     erase(w, e, p.potential);
     set(w, e, p.job, MemValue::Block(s), None);
     let mut refresh = false;
+    // `AssignProfessionFromJobSite`: only a villager whose profession is NONE takes the site's, then refreshes its brain.
+    let none = w.get::<Merchant>(e).is_some_and(|m| m.profession == NONE);
     if w.get::<Profession>(e).is_none() {
         profession::on_acquired(w, e, s);
+    }
+    if none {
         let kind = w.get::<Profession>(e).map(|j| j.0);
         let name = p.professions.iter().find(|(k, _)| Some(*k) == kind).map(|&(_, n)| n);
         if let Some(i) = name.and_then(|n| (0..=u8::MAX).find(|&i| trade_offers::profession_name(w, i).trim_start_matches("minecraft:") == n)) {

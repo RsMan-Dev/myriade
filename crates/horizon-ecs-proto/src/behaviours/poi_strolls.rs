@@ -2,7 +2,7 @@
 //! the jar's `StrollToPoi.create` and `StrollToPoiList.create`, one-shot): `can_start` decides and acts, `start` has nothing left to do.
 //! `StrollToPoi`: within 10 blocks of the job site, walk to it (speed 0.4, close 1) at most every 80 ticks. `StrollToPoiList`: pick one of the
 //! secondary sites (a draw each try), within 6 blocks of the job site, walk to it (speed 0.5, close 1) at most every 100 ticks.
-//! Both need the walk target absent (`absent(WALK_TARGET)` of the jar's builders). A try that is not due yet counts as started (the `RunOne` takes it and does nothing), as in the `Mob` and the jar.
+//! Neither needs the walk target absent: the jar's builders only `registered(WALK_TARGET)` (any value), and a due try overwrites it. A try that is not due yet counts as started (the `RunOne` takes it and does nothing), as in the `Mob` and the jar.
 use super::block_reach::{centre_dist_sq, walk_to};
 use crate::brain::sensors::secondary_job_site::SECONDARY_JOB_SITE;
 use crate::brain::*;
@@ -30,9 +30,6 @@ fn site(w: &World, e: Entity) -> Option<[i32; 3]> {
 }
 
 fn to_poi(w: &mut World, e: Entity, _: &Ctx) -> bool {
-    if present(w, e, &WALK_TARGET) {
-        return false;
-    }
     let Some(p) = site(w, e) else { return false };
     let Some(at) = w.get::<Pos>(e).map(|q| q.0) else { return false };
     if too_far(centre_dist_sq(p, at), 100.0) {
@@ -47,9 +44,6 @@ fn to_poi(w: &mut World, e: Entity, _: &Ctx) -> bool {
 }
 
 fn to_list(w: &mut World, e: Entity, _: &Ctx) -> bool {
-    if present(w, e, &WALK_TARGET) {
-        return false;
-    }
     let (Some(p), Some(MemValue::Blocks(list))) = (site(w, e), get(w, e, &SECONDARY_JOB_SITE).cloned()) else { return false };
     if list.is_empty() {
         return false;
