@@ -38,7 +38,10 @@ impl Game<'_> {
         // Only a chunk at `FULL` or better has accessible entities (`ChunkLevel.fullStatus`); the others wait, saved with it, until
         // a ticket level change brings it there (`ecs_ticket_levels_changed`).
         if !self.tickets.levels().full(cx, cz) {
-            self.ecs.hold_chunk(cx, cz, entities.to_vec());
+            // The world kept this chunk's entities when it unloaded in this session: the file's are the same, held once.
+            if self.ecs.save_chunk(cx, cz).is_empty() {
+                self.ecs.hold_chunk(cx, cz, entities.to_vec());
+            }
             return;
         }
         self.ecs_with(|ecs, mw| ecs.chunk_loaded(mw, cx, cz));

@@ -42,9 +42,11 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 }
 fn delay(w: &mut World, e: Entity) -> i32 {
     let p = w.get::<Ambient>(e).unwrap().0;
+    let played = w.get::<Played>(e).is_some();
     let mut rng = w.get_mut::<Rng>(e).unwrap();
     match p.interval {
-        Some(i) => ambient_sound::base_tick_delay(i, || rng.next_int(1000) as u32),
+        // `Mob.ambientSoundTime` is 0 at the start, and only a played sound sets it to `-interval`.
+        Some(i) => ambient_sound::base_tick_delay(if played { i } else { 0 }, || rng.next_int(1000) as u32),
         None => ambient_sound::delay(p.min, p.max, rng.next_u32()),
     }
 }
@@ -52,6 +54,9 @@ fn delay(w: &mut World, e: Entity) -> i32 {
 /// zone wakes the animal) and must not start a second chain of sounds.
 #[derive(Component, Clone, Copy)]
 struct Armed(u64);
+/// The creature has played a sound once: its counter then restarts at `-interval`, not at 0 as in a new creature.
+#[derive(Component, Clone, Copy)]
+struct Played;
 fn arm(w: &mut World, e: Entity, inst: Inst) {
     let now = now_of(w, e);
     if w.get::<Armed>(e).is_some_and(|a| a.0 > now) {
@@ -87,7 +92,7 @@ pub fn play(w: &mut World, e: Entity) -> bool {
     true
 }
 fn start(w: &mut World, e: Entity, inst: Inst) {
-    w.entity_mut(e).remove::<Armed>();
+    w.entity_mut(e).remove::<Armed>().insert(Played);
     play(w, e);
     w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
 }
