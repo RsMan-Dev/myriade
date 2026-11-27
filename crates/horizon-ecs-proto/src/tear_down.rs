@@ -89,7 +89,9 @@ pub fn voice(w: &mut World, e: Entity, name: &'static str) {
         return;
     }
     // `AgeableMob.getVoicePitch`: a baby's voice is raised by half an octave, the same two draws.
-    let base = if w.get::<crate::cow::GrowAt>(e).is_some() { 1.5 } else { 1.0 };
+    let baby = w.get::<crate::cow::GrowAt>(e).is_some();
+    let name = if baby { crate::entity_voice::baby_voice(name) } else { name };
+    let base = if baby { 1.5 } else { 1.0 };
     let pitch = crate::goals::with_rng(w, e, |r| {
         let a = (r.next_u32() >> 8) as f32 / 16_777_216.0;
         let b = (r.next_u32() >> 8) as f32 / 16_777_216.0;

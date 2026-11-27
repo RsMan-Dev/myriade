@@ -53,6 +53,10 @@ impl EcsLevel {
             uuids::set_uuid(w, e, uuid);
         }
     }
+    /// The uuid the creature carries, when it has one.
+    pub fn uuid_of(&self, e: Entity) -> Option<[i32; 4]> {
+        self.world().and_then(|w| w.get::<uuids::EntityUuid>(e)).map(|u| uuids::to_words(u.0))
+    }
     pub fn entity_by_uuid(&self, uuid: [i32; 4]) -> Option<Entity> {
         self.world().and_then(|w| uuids::entity_by_uuid(w, uuid))
     }

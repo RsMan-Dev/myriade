@@ -34,6 +34,24 @@ pub fn volume_of(w: &World, e: Entity) -> f32 {
     }
 }
 
+/// `Pig.getSoundSet` / `Chicken.getSoundSet`: a baby takes the `baby_sounds` of the variant, the same whatever the variant. The name of an adult
+/// voice (ambient, hurt, death) of those two species becomes the baby's; any other name stays.
+pub fn baby_voice(name: &'static str) -> &'static str {
+    let n = name.strip_prefix("minecraft:").unwrap_or(name);
+    let kind = n.rsplit('.').next().unwrap_or("");
+    let pig = n.starts_with("entity.pig.") || n.starts_with("entity.pig_big.") || n.starts_with("entity.pig_mini.");
+    let chicken = n.starts_with("entity.chicken.") || n.starts_with("entity.chicken_picky.");
+    match (pig, chicken, kind) {
+        (true, _, "ambient") => "entity.baby_pig.ambient",
+        (true, _, "hurt") => "entity.baby_pig.hurt",
+        (true, _, "death") => "entity.baby_pig.death",
+        (_, true, "ambient") => "entity.baby_chicken.ambient",
+        (_, true, "hurt") => "entity.baby_chicken.hurt",
+        (_, true, "death") => "entity.baby_chicken.death",
+        _ => name,
+    }
+}
+
 /// The step of a type that overrides `playStepSound` with a fixed sound: its name and volume (pitch 1).
 pub fn step_of(name: &str) -> Option<(&'static str, f32)> {
     const Q: f32 = 0.15;

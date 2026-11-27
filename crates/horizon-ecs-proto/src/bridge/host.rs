@@ -375,6 +375,12 @@ impl EcsWorld {
                 }
                 // `finalizeSpawn`: the variant of a species that draws one, by the biome of the place (one biome here, as `Spawner` has).
                 None => {
+                    // `Entity.<init>`: the creature is born with a uuid (`Mth.createInsecureUUID`), here from a stream of its own.
+                    let mut u = horizon_core::random::LegacyRandom::new((seed as i64) ^ 0x5DEE_CE66_D1CE_4E5B);
+                    let (hi, lo) = { use horizon_core::random::RandomSource; (u.next_long(), u.next_long()) };
+                    let hi = (hi & !0xF000) | 0x4000;
+                    let lo = (lo & 0x3FFF_FFFF_FFFF_FFFF) | i64::MIN;
+                    crate::bridge::uuids::set_uuid(w, e, crate::bridge::uuids::to_words(((hi as u64 as u128) << 64) | lo as u64 as u128));
                     let mut r = horizon_core::random::LegacyRandom::new(seed as i64);
                     crate::behaviours::variant::with_place(w, mw, draw_at.unwrap_or(at), |w, place| {
                         crate::behaviours::variant::draw_at_spawn(w, e, group, place, &mut r);

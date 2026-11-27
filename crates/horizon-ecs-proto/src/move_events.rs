@@ -27,6 +27,14 @@ pub struct StepState {
     fall: f64,
 }
 
+/// `moveDist` / `nextStep` kept while the creature stands (the fields live as long as the entity): the walk goes on from them.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct StepCarry {
+    dist: f32,
+    next: f32,
+}
+
 /// `Pose.CROUCHING` and `Pose.SWIMMING`.
 const POSE_CROUCHING: u8 = 5;
 const POSE_SWIMMING: u8 = 3;
@@ -72,6 +80,7 @@ pub fn move_events(
     mut cmd: Commands,
     mut q: Query<Visit, Or<(With<Moving>, With<StepState>)>>,
     names: Query<&TypeName>,
+    carry: Query<&StepCarry>,
 ) {
     // The sounds of a movement play for the players whatever listens; only its game events wait for a vibration listener.
     let heard = on(heard);
@@ -80,7 +89,8 @@ pub fn move_events(
             continue;
         }
         let cfg: Params = cfg.map_or(Params::DEFAULT, |c| *c.0);
-        let fresh = StepState { last: p.0, dist: 0.0, next: 1.0, was_ground: c.on_ground, was_water: fs.in_water, fall: 0.0 };
+        let (d0, n0) = carry.get(e).map_or((0.0, 1.0), |k| (k.dist, k.next));
+        let fresh = StepState { last: p.0, dist: d0, next: n0, was_ground: c.on_ground, was_water: fs.in_water, fall: 0.0 };
         let Some(mut s) = st else {
             cmd.entity(e).insert(fresh);
             continue;
@@ -112,6 +122,8 @@ pub fn move_events(
                             let own = names.get(e).ok().and_then(|n| crate::entity_voice::step_of(n.0));
                             let src = crate::entity_voice::source_of(names.get(e).map_or("", |n| n.0));
                             match own {
+                                Some(("entity.pig.step", v)) if baby => ev.host.sound_from(src, "entity.baby_pig.step", at, v, 1.0),
+                                Some(("entity.chicken.step", v)) if baby => ev.host.sound_from(src, "entity.baby_chicken.step", at, v, 1.0),
                                 Some((n, v)) => ev.host.sound_from(src, n, at, v, 1.0),
                                 None => ev.host.sound_from(src, facts.sounds.step.to_string(), at, facts.sounds.volume * 0.15, facts.sounds.pitch),
                             }
@@ -168,7 +180,7 @@ pub fn move_events(
         (s.last, s.was_ground, s.was_water) = (p.0, c.on_ground, fs.in_water);
         // The tick that stopped it (`travel` took `Moving` off) is the last one seen: a landing is in it.
         if !moving {
-            cmd.entity(e).remove::<StepState>();
+            cmd.entity(e).remove::<StepState>().insert(StepCarry { dist: s.dist, next: s.next });
         }
     }
 }

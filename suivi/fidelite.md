@@ -1,12 +1,12 @@
 # Fidélité des espèces contre vanilla 26.3
 
-**Espèces 100 % vertes : 0 sur 6.** Aucune n'a toutes ses cases vertes : chaque espèce garde au moins une case rouge,
-non concluante ou non mesurée (voir les sections). Vache, mouton et poule n'ont plus de rouge prouvé dans les cases mesurées
-(il reste « déplacement non concluant » et « apparition naturelle non mesurée »).
+**Espèces 100 % vertes : 0 sur 6** (mesure 49). Vache, mouton, cochon et poule n'ont plus aucune case rouge ni non concluante ;
+il leur reste « apparition naturelle non mesurée » (et, au cochon, selle/monte ; au mouton, teinture/herbe). Morue et chauve-souris :
+rouges, non codées, cahiers `suivi/cahiers/cod.md` et `suivi/cahiers/bat.md` pour `codeur`.
 
 Légende : V vert (identique, ou dans la loi à N répétitions), R rouge (écart prouvé), - sans objet (au jar), ? non mesuré ou non concluant.
 Banc : `drv3.py` + `s_fid.py` (serveur Myriade `fid48` contre serveur vanilla, même monde plat, mêmes commandes, bot Bot0 ; analyseurs
-`fid.py`, `fsnd.py`, `fidcmp.py`, `fdeath.py`, `fint.py`, `fsave.py`). N = répétitions par case ; déplacement N = 30 par durée.
+`fid.py`, `fsnd.py`, `fidcmp.py`, `fdeath.py`, `fint.py`, `fsave.py`). N = répétitions par case ; déplacement N = 76 par durée (mesure 49 ; 30 avant).
 Les scripts de banc vivent dans le scratchpad de la session ; ils ne sont pas versionnés.
 
 Correctifs de cette mesure (tous petits, < 100 lignes chacun) : voix d'ambiance par la loi `Mob.baseTick` (volume 1,0, variantes
@@ -21,7 +21,7 @@ Les tests unitaires de `horizon-ecs-proto` (cible `it`) ne compilent pas à ce H
 | Case | État | Note |
 |---|---|---|
 | apparition, NBT complet | V | 43 apparitions, clés et valeurs identiques |
-| déplacement libre 100/600 | ? | N = 30 : 1,8/7,3 contre 3,4/9,4 ; N = 10 inversé : non concluant |
+| déplacement libre 100/600 | V | N = 76, mêmes mondes : 2,3/7,3 contre 2,6/7,8 (écarts sous 1 écart-type de la moyenne, signe inversé entre les durées) |
 | eau, lave, chute | V | éclaboussures et brûlure dans le bruit |
 | sons | V | ambiance 21 contre 20 ; blessure et mort dans la loi de hauteur ; pas de `cow.step` à 0,15 corrigé |
 | dégâts reçus, panique | V | PV identiques ; la panique n'est pas analysée à part |
@@ -35,9 +35,9 @@ Les tests unitaires de `horizon-ecs-proto` (cible `it`) ne compilent pas à ce H
 | Case | État | Note |
 |---|---|---|
 | apparition | V | 43 |
-| déplacement | ? | 2,9/8,0 contre 3,5/7,2, N = 30 : non concluant |
+| déplacement | V | N = 75/76 : 3,3/7,7 contre 2,5/8,1 (signe inversé entre 100 et 600 ticks : pas de dérive) |
 | eau, lave, chute | V | |
-| sons | R | `pig.step` 32 contre 55, 25 contre 57 pour la poule : environ la moitié des pas, reproduit deux fois ; ambiance 22 contre 20 V |
+| sons | V | pas : `StepCarry` garde `moveDist`/`nextStep` entre les arrêts (loi `Entity.applyMovementEmissionAndPlaySound`) : `pig.step` 42 et 75 contre 63 et 58 (deux relevés, avant : 32 contre 55) ; ambiance 24 contre 20 ; bébé : `baby_pig.ambient` 21 contre 20, `baby_pig.step` 75 contre 58, blessure et mort dans la loi de hauteur (base 1,5) |
 | dégâts, panique | V | |
 | mort | V | dans la loi |
 | interactions | V | carotte, patate, betterave : InLove 580 contre 579, ForcedAge identique ; selle et monte non mesurées |
@@ -49,7 +49,7 @@ Les tests unitaires de `horizon-ecs-proto` (cible `it`) ne compilent pas à ce H
 | Case | État | Note |
 |---|---|---|
 | apparition, eau, mort, sauvegarde | V | |
-| déplacement, sons | V | N = 30 |
+| déplacement, sons | V | déplacement N = 76 : 2,4/7,9 contre 2,7/7,7 |
 | interactions | V | blé comme la vache ; tonte : 1 à 3 laines, N = 24 (10/11/3) contre 15 tontes vanilla non nulles (9/5/1) ; teinture et herbe broutée non mesurées (?) |
 | croissance | V | |
 | apparition naturelle | ? | |
@@ -58,9 +58,9 @@ Les tests unitaires de `horizon-ecs-proto` (cible `it`) ne compilent pas à ce H
 | Case | État | Note |
 |---|---|---|
 | apparition | V | `IsChickenJockey` ajouté, 43 apparitions identiques |
-| déplacement | V | 3,5/10,8 contre 3,7/8,7 (N = 30) |
+| déplacement | V | N = 75/76 : 2,5/8,4 contre 3,0/8,3 |
 | eau, lave, chute | V | pas de dégâts de chute |
-| sons | R | `chicken.step` 35 contre 68 (même demi-cadence que le cochon) ; ambiance 23 contre 20 V |
+| sons | V | `chicken.step` 50 et 43 contre 55 et 50 (avant : 35 contre 68) ; ambiance 22 contre 20 ; bébé : `baby_chicken.ambient` 23 contre 19, `baby_chicken.step` 43 contre 50, blessure et mort dans la loi |
 | dégâts, mort | V | |
 | interactions | V | graines : InLove 580 contre 579 (la règle de monture avalait la graine, corrigé) ; ForcedAge identique |
 | croissance | V | |
@@ -95,7 +95,6 @@ Les tests unitaires de `horizon-ecs-proto` (cible `it`) ne compilent pas à ce H
 Écart supérieur à 100 lignes (modèle de vol et de repos) : noté, non corrigé.
 
 ## Écarts connus non corrigés
-- Pas des animaux (`*.step`) : demi-cadence chez le cochon et la poule.
-- Sons des bébés (`entity.baby_pig.ambient`, `entity.baby_chicken.ambient`) non gérés.
-- Les mobs apparus naturellement n'ont un UUID que s'ils passent par `/data get` ou `/summon`.
-- Morue et chauve-souris : voir leurs sections.
+- Apparition naturelle non mesurée pour les quatre espèces d'élevage ; l'UUID des mobs apparus naturellement est maintenant posé par le flux propre de l'hôte (`bridge/host.rs`) et retrouvé par `uuid_for` (`persist.rs`), vérifié par le code et par `/summon`, pas encore par un mob apparu seul.
+- Cochon : selle et monte ; mouton : teinture et herbe broutée : non mesurés.
+- Morue et chauve-souris : voir leurs sections et les cahiers `suivi/cahiers/cod.md`, `suivi/cahiers/bat.md`.

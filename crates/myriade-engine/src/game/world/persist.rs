@@ -1230,6 +1230,10 @@ impl Game<'_> {
         self.uuid_for(id)
     }
     pub(super) fn uuid_for(&mut self, id: u32) -> [i32; 4] {
+        // A creature the ECS made carries its own uuid from birth: the one every reader must see.
+        if let Some(uuid) = self.ecs.entity_of(id).and_then(|e| self.ecs.uuid_of(e)) {
+            return uuid;
+        }
         if let Some(uuid) = self.known_resident_entity_uuid_at(self.dim.key(), id) {
             return uuid;
         }
