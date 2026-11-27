@@ -612,6 +612,13 @@ pub fn start(w: &mut World, e: Entity) {
         (plan.sensors[i].sensor.equip)(w, e, &sensor_ctx(plan, i));
     }
     arm(w, e);
+    // `registerBrainGoals` ends with `updateActivityFromSchedule`: the activity of the hour is set before the first tick.
+    for &id in &plan.order {
+        if plan.insts[id as usize].b.name == "schedule:timeline" && try_start(w, e, plan, id) {
+            set_running(w, e, id, false);
+        }
+    }
+    update_activity(w, e, plan);
     wake(w, e);
 }
 /// The memories `MemoryModuleType` registers without a codec (`register(String)`, read at the jar): `Brain.pack` leaves them out.
