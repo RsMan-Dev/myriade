@@ -697,15 +697,11 @@ pub fn arm(w: &mut World, e: Entity) {
         }
     }
 }
-/// A deadline of a sensor: scan, and arm the next (nothing out of the active zone: the next entry arms again).
+/// A deadline of a sensor: scan, and arm the next (`Mob.serverAiStep` senses every tick, whatever `noActionTime` says).
 pub fn sensor_due(w: &mut World, e: Entity, i: u8) {
     let now = now_of(w, e);
     let Some(b) = w.get::<Brain>(e) else { return };
     let (plan, i) = (b.plan, i as usize);
-    if w.get::<ActiveUntil>(e).is_some_and(|a| now >= a.0) {
-        w.get_mut::<Brain>(e).unwrap().armed[i] = false;
-        return;
-    }
     expire(w, e, now);
     {
         bp!("scan", plan.sensors[i].sensor.name);

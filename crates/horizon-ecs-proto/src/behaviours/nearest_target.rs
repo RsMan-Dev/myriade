@@ -317,12 +317,11 @@ fn rearm(w: &mut World, e: Entity, inst: Inst) {
 fn blocked(w: &mut World, e: Entity, inst: Inst) {
     rearm(w, e, inst);
 }
-/// The draw came up: ask, unless the animal is out of the active zone (the next entry arms it again).
+/// The draw came up: ask. Only the stroll depends on `noActionTime` (`RandomStrollGoal.canUse`); the target goals ask whatever
+/// the distance to a player, in a chunk that ticks.
 fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
-    let now = crate::cow::now_of(w, e);
-    let active = w.get::<ActiveUntil>(e).map_or(0, |a| a.0);
     edit(w, e, inst, |n| n.armed = false);
-    now < active
+    true
 }
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let Some(n) = state(w, e, inst) else { return false };

@@ -396,6 +396,9 @@ pub(crate) fn reindex(
             }
             if cell != u32::MAX {
                 idx.insert(e, cell);
+            } else if !idx.unplaced.contains(&e) {
+                // Walked or pushed into a chunk with no record: listed for `adopt_unplaced`, as an entity born there.
+                idx.unplaced.push(e);
             }
             idx.move_watcher(e, c.0, cell);
             c.0 = cell;
