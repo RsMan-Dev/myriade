@@ -263,10 +263,10 @@ impl Herd {
     }
     /// Day or night for the monsters that burn in daylight (`monsters_burn`): every one of them looks at the sun again.
     pub fn set_day(&mut self, day: bool) {
-        self.world.resource_mut::<crate::hostile::Daylight>().0 = day;
-        self.world.resource_mut::<crate::hostile::Bright>().0 = day;
-        let all: Vec<Entity> = self.world.query_filtered::<Entity, With<crate::hostile::BurnsInDay>>().iter(&self.world).collect();
-        self.world.resource_mut::<crate::hostile::SunDirty>().0.extend(all);
+        let mut level = *self.world.resource::<Level>();
+        let w: &'static MobWorld<'static> = Box::leak(Box::new(MobWorld { daylight: day, monsters_burn: day, ..level.mw.0.clone() }));
+        level.mw = Mw(w);
+        *self.world.resource_mut::<Level>() = level;
     }
     /// The push mode (`Config.ordered_push`): the `Mob`'s order for the animals that overlap another, or the batch.
     pub fn set_ordered_push(&mut self, on: bool) {

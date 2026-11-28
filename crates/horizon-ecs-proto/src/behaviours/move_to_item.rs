@@ -80,11 +80,11 @@ fn point(w: &World, e: Entity, scan: f64) -> Option<Entity> {
     let area = b.inflate(Vec3::new(scan, scan, scan));
     item::items_in(w, area).into_iter().find(|&it| item::pickable(w, it) && w.get::<FluidState>(it).is_some_and(|f| f.in_water))
 }
-/// The ticks until the soonest item of the grown box is pickable (items under their delay): the deadline for the ask.
+/// The ticks until the soonest item of the grown box is pickable (items under their delay): the deadline for the ask. `ready_at` is in
+/// the item's own time, not the animal's.
 fn soonest_ready(w: &World, e: Entity, scan: f64) -> Option<u64> {
     let b = w.get::<Bounds>(e)?.0;
-    let now = now_of(w, e);
-    item::items_in(w, b.inflate(Vec3::new(scan, scan, scan))).into_iter().filter_map(|it| w.get::<item::Item>(it)?.ready_at).filter(|&r| r > now).map(|r| r - now).min()
+    item::items_in(w, b.inflate(Vec3::new(scan, scan, scan))).into_iter().filter_map(|it| w.get::<item::Item>(it)?.ready_at.and_then(|r| r.checked_sub(now_of(w, it)))).filter(|&d| d > 0).min()
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let f = *w.get::<Fetcher>(e).unwrap();

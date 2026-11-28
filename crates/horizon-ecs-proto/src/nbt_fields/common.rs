@@ -854,6 +854,7 @@ mod tests {
         let mut w = World::new();
         nbt::begin_declarations(&mut w);
         nbt::register(&mut w, FIELDS);
+        nbt::register_creators(&mut w, CREATORS);
         nbt::end_declarations(&mut w);
         let e = w.spawn_empty().id();
         w.entity_mut(e).insert(nbt::Saved);
@@ -869,6 +870,7 @@ mod tests {
         let mut w = World::new();
         nbt::begin_declarations(&mut w);
         nbt::register(&mut w, FIELDS);
+        nbt::register_creators(&mut w, CREATORS);
         nbt::end_declarations(&mut w);
         let e = w.spawn(Yaw(0.0)).id();
         w.entity_mut(e).insert(nbt::Saved);

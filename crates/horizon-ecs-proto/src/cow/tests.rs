@@ -560,7 +560,7 @@ fn a_cow_leaving_a_standing_player_stops_being_active() {
     if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
         return;
     }
-    let mut herd = Herd::new_awake(0, 6.0, true, false, 3);
+    let mut herd = Herd::with_slab_awake(60, true, false);
     let e = herd.world.spawn(cow_bundle(0.5, 0.5, 11)).id();
     herd.set_players(vec![(0.5, 0.5)]);
     herd.tick();

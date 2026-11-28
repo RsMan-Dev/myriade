@@ -128,7 +128,6 @@ fn run(mut q: Query<(Entity, &Offer, &mut Offering, &mut Look, Has<Looking>)>, p
 mod tests {
     use super::*;
     use crate::cow::{spawn_species, Herd, Pos, SpeciesTable};
-    use crate::hostile::Bright;
 
     /// An iron golem at x 0.5 and a villager at x 4.5 (in reach), and a stone wall at x 2 from z -6 to 8 when `wall`, between y -2 and 6 of the
     /// golem (the origin's wall). `None` without the test resources.
@@ -140,6 +139,7 @@ mod tests {
         let villager = *table.iter().find(|s| s.name == "minecraft:villager").unwrap();
         let g = spawn_species(&mut h.world, &golem, 0.5, 0.5, 5);
         spawn_species(&mut h.world, &villager, 4.5, 0.5, 6);
+        h.set_day(true);
         h.tick();
         if wall {
             let y = h.world.get::<Pos>(g).unwrap().0.y.floor() as i32;
@@ -149,7 +149,7 @@ mod tests {
                 }
             }
         }
-        h.world.insert_resource(Bright(true));
+        h.tick();
         Some((h, g))
     }
 
@@ -162,7 +162,8 @@ mod tests {
             return;
         };
         assert!(can_use(&mut h.world, g, inst), "by day, the villager in sight");
-        h.world.insert_resource(Bright(false));
+        h.set_day(false);
+        h.tick();
         assert!(!can_use(&mut h.world, g, inst), "the night refuses the poppy");
         let Some((mut walled, gw)) = world(true) else { return };
         assert!(!can_use(&mut walled.world, gw, inst), "a wall between them: no sight, no poppy");

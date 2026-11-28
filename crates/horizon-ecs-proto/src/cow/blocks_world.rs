@@ -260,21 +260,22 @@ pub(crate) fn host_level(mw: &'static MobWorld<'static>, types: &'static myriade
 pub struct Recompute;
 
 /// `PathNavigation.recomputePath`: made at once if the last recompute is more than 20 ticks old and the cow can update
-/// a path (on the ground or in a liquid); else the old path is kept and the ask is made again every tick.
+/// a path (on the ground or in a liquid), the last one `Level.getGameTime` ago; else the old path is kept and the ask is made again every tick.
 #[allow(clippy::type_complexity)]
 pub(crate) fn recompute(
     clock: Res<Clock>,
     mut q: Query<(Entity, &mut Nav, &Contact, &FluidState), With<Recompute>>,
     mut commands: Commands,
 ) {
+    let now = clock.game_now().max(0) as u64;
     for (e, mut nav, c, fs) in &mut q {
         if nav.path.as_ref().is_none_or(|p| p.is_done()) {
             nav.delayed = false;
             commands.entity(e).remove::<Recompute>();
-        } else if clock.of(e).saturating_sub(nav.last_recompute) <= 20 || !(c.on_ground || fs.in_water || fs.in_lava) {
+        } else if now.saturating_sub(nav.last_recompute) <= 20 || !(c.on_ground || fs.in_water || fs.in_lava) {
             nav.delayed = true;
         } else {
-            nav.last_recompute = clock.of(e);
+            nav.last_recompute = now;
             nav.path = None;
             nav.delayed = false;
             commands.entity(e).remove::<(Following, Recompute)>().insert(NeedsPath);

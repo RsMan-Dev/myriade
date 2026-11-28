@@ -197,7 +197,15 @@ mod tests {
         }
         assert!(!running(&h, cube), "sans cible, le but ne démarre pas");
         assert!(acquire(&mut h, cube, prey), "témoin : une cible acquise fait démarrer le but");
-        for _ in 0..30 {
+        // The body turns before the bound moves it: the angle is measured at rest, from where the cube stands.
+        let mut last = h.world.get::<Pos>(cube).unwrap().0;
+        for _ in 0..200 {
+            h.tick();
+            let now = h.world.get::<Pos>(cube).unwrap().0;
+            if now == last {
+                break;
+            }
+            last = now;
         }
         let p = h.world.get::<Pos>(cube).unwrap().0;
         let t = h.world.get::<Pos>(prey).unwrap().0;

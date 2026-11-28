@@ -1992,7 +1992,7 @@ mod tests {
         assert!(began <= 12 && born - began >= 56 && born - began <= 100, "began {began}, born {born}");
         let now = h.world.resource::<Clock>().0;
         let baby = h.world.query::<(Entity, &GrowAt)>().iter(&h.world).map(|(e, g)| (e, g.0)).next().unwrap();
-        assert_eq!(baby.1, now + 24000);
+        assert_eq!(baby.1, crate::cow::now_of(&h.world, baby.0) + 24000, "the baby's age is in its own time");
         assert!(h.world.get::<Body>(baby.0).unwrap().width < 0.5);
         for p in [a, b] {
             assert_eq!(h.world.get::<Resting>(p).unwrap().0, now + 6000);

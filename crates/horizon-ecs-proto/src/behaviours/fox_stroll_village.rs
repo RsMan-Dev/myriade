@@ -132,15 +132,16 @@ mod tests {
         let entries: &'static [Entry] = Box::leak(Box::new([Entry::new(&MODULE, 5, &Params::DEFAULT)]));
         Config { entries }
     }
-    /// A zombie with this goal alone, standing at `x` on the slab, with a bell (a village point) in its own section; `None` without the
+    /// A fox (no burn by day) with this goal alone, standing at `x` on the slab, with a bell (a village point) in its own section; `None` without the
     /// test resources.
     fn world(x: f64) -> Option<(Herd, Entity)> {
         std::env::var_os("HORIZON_TEST_RESOURCES")?;
         let mut h = Herd::with_slab_awake(200, true, false);
         crate::goals::set_lazy_look(&mut h.world, false);
         let table = h.world.resource::<SpeciesTable>().0.clone();
-        let mut sp = *table.iter().find(|s| s.name == "minecraft:zombie").unwrap();
+        let mut sp = *table.iter().find(|s| s.name == "minecraft:fox").unwrap();
         sp.goals = config();
+        h.set_day(false);
         let b = spawn_species(&mut h.world, &sp, x, 0.5, 33);
         h.world.get_mut::<ActiveUntil>(b).unwrap().0 = u64::MAX;
         let y = h.world.get::<Pos>(b).unwrap().0.y.floor() as i32;
@@ -172,7 +173,7 @@ mod tests {
         assert!(ever_running(&mut h, b, 1500), "a fox near a village at night never started its walk");
 
         let Some((mut day, d)) = world(0.5) else { return };
-        day.world.resource_mut::<crate::hostile::Bright>().0 = true;
+        day.set_day(true);
         assert!(!ever_running(&mut day, d, 1500), "the walk started by day");
 
         let Some((mut far, f)) = world(120.5) else { return };
