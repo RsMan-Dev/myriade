@@ -393,7 +393,15 @@ pub fn pick_for(w: &mut World, e: Entity, pick: Pick) -> Option<[f64; 3]> {
     let walk = w.get::<WalkValue>(e).copied().unwrap_or(WalkValue::Zero);
     let level = *w.get_resource::<Level>()?;
     let mut rng = Rng(w.get::<Rng>(e)?.0);
-    let stable = if w.get::<crate::locomotion::SwimMode>(e).is_some() { Stable::Water } else { Stable::Ground };
+    // The amphibious navigation (a turtle's) takes a spot with something other than air under it, in either medium.
+    let amphibious = w.get::<crate::locomotion::swim::SwimParams>(e).is_some_and(|p| p.amphibious.is_some());
+    let stable = if amphibious {
+        Stable::Amphibious
+    } else if w.get::<crate::locomotion::SwimMode>(e).is_some() {
+        Stable::Water
+    } else {
+        Stable::Ground
+    };
     let in_lava = w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.in_lava);
     crate::pathsearch::adjacent_reset();
     let mut sp = spotter(&level, [pos.x, pos.y, pos.z], &nav, walk, &mut rng);

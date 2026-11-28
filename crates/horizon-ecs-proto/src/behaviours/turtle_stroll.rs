@@ -181,4 +181,65 @@ mod tests {
         assert!(land_walks, "témoin : la tortue sur terre se promène");
         assert!(!wet_walks, "pas de promenade dans l'eau");
     }
+
+    /// Over 3000 ticks an adult turtle on land walks about 80 % of the time, stopping between walks (vanilla 77 to 82 %).
+    #[test]
+    fn a_turtle_stops_between_walks() {
+        walks(None, 0.5);
+    }
+    /// The real bench: the home is 400 blocks away and the floor ends 10 blocks from the turtles, air beyond. `TurtleGoHomeGoal`
+    /// starts by chance; at the edge no spot has ground under it, `stuck` ends it, and the turtle strolls again (it walked 97 %).
+    #[test]
+    fn a_turtle_with_a_far_home_stops_between_walks() {
+        walks(Some([-610, 0, 0]), -189.5);
+    }
+    fn walks(home: Option<[i32; 3]>, x0: f64) {
+        let Some(mut h) = world() else {
+            eprintln!("skipped: HORIZON_TEST_RESOURCES unset");
+            return;
+        };
+        if home.is_some() {
+            for x in -250..=-196 {
+                for z in -60..=60 {
+                    for y in -40..=0 {
+                        h.set_block(x, y, z, "minecraft:air");
+                    }
+                }
+            }
+        }
+        let table = h.world.resource::<SpeciesTable>().0.clone();
+        let sp = *table.iter().find(|s| s.name == "minecraft:turtle").unwrap();
+        let ts: Vec<Entity> = (0..5u32)
+            .map(|k| {
+                let t = spawn_species(&mut h.world, &sp, x0 + 2.0 * f64::from(k), 0.5, 61 + u64::from(k));
+                h.world.get_mut::<ActiveUntil>(t).unwrap().0 = u64::MAX;
+                h.world.resource_mut::<crate::goals::Entered>().0.push(t);
+                if let Some(home) = home {
+                    crate::behaviours::turtle_state::update(&mut h.world, t, |s| s.home = home);
+                }
+                t
+            })
+            .collect();
+        let mut last: Vec<_> = ts.iter().map(|&t| h.world.get::<Pos>(t).unwrap().0).collect();
+        let mut stat = vec![(0, 0, 0); ts.len()];
+        for _ in 0..3000 {
+            h.tick();
+            for (i, &t) in ts.iter().enumerate() {
+                let p = h.world.get::<Pos>(t).unwrap().0;
+                let (moving, idle, stops) = &mut stat[i];
+                if (p.x - last[i].x).hypot(p.z - last[i].z) > 1.0e-3 {
+                    *moving += 1;
+                    *stops += i32::from(*idle >= 6);
+                    *idle = 0;
+                } else {
+                    *idle += 1;
+                }
+                last[i] = p;
+            }
+        }
+        let moving: i32 = stat.iter().map(|s| s.0).sum();
+        let stops: i32 = stat.iter().map(|s| s.2).sum();
+        assert!(moving <= 2700 * 5, "part du temps en marche: {moving}/15000");
+        assert!(stops >= 3 * 5, "arrêts de 6 ticks ou plus: {stops}");
+    }
 }
