@@ -235,10 +235,13 @@ mod tests {
         h.world.insert_resource(TargetWatched(true));
         set(&mut h.world, e, &HURT_BY_ENTITY, MemValue::Who(Who::Entity(prey)), None);
         step(&mut h, e);
-        let asked = h.world.resource_mut::<crate::goals::Events>().host.drain().filter(|ev| {
-            matches!(ev, crate::host_out::HostEvent::TargetAsk { entity, proposed: Some(Who::Entity(p)) } if *entity == e && *p == prey)
-        });
-        assert_eq!(asked.count(), 1, "one question to the host");
+        let asked = {
+            let mut events = h.world.resource_mut::<crate::goals::Events>();
+            events.host.drain().filter(|ev| {
+                matches!(ev, crate::host_out::HostEvent::TargetAsk { entity, proposed: Some(Who::Entity(p)) } if *entity == e && *p == prey)
+            }).count()
+        };
+        assert_eq!(asked, 1, "one question to the host");
         assert!(h.world.get::<Target>(e).is_none(), "held until the answer");
         resolve_target(&mut h.world, e, TargetAnswer::Set(Some(Who::Entity(prey))));
         assert_eq!(h.world.get::<Target>(e).map(|t| t.who), Some(Who::Entity(prey)));
