@@ -105,7 +105,9 @@ fn can_replace(g: &Gear, slot: Slot, new: u32, current: u32) -> bool {
 /// The looting of this creature now: every item of its grown box that is pickable and that it wants and can use is taken (one of the stack), in order.
 pub fn look(w: &mut World, e: Entity) {
     let Some(g) = w.get::<Gear>(e).copied() else { return };
-    if w.get::<crate::spawn_gear::NoLoot>(e).is_some() || !mob_griefing(w) {
+    // `Mob.aiStep`: `canPickUpLoot()` first (`CanPickUpLoot` read as false by `/summon` turns `Pickup.picks_up` off).
+    let off = w.get::<crate::behaviours::item_pickup::Pickup>(e).is_some_and(|p| !p.picks_up);
+    if off || w.get::<crate::spawn_gear::NoLoot>(e).is_some() || !mob_griefing(w) {
         return;
     }
     let Some(b) = w.get::<Bounds>(e).map(|b| b.0) else { return };

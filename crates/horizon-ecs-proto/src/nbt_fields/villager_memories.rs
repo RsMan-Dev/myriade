@@ -37,14 +37,28 @@ fn read_gossips(_: &mut World, _: Entity, t: &Tag) -> bool {
 }
 
 /// The time of the last gossip decay (`Gossips.since`, which is kept only while the villager has gossips): the game time when written.
+/// The `LastGossipDecay` read back, in game time; absent on a villager born in this world.
+#[derive(Component, Clone, Copy)]
+pub struct GossipDecay(pub i64);
+
+/// `Villager.maybeDecayGossip`: its first tick notes the game time, then every 24000 ticks moves it on. Without a saved value the
+/// first tick is the entity's birth (game time less its own ticks), so the date is computed at the write, nothing is ticked.
 fn write_gossip_decay(w: &World, e: Entity, c: &mut Compound) {
-    if is_villager(w, e) {
-        c.insert("LastGossipDecay".into(), Tag::Long(crate::cow::now_of(w, e) as i64));
+    if !is_villager(w, e) {
+        return;
     }
+    let now = w.resource::<crate::cow::Clock>().game_now();
+    let first = w.get::<GossipDecay>(e).map_or(now - crate::cow::now_of(w, e) as i64, |d| d.0);
+    let at = if first == 0 || now < first { first } else { first + (now - first) / 24000 * 24000 };
+    c.insert("LastGossipDecay".into(), Tag::Long(at));
 }
 
-fn read_gossip_decay(_: &mut World, _: Entity, t: &Tag) -> bool {
-    matches!(t, Tag::Long(_))
+fn read_gossip_decay(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Long(v) = t else { return false };
+    if *v != 0 {
+        w.entity_mut(e).insert(GossipDecay(*v));
+    }
+    true
 }
 
 fn write_finalized(w: &World, e: Entity, c: &mut Compound) {
