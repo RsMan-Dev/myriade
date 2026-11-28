@@ -3,9 +3,11 @@
 //! breed, stroll. A wild cat hunts rabbits and baby turtles on land. Taming is the rule `TAME` (cod and salmon, one chance in three).
 use super::Def;
 use crate::behaviours::avoid_entity::{self, Avoid};
-use crate::behaviours::{breed, cat_lie_on_block, cat_relax_on_owner, cat_sit_on_block, float, follow_owner, leap_at_target, look_at_player, nearest_target, ocelot_attack, panic, sit_when_ordered, stroll, tempt, Cap, Cond, Entry};
+use crate::behaviours::{ambient_sound, breed, cat_lie_on_block, cat_relax_on_owner, cat_sit_on_block, float, follow_owner, leap_at_target, look_at_player, nearest_target, ocelot_attack, panic, sit_when_ordered, stroll, tempt, Cap, Cond, Entry};
 use crate::rules::RuleEntry;
-use crate::tame::{TameParams, TAME};
+use crate::tame::{Owner, TameParams, TAME};
+use crate::behaviours::variant::SoundVariant;
+use crate::cow::Rng;
 
 /// Cod and salmon, one chance in three (the health stays what the species has).
 const TAME_CAT: TameParams = TameParams { items: &["minecraft:cod", "minecraft:salmon"], chance: 3, health: 10.0, sits: true, eat_sound: None };
@@ -13,6 +15,22 @@ const TAME_CAT: TameParams = TameParams { items: &["minecraft:cod", "minecraft:s
 const FOOD: &[&str] = &["minecraft:cod", "minecraft:salmon"];
 static WILD: Cond = Cond::Not(&Cond::Is("horizon:is_tame"));
 static AVOID: avoid_entity::Params = avoid_entity::Params { what: Avoid::Player, max_dist: 16.0, walk: 0.8, sprint: 1.33, ..avoid_entity::Params::DEFAULT };
+
+/// `Cat.getAmbientSound`: purr when in love, else one time in four a purreow, else the ambient; a stray plays its stray ambient.
+/// Sounds in the order purr, purreow, ambient, stray ambient, by the sound variant (`CatSoundVariants`: classic or royal).
+fn cat_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    const CLASSIC: [&str; 4] = ["entity.cat.purr", "entity.cat.purreow", "entity.cat.ambient", "entity.cat.stray_ambient"];
+    const ROYAL: [&str; 4] = ["entity.cat_royal.purr", "entity.cat_royal.purreow", "entity.cat_royal.ambient", "entity.cat_royal.stray_ambient"];
+    let royal = w.get::<SoundVariant>(e).is_some_and(|v| v.0 == "minecraft:royal");
+    let set = if royal { ROYAL } else { CLASSIC };
+    if !w.get::<Owner>(e).is_some_and(|o| o.0.is_some()) {
+        return set[3];
+    }
+    if w.get::<breed::Love>(e).is_some() {
+        return set[0];
+    }
+    if w.get_mut::<Rng>(e).is_some_and(|mut r| r.next_u32() % 4 == 0) { set[1] } else { set[2] }
+}
 
 pub static DEF: Def = Def {
     name: "minecraft:cat",
@@ -39,6 +57,7 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 11, &stroll::Params { speed: 0.8, water_avoiding: 1.000_000_1e-5, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 12, &look_at_player::Params { range: 10.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&avoid_entity::MODULE, 4, &AVOID).when(&WILD),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(120), choose: Some(cat_ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), RuleEntry::new(&crate::walk_paces::PACES, &()), RuleEntry::new(&crate::dye::DYE,&crate::dye::DyeParams::CAT), RuleEntry::new(&TAME, &TAME_CAT), RuleEntry::new(&crate::hiss::HISSES, &crate::hiss::CAT_HISS)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable]),

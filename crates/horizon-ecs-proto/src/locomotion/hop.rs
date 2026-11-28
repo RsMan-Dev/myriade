@@ -81,6 +81,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
     s.add_systems((hop_air, hop_hold).chain().after(crate::cow::move_control).before(crate::cow::travel));
     s.add_systems(float_jump_sound.after(crate::cow::move_control).before(crate::cow::travel));
+    s.add_systems(float_jump_unforce.after(crate::cow::travel));
 }
 /// Each tick of a hop in the air: the speed and the forward input stay (`CubeMobMoveControl`: `setSpeed` also sets the input); when the body is
 /// back on the ground the wait begins.
@@ -186,7 +187,7 @@ fn jump_sound(w: &mut World, e: Entity, name: Option<&'static str>) {
 /// for 15 ticks (`jumpDuration`; `Rabbit.aiStep` ends it, or the landing does).
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
-struct JumpHold(u64);
+struct JumpHold(u64, bool);
 fn float_jump_sound(mut q: Query<(Entity, &Hop, &mut crate::goals::Jump, &Contact, &crate::cow::Pos, &mut crate::cow::Rng, Has<crate::behaviours::elder_curse::Silent>, Option<&JumpHold>)>, mut events: ResMut<crate::goals::Events>, clock: Res<Clock>, mut commands: Commands) {
     for (e, h, mut j, c, at, mut rng, silent, hold) in &mut q {
         let Some(name) = h.p.jump_sound else { continue };
@@ -196,13 +197,24 @@ fn float_jump_sound(mut q: Query<(Entity, &Hop, &mut crate::goals::Jump, &Contac
             if !silent {
                 events.host.sound(name, [at.0.x, at.0.y, at.0.z], 1.0, pitch);
             }
-            commands.entity(e).insert(JumpHold(now + 15));
+            commands.entity(e).insert(JumpHold(now + 15, false));
         } else if let Some(hd) = hold {
             if c.on_ground || now > hd.0 {
                 commands.entity(e).remove::<JumpHold>();
             } else {
+                // Forced for this tick only (`float_jump_unforce` puts it back after the travel), or it would be read as a new jump.
                 j.0 = true;
+                commands.entity(e).insert(JumpHold(hd.0, true));
             }
+        }
+    }
+}
+
+fn float_jump_unforce(mut q: Query<(&mut crate::goals::Jump, &mut JumpHold)>) {
+    for (mut j, mut h) in &mut q {
+        if h.1 {
+            j.0 = false;
+            h.1 = false;
         }
     }
 }
