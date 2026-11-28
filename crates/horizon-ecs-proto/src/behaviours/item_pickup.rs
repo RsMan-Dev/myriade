@@ -19,9 +19,11 @@ pub struct Params {
     pub whole_stack: bool,
     /// `canPickUpLoot` of the species.
     pub picks_up: bool,
+    /// `canPickUpLoot` is forced on after a load (`Pillager.readAdditionalSaveData`), whatever the key read.
+    pub on_load: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { reach: [1.0, 0.0, 1.0], whole_stack: true, picks_up: true };
+    pub const DEFAULT: Self = Self { reach: [1.0, 0.0, 1.0], whole_stack: true, picks_up: true, on_load: false };
 }
 /// The rule's data of the animal.
 #[derive(Component, Clone, Copy, Debug)]
@@ -29,6 +31,7 @@ pub struct Pickup {
     pub(crate) reach: [f64; 3],
     pub(crate) whole_stack: bool,
     pub(crate) picks_up: bool,
+    pub(crate) on_load: bool,
 }
 
 pub static MODULE: Module = Module {
@@ -43,7 +46,7 @@ pub static MODULE: Module = Module {
 };
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
-    w.entity_mut(e).insert(Pickup { reach: p.reach, whole_stack: p.whole_stack, picks_up: p.picks_up });
+    w.entity_mut(e).insert(Pickup { reach: p.reach, whole_stack: p.whole_stack, picks_up: p.picks_up, on_load: p.on_load });
 }
 /// A rule, not a goal: nothing starts it.
 fn never(_: &mut World, _: Entity, _: Inst) -> bool {

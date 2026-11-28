@@ -3,7 +3,7 @@
 //! socle or for a module: `HoldGroundAttack` (priority 2: the raid), the avoidance of the creaking, `look_at_player` of the mobs (priority 10), the raiders
 //! the hurt-by ignores, the crossbow in hand (supposed).
 use super::Def;
-use crate::behaviours::{avoid_entity, float, hurt_by, look_at_player, nearest_target, ranged_crossbow, stroll, Entry, hold_ground_attack, pathfind_to_raid, ambient_sound};
+use crate::behaviours::{avoid_entity, float, hurt_by, item_pickup, look_at_player, nearest_target, ranged_crossbow, stroll, Entry, hold_ground_attack, pathfind_to_raid, ambient_sound};
 
 use super::evoker::RAIDERS;
 const TRADERS: &[&str] = &["minecraft:villager", "minecraft:wandering_trader"];
@@ -27,11 +27,12 @@ pub static DEF: Def = Def {
         Entry::new(&pathfind_to_raid::MODULE, 3, &pathfind_to_raid::Params::DEFAULT),
         Entry::new(&ranged_crossbow::MODULE, 3, &ranged_crossbow::Params::PILLAGER),
         Entry::new(&stroll::MODULE, 8, &stroll::Params { speed: 0.6, ..stroll::Params::DEFAULT }),
-        Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 15.0, ..look_at_player::Params::DEFAULT }),
+        Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 15.0, period: 1, ..look_at_player::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 15.0, species: &["*"], ..look_at_player::Params::DEFAULT }),
+        Entry::new(&item_pickup::MODULE, 7, &item_pickup::Params { on_load: true, ..item_pickup::Params::DEFAULT }),
         Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.pillager.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT }),
     ],
-    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::PILLAGER)],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::PILLAGER), crate::rules::RuleEntry::new(&crate::item_store::STORE, &crate::item_store::Slots(5))],
     not_in_peaceful: true,
     sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY

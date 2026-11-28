@@ -12,7 +12,54 @@ use std::borrow::Cow;
 
 /// `Brain` is one key with one field: every memory writes into the same compound and reads from it. The memories owned by a
 /// component (long jump, liked player, last sleep) are only written and read on the entities that carry it.
-pub const FIELDS: &[Field] = &[Field { key: Cow::Borrowed("Brain"), write: write_all, read: read_all, accepts: crate::nbt::accept::any, owner: None }];
+/// The villager's other keys (`Villager.addAdditionalSaveData`): `Gossips` and `LastGossipDecay` are always saved, `VillagerDataFinalized`
+/// is saved as a byte from `VillagerFinalized`.
+pub const FIELDS: &[Field] = &[
+    Field { key: Cow::Borrowed("Brain"), write: write_all, read: read_all, accepts: crate::nbt::accept::any, owner: None },
+    Field { key: Cow::Borrowed("Gossips"), write: write_gossips, read: read_gossips, accepts: crate::nbt::accept::any, owner: None },
+    Field { key: Cow::Borrowed("LastGossipDecay"), write: write_gossip_decay, read: read_gossip_decay, accepts: crate::nbt::accept::long, owner: None },
+    Field { key: Cow::Borrowed("VillagerDataFinalized"), write: write_finalized, read: read_finalized, accepts: crate::nbt::accept::any, owner: None },
+];
+
+fn is_villager(w: &World, e: Entity) -> bool {
+    w.get::<crate::cow::TypeName>(e).is_some_and(|n| n.0 == "minecraft:villager")
+}
+
+/// The gossips are kept per player id, not as the entries of the save (`{Target, Type, Value}`): the list is always written empty.
+fn write_gossips(w: &World, e: Entity, c: &mut Compound) {
+    if is_villager(w, e) {
+        c.insert("Gossips".into(), Tag::List(Vec::new()));
+    }
+}
+
+fn read_gossips(_: &mut World, _: Entity, t: &Tag) -> bool {
+    matches!(t, Tag::List(_))
+}
+
+/// The time of the last gossip decay (`Gossips.since`, which is kept only while the villager has gossips): the game time when written.
+fn write_gossip_decay(w: &World, e: Entity, c: &mut Compound) {
+    if is_villager(w, e) {
+        c.insert("LastGossipDecay".into(), Tag::Long(crate::cow::now_of(w, e) as i64));
+    }
+}
+
+fn read_gossip_decay(_: &mut World, _: Entity, t: &Tag) -> bool {
+    matches!(t, Tag::Long(_))
+}
+
+fn write_finalized(w: &World, e: Entity, c: &mut Compound) {
+    if is_villager(w, e) {
+        c.insert("VillagerDataFinalized".into(), Tag::Byte(w.get::<crate::bridge::sync_a::VillagerFinalized>(e).is_some() as i8));
+    }
+}
+
+fn read_finalized(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v != 0 {
+        w.entity_mut(e).insert(crate::bridge::sync_a::VillagerFinalized);
+    }
+    true
+}
 
 fn write_all(w: &World, e: Entity, c: &mut Compound) {
     write_golem(w, e, c);

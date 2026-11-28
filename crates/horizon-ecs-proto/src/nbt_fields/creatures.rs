@@ -27,7 +27,7 @@ use crate::behaviours::turtle_state::Turtle;
 use crate::behaviours::still_under_riders::{Slot, StillUntil};
 use crate::behaviours::swallow_hold::SearchAfter;
 use crate::nbt::{accept, owner, Field};
-use crate::size::Size;
+use crate::size::{Size, SizeRule};
 use crate::species::goat::Screaming;
 use bevy_ecs::prelude::*;
 use horizon_core::nbt::{Compound, JavaString, Tag};
@@ -91,7 +91,20 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("BatFlags"), write: write_bat_flags, read: read_bat_flags, accepts: byte, owner: Some(owner::<Flutter>) },
     Field { key: Cow::Borrowed("still_timeout"), write: write_still, read: read_still, accepts: accept::int, owner: Some(owner::<Slot>) },
     Field { key: Cow::Borrowed("pickup_timer"), write: write_pickup, read: read_pickup, accepts: accept::int, owner: Some(owner::<Swallowable>) },
+    Field { key: Cow::Borrowed("wasOnGround"), write: write_was_on_ground, read: read_was_on_ground, accepts: byte, owner: Some(owner::<SizeRule>) },
 ];
+
+/// `AbstractCubeMob.wasOnGround`: the ground state of the last tick, kept by cube mobs only (the collision's state here).
+fn write_was_on_ground(w: &World, e: Entity, c: &mut Compound) {
+    if let (Some(_), Some(k)) = (w.get::<SizeRule>(e), w.get::<crate::cow::Contact>(e)) {
+        c.insert("wasOnGround".into(), Tag::Byte(i8::from(k.on_ground)));
+    }
+}
+
+/// Read and dropped: the ground state is recomputed by the collision each tick.
+fn read_was_on_ground(_: &mut World, _: Entity, _: &Tag) -> bool {
+    true
+}
 
 fn int_array(t: &Tag) -> bool {
     matches!(t, Tag::IntArray(_))

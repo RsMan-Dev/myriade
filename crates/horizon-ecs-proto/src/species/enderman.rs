@@ -7,6 +7,12 @@ fn enderman_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Enti
     if w.get::<look_for_player::Gaze>(e).is_some_and(|g| g.creepy) { "entity.enderman.scream" } else { "entity.enderman.ambient" }
 }
 
+/// The rule `unset_anger_end`: a calm enderman saves `anger_end_time` as -1 (`stopBeingAngry`), not 0 (the field's default).
+pub static UNSET_ANGER_END: crate::rules::Rule = crate::rules::Rule { name: "unset_anger_end", equip: equip_unset_anger_end, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
+fn equip_unset_anger_end(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity, _: &'static (dyn std::any::Any + Sync)) {
+    w.entity_mut(e).insert(crate::nbt_fields::common::AngerEndUnset);
+}
+
 pub static DEF: Def = Def {
     load_attrs: &[crate::attr_mod::LoadAttr { name: "movement_speed", base: None, when: crate::attr_mod::LoadWhen::Always }],
     name: "minecraft:enderman",
@@ -27,7 +33,7 @@ pub static DEF: Def = Def {
         Entry::new(&ender_teleport::MODULE, 255, &ender_teleport::Params::ENDERMAN),
         Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(80), choose: Some(enderman_ambient), ..ambient_sound::Params::DEFAULT }),
     ],
-    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), crate::rules::RuleEntry::new(&crate::hostile::SUN_FLEE, &())],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), crate::rules::RuleEntry::new(&crate::hostile::SUN_FLEE, &()), crate::rules::RuleEntry::new(&UNSET_ANGER_END, &())],
     spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
     not_in_peaceful: true,
     sound_source: super::SoundCategory::Hostile,

@@ -62,12 +62,26 @@ pub fn set_size(w: &mut World, e: Entity, size: i32) {
         // The `max_health` attribute follows the size (`setSize` sets its base), not only the current health.
         crate::tame::write_max_health_base(w, e, max);
     }
+    let damage = damage_of(r.p.damage_per_size, s);
     if let Some(mut d) = w.get_mut::<AttackDamage>(e) {
-        d.0 = damage_of(r.p.damage_per_size, s);
+        d.0 = damage;
     }
+    write_attack_base(w, e, damage);
     if let Some(mut h) = w.get_mut::<crate::locomotion::hop::Hop>(e) {
         h.p.delay_mul = r.p.delay_mul;
     }
+}
+/// The `attack_damage` attribute's base follows the size (`setSize` sets it); the species' own value is not written (NaN, as `max_health`).
+fn write_attack_base(w: &mut World, e: Entity, damage: f32) {
+    let default = w.get::<SpeciesId>(e).map(|s| w.resource::<SpeciesTable>().0[s.0 as usize].attack_damage);
+    let base = if default == Some(damage) { f64::NAN } else { f64::from(damage) };
+    let mut list = w.get::<crate::attr_mod::AttrMods>(e).cloned().unwrap_or_default();
+    match list.0.iter_mut().find(|x| x.0 == "attack_damage") {
+        Some(x) => x.1 = base,
+        None => list.0.push(("attack_damage".to_owned(), base, Vec::new())),
+    }
+    w.entity_mut(e).insert(list);
+    crate::attr_mod::touched(w, e, "attack_damage");
 }
 /// A body of the species `sp` at the given size.
 pub fn spawn_sized(w: &mut World, sp: &Species, x: f64, z: f64, seed: u64, size: i32) -> Entity {

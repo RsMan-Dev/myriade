@@ -7,6 +7,9 @@ pub fn splash_sound(name: &str, monster: bool) -> &'static str {
     match name {
         "minecraft:dolphin" => "entity.dolphin.splash",
         "minecraft:axolotl" => "entity.axolotl.splash",
+        // Monster-category classes that do not extend `Monster` keep `Entity.getSwimSplashSound` (the generic one).
+        "minecraft:camel_husk" | "minecraft:ender_dragon" | "minecraft:ghast" | "minecraft:magma_cube" | "minecraft:phantom" | "minecraft:shulker"
+        | "minecraft:slime" | "minecraft:sulfur_cube" | "minecraft:zombie_horse" | "minecraft:zombie_nautilus" => "entity.generic.splash",
         _ if monster => "entity.hostile.splash",
         _ => "entity.generic.splash",
     }

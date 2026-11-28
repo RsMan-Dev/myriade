@@ -1,10 +1,13 @@
 //! `Witch.aiStep` drinking: now and then (a draw per condition, in the `Mob`'s order) it drinks water breathing, fire resistance, healing or
 //! swiftness for `duration` ticks, slower by `speed_penalty` meanwhile, and the potion acts when the drink ends. `Drinking` is a standalone
 //! component (`isDrinkingPotion`): `ranged_attack` does not throw while it is there. No goal: the module only ticks the `Drinker`s.
-//! Not done: the potion in the hand, the sounds, the fire damage as the cause of the fire-resistance draw (only `Burning`).
+//! Not done: the potion in the hand, the fire damage as the cause of the fire-resistance draw (only `Burning`).
 use super::*;
+use super::act_phase;
+use super::elder_curse::Silent;
 use crate::cow::*;
 use crate::effects::{self, Kind};
+use crate::goals::{with_rng, Events};
 use crate::targeting;
 use crate::rules::drink_potion::{beyond_11_blocks, healed, roll_hits, slowed};
 
@@ -102,6 +105,10 @@ fn tick(w: &mut World) {
                     let saved_speed = b.speed;
                     b.speed = slowed(saved_speed, p.speed_penalty);
                     w.entity_mut(e).insert(Drinking { potion, left: p.duration, saved_speed });
+                    if w.get::<Silent>(e).is_none() {
+                        let pitch = with_rng(w, e, |r| 0.8 + r.next_f64() as f32 * 0.4);
+                        act_phase::sound(w, e, "minecraft:entity.witch.drink", 1.0, pitch);
+                    }
                 }
             }
         }
@@ -126,6 +133,8 @@ fn finish(w: &mut World, e: Entity, d: Drinking, p: &'static Params) {
             crate::bridge::view::mark(w, e);
         }
     }
+    let at = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
+    w.resource_mut::<Events>().host.game_event_by(e, "minecraft:drink", at, false, false, false);
     if let Some(mut b) = w.get_mut::<Body>(e) {
         b.speed = d.saved_speed;
     }

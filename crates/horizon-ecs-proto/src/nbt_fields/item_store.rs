@@ -54,16 +54,16 @@ fn read_items(w: &mut World, e: Entity, t: &Tag) -> bool {
 }
 
 /// The villager's stock as `Inventory`: one stack per filled slot (`SimpleContainer.storeAsItemList`: no `Slot`, the stacks in order).
+/// An empty stock is saved as an empty list too (`AbstractVillager` writes `Inventory` through `InventoryCarrier`, wandering traders included).
 fn write_stock(w: &World, e: Entity, c: &mut Compound) {
-    let Some(s) = w.get::<Stock>(e) else { return };
-    let items = s
-        .0
-        .iter()
-        .map(|(name, n)| {
-            let stack = ItemStack { item: Arc::from(name.as_str()), count: u32::from(*n), damage: 0, extra: None };
-            item_to_nbt(&stack)
-        })
-        .collect();
+    let items = w.get::<Stock>(e).map_or_else(Vec::new, |s| {
+        s.0.iter()
+            .map(|(name, n)| {
+                let stack = ItemStack { item: Arc::from(name.as_str()), count: u32::from(*n), damage: 0, extra: None };
+                item_to_nbt(&stack)
+            })
+            .collect()
+    });
     c.insert("Inventory".into(), Tag::List(items));
 }
 

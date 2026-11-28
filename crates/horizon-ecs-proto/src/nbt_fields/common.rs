@@ -47,8 +47,11 @@ fn read_pick_up(w: &mut World, e: Entity, t: &Tag) -> bool {
 }
 
 /// `Mob.readAdditionalSaveData`: a load without `CanPickUpLoot` sets it to false (`getBooleanOr(.., false)`), for a mob. Called by `nbt::load`.
+/// A creature whose `Pickup` has `on_load` (the pillager) is set to true whatever the key read.
 pub fn load_pick_up(w: &mut World, e: Entity, c: &Compound) {
-    if c.get(&JavaString::from("CanPickUpLoot")).is_none() && w.get::<crate::goals::GoalSet>(e).is_some() {
+    if w.get::<crate::behaviours::item_pickup::Pickup>(e).is_some_and(|p| p.on_load) {
+        set_pick_up(w, e, true);
+    } else if c.get(&JavaString::from("CanPickUpLoot")).is_none() && w.get::<crate::goals::GoalSet>(e).is_some() {
         set_pick_up(w, e, false);
     }
 }
@@ -59,7 +62,7 @@ fn set_pick_up(w: &mut World, e: Entity, on: bool) {
         p.picks_up = on;
     } else {
         let d = Params::DEFAULT;
-        w.entity_mut(e).insert(Pickup { reach: d.reach, whole_stack: d.whole_stack, picks_up: on });
+        w.entity_mut(e).insert(Pickup { reach: d.reach, whole_stack: d.whole_stack, picks_up: on, on_load: d.on_load });
     }
 }
 
@@ -147,6 +150,7 @@ pub const TAGGED_DEFAULTS: &[Tagged] = &[
     Tagged { tag: tag::RAIDER, key: "Patrolling", default: zero_byte, gate: always },
     Tagged { tag: tag::RAIDER, key: "Wave", default: zero_int, gate: always },
     Tagged { tag: tag::PICKS_UP, key: "CanPickUpLoot", default: one_byte, gate: always },
+    Tagged { tag: tag::ANGER_ZERO, key: "anger_end_time", default: minus_one_long, gate: anger_end_unset },
     Tagged { tag: tag::ANGER_ZERO, key: "anger_end_time", default: zero_long, gate: always },
     Tagged { tag: tag::ANGER_UNSET, key: "anger_end_time", default: minus_one_long, gate: always },
     Tagged { tag: tag::TADPOLE, key: "FromBucket", default: one_byte, gate: always },
@@ -601,11 +605,19 @@ fn read_hurt_by(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
+/// The end of an anger that was never set or was stopped (`NeutralMob.stopBeingAngry`): a creature that holds it saves -1L.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct AngerEndUnset;
+
+fn anger_end_unset(w: &World, e: Entity) -> bool {
+    w.get::<AngerEndUnset>(e).is_some()
+}
+
 /// `anger_end_time`: the end of the anger countdown (a long), the `until` of `Anger` (own time, as the rest of the component).
 fn write_anger_end(w: &World, e: Entity, c: &mut Compound) {
     if let Some(a) = w.get::<Anger>(e) {
-        // A bee or a wolf holds -1 until an anger sets the end (synched data default).
-        let unset = a.until == 0 && w.get::<crate::cow::SpeciesId>(e).is_some_and(|id| crate::cow::tags_of_id(*id) & tag::ANGER_UNSET != 0);
+        // A bee or a wolf holds -1 until an anger sets the end (synched data default); so does a calm creature with the marker.
+        let unset = a.until == 0 && (anger_end_unset(w, e) || w.get::<crate::cow::SpeciesId>(e).is_some_and(|id| crate::cow::tags_of_id(*id) & tag::ANGER_UNSET != 0));
         c.insert("anger_end_time".into(), Tag::Long(if unset { -1 } else { a.until as i64 }));
     }
 }

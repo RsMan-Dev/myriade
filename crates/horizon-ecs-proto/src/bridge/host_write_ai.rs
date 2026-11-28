@@ -127,7 +127,7 @@ impl EcsWorld {
             p.picks_up = on;
         } else {
             let d = crate::behaviours::item_pickup::Params::DEFAULT;
-            w.entity_mut(e).insert(Pickup { reach: d.reach, whole_stack: d.whole_stack, picks_up: on });
+            w.entity_mut(e).insert(Pickup { reach: d.reach, whole_stack: d.whole_stack, picks_up: on, on_load: d.on_load });
         }
     }
 
