@@ -3,7 +3,7 @@
 //! breed, stroll. A wild cat hunts rabbits and baby turtles on land. Taming is the rule `TAME` (cod and salmon, one chance in three).
 use super::Def;
 use crate::behaviours::avoid_entity::{self, Avoid};
-use crate::behaviours::{ambient_sound, breed, cat_lie_on_block, cat_relax_on_owner, cat_sit_on_block, float, follow_owner, leap_at_target, look_at_player, nearest_target, ocelot_attack, panic, sit_when_ordered, stroll, tempt, Cap, Cond, Entry};
+use crate::behaviours::{ambient_sound, breed, cat_lie_on_block, cat_relax_on_owner, cat_sit_on_block, float, follow_owner, leap_at_target, look_at_player, nearest_target, ocelot_attack, panda_state, panic, sit_when_ordered, stroll, tempt, Cap, Cond, Entry};
 use crate::rules::RuleEntry;
 use crate::tame::{Owner, TameParams, TAME};
 use crate::behaviours::variant::SoundVariant;
@@ -21,8 +21,10 @@ static AVOID: avoid_entity::Params = avoid_entity::Params { what: Avoid::Player,
 fn cat_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
     const CLASSIC: [&str; 4] = ["entity.cat.purr", "entity.cat.purreow", "entity.cat.ambient", "entity.cat.stray_ambient"];
     const ROYAL: [&str; 4] = ["entity.cat_royal.purr", "entity.cat_royal.purreow", "entity.cat_royal.ambient", "entity.cat_royal.stray_ambient"];
+    // `Cat.getSoundSet`: a baby has the same set in both variants.
+    const BABY: [&str; 4] = ["entity.baby_cat.purr", "entity.baby_cat.purreow", "entity.baby_cat.ambient", "entity.baby_cat.stray_ambient"];
     let royal = w.get::<SoundVariant>(e).is_some_and(|v| v.0 == "minecraft:royal");
-    let set = if royal { ROYAL } else { CLASSIC };
+    let set = if panda_state::is_baby(w, e) { BABY } else if royal { ROYAL } else { CLASSIC };
     if !w.get::<Owner>(e).is_some_and(|o| o.0.is_some()) {
         return set[3];
     }

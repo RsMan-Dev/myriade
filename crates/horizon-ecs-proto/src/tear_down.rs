@@ -92,11 +92,12 @@ pub fn voice(w: &mut World, e: Entity, name: &'static str) {
     let baby = w.get::<crate::cow::GrowAt>(e).is_some();
     let name = if baby { crate::entity_voice::baby_voice(name) } else { name };
     let base = if baby { 1.5 } else { 1.0 };
-    let pitch = crate::goals::with_rng(w, e, |r| {
+    let amb = w.get::<crate::behaviours::ambient_sound::Ambient>(e).map(|a| a.0);
+    let pitch = if amb.is_some_and(|a| a.fixed_pitch) { 1.0 } else { crate::goals::with_rng(w, e, |r| {
         let a = (r.next_u32() >> 8) as f32 / 16_777_216.0;
         let b = (r.next_u32() >> 8) as f32 / 16_777_216.0;
         (a - b) * 0.2 + base
-    }) * w.get::<crate::behaviours::ambient_sound::Ambient>(e).map_or(1.0, |a| a.0.voice_pitch);
+    }) * amb.map_or(1.0, |a| a.voice_pitch) };
     if w.get::<crate::behaviours::elder_curse::Silent>(e).is_none() {
         // `Entity.playSound`: the species' `getSoundVolume` and the entity's own `SoundSource`.
         let (vol, src) = (crate::entity_voice::volume_of(w, e), crate::entity_voice::source_of(crate::area::species_name(w, e)));

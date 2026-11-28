@@ -7,7 +7,7 @@
 //! the dig (see `sniff.rs`).
 use crate::IFloor as _;
 use super::Def;
-use crate::behaviours::{breed, float, Cap, Entry};
+use crate::behaviours::{ambient_sound, breed, float, Cap, Entry};
 use crate::brain::behaviours::{count_down_cooldown_ticks, do_nothing, follow_temptation, look_at_player, look_at_target_sink, make_love, move_to_target_sink, panic, run_one, sniff, stroll, walk_to_look_target};
 use crate::brain::sensors::{hurt_by, living, nearest_players, tempting};
 use crate::brain::*;
@@ -26,10 +26,21 @@ fn lay_egg(w: &mut bevy_ecs::prelude::World, parent: bevy_ecs::prelude::Entity, 
     crate::blocks::set_state(w, [p.x.ifloor(), p.y.ifloor(), p.z.ifloor()], "minecraft:sniffer_egg", &[]);
 }
 
+/// `Sniffer.getAmbientSound`: silent while it digs or searches (`DIGGING`, `SEARCHING`), else its idle sound.
+fn sniffer_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    match sniff::state(w, e) {
+        sniff::DIGGING | sniff::SEARCHING => "",
+        _ => "entity.sniffer.idle",
+    }
+}
+
 pub static DEF: Def = Def {
     name: "minecraft:sniffer",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
-    goals: &[Entry::new(&float::MODULE, 0, &float::Params::DEFAULT)],
+    goals: &[
+        Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 1, &ambient_sound::Params { interval: Some(120), choose: Some(sniffer_ambient), ..ambient_sound::Params::DEFAULT }),
+    ],
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), RuleEntry::new(&breed::LOVE, &breed::Params { foods: FOOD, baby_age: 48000, ..breed::Params::DEFAULT }), RuleEntry::new(&crate::leash::QUAD_LEASHEE, &crate::leash::QuadParams { front: -0.01, front_back: 0.63, left_right: 0.38, up: 1.15 })],
     brain: BrainDef {
         sensors: &[

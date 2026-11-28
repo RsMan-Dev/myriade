@@ -13,15 +13,19 @@ pub struct Params {
     pub max: u32,
     /// `Mob.getAmbientSoundInterval`: when set, the delay follows `Mob.baseTick` instead of `min..max`.
     pub interval: Option<u32>,
+    /// The interval of the creature's state (`HappyGhast.getAmbientSoundInterval`), read when the next delay is armed (not each tick).
+    pub interval_of: Option<fn(&World, Entity) -> u32>,
     /// The sound of this play, chosen by the species from the creature's state; `sounds` is unused when set.
     pub choose: Option<fn(&mut World, Entity) -> &'static str>,
     /// The sounds of this list are played at volume 2 (`Fox.playAmbientSound`: the screech).
     pub loud: &'static [&'static str],
     /// Multiplied onto the voice pitch of the creature (`Bat.getVoicePitch`: 0.95 times the living pitch).
     pub voice_pitch: f32,
+    /// `getVoicePitch` returns 1 with no draw (`HappyGhast`): the baby is not raised either.
+    pub fixed_pitch: bool,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { sounds: &[], min: 200, max: 400, interval: None, choose: None, loud: &[], voice_pitch: 1.0 };
+    pub const DEFAULT: Self = Self { sounds: &[], min: 200, max: 400, interval: None, interval_of: None, choose: None, loud: &[], voice_pitch: 1.0, fixed_pitch: false };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Ambient(pub &'static Params);
@@ -43,11 +47,14 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 fn delay(w: &mut World, e: Entity) -> i32 {
     let p = w.get::<Ambient>(e).unwrap().0;
     let played = w.get::<Played>(e).is_some();
-    let mut rng = w.get_mut::<Rng>(e).unwrap();
     match p.interval {
         // `Mob.ambientSoundTime` is 0 at the start, and only a played sound sets it to `-interval`.
-        Some(i) => ambient_sound::base_tick_delay(if played { i } else { 0 }, || rng.next_int(1000) as u32),
-        None => ambient_sound::delay(p.min, p.max, rng.next_u32()),
+        Some(i) => {
+            let i = p.interval_of.map_or(i, |f| f(w, e));
+            let mut rng = w.get_mut::<Rng>(e).unwrap();
+            ambient_sound::base_tick_delay(if played { i } else { 0 }, || rng.next_int(1000) as u32)
+        }
+        None => ambient_sound::delay(p.min, p.max, w.get_mut::<Rng>(e).unwrap().next_u32()),
     }
 }
 /// The tick of the entity's own time at which the one pending deadline falls: `arm_timers` may run again (a player arrives, the

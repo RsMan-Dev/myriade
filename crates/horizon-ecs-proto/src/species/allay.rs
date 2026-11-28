@@ -8,8 +8,13 @@
 //! arrival. Without a look target the fly is drawn 2/3 of the time, the wait 1/3 (45 ticks mean): 0.5 x 45 = 22.5 ticks, and `idle_wait(12)` = 2 x (12 - 1) = 22 (95 blocks in 90 s, as vanilla).
 //! The glide is the free flight's drag 0.91 (`LivingEntity.travelFlying`, `FlyingMoveControl(20, true)`).
 use super::Def;
-use crate::behaviours::{animal_panic, event_listen, fly_stroll, give_to_owner, go_to_wanted, look_at_player, random_look, stay_close_to_owner, Cap, Entry};
+use crate::behaviours::{ambient_sound, animal_panic, event_listen, fly_stroll, give_to_owner, go_to_wanted, look_at_player, random_look, stay_close_to_owner, Cap, Entry};
 use crate::locomotion::{fly, Medium};
+
+/// `Allay.getAmbientSound`: the item of the main hand chooses the sound.
+fn allay_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if crate::goals::main_hand(w, e).is_some() { "entity.allay.ambient_with_item" } else { "entity.allay.ambient_without_item" }
+}
 
 pub static DEF: Def = Def {
     name: "minecraft:allay",
@@ -33,6 +38,7 @@ pub static DEF: Def = Def {
             dance_radius: 10,
             dance_block: "minecraft:jukebox",
         }),
+        Entry::new(&ambient_sound::MODULE, 8, &ambient_sound::Params { interval: Some(80), choose: Some(allay_ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Tamable, Cap::Locomotion]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { max_turn: 20.0, hovers: true, free: true, drive_air: true, ..fly::Params::DEFAULT }))],

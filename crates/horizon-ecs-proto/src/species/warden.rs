@@ -3,8 +3,9 @@
 use super::{templates::monster, Change, Def};
 use crate::behaviours::spawn_draw::{Draw, Draws, Store, When};
 use crate::rules::spawn_draw::Roll;
+use crate::behaviours::act_phase::{ActPhase, Phase};
 use crate::behaviours::{
-    look_at_player, nearest_target, random_look, darkness_pulse, dig, emerge, float, go_to_disturbance, melee, roar_at_target, sniff, sonic_boom, stroll, suspect_anger, timed_idle,
+    ambient_sound, look_at_player, nearest_target, random_look, darkness_pulse, dig, emerge, float, go_to_disturbance, melee, roar_at_target, sniff, sonic_boom, stroll, suspect_anger, timed_idle,
     vibration_listen, warden_drop_invalid_target, warden_look_target, Cap, Entry,
 };
 
@@ -63,6 +64,7 @@ pub static DEF: Def = Def {
         // lot V4 : `SetWardenLookTarget` (core 1), `StopAttackingIfTargetInvalid` (Fight 11, `set_dig_cooldown` 1200)
         Entry::new(&warden_look_target::MODULE, 9, &()),
         Entry::new(&warden_drop_invalid_target::MODULE, 11, &warden_drop_invalid_target::Params { dig_cooldown: 1200 }),
+        Entry::new(&ambient_sound::MODULE, 12, &ambient_sound::Params { interval: Some(80), choose: Some(warden_ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     // The Mob's warden has no idle look (its brain looks only at its look target): the monster base's two look goals left, they cut the pause.
     changes: &[Change::Remove { module: &look_at_player::MODULE, nth: 0 }, Change::Remove { module: &random_look::MODULE, nth: 0 }, Change::Remove { module: &nearest_target::MODULE, nth: 0 }],
@@ -72,6 +74,18 @@ pub static DEF: Def = Def {
     draws: Some(&DRAWS),
     ..Def::EMPTY
 };
+
+/// `Warden.getAmbientSound`: silent while it digs or emerges (`isDiggingOrEmerging`), else the sound of its anger level.
+fn warden_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if w.get::<ActPhase>(e).is_some_and(|a| matches!(a.phase, Phase::Burrowing | Phase::Emerging)) {
+        return "";
+    }
+    match suspect_anger::level(w, e) {
+        suspect_anger::Level::Calm => "entity.warden.ambient",
+        suspect_anger::Level::Agitated => "entity.warden.agitated",
+        suspect_anger::Level::Angry => "entity.warden.angry",
+    }
+}
 
 /// `Warden.finalizeSpawn`: the dig cooldown (`DIG_COOLDOWN`, 1200 ticks) at every birth, no draw.
 static DRAWS: Draws = Draws { group: None, list: &[Draw { when: When::Before, kind: crate::behaviours::spawn_draw::Kind::Plain(Roll::Const(0)), store: Store::Call(dig_cooldown) }] };

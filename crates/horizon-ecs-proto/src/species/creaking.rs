@@ -6,16 +6,21 @@
 //! DOUTES: the gaze disguise list is empty (the item tag is not read); the swim jump is not suppressed while stilled; the stare is
 //! asked again by event (view change, player move, own cell change), not every tick.
 use super::Def;
-use crate::behaviours::{float, stare_freeze, Cap, Entry};
+use crate::behaviours::{ambient_sound, float, stare_freeze, Cap, Entry};
 use crate::brain::behaviours::{do_nothing, look_at_player_sometimes, look_at_target_sink, melee_attack, move_to_target_sink, run_one, set_walk_target_from_attack_target, start_attacking, stop_attacking_if_target_invalid, stroll, walk_to_look_target};
 use crate::brain::sensors::{living, nearest_players};
 use crate::brain::*;
+
+/// `Creaking.getAmbientSound`: silent while it is active (roused by a stare).
+fn creaking_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if stare_freeze::is_roused(w, e) { "" } else { "entity.creaking.ambient" }
+}
 
 pub static DEF: Def = Def {
     name: "minecraft:creaking",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     // `CreakingAi$1` (the Swim): `checkExtraStartConditions` is `canMove() && super`.
-    goals: &[Entry::new(&float::MODULE, 0, &float::Params { when: Some(stare_freeze::can_move), ..float::Params::DEFAULT }),Entry::new(&stare_freeze::MODULE, 0, &stare_freeze::Params::DEFAULT)],
+    goals: &[Entry::new(&float::MODULE, 0, &float::Params { when: Some(stare_freeze::can_move), ..float::Params::DEFAULT }),Entry::new(&stare_freeze::MODULE, 0, &stare_freeze::Params::DEFAULT), Entry::new(&ambient_sound::MODULE, 1, &ambient_sound::Params { interval: Some(80), choose: Some(creaking_ambient), ..ambient_sound::Params::DEFAULT })],
     brain: BrainDef {
         sensors: &[SensorEntry::new(&living::SENSOR, 20), SensorEntry::new(&nearest_players::SENSOR, 20)],
         activities: &[

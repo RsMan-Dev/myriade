@@ -54,7 +54,7 @@ pub static DEF: Def = Def {
         Entry::new(&tempt::MODULE, 4, &tempt::Params { speed: 1.0, items: &["minecraft:snowball"], stop: 7.0, range: 16.0, drift: true, ..tempt::Params::DEFAULT }).when(&WORN),
         Entry::new(&tempt::MODULE, 4, &tempt::Params { speed: 1.0, items: HARNESS_TEMPT, stop: 7.0, range: 16.0, drift: true, ..tempt::Params::DEFAULT }).when(&NOT_WORN),
         Entry::new(&float_around::MODULE, 5, &float_around::Params { blocks: 16 }),
-        Entry::new(&ambient_sound::MODULE, 6, &ambient_sound::Params { interval: Some(120), choose: Some(ambient), ..ambient_sound::Params::DEFAULT }),
+        Entry::new(&ambient_sound::MODULE, 6, &ambient_sound::Params { interval: Some(120), interval_of: Some(riders_interval), choose: Some(ambient), fixed_pitch: true, ..ambient_sound::Params::DEFAULT }),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Rideable, Cap::CollidableWhenStill, Cap::Brain]),
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), crate::rules::RuleEntry::new(&crate::rules::NO_FALL, &()), crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&harness_worn::RULE, &()),RuleEntry::new(&crate::hand_feed::FEED_BABY, &crate::hand_feed::FeedParams::HAPPY_GHAST), RuleEntry::new(&RIDE, &RideParams::GHAST), RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::GHAST), RuleEntry::new(&crate::leash::QUAD_HOLDER, &())],
@@ -118,4 +118,8 @@ pub static BABY: Def = Def {
 /// `HappyGhast.getAmbientSound`: the ghastling's sound when it is a baby, else the adult's.
 fn ambient(w: &mut World, e: Entity) -> &'static str {
     if crate::behaviours::panda_state::is_baby(w, e) { "entity.ghastling.ambient" } else { "entity.happy_ghast.ambient" }
+}
+/// `HappyGhast.getAmbientSoundInterval`: six times the `Animal`'s 120 while it is a vehicle (a passenger in any seat), else 120.
+fn riders_interval(w: &World, e: Entity) -> u32 {
+    if w.get::<crate::mount::Mount>(e).is_some_and(|m| m.rider.is_some() || m.passenger.is_some()) { 720 } else { 120 }
 }
