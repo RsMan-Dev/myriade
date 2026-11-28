@@ -2,16 +2,17 @@
 //! 16 blocks, priority 5) and is a rideable mount. Goals: `still_under_riders` (1, holds still while a player is on it, 10 ticks after);
 //! `square_or_face` (0, squares to the world while stilled, else faces its motion); `heal_weather` (3, 1 health every 600 ticks dry,
 //! every 20 wet); `float` (3, waits for the still timeout); `float_around` (5).
-//! Brain (`HappyGhastAi`, javap): core (swim at 0.8, the look and move sinks, the temptation cooldown); panic (`AnimalPanic` 2.0, while
-//! `IS_PANICKING`); idle (`FollowTemptation` 1.25, 3 blocks, looking in the eyes). The adult has no idle stroll of the brain: `customServerAiStep`
-//! ticks the brain of a baby only, the adult wanders by `float_around` alone. The baby (`BABY`) follows the nearest player, then the nearest adult, from 3 to 16 blocks at 1.1.
+//! The adult is tempted by `tempt` (4, flying straight at the player: `TemptGoal.ForNonPathfinders`, stop 7, `drift`), not by its brain, which only
+//! `customServerAiStep` ticks for a baby. Brain (`HappyGhastAi`): core only for the adult; the baby also has panic (`AnimalPanic` 2.0) and idle.
+//! The baby (`BABY`) follows the nearest player, then the nearest adult, from 3 to 16 blocks at 1.1.
 //! Not verified against vanilla: the weights of the idle `RunOne`s, the priorities of the goals.
 //! The rule `harness_worn` takes a harness item. Riding: `RIDE` with `RideParams::GHAST`; `mount::ridden_drive` steers the first rider (`Steer::Fly`, harness, no still timeout).
+use super::predicates::Cond;
 use super::Def;
 use bevy_ecs::prelude::{Entity, World};
-use crate::behaviours::{ambient_sound, float, float_around, harness_worn, heal_weather, square_or_face, still_under_riders, Cap, Entry};
-use crate::brain::behaviours::{count_down_cooldown_ticks, follow_adult, follow_temptation, look_at_target_sink, move_to_target_sink, panic, walk_to_look_target, work_swim};
-use crate::brain::sensors::{adult, hurt_by, living, nearest_players, tempting};
+use crate::behaviours::{ambient_sound, float, float_around, harness_worn, heal_weather, square_or_face, still_under_riders, tempt, Cap, Entry};
+use crate::brain::behaviours::{count_down_cooldown_ticks, follow_adult, look_at_target_sink, move_to_target_sink, panic, work_swim};
+use crate::brain::sensors::{adult, hurt_by, living, nearest_players};
 use crate::brain::*;
 use crate::locomotion::{fly, Medium};
 use crate::mount::{RideParams, RIDE};
@@ -37,6 +38,9 @@ const HARNESS_TEMPT: &[&str] = &[
     "minecraft:red_harness",
     "minecraft:black_harness",
 ];
+/// `TemptGoal.items`: the food only while a harness is worn (the body armour), else the food and the harnesses.
+static WORN: Cond = Cond::Is("horizon:wears_harness");
+static NOT_WORN: Cond = Cond::Not(&Cond::Is("horizon:wears_harness"));
 
 
 pub static DEF: Def = Def {
@@ -47,6 +51,8 @@ pub static DEF: Def = Def {
         Entry::new(&square_or_face::MODULE, 0, &square_or_face::Params::DEFAULT),
         Entry::new(&heal_weather::MODULE, 3, &heal_weather::Params { dry: 600, wet: 20, amount: 1.0, max: 20.0 }),
         Entry::new(&float::MODULE, 3, &float::Params { unless_still: true, ..float::Params::DEFAULT }),
+        Entry::new(&tempt::MODULE, 4, &tempt::Params { speed: 1.0, items: &["minecraft:snowball"], stop: 7.0, range: 16.0, drift: true, ..tempt::Params::DEFAULT }).when(&WORN),
+        Entry::new(&tempt::MODULE, 4, &tempt::Params { speed: 1.0, items: HARNESS_TEMPT, stop: 7.0, range: 16.0, drift: true, ..tempt::Params::DEFAULT }).when(&NOT_WORN),
         Entry::new(&float_around::MODULE, 5, &float_around::Params { blocks: 16 }),
         Entry::new(&ambient_sound::MODULE, 6, &ambient_sound::Params { interval: Some(120), choose: Some(ambient), ..ambient_sound::Params::DEFAULT }),
     ],
@@ -57,14 +63,12 @@ pub static DEF: Def = Def {
         sensors: &[
             SensorEntry::new(&living::SENSOR, 20),
             SensorEntry::new(&hurt_by::SENSOR, 20),
-            SensorEntry::new(&tempting::SENSOR, 10).with(&tempting::Params { range: 16.0, foods: HARNESS_TEMPT }),
         ],
         activities: &[
             ActivityDef { name: "core", slot: 1, requires: &[] },
-            ActivityDef { name: "panic", slot: 2, requires: &[(&IS_PANICKING, Need::Present)] },
             ActivityDef { name: "idle", slot: 5, requires: &[] },
         ],
-        pick: &["panic", "idle"],
+        pick: &["idle"],
         initial: &[],
         behaviours: &[
             // The core: the swim, the look and move sinks, the temptation cooldown counted down.
@@ -72,9 +76,6 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &look_at_target_sink::BEHAVIOUR, activity: "core", priority: 1, params: &(), needs: &[(&LOOK_TARGET, Need::Present)], duration: Some((45, 90)), kids: &[] },
             BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "core", priority: 2, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &count_down_cooldown_ticks::BEHAVIOUR, activity: "core", priority: 3, params: &count_down_cooldown_ticks::Params { key: &TEMPTATION_COOLDOWN_TICKS }, needs: &[], duration: None, kids: &[] },
-            // `AnimalPanic` at 2.0: hurt, or panicking until the walk is over.
-            BEntry { behaviour: &panic::BEHAVIOUR, activity: "panic", priority: 0, params: &panic::Params { speed: 2.0, threat: None }, needs: &[], duration: None, kids: &[] },
-            BEntry { behaviour: &follow_temptation::BEHAVIOUR, activity: "idle", priority: 0, params: &follow_temptation::Params { speed: 1.25, close: 3.0, look_in_the_eyes: true, dry_speed: None }, needs: &[(&TEMPTING_PLAYER, Need::Present)], duration: None, kids: &[] },
         ],
     },
     ..Def::EMPTY

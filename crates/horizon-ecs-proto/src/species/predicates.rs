@@ -58,6 +58,10 @@ fn has_rider(w: &World, e: Entity) -> bool {
 fn is_mounted(w: &World, e: Entity) -> bool {
     w.get::<crate::mount::Riding>(e).is_some()
 }
+/// `horizon:wears_harness`: a harness is worn (`harness_worn::Harness`, the body armour of the happy ghast).
+fn wears_harness(w: &World, e: Entity) -> bool {
+    w.get::<crate::behaviours::harness_worn::Harness>(e).is_some()
+}
 /// `horizon:dark_enough`: the light at its eyes is under half (`brightness < 0.5`: the spider's gate, `hostile.rs` `dark_enough`).
 fn dark_enough(w: &World, e: Entity) -> bool {
     let (Some(p), Some(eye), Some(level)) = (w.get::<Pos>(e), w.get::<crate::targeting::Eye>(e), w.get_resource::<crate::cow::Level>()) else { return false };
@@ -190,6 +194,7 @@ pub static BUILTIN: &[(&str, Pred)] = &[
     ("horizon:in_village", in_village),
     ("horizon:has_rider", has_rider),
     ("horizon:is_mounted", is_mounted),
+    ("horizon:wears_harness", wears_harness),
     ("horizon:is_sitting", is_sitting),
     ("horizon:is_leashed", is_leashed),
     ("horizon:dark_enough", dark_enough),

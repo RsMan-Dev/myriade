@@ -23,7 +23,7 @@ pub static SHEARING: ShearDef = ShearDef {
 pub static DEF: Def = Def {
     name: "minecraft:bogged",
     reference: Some(&skeleton::DEF),
-    changes: &[Change::Set { module: &ranged_bow::MODULE, nth: 0, params: &ranged_bow::Params { interval: 70, effect: Some((Kind::Poison, 0, 100)), ..ranged_bow::Params::DEFAULT } }, Change::Set { module: &ambient_sound::MODULE, nth: 0, params: &ambient_sound::Params { sounds: &["entity.bogged.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT } }],
+    changes: &[Change::Remove { module: &crate::behaviours::convert_in_water::MODULE, nth: 0 }, Change::Set { module: &ranged_bow::MODULE, nth: 0, params: &ranged_bow::Params { interval: 70, effect: Some((Kind::Poison, 0, 100)), ..ranged_bow::Params::DEFAULT } }, Change::Set { module: &ambient_sound::MODULE, nth: 0, params: &ambient_sound::Params { sounds: &["entity.bogged.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT } }],
     rules: &[crate::rules::RuleEntry::new(&crate::behaviours::shear::SHEAR, &SHEARING)],
     not_in_peaceful: true,
     sound_source: super::SoundCategory::Hostile,

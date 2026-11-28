@@ -9,6 +9,7 @@ pub static DEF: Def = Def {
     caps: Some(super::FIRE_WITHER_IMMUNE_CAPS),
     reference: Some(&skeleton::DEF),
     changes: &[
+        Change::Remove { module: &crate::behaviours::convert_in_water::MODULE, nth: 0 },
         Change::Set { module: &ambient_sound::MODULE, nth: 0, params: &ambient_sound::Params { sounds: &["entity.wither_skeleton.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT } },
         Change::Remove { module: &ranged_bow::MODULE, nth: 0 },
         Change::Add(Section::Goals, Entry::new(&melee::MODULE, 4, &melee::Params { speed: 1.2, ..melee::Params::DEFAULT })),
