@@ -135,7 +135,7 @@ pub fn insert_resources(w: &mut World) {
 }
 
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems((moved_effects.after(crate::cow::reindex), living_lava));
+    s.add_systems((moved_effects.after(crate::cow::reindex), powder_still.after(moved_effects), living_lava));
 }
 
 /// `LivingEntity.baseTick`: a creature standing in lava (not fire immune) is hit for 4 and set on fire for 300 ticks, each tick; the
@@ -320,6 +320,26 @@ fn moved_effects(
                 w.entity_mut(e).insert(Soaking(due));
                 crate::cow::after(w, e, SOAK_PERIOD, soak_due);
             });
+        }
+    }
+}
+
+/// A creature that stays still in powder snow is looked at each tick, as vanilla's zero move re-tests its box: when the snow under it is
+/// gone, `InPowderSnow` goes the same tick. Only the creatures already carrying the marker are visited; a moved one is `moved_effects`'s.
+fn powder_still(
+    level: Res<Level>,
+    mut kinds: ResMut<InsideKinds>,
+    mut commands: Commands,
+    q: Query<(Entity, Ref<Bounds>), (With<InPowderSnow>, Without<IgnoresTriggers>)>,
+    was: Query<(), With<WasInPowder>>,
+) {
+    for (e, b) in &q {
+        if b.is_changed() || scan(&level, &mut kinds, &b.0, true, false).in_powder {
+            continue;
+        }
+        commands.entity(e).remove::<InPowderSnow>();
+        if was.contains(e) {
+            commands.queue(move |w: &mut World| crate::cow::after(w, e, 1, forget_powder));
         }
     }
 }

@@ -47,6 +47,6 @@ pub static DEF: Def = Def {
             },
         ],
     },
-    rules: &[crate::rules::RuleEntry::new(&crate::loot::NO_XP_DROP, &()), crate::rules::RuleEntry::new(&crate::behaviours::held_swap::HELD_SWAP, &crate::behaviours::held_swap::SwapParams { from: "minecraft:water_bucket", to: "minecraft:tadpole_bucket", adult_only: false, takes_creature: true, sound: "minecraft:item.bucket.fill_fish", alt: None })],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::NO_XP_DROP, &()), crate::rules::RuleEntry::new(&crate::behaviours::held_swap::HELD_SWAP, &crate::behaviours::held_swap::SwapParams { from: "minecraft:water_bucket", to: "minecraft:tadpole_bucket", adult_only: false, takes_creature: true, sound: "minecraft:item.bucket.fill_tadpole", alt: None, extra: crate::behaviours::held_swap::tadpole_data })],
     ..Def::EMPTY
 };

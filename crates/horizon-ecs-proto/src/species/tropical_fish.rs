@@ -7,7 +7,7 @@ pub static DEF: Def = Def {
     name: "minecraft:tropical_fish",
     reference: Some(&fish::DEF),
     goals: &[Entry::new(&follow_flock_leader::MODULE, 5, &follow_flock_leader::Params::DEFAULT), Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.tropical_fish.ambient"], interval: Some(120), ..ambient_sound::Params::DEFAULT })],
-    rules: &[crate::rules::RuleEntry::new(&crate::behaviours::held_swap::HELD_SWAP, &crate::behaviours::held_swap::SwapParams { from: "minecraft:water_bucket", to: "minecraft:tropical_fish_bucket", adult_only: false, takes_creature: true, sound: "minecraft:item.bucket.fill_fish", alt: None })],
+    rules: &[crate::rules::RuleEntry::new(&crate::behaviours::held_swap::HELD_SWAP, &crate::behaviours::held_swap::SwapParams { from: "minecraft:water_bucket", to: "minecraft:tropical_fish_bucket", adult_only: false, takes_creature: true, sound: "minecraft:item.bucket.fill_fish", alt: None, extra: crate::behaviours::held_swap::tropical_data })],
     draws: Some(&DRAWS),
     ..Def::EMPTY
 };

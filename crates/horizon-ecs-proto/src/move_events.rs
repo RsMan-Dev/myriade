@@ -91,9 +91,8 @@ pub fn move_events(
     // The sounds of a movement play for the players whatever listens; only its game events wait for a vibration listener.
     let heard = on(heard);
     for (e, p, c, fs, b, st, pose, cfg, moving, mut rng, vel, silent, mut sw, mount, baby) in &mut q {
-        if b.object || b.orb || b.tnt {
-            continue;
-        }
+        // An object, an orb or a primed TNT does not step, swim or flap: only its splash and its state are kept.
+        let still = b.object || b.orb || b.tnt;
         let cfg: Params = cfg.map_or(Params::DEFAULT, |c| *c.0);
         // A first sight takes the water the last stop left; an entity never seen before starts in its current water (no splash on its first tick).
         let (d0, n0, w0) = carry.get(e).map_or((0.0, 1.0, fs.in_water), |k| (k.dist, k.next, k.was_water));
@@ -114,7 +113,7 @@ pub fn move_events(
         s.dist += (0.6_f64 * (dx * dx + dz * dz).sqrt()) as f32;
         // `getOnPos` air: nothing under the feet and not in a fluid.
         let air = !c.on_ground && !fs.in_water;
-        if cfg.events {
+        if cfg.events && !still {
             if air {
                 if heard && flaps(&cfg, e, clock.of(e), c.on_ground) {
                     ev.host.game_event_by(e, "minecraft:flap", at, false, sneaking, cfg.dampens);

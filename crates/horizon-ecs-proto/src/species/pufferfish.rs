@@ -29,6 +29,6 @@ pub static DEF: Def = Def {
             ..pufferfish_puff::Params::DEFAULT
         },
     )],
-        rules: &[crate::rules::RuleEntry::new(&crate::effects::ON_HIT, &crate::effects::PUFFERFISH), crate::rules::RuleEntry::new(&crate::behaviours::held_swap::HELD_SWAP, &crate::behaviours::held_swap::SwapParams { from: "minecraft:water_bucket", to: "minecraft:pufferfish_bucket", adult_only: false, takes_creature: true, sound: "minecraft:item.bucket.fill_fish", alt: None })],
+        rules: &[crate::rules::RuleEntry::new(&crate::effects::ON_HIT, &crate::effects::PUFFERFISH), crate::rules::RuleEntry::new(&crate::behaviours::held_swap::HELD_SWAP, &crate::behaviours::held_swap::SwapParams { from: "minecraft:water_bucket", to: "minecraft:pufferfish_bucket", adult_only: false, takes_creature: true, sound: "minecraft:item.bucket.fill_fish", alt: None, extra: crate::behaviours::held_swap::no_data })],
     ..Def::EMPTY
 };
