@@ -80,7 +80,7 @@ pub static DEF: Def = Def {
     variant: Some(&VARIANT),
     draws: Some(&DRAWS),
     locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params { smooth_land: Some((10.0, 0.5)), ..walk::Params::DEFAULT })), (Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: false, amphibious: Some(false), control: swim::Control::Smooth { max_turn_x: 85.0, max_turn_y: 10.0, in_water: 0.1, outside: 0.5, gravity: false }, push: swim::Push::Speed, sinks: false, ..swim::Params::DEFAULT }))],
-    rules: &[RuleEntry::new(&breed::LOVE, &breed::Params { foods: FOOD, ..breed::Params::DEFAULT }), RuleEntry::new(&crate::cow::OWN_AIR, &crate::cow::OwnAirParams { max: myriade_engine_lib::mobs::axolotl::MAX_AIR, full_refill: false, nautilus: false, dry: true })],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), RuleEntry::new(&breed::LOVE, &breed::Params { foods: FOOD, ..breed::Params::DEFAULT }), RuleEntry::new(&crate::cow::OWN_AIR, &crate::cow::OwnAirParams { max: myriade_engine_lib::mobs::axolotl::MAX_AIR, full_refill: false, nautilus: false, dry: true })],
     brain: BrainDef {
         sensors: &[
             SensorEntry::new(&living::SENSOR, 20),

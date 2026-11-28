@@ -72,6 +72,10 @@ pub fn finalize(
     r: &mut impl RandomSource,
 ) -> Outcome {
     use crate::spawn_reason::SpawnReason as Why;
+    // `/summon` loads `{id:..}` before the finalize: `Mob.readAdditionalSaveData` reads `CanPickUpLoot` as false.
+    if reason == Why::Command {
+        crate::nbt_fields::common::load_pick_up(w, e, &horizon_core::nbt::Compound::new());
+    }
     let out = finalize_class(w, e, kind, group, reason, special, r);
     if reason == Why::Triggered {
         crate::behaviours::emerge::triggered(w, e);

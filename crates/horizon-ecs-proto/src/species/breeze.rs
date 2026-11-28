@@ -22,6 +22,7 @@ fn players_and_golems(w: &World, who: Who) -> bool {
     }
 }
 pub static DEF: Def = Def {
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 10, max: 10 })],
     name: "minecraft:breeze",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     goals: &[Entry::new(&float::MODULE, 0, &float::Params::DEFAULT)],

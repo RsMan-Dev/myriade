@@ -325,6 +325,7 @@ fn send(w: &mut World, e: Entity, keys: Vec<String>) {
 pub fn load(w: &mut World, e: Entity, c: &Compound) -> Option<usize> {
     if w.get::<Saved>(e).is_none() { return None; }
     let (refused, changed) = distribute(w, e, c);
+    crate::nbt_fields::common::load_pick_up(w, e, c);
     crate::attr_mod::apply_load(w, e);
     crate::bridge::leash_save::load(w, e, c);
     // `Entity.load` poses `OnGround` as the contact (the mirror of `save`).

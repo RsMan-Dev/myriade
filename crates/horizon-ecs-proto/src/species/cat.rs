@@ -40,7 +40,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 12, &look_at_player::Params { range: 10.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&avoid_entity::MODULE, 4, &AVOID).when(&WILD),
     ],
-    rules: &[RuleEntry::new(&crate::walk_paces::PACES, &()), RuleEntry::new(&crate::dye::DYE,&crate::dye::DyeParams::CAT), RuleEntry::new(&TAME, &TAME_CAT), RuleEntry::new(&crate::hiss::HISSES, &crate::hiss::CAT_HISS)],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), RuleEntry::new(&crate::walk_paces::PACES, &()), RuleEntry::new(&crate::dye::DYE,&crate::dye::DyeParams::CAT), RuleEntry::new(&TAME, &TAME_CAT), RuleEntry::new(&crate::hiss::HISSES, &crate::hiss::CAT_HISS)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable]),
     ..Def::EMPTY
 };

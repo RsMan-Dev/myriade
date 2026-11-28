@@ -14,6 +14,7 @@ pub const UNDEAD: &[&str] = &[
 ];
 
 pub static DEF: Def = Def {
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 50, max: 50 })],
     name: "minecraft:wither",
     targets: &[
         Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params::DEFAULT),

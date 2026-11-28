@@ -18,6 +18,7 @@ static ADULT_CUB_NEAR: Cond = Cond::All(&[Cond::Not(&Cond::Is("horizon:is_baby")
 static ANGRY: Cond = Cond::Is("neutral:angry");
 
 pub static DEF: Def = Def {
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 })],
     spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::PolarBear, ..crate::spawning::SpawnDef::ANIMAL }),
     name: "minecraft:polar_bear",
     caps: Some(super::FREEZE_IMMUNE_CAPS),

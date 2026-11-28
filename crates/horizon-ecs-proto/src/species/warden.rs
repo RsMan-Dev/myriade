@@ -10,7 +10,7 @@ use crate::behaviours::{
 
 pub static DEF: Def = Def {
     name: "minecraft:warden",
-    rules: &[crate::rules::RuleEntry::new(&crate::behaviours::vibration_listen::UNNOTICED, &())],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), crate::rules::RuleEntry::new(&crate::behaviours::vibration_listen::UNNOTICED, &())],
     reference: Some(&monster::DEF),
     goals: &[
         Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { step_gap: 0.55, dampens: true, ..crate::behaviours::move_emission::Params::DEFAULT }),

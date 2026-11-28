@@ -4,6 +4,7 @@ use crate::behaviours::{climb_on_powder_snow, float, hurt_by, look_at_player, me
 use crate::species::Def;
 
 pub static DEF: Def = Def {
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 3, max: 3 })],
     name: "minecraft:endermite",
     targets: &[
         Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, ..hurt_by::Params::DEFAULT }),

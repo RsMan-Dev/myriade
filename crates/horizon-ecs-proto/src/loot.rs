@@ -415,7 +415,9 @@ pub fn on_death(world: &mut World, e: Entity) -> Vec<&'static str> {
     // The experience (`dropExperience`): only while a player's blow is remembered, not for a baby that does not keep it
     // (`shouldDropExperience`), and not with `mob_drops` off. A jockey's reward replaces the species' one.
     let over = world.get::<RewardOverride>(e).map(|o| XpReward { min: o.0, max: o.0 });
-    if let Some(x) = over.or_else(|| world.get::<XpReward>(e).copied()).filter(|_| xp_drops && mob_drops && crate::credit::killed_by_player(world, e)) {
+    // `Slime`/`MagmaCube`: `xpReward` is the size.
+    let sized = world.get::<crate::size::SizeRule>(e).filter(|r| r.p.xp_per_size).and_then(|_| world.get::<crate::size::Size>(e)).map(|s| XpReward { min: s.0, max: s.0 });
+    if let Some(x) = over.or(sized).or_else(|| world.get::<XpReward>(e).copied()).filter(|_| xp_drops && mob_drops && crate::credit::killed_by_player(world, e)) {
         // Only a fixed `Mob.xpReward` takes the equipment's bonus: a drawn reward (`Animal`), `Hoglin`/`Piglin` and the jockey override it.
         let gear = over.is_none() && x.min == x.max && world.get::<FlatXp>(e).is_none();
         let mut amount = xp_amount(x.min, x.max, &mut r);

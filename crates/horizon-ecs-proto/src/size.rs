@@ -18,9 +18,11 @@ pub struct SizeParams {
     pub delay_mul: i32,
     /// At the death a body of more than size 1 splits in `split.0 + nextInt(split.1)` bodies of half its size.
     pub split: Option<(i32, i32)>,
+    /// `xpReward = size` (`Slime`, `MagmaCube`): the experience at the death is the size, fixed.
+    pub xp_per_size: bool,
 }
 impl SizeParams {
-    pub const SLIME: Self = Self { health: HealthLaw::PerSquare(1.0), speed_base: 0.2, speed_per_size: 0.1, damage_per_size: 1.0, delay_mul: 1, split: Some((2, 3)) };
+    pub const SLIME: Self = Self { health: HealthLaw::PerSquare(1.0), speed_base: 0.2, speed_per_size: 0.1, damage_per_size: 1.0, delay_mul: 1, split: Some((2, 3)), xp_per_size: true };
     pub const MAGMA_CUBE: Self = Self { delay_mul: 4, ..Self::SLIME };
 }
 #[derive(Component, Clone, Copy, Debug)]

@@ -114,6 +114,12 @@ impl NeverStuck {
 #[component(storage = "SparseSet")]
 pub struct WasInPowder;
 
+/// `Entity.isInPowderSnow`: the creature's last move found powder snow in its box. Put by that move, taken away by the next move out of it
+/// (absence = outside); the conversion tracker of a freezing skeleton reads it.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct InPowderSnow;
+
 /// Where a creature in a bush last was (centre x, z): the move since then decides the prick. Only while it is in a bush.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -248,13 +254,17 @@ fn moved_effects(
         (Changed<Bounds>, Without<IgnoresTriggers>),
     >,
     was: Query<(), With<WasInPowder>>,
+    inside: Query<(), With<InPowderSnow>>,
 ) {
     for (e, b, contact, health, item, orb, no_berry, trail, soaking, effects, never) in &mut q {
         let living = health && !item && !orb;
         let f = scan(&level, &mut kinds, &b.0, living, effects.is_some_and(|f| f.list.iter().any(|x| x.kind == Kind::Weaving)));
         if f.in_powder {
-            commands.entity(e).insert(WasInPowder);
-        } else if was.contains(e) {
+            commands.entity(e).insert((WasInPowder, InPowderSnow));
+        } else if inside.contains(e) {
+            commands.entity(e).remove::<InPowderSnow>();
+        }
+        if !f.in_powder && was.contains(e) {
             commands.queue(move |w: &mut World| crate::cow::after(w, e, 1, forget_powder));
         }
         let stuck = if never.is_some_and(|n| (n.0 >> f.stuck) & 1 != 0) || (f.stuck == K_BERRY && no_berry) { 0 } else { f.stuck };

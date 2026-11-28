@@ -24,7 +24,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 8.0, species: &["minecraft:strider"], ..look_at_player::Params::DEFAULT }),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion, Cap::Rideable, Cap::FireImmune]),
-    rules: &[RuleEntry::new(&RIDE, &RideParams::STRIDER), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::SADDLE)],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), RuleEntry::new(&RIDE, &RideParams::STRIDER), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::SADDLE)],
     locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params::DEFAULT)), (Medium::Lava, Entry::new(&lava::MODULE, 0, &lava::Params::DEFAULT))],
     ..Def::EMPTY
 };

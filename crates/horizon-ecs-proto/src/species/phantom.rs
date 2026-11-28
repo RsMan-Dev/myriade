@@ -8,7 +8,7 @@ use crate::locomotion::{fly, Medium};
 
 pub static DEF: Def = Def {
     name: "minecraft:phantom",
-    rules: &[crate::rules::RuleEntry::new(&crate::rules::NO_FALL, &()), crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), crate::rules::RuleEntry::new(&crate::hostile::SUN_BURN, &())],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), crate::rules::RuleEntry::new(&crate::rules::NO_FALL, &()), crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), crate::rules::RuleEntry::new(&crate::hostile::SUN_BURN, &())],
     targets: &[Entry::new(&g::PHANTOM_ATTACK_PLAYER_TARGET, 1, &g::Params::DEFAULT)],
     goals: &[
         Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { flap: crate::behaviours::move_emission::Flap::Every { period: 25, flying_only: false, offset: true }, ..crate::behaviours::move_emission::Params::DEFAULT }),

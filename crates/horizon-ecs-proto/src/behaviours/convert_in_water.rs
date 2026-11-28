@@ -11,6 +11,14 @@ use super::convert_timer::Converting;
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
+use crate::inside_effects::InPowderSnow;
+
+/// What starts the count: the eyes under water (`Zombie`), or the body in powder snow (`Skeleton.freezingTracker`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Trigger {
+    Water,
+    Powder,
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -21,9 +29,10 @@ pub struct Params {
     pub convert: i32,
     /// The level event of the conversion (`getConversionSound`: 1040 drowned, 1041 husk).
     pub sound: i32,
+    pub trigger: Trigger,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { into: "", soak: 600, convert: 300, sound: 1040 };
+    pub const DEFAULT: Self = Self { into: "", soak: 600, convert: 300, sound: 1040, trigger: Trigger::Water };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Soak(pub &'static Params, u8);
@@ -58,8 +67,16 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
 fn eyes_under(w: &World, e: Entity) -> bool {
     w.get::<FluidState>(e).is_some_and(|f| f.eye_in_water)
 }
+/// The trigger holds now: the eyes under the water, or the body in powder snow (`InPowderSnow`).
+fn on(w: &World, e: Entity, t: Trigger) -> bool {
+    match t {
+        Trigger::Water => eyes_under(w, e),
+        Trigger::Powder => w.get::<InPowderSnow>(e).is_some(),
+    }
+}
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    eyes_under(w, e)
+    let Some(t) = w.get::<Soak>(e).map(|s| s.0.trigger) else { return false };
+    on(w, e, t)
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     let flip = w.entity_mut(e).take::<Flip>().map(|f| f.0);
@@ -83,22 +100,35 @@ fn systems(s: &mut Schedule, slot: GoalSlot) {
 }
 fn water_events(
     ev: Res<Events>,
-    running: Query<&Soak, With<Soaking>>,
-    idle: Query<(), (With<Soak>, Without<Soaking>)>,
+    soaks: Query<(&Soak, Has<Soaking>)>,
     flipped: Query<(), With<Flip>>,
+    dry_in: Query<Entity, (Added<InPowderSnow>, With<Soak>)>,
+    mut dry_out: RemovedComponents<InPowderSnow>,
     mut reqs: ResMut<Requests>,
 ) {
     for e in ev.eye_entered_water.iter() {
-        if idle.contains(e) {
+        if matches!(soaks.get(e), Ok((s, false)) if s.0.trigger == Trigger::Water) {
+            reqs.0.push(Req::Call(e, mark_and_wake));
+        }
+    }
+    for e in dry_in.iter() {
+        if matches!(soaks.get(e), Ok((s, false)) if s.0.trigger == Trigger::Powder) {
             reqs.0.push(Req::Call(e, mark_and_wake));
         }
     }
     for e in ev.eye_left_water.iter().chain(ev.left_fluid.iter()) {
-        if let Ok(s) = running.get(e) {
-            reqs.0.push(Req::End(e, s.1));
-        } else if flipped.contains(e) {
-            reqs.0.push(Req::Call(e, clear_flip));
-        }
+        leave(e, Trigger::Water, &soaks, &flipped, &mut reqs);
+    }
+    for e in dry_out.read() {
+        leave(e, Trigger::Powder, &soaks, &flipped, &mut reqs);
+    }
+}
+/// The trigger of `t` is gone: the count ends, or the event of its start is dropped.
+fn leave(e: Entity, t: Trigger, soaks: &Query<(&Soak, Has<Soaking>)>, flipped: &Query<(), With<Flip>>, reqs: &mut Requests) {
+    match soaks.get(e) {
+        Ok((s, true)) if s.0.trigger == t => reqs.0.push(Req::End(e, s.1)),
+        Ok((s, false)) if s.0.trigger == t && flipped.contains(e) => reqs.0.push(Req::Call(e, clear_flip)),
+        _ => {}
     }
 }
 /// The event is read one tick after the change: the eyes went under at the previous tick.
@@ -125,7 +155,7 @@ fn due(w: &mut World, e: Entity) {
     if now != s.at {
         return;
     }
-    if !eyes_under(w, e) {
+    if !on(w, e, p.0.trigger) {
         cancel(w, e);
     } else if !s.converting {
         let ticks = p.0.convert + 1;
@@ -146,6 +176,25 @@ pub fn saved(w: &World, e: Entity) -> Option<(i32, i32)> {
         Some((p.soak, (s.at.saturating_sub(now) as i32 - 1).max(0)))
     } else {
         Some((now.saturating_sub(s.began) as i32 + 1, -1))
+    }
+}
+/// `(affliction, conversion)` the tracker saves for a count of trigger `t`: -1 for each when no count runs (`ConversionTracker`). `None` for
+/// a creature whose count has another trigger.
+pub fn tracker_saved(w: &World, e: Entity, t: Trigger) -> Option<(i32, i32)> {
+    if w.get::<Soak>(e)?.0.trigger != t {
+        return None;
+    }
+    Some(saved(w, e).unwrap_or((-1, -1)))
+}
+/// Reads a saved count of trigger `t` (`converting`: the conversion time; else the affliction time) when the creature has that trigger.
+pub fn load_tracker(w: &mut World, e: Entity, t: Trigger, converting: bool, v: i32) {
+    if w.get::<Soak>(e).is_none_or(|s| s.0.trigger != t) {
+        return;
+    }
+    if converting && v >= 0 {
+        resume(w, e, true, v);
+    } else if !converting && v > 0 && w.get::<Soaking>(e).is_none() {
+        resume(w, e, false, v);
     }
 }
 /// A count read from a save: `converting` with `left` ticks of conversion left, or `left` ticks already soaked. The goal is woken: it ends

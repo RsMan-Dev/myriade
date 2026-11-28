@@ -28,6 +28,8 @@ pub enum Slot {
     Credit,
     /// `Anger.at`: the player or entity the anger is for.
     Anger,
+    /// One of the `Trust` slots of a fox: the holder is added to the first free one.
+    Trust,
 }
 
 /// The players by id and by uuid, and the waiting entities by uuid. A uuid is held as one `u128`.
@@ -118,6 +120,11 @@ fn pose(w: &mut World, e: Entity, who: Who, slot: Slot) -> bool {
         Slot::Anger => {
             if let Some(mut a) = w.get_mut::<crate::behaviours::neutral_anger::Anger>(e) {
                 a.at = some;
+            }
+        }
+        Slot::Trust => {
+            if let Some(mut t) = w.get_mut::<crate::behaviours::trust::Trust>(e) {
+                t.add(who);
             }
         }
         Slot::Item => {}

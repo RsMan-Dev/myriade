@@ -4,6 +4,7 @@
 use crate::cow::*;
 use crate::goals::*;
 use crate::rules::fox_state::{crouch_ticks_to_full, is_selector_tick, retry_wait};
+use super::trust::Trust;
 use crate::targeting::{self, Info, Target, Who};
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
@@ -27,8 +28,11 @@ pub struct Crouch(pub Option<u64>);
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Retry(pub Option<u64>);
 
-/// Creates the shared components of the fox, once (each goal's `equip` calls it).
+/// Creates the shared components of the fox, once (each goal's `equip` calls it). The trust is created even when a baby already got one.
 pub fn ensure(w: &mut World, e: Entity) {
+    if w.get::<Trust>(e).is_none() {
+        w.entity_mut(e).insert(Trust::default());
+    }
     if w.get::<FoxFlags>(e).is_none() {
         w.entity_mut(e).insert((FoxFlags::default(), Crouch::default(), Retry::default()));
     }

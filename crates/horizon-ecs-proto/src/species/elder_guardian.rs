@@ -4,6 +4,7 @@ use crate::behaviours::{guardian_beam, guardian_thorns, elder_curse, look_at_pla
 use crate::locomotion::{swim, Medium};
 
 pub static DEF: Def = Def {
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 10, max: 10 })],
     name: "minecraft:elder_guardian",
     targets: super::guardian::TARGETS,
     goals: &[

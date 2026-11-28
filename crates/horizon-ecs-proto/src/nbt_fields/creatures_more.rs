@@ -24,12 +24,17 @@ fn is_int_array(t: &Tag) -> bool {
     matches!(t, Tag::IntArray(_))
 }
 
+fn is_list(t: &Tag) -> bool {
+    matches!(t, Tag::List(_))
+}
+
 /// The keys that apply to an entity holding their component.
 pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Sheared"), write: write_sheared, read: read_sheared, accepts: is_byte, owner: Some(owner::<Wool>) },
     Field { key: Cow::Borrowed("Temper"), write: write_temper, read: read_temper, accepts: accept::int, owner: Some(owner::<Mount>) },
     Field { key: Cow::Borrowed("Pumpkin"), write: write_pumpkin, read: read_pumpkin, accepts: is_byte, owner: Some(owner::<Pumpkin>) },
     Field { key: Cow::Borrowed("CollarColor"), write: write_collar, read: read_collar, accepts: is_byte, owner: None },
+    Field { key: Cow::Borrowed("MoreCarrotTicks"), write: write_more_carrot, read: read_more_carrot, accepts: accept::int, owner: Some(owner::<crate::behaviours::raid_garden::Raid>) },
 ];
 
 /// `Pumpkin`: a byte, 1 while the snow golem wears its pumpkin.
@@ -46,11 +51,28 @@ fn read_pumpkin(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
+/// `MoreCarrotTicks`: an int, the ticks the rabbit stays full after a raid (`Raid.more_until` is a local time, saved as the ticks left).
+fn write_more_carrot(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(r) = w.get::<crate::behaviours::raid_garden::Raid>(e) {
+        let left = r.more_until.saturating_sub(now_of(w, e));
+        c.insert("MoreCarrotTicks".into(), Tag::Int(i32::try_from(left).unwrap_or(i32::MAX)));
+    }
+}
+
+fn read_more_carrot(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    let at = now_of(w, e) + u64::try_from(*v).unwrap_or(0);
+    let Some(mut r) = w.get_mut::<crate::behaviours::raid_garden::Raid>(e) else { return false };
+    r.more_until = at;
+    true
+}
+
 /// The keys whose presence poses their component (`nbt::register_creators`).
 pub const CREATORS: &[Field] = &[
     Field { key: Cow::Borrowed("life_ticks"), write: write_life, read: read_life, accepts: accept::int, owner: Some(owner::<Lifespan>) },
     Field { key: Cow::Borrowed("GotFish"), write: write_got_fish, read: read_got_fish, accepts: is_byte, owner: Some(owner::<GotFish>) },
     Field { key: Cow::Borrowed("Sleeping"), write: write_sleeping, read: read_sleeping, accepts: is_byte, owner: Some(owner::<crate::behaviours::fox_state::FoxFlags>) },
+    Field { key: Cow::Borrowed("Trusted"), write: write_trusted, read: read_trusted, accepts: is_list, owner: Some(owner::<crate::behaviours::trust::Trust>) },
     Field { key: Cow::Borrowed("RaidId"), write: write_raid_id, read: read_raid_id, accepts: accept::int, owner: Some(owner::<Raider>) },
     Field { key: Cow::Borrowed("Wave"), write: write_wave, read: read_wave, accepts: accept::int, owner: Some(owner::<Raider>) },
     Field { key: Cow::Borrowed("PatrolLeader"), write: write_patrol_leader, read: read_patrol_leader, accepts: is_byte, owner: Some(owner::<Patrol>) },
@@ -186,6 +208,38 @@ fn read_sleeping(w: &mut World, e: Entity, t: &Tag) -> bool {
     } else {
         w.entity_mut(e).remove::<FoxSleeping>();
     }
+    true
+}
+
+/// `Trusted`: the uuids of the trusted entities, a list of int arrays, empty when the fox trusts nobody (`Fox.TRUSTED_LIST_CODEC`).
+/// A player who has not joined yet is left out: the uuid of a holder not known at the write is not in the fox's slots.
+fn write_trusted(w: &World, e: Entity, c: &mut Compound) {
+    let Some(t) = w.get::<crate::behaviours::trust::Trust>(e) else { return };
+    let list = t.0.iter().flatten().filter_map(|&who| match who {
+        crate::targeting::Who::Player(id) => crate::player_uuids::uuid_of(w, id),
+        crate::targeting::Who::Entity(h) => w.get::<crate::bridge::uuids::EntityUuid>(h).map(|u| u.0),
+    });
+    let list = list.map(|u| Tag::IntArray(crate::bridge::uuids::to_words(u).to_vec())).collect();
+    c.insert("Trusted".into(), Tag::List(list));
+}
+
+/// Reads the uuids back in order, each into the next free slot (`clearTrusted`, then `addTrustedEntity`).
+fn read_trusted(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::List(v) = t else { return false };
+    let mut trust = crate::behaviours::trust::Trust::default();
+    for x in v {
+        let Tag::IntArray(words) = x else { continue };
+        let Ok(words) = <[i32; 4]>::try_from(words.as_slice()) else { continue };
+        let uuid = crate::bridge::uuids::from_words(words);
+        if let Some(id) = crate::player_uuids::id_of(w, uuid) {
+            trust.add(crate::targeting::Who::Player(id));
+        } else if let Some(h) = crate::bridge::uuids::entity_by_uuid(w, words) {
+            trust.add(crate::targeting::Who::Entity(h));
+        } else {
+            crate::player_uuids::wait(w, uuid, e, crate::player_uuids::Slot::Trust);
+        }
+    }
+    w.entity_mut(e).insert(trust);
     true
 }
 

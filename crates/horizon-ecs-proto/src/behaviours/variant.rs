@@ -142,7 +142,7 @@ fn read_sound(w: &mut World, e: Entity, t: &Tag) -> bool {
 /// The saved variants: `RabbitType` (an int) and `Type` (a string), each only for the species whose table has that key.
 pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("sound_variant"), write: write_sound, read: read_sound, accepts: accept::string, owner: None },
-    Field { key: Cow::Borrowed("RabbitType"), write: write_rabbit_type, read: read_rabbit_type, accepts: accept::int, owner: Some(owner::<Variant>) },
+    Field { key: Cow::Borrowed("RabbitType"), write: write_rabbit_type, read: read_rabbit_type, accepts: accept::int, owner: None },
     Field { key: Cow::Borrowed("Type"), write: write_type, read: read_type, accepts: accept::string, owner: None },
     Field { key: Cow::Borrowed("variant"), write: write_variant, read: read_variant, accepts: accept::string, owner: None },
     Field { key: Cow::Borrowed("Variant"), write: write_variant_int, read: read_variant_int, accepts: accept::int, owner: None },

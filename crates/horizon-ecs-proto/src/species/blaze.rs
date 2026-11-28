@@ -4,6 +4,7 @@ use super::Def;
 use crate::behaviours::{burst_shot, hurt_by, look_at_player, nearest_target, random_look, stroll, Entry};
 
 pub static DEF: Def = Def {
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 10, max: 10 })],
     name: "minecraft:blaze",
     caps: Some(super::FIRE_IMMUNE_CAPS),
     targets: &[Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params::DEFAULT), Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params::PLAYER)],

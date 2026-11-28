@@ -69,7 +69,7 @@ pub static DEF: Def = Def {
             crowd_divisor: 5.0,
         }),
     ],
-    rules: &[RuleEntry::new(&attached_face::RULE, &attached_face::Params { colour: 16, covered: true })],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), RuleEntry::new(&attached_face::RULE, &attached_face::Params { colour: 16, covered: true })],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::FireImmune, Cap::Collidable]),
     sound_source: super::SoundCategory::Hostile,
     draws: Some(&DRAWS),

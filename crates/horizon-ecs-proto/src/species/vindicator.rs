@@ -37,7 +37,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 3.0, period: 1, ..look_at_player::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 8.0, species: look_at_player::Params::ALL, ..look_at_player::Params::DEFAULT }),
     ],
-    rules: &[crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::VINDICATOR)],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::VINDICATOR)],
     not_in_peaceful: true,
     sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY

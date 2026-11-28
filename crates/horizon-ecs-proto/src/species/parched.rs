@@ -7,6 +7,7 @@ use crate::behaviours::{avoid_entity, flee_sun, nearest_target, ranged_bow, rest
 use crate::effects::Kind;
 
 pub static DEF: Def = Def {
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 })],
     name: "minecraft:parched",
     caps: Some(super::WEAKNESS_IMMUNE_CAPS),
     reference: Some(&monster::DEF),

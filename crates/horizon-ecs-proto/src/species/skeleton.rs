@@ -3,7 +3,7 @@
 //! targets of the iron golem and of the baby turtle (3, seen, every 10 ticks). Left out: `RestrictSun` (2: `Nav.avoid_sun`, absent).
 //! The stray, bogged, parched and wither skeletons stay out of this lot (their files do not exist).
 use super::{templates::monster, Change, Def, Section};
-use crate::behaviours::{avoid_entity, flee_sun, nearest_target, ranged_bow, restrict_sun, Entry};
+use crate::behaviours::{avoid_entity, convert_in_water, flee_sun, nearest_target, ranged_bow, restrict_sun, Entry};
 use crate::rules::RuleEntry;
 
 pub static DEF: Def = Def {
@@ -22,6 +22,10 @@ pub static DEF: Def = Def {
         Change::Add(
             Section::Targets,
             Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:turtle"], predicate: Some("baby"), must_see: true, interval: 10, ..nearest_target::Params::DEFAULT }),
+        ),
+        Change::Add(
+            Section::Goals,
+            Entry::new(&convert_in_water::MODULE, 0, &convert_in_water::Params { into: "minecraft:stray", soak: 140, convert: 300, sound: 1048, trigger: convert_in_water::Trigger::Powder }),
         ),
     ],
     caps: Some(super::FREEZE_IMMUNE_CAPS),

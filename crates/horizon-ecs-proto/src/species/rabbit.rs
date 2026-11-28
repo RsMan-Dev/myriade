@@ -75,5 +75,7 @@ pub static DEF: Def = Def {
     locomotion: &[(Medium::Ground, Entry::new(&hop::MODULE, 0, &hop::Params::RABBIT))],
     spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Bright { on: "minecraft:rabbits_spawnable_on" }, ..crate::spawning::SpawnDef::ANIMAL }),
     despawn: Some(crate::despawn::DespawnDef::KEPT),
+    // `Rabbit.createAttributes`: the attack damage of 3.0 is written to the attributes of every rabbit.
+    load_attrs: &[crate::attr_mod::LoadAttr { name: "attack_damage", base: Some(3.0), when: crate::attr_mod::LoadWhen::Always }],
     ..Def::EMPTY
 };

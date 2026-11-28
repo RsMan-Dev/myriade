@@ -22,7 +22,7 @@ pub static DEF: Def = Def {
     ],
     spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
     not_in_peaceful: true,
-    rules: &[
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), 
         crate::rules::RuleEntry::new(&crate::ignite::IGNITE, &crate::ignite::IgniteParams::CREEPER),
         crate::rules::RuleEntry::new(&crate::fall_by_health::FALL_BY_HEALTH, &()),
     ],

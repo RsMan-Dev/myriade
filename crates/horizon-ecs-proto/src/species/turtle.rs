@@ -44,7 +44,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 8, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&turtle_stroll::MODULE, 9, &turtle_stroll::Params::DEFAULT),
     ],
-    rules: &[crate::rules::RuleEntry::new(&crate::leash::NEVER, &()), RuleEntry::new(&GROW_GIFT, &GROWN)],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), crate::rules::RuleEntry::new(&crate::leash::NEVER, &()), RuleEntry::new(&GROW_GIFT, &GROWN)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
     locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { flop: None, needs_water: false, amphibious: Some(false), breach: false, control: swim::Control::Turtle, push: swim::Push::Fixed(0.1), sinks: true, squid: false, reset_pitch: false }))],
     ..Def::EMPTY

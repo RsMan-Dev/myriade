@@ -16,6 +16,7 @@ static OUT_OF_WATER: Cond = Cond::Not(&IN_WATER);
 const FOOD: &[&str] = &["minecraft:slime_ball"];
 
 pub static DEF: Def = Def {
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 })],
     spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Bright { on: "minecraft:frogs_spawnable_on" }, ..crate::spawning::SpawnDef::ANIMAL }),
     variant: Some(&super::variants::FROG),
     name: "minecraft:frog",

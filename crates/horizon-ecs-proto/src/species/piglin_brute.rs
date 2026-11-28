@@ -44,7 +44,7 @@ static MOVE_KIDS: &[Kid] = &[
 pub static DEF: Def = Def {
     name: "minecraft:piglin_brute",
     goals: &[Entry::new(&float::MODULE, 0, &float::Params::DEFAULT), Entry::new(&crate::behaviours::growl_in_fight::MODULE, 1, &()), Entry::new(&crate::behaviours::convert_timer::MODULE, 0, &crate::behaviours::convert_timer::Params { into: "minecraft:zombified_piglin", after: 300, drop_carried: true })],
-    rules: &[crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::PIGLIN_BRUTE)],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 20, max: 20 }), crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::PIGLIN_BRUTE)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     brain: BrainDef {
         sensors: &[

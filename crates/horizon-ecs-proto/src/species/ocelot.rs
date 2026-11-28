@@ -28,6 +28,6 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 11, &look_at_player::Params { range: 10.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&avoid_entity::MODULE, 4, &AVOID).when(&UNTRUSTING),
     ],
-    rules: &[RuleEntry::new(&crate::walk_paces::PACES, &())],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), RuleEntry::new(&crate::walk_paces::PACES, &())],
     ..Def::EMPTY
 };

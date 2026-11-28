@@ -5,6 +5,7 @@ use crate::behaviours::{squid_goals as g, Cap, Entry};
 use crate::locomotion::{swim, Medium};
 
 pub static DEF: Def = Def {
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 })],
     name: "minecraft:squid",
     goals: &[Entry::new(&g::SQUID_RANDOM_MOVEMENT, 0, &g::Params::DEFAULT), Entry::new(&g::SQUID_FLEE, 1, &g::Params::DEFAULT), Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { sounds: false, ..crate::behaviours::move_emission::Params::DEFAULT })],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Locomotion]),

@@ -26,6 +26,6 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 6.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 7, &random_look::Params { interval: Some((150, 250)), ..random_look::Params::DEFAULT }),
     ],
-    rules: &[RuleEntry::new(&PERIODIC_GIFT, &Periodic { base: 6000, range: 6000, gift: &SHED }), RuleEntry::new(&crate::behaviours::brush::RULE, &())],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), RuleEntry::new(&PERIODIC_GIFT, &Periodic { base: 6000, range: 6000, gift: &SHED }), RuleEntry::new(&crate::behaviours::brush::RULE, &())],
     ..Def::EMPTY
 };

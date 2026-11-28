@@ -17,6 +17,7 @@ pub const TARGETS: &[Entry] = &[
     Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:iron_golem"], must_see: false, ..nearest_target::Params::DEFAULT }),
 ];
 pub static DEF: Def = Def {
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 10, max: 10 })],
     name: "minecraft:evoker",
     targets: TARGETS,
     goals: &[

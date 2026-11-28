@@ -59,6 +59,7 @@ pub const CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, C
 /// `AbstractNautilus.interact` (persistence) and `mobInteract`: taming by `#nautilus_taming_items`, the saddle and armor, riding, the lead.
 /// The order is the order of the answers: taming and equipment before boarding.
 pub const RULES: &[crate::rules::RuleEntry] = &[
+    crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }),
     crate::rules::RuleEntry::new(&crate::keep_on_use::KEEP_ON_USE, &()),
     crate::rules::RuleEntry::new(&crate::tame::TAME, &crate::tame::TameParams::NAUTILUS),
     crate::rules::RuleEntry::new(&crate::heal_by_food::HEAL_BY_FOOD, &crate::heal_by_food::HealParams::NAUTILUS),

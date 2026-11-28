@@ -81,11 +81,11 @@ fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
 }
 /// Each tick of a hop in the air: the speed and the forward input stay (`CubeMobMoveControl`: `setSpeed` also sets the input); when the body is
 /// back on the ground the wait begins.
-fn hop_air(mut q: Query<(Entity, &mut Hop, &mut Drive, &Contact, &Body, &Nav, Option<&crate::goals::Phase>), With<Hopping>>, clock: Res<Clock>, mut wheel: ResMut<Wheel>, mut commands: Commands) {
-    for (e, mut h, mut d, c, body, nav, phase) in &mut q {
+fn hop_air(mut q: Query<(Entity, &mut Hop, &mut Drive, &Contact, &Body, &Nav, Option<&crate::goals::Phase>, Has<crate::behaviours::float::Floating>), With<Hopping>>, clock: Res<Clock>, mut wheel: ResMut<Wheel>, mut commands: Commands) {
+    for (e, mut h, mut d, c, body, nav, phase, floating) in &mut q {
         let now = clock.of(e);
-        // The tick of the jump keeps the jump the deadline asked for.
-        d.jump = d.jump && now == h.jumped_at && h.p.path.is_none();
+        // The tick of the jump keeps the jump the deadline asked for; a path body keeps the jump of its fluid float (`RabbitJumpControl`).
+        d.jump = d.jump && if h.p.path.is_some() { floating } else { now == h.jumped_at };
         if c.on_ground && now > h.jumped_at {
             d.speed = 0.0;
             d.zza = 0.0;

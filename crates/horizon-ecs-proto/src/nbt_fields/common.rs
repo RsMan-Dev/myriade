@@ -2,6 +2,7 @@
 //! `id` are in `nbt::COMMON`. `CREATORS`: a key whose presence poses its component (registered by `nbt::register_creators`). `FIELDS`: a key
 //! that applies only to an entity holding its component. Times stored as a tick are written as the ticks left.
 use crate::behaviours::breed::Love;
+use crate::behaviours::convert_in_water::Trigger;
 use crate::behaviours::follow_mommy::{Bred, EatingHaystack};
 use crate::behaviours::elder_curse::Silent;
 use crate::behaviours::hurt_by::PlayerCreated;
@@ -27,7 +28,40 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("anger_end_time"), write: write_anger_end, read: read_anger_end, accepts: accept::long, owner: Some(owner::<Anger>) },
     Field { key: Cow::Borrowed("angry_at"), write: write_angry_at, read: read_angry_at, accepts: is_int_array, owner: Some(owner::<Anger>) },
     Field { key: Cow::Borrowed("home_pos"), write: write_heart_pos, read: read_heart_pos, accepts: is_block_pos, owner: Some(owner::<HeartLink>) },
+    Field { key: Cow::Borrowed("FreezingTime"), write: write_freezing, read: read_freezing, accepts: accept::int, owner: Some(owner::<crate::behaviours::convert_in_water::Soak>) },
+    Field { key: Cow::Borrowed("StrayConversionTime"), write: write_stray_conversion, read: read_stray_conversion, accepts: accept::int, owner: Some(owner::<crate::behaviours::convert_in_water::Soak>) },
+    Field { key: Cow::Borrowed("CanPickUpLoot"), write: write_pick_up, read: read_pick_up, accepts: is_byte, owner: Some(owner::<crate::behaviours::item_pickup::Pickup>) },
 ];
+
+/// `CanPickUpLoot`: a byte, the `picks_up` of the creature's `Pickup` (`Mob.canPickUpLoot`).
+fn write_pick_up(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(p) = w.get::<crate::behaviours::item_pickup::Pickup>(e) {
+        c.insert("CanPickUpLoot".into(), Tag::Byte(i8::from(p.picks_up)));
+    }
+}
+
+fn read_pick_up(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    set_pick_up(w, e, *v != 0);
+    true
+}
+
+/// `Mob.readAdditionalSaveData`: a load without `CanPickUpLoot` sets it to false (`getBooleanOr(.., false)`), for a mob. Called by `nbt::load`.
+pub fn load_pick_up(w: &mut World, e: Entity, c: &Compound) {
+    if c.get(&JavaString::from("CanPickUpLoot")).is_none() && w.get::<crate::goals::GoalSet>(e).is_some() {
+        set_pick_up(w, e, false);
+    }
+}
+
+fn set_pick_up(w: &mut World, e: Entity, on: bool) {
+    use crate::behaviours::item_pickup::{Params, Pickup};
+    if let Some(mut p) = w.get_mut::<Pickup>(e) {
+        p.picks_up = on;
+    } else {
+        let d = Params::DEFAULT;
+        w.entity_mut(e).insert(Pickup { reach: d.reach, whole_stack: d.whole_stack, picks_up: on });
+    }
+}
 
 /// The keys whose presence poses their component (`nbt::register_creators`).
 pub const CREATORS: &[Field] = &[
@@ -277,6 +311,28 @@ fn read_conversion(w: &mut World, e: Entity, t: &Tag) -> bool {
     if *v >= 0 {
         crate::behaviours::convert_in_water::resume(w, e, true, *v);
     }
+    true
+}
+
+/// `FreezingTime` / `StrayConversionTime` (`Skeleton.freezingTracker`): the powder snow count, -1 when none runs; only a count of that trigger.
+fn write_freezing(w: &World, e: Entity, c: &mut Compound) {
+    if let Some((a, _)) = crate::behaviours::convert_in_water::tracker_saved(w, e, Trigger::Powder) {
+        c.insert("FreezingTime".into(), Tag::Int(a));
+    }
+}
+fn write_stray_conversion(w: &World, e: Entity, c: &mut Compound) {
+    if let Some((_, b)) = crate::behaviours::convert_in_water::tracker_saved(w, e, Trigger::Powder) {
+        c.insert("StrayConversionTime".into(), Tag::Int(b));
+    }
+}
+fn read_freezing(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    crate::behaviours::convert_in_water::load_tracker(w, e, Trigger::Powder, false, *v);
+    true
+}
+fn read_stray_conversion(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    crate::behaviours::convert_in_water::load_tracker(w, e, Trigger::Powder, true, *v);
     true
 }
 

@@ -41,7 +41,7 @@ pub static DEF: Def = Def {
     ],
     caps: Some(&[crate::behaviours::Cap::Transform, crate::behaviours::Cap::Solid, crate::behaviours::Cap::Body, crate::behaviours::Cap::Living, crate::behaviours::Cap::Goals, crate::behaviours::Cap::Head, crate::behaviours::Cap::Targets, crate::behaviours::Cap::Locomotion]),
     // The raider's seat (`Ravager.getPassengers`): a carrier that only takes creatures, one seat at the centre.
-    rules: &[RuleEntry::new(&RIDE, &RideParams::CARRIER)],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 20, max: 20 }), RuleEntry::new(&RIDE, &RideParams::CARRIER)],
     not_in_peaceful: true,
     sound_source: super::SoundCategory::Hostile,
     ..Def::EMPTY

@@ -12,6 +12,7 @@ pub const TARGETS: &[Entry] = &[Entry::new(
     &nearest_target::Params { players: true, types: &["minecraft:squid", "minecraft:glow_squid", "minecraft:axolotl"], beyond_sqr: Some(9.0), ..nearest_target::Params::DEFAULT },
 )];
 pub static DEF: Def = Def {
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 10, max: 10 })],
     name: "minecraft:guardian",
     targets: TARGETS,
     goals: &[

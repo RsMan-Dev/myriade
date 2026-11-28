@@ -22,7 +22,7 @@ pub static DEF: Def = Def {
         Entry::new(&take_block::MODULE, 11, &take_block::Params::DEFAULT),
         Entry::new(&ender_teleport::MODULE, 255, &ender_teleport::Params::ENDERMAN),
     ],
-    rules: &[crate::rules::RuleEntry::new(&crate::hostile::SUN_FLEE, &())],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), crate::rules::RuleEntry::new(&crate::hostile::SUN_FLEE, &())],
     spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
     not_in_peaceful: true,
     sound_source: super::SoundCategory::Hostile,

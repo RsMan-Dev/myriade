@@ -24,7 +24,7 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
         Entry::new(&random_stand::MODULE, 9, &random_stand::Params::DEFAULT),
     ],
-    rules: &[crate::rules::RuleEntry::new(&crate::rules::pushable::UNPUSHABLE, &()), RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&RIDE, &RideParams::HORSE),RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT), RuleEntry::new(&crate::leash::QUAD_LEASHEE, &crate::leash::QuadParams { front: 0.04, front_back: 0.52, left_right: 0.23, up: 0.87 }), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::TAME_SADDLE), RuleEntry::new(&crate::make_mad::ANGRY, &crate::make_mad::Angry::HORSE)],
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), crate::rules::RuleEntry::new(&crate::rules::pushable::UNPUSHABLE, &()), RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&RIDE, &RideParams::HORSE),RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT), RuleEntry::new(&crate::leash::QUAD_LEASHEE, &crate::leash::QuadParams { front: 0.04, front_back: 0.52, left_right: 0.23, up: 0.87 }), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::TAME_SADDLE), RuleEntry::new(&crate::make_mad::ANGRY, &crate::make_mad::Angry::HORSE)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable, Cap::Rideable]),
     spawn: Some(crate::spawning::SpawnDef { cluster: 6, ..crate::spawning::SpawnDef::ANIMAL }), despawn: Some(crate::despawn::DespawnDef::KEPT),
     draws: Some(&DRAWS),
