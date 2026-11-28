@@ -88,10 +88,12 @@ pub struct Mount {
     pub rider_ranged: bool,
     /// A player may take a seat by interaction (a spider or a chicken carries only the creatures put on it).
     pub by_player: bool,
+    /// The sounds of the first boarding and of the last departure (`[board, leave]`), from the species' `RideParams`.
+    pub board_sounds: Option<[&'static str; 2]>,
 }
 impl Default for Mount {
     fn default() -> Self {
-        Self { rider: None, passenger: None, jump_strength: 0.7, max_temper: 0, temper: 0, saddled: false, steer: Steer::Charged, capacity: 1, ready_at: 0, rider_ranged: false, by_player: true }
+        Self { rider: None, passenger: None, jump_strength: 0.7, max_temper: 0, temper: 0, saddled: false, steer: Steer::Charged, capacity: 1, ready_at: 0, rider_ranged: false, by_player: true, board_sounds: None }
     }
 }
 /// The stick of a pig or strider was used: the boost runs (`elapsed` of `total` own ticks).
@@ -145,9 +147,11 @@ pub struct RideParams {
     pub needs_tame: bool,
     /// Items (names or `#tags`) whose use is never a boarding, a tame mount fed with them is not ridden (`!isFood`).
     pub not_with: &'static [&'static str],
+    /// The sounds of the first boarding and of the last departure, played at the mount (`[board, leave]`).
+    pub board_sounds: Option<[&'static str; 2]>,
 }
 impl RideParams {
-    pub const HORSE: Self = Self { jump_strength: 0.7, max_temper: 100, steer: Steer::Charged, capacity: 1, by_player: true, needs_tame: false, not_with: &[] };
+    pub const HORSE: Self = Self { jump_strength: 0.7, max_temper: 100, steer: Steer::Charged, capacity: 1, by_player: true, needs_tame: false, not_with: &[], board_sounds: None };
     /// `AbstractNautilus`: one seat, no jump bar (`Steer::Look` drives it), boarded only
     /// when tame and not holding its food (`#nautilus_food`, a tame adult's `isFood`).
     pub const ZOMBIE_NAUTILUS: Self = Self { steer: Steer::ZOMBIE_NAUTILUS, ..Self::NAUTILUS };
@@ -172,7 +176,7 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 fn equip(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<RideParams>(p);
     if let Some(mut m) = w.get_mut::<Mount>(e) {
-        (m.jump_strength, m.max_temper, m.steer, m.capacity, m.by_player) = (p.jump_strength, p.max_temper, p.steer, p.capacity, p.by_player);
+        (m.jump_strength, m.max_temper, m.steer, m.capacity, m.by_player, m.board_sounds) = (p.jump_strength, p.max_temper, p.steer, p.capacity, p.by_player, p.board_sounds);
     }
 }
 /// `AbstractHorse.mobInteract` with an empty hand or an item it does not eat: the player rides an adult with a free seat (a stick
@@ -223,6 +227,7 @@ pub fn ride(w: &mut World, mount: Entity, who: Who) -> bool {
         if matches!(who, Who::Entity(r) if w.get::<NonControllingRider>(r).is_none()) {
             control_flags(w, mount, true);
         }
+        board_sound(w, mount, 0);
     }
     if first && matches!(who, Who::Player(_)) && w.get::<Mount>(mount).is_some_and(|m| matches!(m.steer, Steer::Look { .. })) {
         breath_start(w, mount);
@@ -272,10 +277,23 @@ pub fn dismount(w: &mut World, mount: Entity) -> Option<Who> {
         w.entity_mut(mount).remove::<Ridden>();
         // The jar keeps DASH until the landing (`Camel.tick` runs without a rider): `settle_dash` ends it now or on a later event.
         settle_dash(w, mount);
+        board_sound(w, mount, 1);
     }
     control_flags(w, mount, matches!(next, Some(Who::Entity(_))));
     w.resource_mut::<Events>().dismounted.push(mount);
     Some(who)
+}
+/// `HappyGhast.addPassenger` / `removePassenger`: the mount's sound `which` (0 the first boarding, 1 the last departure), at its place and
+/// from its own sound source; none unless the species declared it (`RideParams::board_sounds`).
+fn board_sound(w: &mut World, mount: Entity, which: usize) {
+    let Some(sounds) = w.get::<Mount>(mount).and_then(|m| m.board_sounds) else { return };
+    // `Entity.playSound`: nothing is heard from a silent mount.
+    if w.get::<crate::behaviours::elder_curse::Silent>(mount).is_some() {
+        return;
+    }
+    let src = crate::entity_voice::source_of(crate::area::species_name(w, mount));
+    let p = w.get::<Pos>(mount).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
+    w.resource_mut::<Events>().host.sound_from(src, sounds[which], p, 1.0, 1.0);
 }
 /// The passenger of the second seat gets off.
 pub fn dismount_passenger(w: &mut World, mount: Entity) -> Option<Who> {

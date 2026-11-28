@@ -134,9 +134,7 @@ pub fn move_events(
                             let own = names.get(e).ok().and_then(|n| crate::entity_voice::step_of(n.0));
                             let src = crate::entity_voice::source_of(names.get(e).map_or("", |n| n.0));
                             match own {
-                                Some(("entity.pig.step", v)) if baby => ev.host.sound_from(src, "entity.baby_pig.step", at, v, 1.0),
-                                Some(("entity.chicken.step", v)) if baby => ev.host.sound_from(src, "entity.baby_chicken.step", at, v, 1.0),
-                                Some((n, v)) => ev.host.sound_from(src, n, at, v, 1.0),
+                                Some((n, v)) => ev.host.sound_from(src, if baby { crate::entity_voice::baby_step(n) } else { n }, at, v, 1.0),
                                 None => ev.host.sound_from(src, facts.sounds.step.to_string(), at, facts.sounds.volume * 0.15, facts.sounds.pitch),
                             }
                         }

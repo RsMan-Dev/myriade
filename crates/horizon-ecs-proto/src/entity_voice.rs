@@ -34,11 +34,25 @@ pub fn volume_of(w: &World, e: Entity) -> f32 {
     }
 }
 
-/// `Pig.getSoundSet` / `Chicken.getSoundSet`: a baby takes the `baby_sounds` of the variant, the same whatever the variant. The name of an adult
-/// voice (ambient, hurt, death) of those two species becomes the baby's; any other name stays.
+/// `Pig.getSoundSet` / `Chicken.getSoundSet` / `Cat.getSoundSet`: a baby takes the `baby_sounds` of the variant, the same whatever the variant.
+/// The name of an adult voice of those species becomes the baby's; any other name stays.
 pub fn baby_voice(name: &'static str) -> &'static str {
     let n = name.strip_prefix("minecraft:").unwrap_or(name);
     let kind = n.rsplit('.').next().unwrap_or("");
+    if n.starts_with("entity.cat.") || n.starts_with("entity.cat_royal.") {
+        return match kind {
+            "ambient" => "entity.baby_cat.ambient",
+            "beg_for_food" => "entity.baby_cat.beg_for_food",
+            "death" => "entity.baby_cat.death",
+            "eat" => "entity.baby_cat.eat",
+            "hiss" => "entity.baby_cat.hiss",
+            "hurt" => "entity.baby_cat.hurt",
+            "purr" => "entity.baby_cat.purr",
+            "purreow" => "entity.baby_cat.purreow",
+            "stray_ambient" => "entity.baby_cat.stray_ambient",
+            _ => name,
+        };
+    }
     let pig = n.starts_with("entity.pig.") || n.starts_with("entity.pig_big.") || n.starts_with("entity.pig_mini.");
     let chicken = n.starts_with("entity.chicken.") || n.starts_with("entity.chicken_picky.");
     match (pig, chicken, kind) {
@@ -52,6 +66,16 @@ pub fn baby_voice(name: &'static str) -> &'static str {
     }
 }
 
+/// The baby's own step sound, where the species has one (`Pig`, `Chicken`, `Turtle.playStepSound`).
+pub fn baby_step(n: &'static str) -> &'static str {
+    match n {
+        "entity.pig.step" => "entity.baby_pig.step",
+        "entity.chicken.step" => "entity.baby_chicken.step",
+        "entity.turtle.shamble" => "entity.turtle.shamble_baby",
+        _ => n,
+    }
+}
+
 /// The step of a type that overrides `playStepSound` with a fixed sound: its name and volume (pitch 1).
 pub fn step_of(name: &str) -> Option<(&'static str, f32)> {
     const Q: f32 = 0.15;
@@ -60,6 +84,7 @@ pub fn step_of(name: &str) -> Option<(&'static str, f32)> {
         "minecraft:pig" => ("entity.pig.step", Q),
         "minecraft:chicken" => ("entity.chicken.step", Q),
         "minecraft:sheep" => ("entity.sheep.step", Q),
+        "minecraft:turtle" => ("entity.turtle.shamble", Q),
         "minecraft:wolf" => ("entity.wolf.step", Q),
         "minecraft:zombie" | "minecraft:zombified_piglin" => ("entity.zombie.step", Q),
         "minecraft:husk" => ("entity.husk.step", Q),
