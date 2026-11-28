@@ -81,8 +81,9 @@ fn variant_name(t: &Table, id: u8) -> Option<&'static str> {
 }
 /// Writes the variant of `e` as the item's component `key` (`copyFrom` of `SALMON_SIZE` or `AXOLOTL_VARIANT`).
 fn variant_component(w: &World, e: Entity, to: &mut ItemStack, key: &str) {
-    let (Some(t), Some(v)) = (crate::behaviours::variant::table_of(w, e), w.get::<Variant>(e)) else { return };
-    if let Some(name) = variant_name(t, v.0) {
+    let Some(t) = crate::behaviours::variant::table_of(w, e) else { return };
+    let v = w.get::<Variant>(e).map_or_else(|| crate::behaviours::variant::default_id(t), |v| v.0);
+    if let Some(name) = variant_name(t, v) {
         to.data_mut().set_other(key, Some(Tag::String(name.into())));
     }
 }
@@ -111,9 +112,10 @@ pub fn salmon_data(w: &World, e: Entity, to: &mut ItemStack) {
 /// `TropicalFish.saveToBucketTag`: the pattern and the two colours, read from the packed id that `Wide` holds whole (bits 0-15 the pattern,
 /// 16-23 the base colour, 24-31 the pattern's colour; the colours are `DyeColor`'s order).
 pub fn tropical_data(w: &World, e: Entity, to: &mut ItemStack) {
-    let Some(p) = w.get::<Wide>(e) else { return };
-    let Some(&(pattern, _)) = PATTERNS.iter().find(|(_, id)| *id == p.0 & 0xFFFF) else { return };
-    let (Some(base), Some(dye)) = (crate::species::cushion::DYES.get(((p.0 >> 16) & 0xFF) as usize), crate::species::cushion::DYES.get((p.0 >> 24) as usize)) else { return };
+    // `TropicalFish.DEFAULT_VARIANT` (kob, white, white: packed 0) for a fish never drawn.
+    let p = w.get::<Wide>(e).map_or(0, |p| p.0);
+    let Some(&(pattern, _)) = PATTERNS.iter().find(|(_, id)| *id == p & 0xFFFF) else { return };
+    let (Some(base), Some(dye)) = (crate::species::cushion::DYES.get(((p >> 16) & 0xFF) as usize), crate::species::cushion::DYES.get((p >> 24) as usize)) else { return };
     to.data_mut().set_other("minecraft:tropical_fish/pattern", Some(Tag::String(pattern.into())));
     to.data_mut().set_other("minecraft:tropical_fish/base_color", Some(Tag::String((*base).into())));
     to.data_mut().set_other("minecraft:tropical_fish/pattern_color", Some(Tag::String((*dye).into())));

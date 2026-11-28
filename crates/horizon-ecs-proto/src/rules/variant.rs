@@ -35,6 +35,8 @@ pub struct Table {
     /// value is taken without a draw (`Horse`, `Llama`).
     pub redraw: bool,
     pub ids: &'static [u8],
+    /// The index in `ids` of the value a creature never drawn holds (`Variant.DEFAULT`: `Salmon` medium; the first elsewhere).
+    pub fallback: u8,
     /// Saved as the string at the value's index in `ids` (`Fox.Type`: red, snow) when not empty, else as an int.
     pub names: &'static [&'static str],
     /// The serialized names of the data component `minecraft:<species>/variant` (`getSerializedName`), at the `ids` position; not saved.
@@ -60,6 +62,7 @@ impl Table {
         pick: Pick::Rows,
         redraw: false,
         ids: &[],
+        fallback: 0,
         names: &[],
         component_names: &[],
         traits: &[],

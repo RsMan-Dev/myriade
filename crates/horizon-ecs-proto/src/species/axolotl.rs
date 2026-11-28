@@ -47,6 +47,7 @@ static VARIANT: crate::rules::variant::Table = crate::rules::variant::Table {
     redraw: false,
     ids: &[0, 1, 2, 3, 4],
     names: &[],
+    fallback: 0,
     component_names: &["lucy", "wild", "gold", "cyan", "blue"],
     traits: &[],
     group_baby: None,

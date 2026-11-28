@@ -329,6 +329,7 @@ pub fn schedule() -> Schedule {
     s.add_systems((cramming.after(apply_pushes), apply_damage::<true>).chain());
     s.add_systems(crate::seat::follow_moved.after(apply_pushes));
     s.add_systems(crate::cow::health::rain_out.after(crate::cow::health::hazard_tick));
+    s.add_systems(crate::cow::health::thaw.after(crate::cow::health::hazard_tick));
     s.add_systems(crate::breath_cloud::tick_live.after(apply_pushes));
     crate::goals::register(&mut s);
     s.add_systems(crate::despawn::step.after(crate::goals::online_events).before(player_near));

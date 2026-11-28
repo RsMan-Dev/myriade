@@ -146,6 +146,9 @@ pub struct Hazard(pub u8);
 /// The ticks `ticks_frozen` has counted in powder snow.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Frozen(pub i32);
+/// `LivingEntity.aiStep`: a creature with `ticks_frozen` above zero outside the powder snow, thawing by 2 a tick (`thaw`); gone at zero.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Thawing;
 
 pub const HAZ_LAVA: u8 = 1;
 
@@ -884,12 +887,30 @@ pub(crate) fn hazard_tick(
             queue.add(e, 1.0, Cause::Cactus);
         }
         // `Entity.baseTick`: the powder snow counts only where `canFreeze` (no `IMMUNE_FREEZE` bit).
+        // Else it thaws by 2 (`setTicksFrozen(max(0, i - 2))`), here or in `thaw` once out of every hazard.
         if f & HAZ_SNOW != 0 && !immune.is_some_and(|i| i.has(crate::effects::IMMUNE_FREEZE)) && !wears_freeze_immune(&worn, e) {
+            if frozen.0 == 0 {
+                commands.entity(e).insert(Thawing);
+            }
             frozen.0 = (frozen.0 + 1).min(140);
             commands.queue(move |w: &mut World| crate::bridge::view::mark(w, e));
             if frozen.0 >= 140 && now % 40 == 0 {
                 queue.add(e, 1.0, Cause::Freeze);
             }
+        } else if frozen.0 > 0 {
+            frozen.0 = (frozen.0 - 2).max(0);
+            commands.queue(move |w: &mut World| crate::bridge::view::mark(w, e));
         }
+    }
+}
+
+/// The thaw of a frozen creature out of every hazard (no `Hazard`): only those that carry `Thawing`, so a fixed cost per frozen one.
+pub(crate) fn thaw(mut q: Query<(Entity, &mut Frozen), (With<Thawing>, Without<Hazard>)>, mut commands: Commands) {
+    for (e, mut frozen) in &mut q {
+        frozen.0 = (frozen.0 - 2).max(0);
+        if frozen.0 == 0 {
+            commands.entity(e).remove::<Thawing>();
+        }
+        commands.queue(move |w: &mut World| crate::bridge::view::mark(w, e));
     }
 }

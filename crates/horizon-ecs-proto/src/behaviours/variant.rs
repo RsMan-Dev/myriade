@@ -196,13 +196,18 @@ fn read_variant_int(w: &mut World, e: Entity, t: &Tag) -> bool {
     false
 }
 
+/// The value of a creature never given one (no spawn draw, as after a `/summon` with NBT): `Table::fallback`.
+pub fn default_id(t: &Table) -> u8 {
+    t.ids.get(usize::from(t.fallback)).or(t.ids.first()).copied().unwrap_or(0)
+}
+
 fn write_key(key: &str, w: &World, e: Entity, c: &mut Compound) {
     let Some(t) = table_of(w, e) else { return };
     if t.key != key {
         return;
     }
     // A creature never given a variant (no spawn draw, as after a `/summon` with NBT) saves the registry's default: the first.
-    let id = w.get::<Variant>(e).map_or_else(|| t.ids.first().copied().unwrap_or(0), |v| v.0);
+    let id = w.get::<Variant>(e).map_or_else(|| default_id(t), |v| v.0);
     let tag = match t.names.is_empty() {
         true => Tag::Int(i32::from(id)),
         false => Tag::String(JavaString::from(t.names[t.ids.iter().position(|x| *x == id).unwrap_or(0)])),

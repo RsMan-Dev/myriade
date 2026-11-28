@@ -270,6 +270,9 @@ fn write_frozen(w: &World, e: Entity, c: &mut Compound) {
 fn read_frozen(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Int(v) = t else { return false };
     w.entity_mut(e).insert(Frozen(*v));
+    if *v > 0 {
+        w.entity_mut(e).insert(crate::cow::Thawing);
+    }
     true
 }
 

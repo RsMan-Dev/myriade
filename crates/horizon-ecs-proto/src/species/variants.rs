@@ -91,4 +91,4 @@ pub static LLAMA: Table = Table { component_names: &["creamy", "white", "brown",
 /// `MushroomCow.Variant` (red, brown): the colour the mooshroom reports as its component; not drawn from this table.
 pub static MUSHROOM: Table = Table { component_names: &["red", "brown"], ..uniform(2, &[0, 1]) };
 /// `Salmon`: small 30, medium 50, large 15 (`WeightedList`), saved as the string `type`.
-pub static SALMON: Table = Table { key: "type", pick: Pick::Weighted(&[(0, 30), (1, 50), (2, 15)]), ids: &[0, 1, 2], names: &["small", "medium", "large"], ..Table::EMPTY };
+pub static SALMON: Table = Table { key: "type", fallback: 1, pick: Pick::Weighted(&[(0, 30), (1, 50), (2, 15)]), ids: &[0, 1, 2], names: &["small", "medium", "large"], ..Table::EMPTY };
