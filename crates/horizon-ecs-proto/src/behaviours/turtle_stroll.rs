@@ -242,4 +242,56 @@ mod tests {
         assert!(moving <= 2700 * 5, "part du temps en marche: {moving}/15000");
         assert!(stops >= 3 * 5, "arrêts de 6 ticks ou plus: {stops}");
     }
+
+    /// Distance walked and `shamble` sounds over 3000 ticks, of 5 adults and 5 babies, home far, floor ending in the air.
+    #[test]
+    fn a_baby_turtle_steps_per_block_like_an_adult() {
+        let Some(mut h) = world() else {
+            eprintln!("skipped: HORIZON_TEST_RESOURCES unset");
+            return;
+        };
+        let table = h.world.resource::<SpeciesTable>().0.clone();
+        let sp = *table.iter().find(|s| s.name == "minecraft:turtle").unwrap();
+        for x in -250..=-196 {
+            for z in -60..=60 {
+                for y in -40..=0 {
+                    h.set_block(x, y, z, "minecraft:air");
+                }
+            }
+        }
+        let ts: Vec<Entity> = (0..10u32)
+            .map(|k| {
+                let t = spawn_species(&mut h.world, &sp, -189.5 + 1.0 * f64::from(k), 0.5 + 20.0 * f64::from(k % 2), 61 + u64::from(k));
+                h.world.get_mut::<ActiveUntil>(t).unwrap().0 = u64::MAX;
+                h.world.resource_mut::<crate::goals::Entered>().0.push(t);
+                crate::behaviours::turtle_state::update(&mut h.world, t, |s| s.home = [-610, 0, 0]);
+                if k % 2 == 1 {
+                    h.make_baby(t, 1_000_000);
+                }
+                t
+            })
+            .collect();
+        let mut last: Vec<_> = ts.iter().map(|&t| h.world.get::<Pos>(t).unwrap().0).collect();
+        let mut dist = [0.0f64; 2];
+        let mut steps = [0usize; 2];
+        for _ in 0..3000 {
+            h.tick();
+            for (i, &t) in ts.iter().enumerate() {
+                let p = h.world.get::<Pos>(t).unwrap().0;
+                dist[i % 2] += (p.x - last[i].x).hypot(p.z - last[i].z);
+                last[i] = p;
+            }
+            for ev in h.world.resource_mut::<crate::goals::Events>().host.drain() {
+                if let crate::host_out::HostEvent::Sound { name, .. } = ev
+                    && name.contains("shamble")
+                {
+                    steps[usize::from(name.ends_with("_baby"))] += 1;
+                }
+            }
+        }
+        // `moveDist += 0.6 * distance`, a step each 0.15: at most 4 per block, the same for both ages.
+        let per_block = |i: usize| steps[i] as f64 / dist[i];
+        assert!((3.0..=4.0).contains(&per_block(0)) && (3.0..=4.0).contains(&per_block(1)), "pas par bloc: adulte {} bébé {}", per_block(0), per_block(1));
+        assert!(dist[1] < dist[0] * 1.3, "distance: adulte {:.1} bébé {:.1}", dist[0], dist[1]);
+    }
 }
