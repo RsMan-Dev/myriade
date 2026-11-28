@@ -53,6 +53,12 @@ pub fn baby_voice(name: &'static str) -> &'static str {
             _ => name,
         };
     }
+    // `Turtle.getHurtSound` / `getDeathSound`: the baby's own pair.
+    match n {
+        "entity.turtle.hurt" => return "entity.turtle.hurt_baby",
+        "entity.turtle.death" => return "entity.turtle.death_baby",
+        _ => {}
+    }
     let pig = n.starts_with("entity.pig.") || n.starts_with("entity.pig_big.") || n.starts_with("entity.pig_mini.");
     let chicken = n.starts_with("entity.chicken.") || n.starts_with("entity.chicken_picky.");
     match (pig, chicken, kind) {

@@ -43,9 +43,18 @@ pub fn sound(w: &World, e: Entity, slot: fn(&Overrides) -> Slot, vanilla: Option
 /// `LivingEntity.playHurtSound`: the declared hurt voice of `e`, at its place with its own pitch (`tear_down::voice`).
 pub fn hurt(w: &mut World, e: Entity) {
     crate::behaviours::ambient_sound::reset_on_hurt(w, e);
-    if let Some(name) = sound(w, e, |o| o.hurt, None) {
+    let muted = w.get_resource::<SoundSlots>().and_then(|t| t.0.get(species_name(w, e))).is_some_and(|o| o.hurt == Slot::Mute);
+    let name = if muted { None } else { state_hurt(w, e).or_else(|| sound(w, e, |o| o.hurt, None)) };
+    if let Some(name) = name {
         crate::tear_down::voice(w, e, name);
     }
+}
+
+/// The species' state-dependent hurt voice (`Def::hurt`), None for a species without one or in a state that keeps the declared voice.
+fn state_hurt(w: &World, e: Entity) -> Option<&'static str> {
+    let id = w.get::<crate::cow::SpeciesId>(e)?;
+    let f = crate::species::registry().species[usize::from(id.0)].hurt?;
+    f(w, e)
 }
 
 /// `LivingEntity.die` (`makeSound(getDeathSound)`): the declared death voice of `e`.

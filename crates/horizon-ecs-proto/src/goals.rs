@@ -424,9 +424,12 @@ pub fn set_main_hand(w: &mut World, e: Entity, stack: Option<myriade_engine_lib:
     }
     w.entity_mut(e).insert(HandStack(stack));
 }
-/// The stack in the main hand.
+/// The stack in the main hand: the held stack once `set_main_hand` ran, else the main slot of the loaded equipment.
 pub fn main_hand(w: &World, e: Entity) -> Option<&myriade_engine_lib::items::ItemStack> {
-    w.get::<HandStack>(e)?.0.as_ref()
+    match w.get::<HandStack>(e) {
+        Some(h) => h.0.as_ref(),
+        None => w.get::<crate::equip_stack::Equipment>(e)?.slots[0].as_ref(),
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Slot {

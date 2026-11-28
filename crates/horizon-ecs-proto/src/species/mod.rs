@@ -304,6 +304,8 @@ pub struct Def {
     pub variant: Option<&'static crate::rules::variant::Table>,
     /// The sound variants of the species (`minecraft:classic` first), drawn at a spawn after `variant`: `None` for a species with none.
     pub sounds: Option<&'static [&'static str]>,
+    /// The hurt voice that depends on the entity's state (`Armadillo.getHurtSound`): `Some` wins over the declared one, `None` keeps it.
+    pub hurt: Option<fn(&bevy_ecs::prelude::World, bevy_ecs::prelude::Entity) -> Option<&'static str>>,
     /// Whether a bred baby draws its sound afresh (`Wolf.getBreedOffspring`); the others keep `classic`.
     pub sound_on_breed: bool,
     /// The extra draws of `finalizeSpawn` (`behaviours::spawn_draw`): marks, genes, colours, sizes, shared group values.
@@ -330,7 +332,7 @@ pub const FIRE_WITHER_IMMUNE_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::B
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
 const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform), (Cap::Rideable, Cap::Body), (Cap::Stand, Cap::Living), (Cap::Projectile, Cap::Transform), (Cap::Passive, Cap::Transform), (Cap::Hanging, Cap::Transform)];
 impl Def {
-    pub const EMPTY: Def = Def { load_attrs: &[], name: "", reference: None, sound_source: SoundCategory::Neutral, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, gravity: true, screaming: None, lost_horn: None, llama_strength: false, random_max_health: false, horse_gen: HorseGen::None, body_wear: false, not_in_peaceful: false, light_lit: false, max_scale: 16.0, variant: None, sounds: None, sound_on_breed: false, draws: None, merchant: false, no_portal: false, despawn_delay: None, leads_llamas: false };
+    pub const EMPTY: Def = Def { load_attrs: &[], name: "", reference: None, sound_source: SoundCategory::Neutral, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, gravity: true, screaming: None, lost_horn: None, llama_strength: false, random_max_health: false, horse_gen: HorseGen::None, body_wear: false, not_in_peaceful: false, light_lit: false, max_scale: 16.0, variant: None, sounds: None, hurt: None, sound_on_breed: false, draws: None, merchant: false, no_portal: false, despawn_delay: None, leads_llamas: false };
     fn all_rules(&self) -> Vec<crate::rules::RuleEntry> {
         let mut v = self.reference.map_or_else(Vec::new, Def::all_rules);
         v.extend_from_slice(self.rules);
@@ -405,6 +407,8 @@ pub struct Resolved {
     pub variant: Option<&'static crate::rules::variant::Table>,
     /// `Def::sounds`.
     pub sounds: Option<&'static [&'static str]>,
+    /// `Def::hurt`.
+    pub hurt: Option<fn(&bevy_ecs::prelude::World, bevy_ecs::prelude::Entity) -> Option<&'static str>>,
     /// `Def::sound_on_breed`.
     pub sound_on_breed: bool,
     /// `Def::draws`.
@@ -542,7 +546,7 @@ impl Builder {
             let (list, targets) = resolve(src, d, &self.modules)?;
             by_name.insert(d.name, species.len());
             lists.push((list, targets));
-            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))), saved: d.saved, gravity: d.gravity, sound_source: d.sound_source, screaming: d.screaming, lost_horn: d.lost_horn, load_attrs: d.load_attrs, llama_strength: d.llama_strength, random_max_health: d.random_max_health, horse_gen: d.horse_gen, body_wear: d.body_wear, not_in_peaceful: d.not_in_peaceful, light_lit: d.light_lit, max_scale: d.max_scale, variant: d.variant, sounds: d.sounds, sound_on_breed: d.sound_on_breed, draws: d.draws, merchant: d.merchant, no_portal: d.no_portal, despawn_delay: d.despawn_delay, leads_llamas: d.leads_llamas });
+            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))), saved: d.saved, gravity: d.gravity, sound_source: d.sound_source, screaming: d.screaming, lost_horn: d.lost_horn, load_attrs: d.load_attrs, llama_strength: d.llama_strength, random_max_health: d.random_max_health, horse_gen: d.horse_gen, body_wear: d.body_wear, not_in_peaceful: d.not_in_peaceful, light_lit: d.light_lit, max_scale: d.max_scale, variant: d.variant, sounds: d.sounds, hurt: d.hurt, sound_on_breed: d.sound_on_breed, draws: d.draws, merchant: d.merchant, no_portal: d.no_portal, despawn_delay: d.despawn_delay, leads_llamas: d.leads_llamas });
         }
         for (src, name, changes) in &self.alters {
             let Some(&i) = by_name.get(name) else {

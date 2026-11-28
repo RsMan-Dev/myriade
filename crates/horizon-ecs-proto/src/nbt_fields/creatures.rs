@@ -79,6 +79,7 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("IsChickenJockey"), write: write_jockey, read: read_jockey, accepts: byte, owner: Some(owner::<Egg>) },
     Field { key: Cow::Borrowed("EggLayTime"), write: write_egg_time, read: read_egg_time, accepts: accept::int, owner: Some(owner::<Egg>) },
     Field { key: Cow::Borrowed("scute_time"), write: write_scute_time, read: read_scute_time, accepts: accept::int, owner: Some(owner::<crate::gift_drop::GiftDue>) },
+    Field { key: Cow::Borrowed("state"), write: write_armadillo_state, read: read_armadillo_state, accepts: is_string, owner: Some(owner::<crate::behaviours::armadillo_state::ArmadilloState>) },
     Field { key: Cow::Borrowed("size"), write: write_phantom_size, read: read_phantom_size, accepts: accept::int, owner: None },
     Field { key: Cow::Borrowed("anchor_pos"), write: write_phantom_anchor, read: read_phantom_anchor, accepts: int_array, owner: None },
     Field { key: Cow::Borrowed("LastPoseTick"), write: write_last_pose, read: read_last_pose, accepts: accept::long, owner: Some(owner::<crate::behaviours::posture::Posture>) },
@@ -898,6 +899,23 @@ fn write_scute_time(w: &World, e: Entity, c: &mut Compound) {
 fn read_scute_time(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Int(v) = t else { return false };
     crate::gift_drop::rearm_gift(w, e, *v);
+    true
+}
+
+/// `state` of an armadillo (`Armadillo.ArmadilloState.CODEC`): its name, in the order of the state constants (IDLE by default).
+const ARMADILLO_STATES: [&str; 4] = ["idle", "rolling", "scared", "unrolling"];
+
+fn write_armadillo_state(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(s) = w.get::<crate::behaviours::armadillo_state::ArmadilloState>(e) {
+        c.insert("state".into(), Tag::String(ARMADILLO_STATES.get(s.0 as usize).copied().unwrap_or("idle").into()));
+    }
+}
+
+fn read_armadillo_state(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::String(s) = t else { return false };
+    let name = s.to_string_lossy();
+    let Some(i) = ARMADILLO_STATES.iter().position(|n| *n == name) else { return false };
+    w.entity_mut(e).insert(crate::behaviours::armadillo_state::ArmadilloState(i as u8));
     true
 }
 

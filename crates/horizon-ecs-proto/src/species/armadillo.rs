@@ -14,11 +14,17 @@ fn armadillo_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Ent
     if armadillo_state::of(w, e) != armadillo_state::IDLE { "" } else { "entity.armadillo.ambient" }
 }
 
+/// `Armadillo.getHurtSound`: `hurt_reduced` while not IDLE (`isScared`), else the declared hurt voice.
+fn armadillo_hurt(w: &bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> Option<&'static str> {
+    (armadillo_state::of(w, e) != armadillo_state::IDLE).then_some("entity.armadillo.hurt_reduced")
+}
+
 static SHED: GiftDrop = GiftDrop { table: "minecraft:gameplay/armadillo_shed", sound: Some(GiftSound { name: "minecraft:entity.armadillo.scute_drop", volume: 1.0 }), game_event: Some("minecraft:entity_place"), needs_mob_drops: true };
 
 pub static DEF: Def = Def {
     spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Bright { on: "minecraft:armadillo_spawnable_on" }, ..crate::spawning::SpawnDef::ANIMAL }),
     name: "minecraft:armadillo",
+    hurt: Some(armadillo_hurt),
     goals: &[
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
         Entry::new(&panic::MODULE, 1, &panic::Params { environmental: true, ..panic::Params::DEFAULT }),
