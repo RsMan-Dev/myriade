@@ -7,7 +7,7 @@
 //! nav is stopped and the walk and look cleared; a drift in the water stays), the target selectors of other creatures that skip an axolotl
 //! playing dead (`brain::behaviours::play_dead::is_playing_dead` is there to read).
 use super::Def;
-use crate::behaviours::{breed, Cap, Entry};
+use crate::behaviours::{breed, Cap, Entry, ambient_sound};
 use crate::brain::behaviours::{count_down_cooldown_ticks, erase_memory_if, find_liquid, follow_adult, follow_temptation, gate_all, look_at_player_sometimes, look_at_target_sink, make_love, melee_attack, move_to_target_sink, play_dead, run_one, set_walk_target_from_attack_target, start_attacking, stay_in_fluid, stop_attacking_if_target_invalid, stroll, swim_stroll, validate_play_dead, walk_to_look_target};
 use crate::brain::sensors::{adult, attackables, hurt_by, living, tempting};
 use crate::brain::*;
@@ -72,9 +72,14 @@ static DRAWS: crate::behaviours::spawn_draw::Draws = crate::behaviours::spawn_dr
     }],
 };
 
+fn axolotl_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.in_water) { "entity.axolotl.idle_water" } else { "entity.axolotl.idle_air" }
+}
+
 pub static DEF: Def = Def {
     spawn: Some(crate::spawning::SpawnDef { category: crate::spawning::Category::Axolotls, place: crate::spawning::Place::InWater, rule: crate::spawning::Rule::OnBlock { on: "minecraft:axolotls_spawnable_on" }, peaceful: true, liquid: true, despawn: crate::despawn::DespawnDef { removable: crate::despawn::Removable::UnlessNamed, ..crate::despawn::DespawnDef::MOB }, ..crate::spawning::SpawnDef::MONSTER }),
     name: "minecraft:axolotl",
+    goals: &[Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(120), choose: Some(axolotl_ambient), ..ambient_sound::Params::DEFAULT })],
     despawn: Some(crate::despawn::DespawnDef { removable: crate::despawn::Removable::UnlessNamed, ..crate::despawn::DespawnDef::MOB }),
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     variant: Some(&VARIANT),

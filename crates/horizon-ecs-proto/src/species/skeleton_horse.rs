@@ -2,7 +2,11 @@
 use super::{Def, HorseGen};
 use crate::mount::{RideParams, RIDE};
 use crate::rules::RuleEntry;
-use crate::behaviours::{run_around_like_crazy, Cap, breed, follow_parent, look_at_player, random_look, random_stand, stroll, Entry};
+use crate::behaviours::{run_around_like_crazy, Cap, breed, follow_parent, look_at_player, random_look, random_stand, stroll, Entry, ambient_sound};
+
+fn skeleton_horse_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.eye_in_water) { "entity.skeleton_horse.ambient_water" } else { "entity.skeleton_horse.ambient" }
+}
 
 pub static DEF: Def = Def {
     name: "minecraft:skeleton_horse",
@@ -14,6 +18,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 7, &look_at_player::Params::DEFAULT),
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
         Entry::new(&random_stand::MODULE, 9, &random_stand::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(400), choose: Some(skeleton_horse_ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), crate::rules::RuleEntry::new(&crate::rules::pushable::UNPUSHABLE, &()), crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&RIDE, &RideParams::HORSE),RuleEntry::new(&crate::spring_trap::RULE, &crate::spring_trap::Params::SKELETON_TRAP), RuleEntry::new(&crate::leash::QUAD_LEASHEE, &crate::leash::QuadParams { front: 0.04, front_back: 0.52, left_right: 0.23, up: 0.87 })],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable, Cap::Rideable]),

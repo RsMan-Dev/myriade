@@ -21,7 +21,7 @@ pub static DEF: Def = Def {
         WANDER,
         LOOK,
         RANDOM_LOOK,
-        Entry::new(&ambient_sound::MODULE, 9, &ambient_sound::Params { interval: Some(80), choose: Some(ambient), ..ambient_sound::Params::DEFAULT }),
+        Entry::new(&ambient_sound::MODULE, 9, &ambient_sound::Params { interval: Some(120), choose: Some(ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     changes: &[],
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 })],
@@ -44,6 +44,8 @@ fn ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'
         ("minecraft:sheep", _) => "entity.sheep.ambient",
         ("minecraft:chicken", "minecraft:picky") => "entity.chicken_picky.ambient",
         ("minecraft:chicken", _) => "entity.chicken.ambient",
+        ("minecraft:goat", _) if crate::species::goat::is_screaming(w, e) => "entity.goat.screaming.ambient",
+        ("minecraft:goat", _) => "entity.goat.ambient",
         _ => "",
     }
 }

@@ -4,7 +4,7 @@
 //! look (6); targets: hurt by (1), the nearest player (2) and the iron golem (3), the last two only in the dark (`horizon:dark_enough`).
 //! The armadillo avoids by name, whatever its state (as the `Mob`).
 use super::Def;
-use crate::behaviours::{avoid_entity, Cap, Cond, float, hurt_by, leap_at_target, look_at_player, melee, nearest_target, random_look, stroll, Entry};
+use crate::behaviours::{avoid_entity, Cap, Cond, float, hurt_by, leap_at_target, look_at_player, melee, nearest_target, random_look, stroll, Entry, ambient_sound};
 use crate::locomotion::{walk, Medium};
 use crate::mount::{RideParams, RIDE};
 use crate::rules::RuleEntry;
@@ -34,6 +34,7 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 0.8, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 6, &random_look::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.spider.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT }),
     ],
     locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params { climber: true, ..walk::Params::DEFAULT }))],
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), RuleEntry::new(&RIDE, &RideParams::CARRIER)],

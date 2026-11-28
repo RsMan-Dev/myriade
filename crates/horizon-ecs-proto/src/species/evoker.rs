@@ -3,7 +3,7 @@
 //! wandering traders unseen allowed (3), the iron golem (3), all with 300 ticks of memory. Left out: the wololo spell (6: sheep colours),
 //! the raid goals (`pathfind_to_raid`, `HoldGroundAttack`: the village and raid porter), the raiders the hurt-by ignores, the `look_at_player` of mobs (10).
 use super::Def;
-use crate::behaviours::{avoid_entity, float, hurt_by, look_at_player, nearest_target, spell_casting, spell_use, stroll, Entry};
+use crate::behaviours::{avoid_entity, float, hurt_by, look_at_player, nearest_target, spell_casting, spell_use, stroll, Entry, ambient_sound};
 
 /// `HurtByTargetGoal(this, Raider.class)`-style list of the illagers (jar and Mob): the attackers they never answer.
 pub const RAIDERS: &[&str] = &["minecraft:pillager", "minecraft:vindicator", "minecraft:witch", "minecraft:evoker", "minecraft:illusioner", "minecraft:vex", "minecraft:ravager"];
@@ -36,6 +36,7 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 8, &stroll::Params { speed: 0.6, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 3.0, period: 1, ..look_at_player::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 8.0, species: &["*"], ..look_at_player::Params::DEFAULT }),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.evoker.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT }),
     ],
     not_in_peaceful: true,
     sound_source: super::SoundCategory::Hostile,

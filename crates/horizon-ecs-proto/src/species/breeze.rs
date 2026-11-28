@@ -6,7 +6,7 @@
 //! charges: the burst spares the owner only), the jump boost and levitation effects, the mount, the burst's push of players and of blocks.
 //! DOUTES: the attackable window is refreshed at the sensor's scans (20 ticks) and ends at a deadline of the wheel; the Mob refreshes it every tick.
 use super::Def;
-use crate::behaviours::{float, Cap, Entry};
+use crate::behaviours::{float, Cap, Entry, ambient_sound};
 use crate::brain::behaviours::{breeze, do_nothing, look_at_target_sink, run_one, start_attacking, stop_attacking_if_target_invalid, stroll};
 use crate::brain::sensors::{attackable, hurt_by, living, nearest_players};
 use crate::brain::*;
@@ -21,11 +21,15 @@ fn players_and_golems(w: &World, who: Who) -> bool {
         Who::Entity(_) => targeting::info(w, who).is_some_and(|i| crate::species::registry().id(GOLEM) == Some(usize::from(i.species))),
     }
 }
+fn breeze_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if w.get::<crate::cow::Contact>(e).is_some_and(|c| c.on_ground) { "entity.breeze.idle_ground" } else { "entity.breeze.idle_air" }
+}
+
 pub static DEF: Def = Def {
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 10, max: 10 })],
     name: "minecraft:breeze",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
-    goals: &[Entry::new(&float::MODULE, 0, &float::Params::DEFAULT)],
+    goals: &[Entry::new(&float::MODULE, 0, &float::Params::DEFAULT), Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(80), choose: Some(breeze_ambient), ..ambient_sound::Params::DEFAULT })],
     brain: BrainDef {
         sensors: &[
             SensorEntry::new(&living::SENSOR, 20),

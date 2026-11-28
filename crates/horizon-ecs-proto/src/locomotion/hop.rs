@@ -28,6 +28,8 @@ pub struct Params {
     /// A body that follows a path hops only while it has one (`RabbitMoveControl`): the wait after a landing, the hop's power and its
     /// push; `None`: it wanders (`CubeMobMoveControl`).
     pub path: Option<PathHop>,
+    /// The sound of each jump (`setJumping` plays `getJumpSound`), at the body's place; None: silent.
+    pub jump_sound: Option<&'static str>,
 }
 /// The bounds of a body that follows a path.
 #[derive(Clone, Copy, Debug)]
@@ -46,9 +48,9 @@ pub struct PathHop {
 }
 impl Params {
     /// `Slime`: 10 to 29 ticks between hops, a new direction every 20 to 49 ticks on the ground, full speed.
-    pub const SLIME: Params = Params { delay_base: 10, delay_extra: 20, aggressive_div: 3, redirect_base: 40, redirect_extra: 60, speed_modifier: 1.0, delay_mul: 1, path: None };
+    pub const SLIME: Params = Params { delay_base: 10, delay_extra: 20, aggressive_div: 3, redirect_base: 40, redirect_extra: 60, speed_modifier: 1.0, delay_mul: 1, path: None, jump_sound: None };
     /// `Rabbit`: a wait of 10 ticks (3 when it flees), 0.2 / 0.3 / 0.5 up, a push of 0.1.
-    pub const RABBIT: Params = Params { delay_base: 10, delay_extra: 1, aggressive_div: 1, redirect_base: 40, redirect_extra: 60, speed_modifier: 1.0, delay_mul: 1, path: Some(PathHop { delay: 10, fast_delay: 3, fast_from: 2.2, low: 0.2, low_to: 0.6, mid: 0.3, high: 0.5, push: 0.1 }) };
+    pub const RABBIT: Params = Params { delay_base: 10, delay_extra: 1, aggressive_div: 1, redirect_base: 40, redirect_extra: 60, speed_modifier: 1.0, delay_mul: 1, path: Some(PathHop { delay: 10, fast_delay: 3, fast_from: 2.2, low: 0.2, low_to: 0.6, mid: 0.3, high: 0.5, push: 0.1 }), jump_sound: None };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Hop {
@@ -78,14 +80,15 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 }
 fn systems(s: &mut bevy_ecs::schedule::Schedule, _: crate::goals::GoalSlot) {
     s.add_systems((hop_air, hop_hold).chain().after(crate::cow::move_control).before(crate::cow::travel));
+    s.add_systems(float_jump_sound.after(crate::cow::move_control).before(crate::cow::travel));
 }
 /// Each tick of a hop in the air: the speed and the forward input stay (`CubeMobMoveControl`: `setSpeed` also sets the input); when the body is
 /// back on the ground the wait begins.
-fn hop_air(mut q: Query<(Entity, &mut Hop, &mut Drive, &Contact, &Body, &Nav, Option<&crate::goals::Phase>, Has<crate::behaviours::float::Floating>), With<Hopping>>, clock: Res<Clock>, mut wheel: ResMut<Wheel>, mut commands: Commands) {
-    for (e, mut h, mut d, c, body, nav, phase, floating) in &mut q {
+fn hop_air(mut q: Query<(Entity, &mut Hop, &mut Drive, &Contact, &Body, &Nav, Option<&crate::goals::Phase>), With<Hopping>>, clock: Res<Clock>, mut wheel: ResMut<Wheel>, mut commands: Commands) {
+    for (e, mut h, mut d, c, body, nav, phase) in &mut q {
         let now = clock.of(e);
-        // The tick of the jump keeps the jump the deadline asked for; a path body keeps the jump of its fluid float (`RabbitJumpControl`).
-        d.jump = d.jump && if h.p.path.is_some() { floating } else { now == h.jumped_at };
+        // The tick of the jump keeps the jump the deadline asked for.
+        d.jump = d.jump && now == h.jumped_at && h.p.path.is_none();
         if c.on_ground && now > h.jumped_at {
             d.speed = 0.0;
             d.zza = 0.0;
@@ -134,6 +137,7 @@ pub fn due(w: &mut World, e: Entity) {
         let v = bound_velocity(w.get::<Vel>(e).unwrap().0, power, p.push, yaw);
         w.get_mut::<Vel>(e).unwrap().0 = v;
         w.get_mut::<Hop>(e).unwrap().jumped_at = now;
+        jump_sound(w, e, h.p.jump_sound);
         w.entity_mut(e).insert((Hopping, Moving));
         return;
     }
@@ -164,7 +168,43 @@ pub fn due(w: &mut World, e: Entity) {
         d.speed = speed;
         d.zza = speed;
     }
+    jump_sound(w, e, h.p.jump_sound);
     w.entity_mut(e).insert((Hopping, Moving));
+}
+
+/// `setJumping(true)`'s sound: two draws for the pitch, then the sound at the body's place, unless it is silent.
+fn jump_sound(w: &mut World, e: Entity, name: Option<&'static str>) {
+    let Some(name) = name else { return };
+    let pitch = crate::goals::with_rng(w, e, |r| (r.next_float() - r.next_float()) * 0.2 + 1.0) * 0.8;
+    if w.get::<crate::behaviours::elder_curse::Silent>(e).is_some() {
+        return;
+    }
+    let at = w.get::<crate::cow::Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
+    w.resource_mut::<crate::goals::Events>().host.sound(name, at, 1.0, pitch);
+}
+/// Each jump the goals ask for (`Jump`: `RabbitJumpControl.tick` → `startJumping`, in a fluid too) plays the sound and keeps the jump input
+/// for 15 ticks (`jumpDuration`; `Rabbit.aiStep` ends it, or the landing does).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+struct JumpHold(u64);
+fn float_jump_sound(mut q: Query<(Entity, &Hop, &mut crate::goals::Jump, &Contact, &crate::cow::Pos, &mut crate::cow::Rng, Has<crate::behaviours::elder_curse::Silent>, Option<&JumpHold>)>, mut events: ResMut<crate::goals::Events>, clock: Res<Clock>, mut commands: Commands) {
+    for (e, h, mut j, c, at, mut rng, silent, hold) in &mut q {
+        let Some(name) = h.p.jump_sound else { continue };
+        let now = clock.of(e);
+        if j.0 {
+            let pitch = ((rng.next_float() - rng.next_float()) * 0.2 + 1.0) * 0.8;
+            if !silent {
+                events.host.sound(name, [at.0.x, at.0.y, at.0.z], 1.0, pitch);
+            }
+            commands.entity(e).insert(JumpHold(now + 15));
+        } else if let Some(hd) = hold {
+            if c.on_ground || now > hd.0 {
+                commands.entity(e).remove::<JumpHold>();
+            } else {
+                j.0 = true;
+            }
+        }
+    }
 }
 
 /// A body that follows a path waits on the ground between two bounds with no input (`RabbitMoveControl`: `speed 0`).

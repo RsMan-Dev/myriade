@@ -4,7 +4,7 @@ use super::Def;
 use bevy_ecs::prelude::{Entity, World};
 use crate::behaviours::spawn_draw::{Draw, Draws, Store, When};
 use crate::rules::spawn_draw::Roll;
-use crate::behaviours::{Cap, Entry, attached_face, hurt_by, homing_projectile, homing_shot, look_at_player, nearest_target, peek, random_look, teleport_on};
+use crate::behaviours::{Cap, Entry, attached_face, hurt_by, homing_projectile, homing_shot, look_at_player, nearest_target, peek, random_look, teleport_on, ambient_sound};
 use crate::effects::Kind;
 use crate::projectile::{Damage, Flight, OnHit, Order};
 use crate::rules::RuleEntry;
@@ -68,6 +68,7 @@ pub static DEF: Def = Def {
             crowd_radius: 8.0,
             crowd_divisor: 5.0,
         }),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.shulker.ambient"], interval: Some(120), ..ambient_sound::Params::DEFAULT }),
     ],
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), RuleEntry::new(&attached_face::RULE, &attached_face::Params { colour: 16, covered: true })],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::FireImmune, Cap::Collidable]),

@@ -6,6 +6,7 @@
 use super::Def;
 use crate::locomotion::{hop, Medium};
 use crate::behaviours::{avoid_entity::{self, Avoid}, breed, climb_on_powder_snow, float, hurt_by, look_at_player, melee, nearest_target, panic, raid_garden, stroll, tempt, Cond, Entry};
+use crate::behaviours::{ambient_sound};
 
 const FOOD: &[&str] = &["minecraft:carrot", "minecraft:golden_carrot", "minecraft:dandelion"];
 
@@ -71,8 +72,9 @@ pub static DEF: Def = Def {
         Entry::new(&raid_garden::MODULE, 5, &raid_garden::Params::DEFAULT),
         Entry::new(&stroll::MODULE, 6, &stroll::Params { speed: 0.6, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 11, &look_at_player::Params { range: 10.0, ..look_at_player::Params::DEFAULT }),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.rabbit.ambient"], interval: Some(120), ..ambient_sound::Params::DEFAULT }),
     ],
-    locomotion: &[(Medium::Ground, Entry::new(&hop::MODULE, 0, &hop::Params::RABBIT))],
+    locomotion: &[(Medium::Ground, Entry::new(&hop::MODULE, 0, &hop::Params { jump_sound: Some("entity.rabbit.jump"), ..hop::Params::RABBIT }))],
     spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Bright { on: "minecraft:rabbits_spawnable_on" }, ..crate::spawning::SpawnDef::ANIMAL }),
     despawn: Some(crate::despawn::DespawnDef::KEPT),
     // `Rabbit.createAttributes`: the attack damage of 3.0 is written to the attributes of every rabbit.

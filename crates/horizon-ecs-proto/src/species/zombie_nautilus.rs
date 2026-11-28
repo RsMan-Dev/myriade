@@ -1,7 +1,11 @@
 //! `ZombieNautilus` (`mobs/nautilus.rs:55-61`, `ZombieNautilusAi`): the nautilus's swim, no panic and no love; the tempt at 0.9 (1), the
 //! charge at 0.5 (2), the swimming stroll every tick (3). Its variant (temperate or warm) and its drying out are not goals.
 use super::{nautilus, Def};
-use crate::behaviours::{charge_attack, fish_swim, tempt, Entry};
+use crate::behaviours::{charge_attack, fish_swim, tempt, Entry, ambient_sound};
+
+fn zombie_nautilus_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.eye_in_water) { "entity.zombie_nautilus.ambient" } else { "entity.zombie_nautilus.ambient_land" }
+}
 
 pub static DEF: Def = Def {
     name: "minecraft:zombie_nautilus",
@@ -10,6 +14,7 @@ pub static DEF: Def = Def {
         Entry::new(&tempt::MODULE, 1, &tempt::Params { speed: 0.9, items: nautilus::FOOD, stop: 3.5, ..tempt::Params::DEFAULT }),
         Entry::new(&charge_attack::MODULE, 2, &charge_attack::Params { speed: 0.5, ..charge_attack::Params::DEFAULT }),
         Entry::new(&fish_swim::MODULE, 3, &fish_swim::Params { speed: 1.0, interval: 1 }),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(120), choose: Some(zombie_nautilus_ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     caps: Some(nautilus::CAPS),
     locomotion: nautilus::LOCOMOTION,

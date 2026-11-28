@@ -3,7 +3,7 @@
 //! Water: the amphibious smooth swimming control (`reset_pitch`: its look control resets xRot each tick). The temptation and the long jump stand aside while pregnant.
 //! Left out (`suivi/ecs-ecarts.md`): the poses (croak, tongue, jump) and their animations, the frog variants; no swim activity (the `Mob` has none).
 use super::Def;
-use crate::behaviours::{animal_panic, breed, croak, float, lay_spawn, long_jump, look_at_player, random_look, shoot_tongue, stroll, tempt, try_find_land, Cap, Entry};
+use crate::behaviours::{animal_panic, breed, croak, float, lay_spawn, long_jump, look_at_player, random_look, shoot_tongue, stroll, tempt, try_find_land, Cap, Entry, ambient_sound};
 use crate::locomotion::{swim, walk, Medium};
 use crate::behaviours::spawn_draw::{Draw, Draws, Kind, Store, When};
 use crate::rules::spawn_draw::Roll;
@@ -36,6 +36,7 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 1.0, interval: Some(1), ..stroll::Params::DEFAULT }).when(&OUT_OF_WATER),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params::DEFAULT),
         Entry::new(&random_look::MODULE, 7, &random_look::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.frog.ambient"], interval: Some(120), ..ambient_sound::Params::DEFAULT }),
     ],
     // `Frog()`: `SmoothSwimmingMoveControl(85, 10, 0.02, 0.1, true)`: on land the speed attribute 1.0 is scaled by 0.1 (#2213 of the `Mob`).
     // In the water the same control (`SmoothSwimmingMoveControl`, 0.02 in water) on the amphibious navigation that prefers the shallows.

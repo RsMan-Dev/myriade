@@ -1,7 +1,7 @@
 //! `Blaze` (`nether.rs:25-150`): the burst of three small fireballs (`burst_shot`, priority 4), the stroll, looking. Left out: the slow fall and the rise toward a target above it
 //! (`aiStep`, `customServerAiStep`), the stroll that avoids water, the alert of `HurtByTarget`.
 use super::Def;
-use crate::behaviours::{burst_shot, hurt_by, look_at_player, nearest_target, random_look, stroll, Entry};
+use crate::behaviours::{burst_shot, hurt_by, look_at_player, nearest_target, random_look, stroll, Entry, ambient_sound};
 
 pub static DEF: Def = Def {
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 10, max: 10 })],
@@ -13,6 +13,7 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 7, &stroll::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 8, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.blaze.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT }),
     ],
     not_in_peaceful: true,
     light_lit: true,

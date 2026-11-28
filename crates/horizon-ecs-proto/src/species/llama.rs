@@ -4,7 +4,7 @@
 //! as in the polar bear). Left out: nothing of the goals (the spit is `ranged_attack`). A llama that is not the one of a trader: its panic is 1.2.
 //! It takes a lead (`leash::LEASH`, `followLeashSpeed` 2,0) and a rider (a seat, no saddle: it is not steered).
 use super::Def;
-use crate::behaviours::{hurt_by, nearest_target, breed, float, follow_caravan, follow_parent, look_at_player, panic, random_look, ranged_attack, run_around_like_crazy, stroll, tempt, Cap, Entry};
+use crate::behaviours::{hurt_by, nearest_target, breed, float, follow_caravan, follow_parent, look_at_player, panic, random_look, ranged_attack, run_around_like_crazy, stroll, tempt, Cap, Entry, ambient_sound};
 use crate::leash::{LeashParams, LEASH};
 use crate::mount::{RideParams, RIDE};
 use crate::rules::RuleEntry;
@@ -35,6 +35,7 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 7, &stroll::Params { speed: 0.7, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 8, &look_at_player::Params { range: 6.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 9, &random_look::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.llama.ambient"], interval: Some(400), ..ambient_sound::Params::DEFAULT }),
     ],
     // A llama is a tamable, rideable horse (`AbstractChestedHorse`): the caps of the horse, for the wild run around like crazy.
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), crate::rules::RuleEntry::new(&crate::rules::climbable::NO_CLIMB, &()), RuleEntry::new(&RIDE, &RideParams::LLAMA),RuleEntry::new(&crate::make_mad::ANGRY, &crate::make_mad::Angry::LLAMA), RuleEntry::new(&LEASH, &LeashParams::LLAMA), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::BODY), RuleEntry::new(&crate::fit_chest::FIT_CHEST, &crate::fit_chest::ChestParams::LLAMA)],

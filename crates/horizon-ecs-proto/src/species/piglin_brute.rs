@@ -4,7 +4,7 @@
 //! brute, walk home and around the home block). Not ported: the alert of the other piglins, `SetLookAndInteract`
 //! (its kind is not read yet), the piglin's `R:piglin` repellent.
 use super::Def;
-use crate::behaviours::{Cap, Entry, float};
+use crate::behaviours::{Cap, Entry, float, ambient_sound};
 use crate::brain::behaviours::look_at_entity::species_id;
 use crate::brain::behaviours::{
     anger_at_attacker, do_nothing, interact_with, interact_with_door, look_at_entity, look_at_player_sometimes, look_at_target_sink, melee_attack, move_to_target_sink, run_one,
@@ -43,7 +43,7 @@ static MOVE_KIDS: &[Kid] = &[
 
 pub static DEF: Def = Def {
     name: "minecraft:piglin_brute",
-    goals: &[Entry::new(&float::MODULE, 0, &float::Params::DEFAULT), Entry::new(&crate::behaviours::growl_in_fight::MODULE, 1, &()), Entry::new(&crate::behaviours::convert_timer::MODULE, 0, &crate::behaviours::convert_timer::Params { into: "minecraft:zombified_piglin", after: 300, drop_carried: true })],
+    goals: &[Entry::new(&float::MODULE, 0, &float::Params::DEFAULT), Entry::new(&crate::behaviours::growl_in_fight::MODULE, 1, &()), Entry::new(&crate::behaviours::convert_timer::MODULE, 0, &crate::behaviours::convert_timer::Params { into: "minecraft:zombified_piglin", after: 300, drop_carried: true }), Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.piglin_brute.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT })],
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 20, max: 20 }), crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::PIGLIN_BRUTE)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     brain: BrainDef {

@@ -1,7 +1,7 @@
 //! `Wither` (`mobs/wither.rs`, `register`): a flying boss. Targets: the hurt-by, then the nearest non-undead creature, then the
 //! nearest player. Goals: the charge at spawn, the centre head shooting at range (`ranged_attack`, skull), the two side heads
 //! (`side_heads`, `nth` 0 and 1), the regeneration, the block breaking, the boss bar, the stroll and the looks. Flight is the `FlyingMoveControl` (10, no hover) of the parrot (`fly` `Control::Path`), the stroll `WaterAvoidingRandomFlyingGoal`. The hurt filter is `behaviours::phase_shield::accepts`.
-use crate::behaviours::{block_breaker, boss_bar, do_nothing, hurt_by, invulnerable_charge,look_at_player, nearest_target, random_look, ranged_attack, regen, side_heads, fly_stroll, Cap, Entry};
+use crate::behaviours::{block_breaker, boss_bar, do_nothing, hurt_by, invulnerable_charge, look_at_player, nearest_target, random_look, ranged_attack, regen, side_heads, fly_stroll, Cap, Entry, ambient_sound};
 use crate::locomotion::{fly, Medium};
 use crate::projectile::Flight;
 use crate::species::Def;
@@ -33,6 +33,7 @@ pub static DEF: Def = Def {
         Entry::new(&fly_stroll::MODULE, 5, &fly_stroll::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 7, &random_look::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.wither.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT }),
     ],
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Path, max_turn: 10.0, hovers: false, damp_y: 0.6, ..fly::Params::DEFAULT }))],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune, Cap::WitherImmune, Cap::FreezeImmune, Cap::NeverStuck]),

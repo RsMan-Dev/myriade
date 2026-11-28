@@ -7,7 +7,7 @@
 use super::Def;
 use crate::behaviours::breed::Love;
 use crate::behaviours::spawn_draw::{Draw, Draws, Kind, Store, When};
-use crate::behaviours::{animal_panic, breed, charge_attack, fish_swim, nearest_target, tempt, Cap, Entry};
+use crate::behaviours::{animal_panic, breed, charge_attack, fish_swim, nearest_target, tempt, Cap, Entry, ambient_sound};
 use crate::cow::{FluidState, GrowAt};
 use crate::locomotion::{swim, Medium};
 use crate::rules::spawn_draw::Roll;
@@ -22,6 +22,16 @@ pub const FOOD: &[&str] = &[
 /// `SmoothSwimmingMoveControl(85, 10, 0.011, 0, true)`, shared with the zombie nautilus.
 pub const LOCOMOTION: &[crate::locomotion::ModeEntry] = &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: false, breach: false, control: swim::Control::Smooth { max_turn_x: 85.0, max_turn_y: 10.0, in_water: 0.011, outside: 0.0, gravity: true }, push: swim::Push::Speed, sinks: false, ..swim::Params::DEFAULT }))];
 
+fn nautilus_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    let under = w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.eye_in_water);
+    match (crate::behaviours::panda_state::is_baby(w, e), under) {
+        (true, true) => "entity.baby_nautilus.ambient",
+        (true, false) => "entity.baby_nautilus.ambient_land",
+        (false, true) => "entity.nautilus.ambient",
+        (false, false) => "entity.nautilus.ambient_land",
+    }
+}
+
 pub static DEF: Def = Def {
     spawn: Some(crate::spawning::SpawnDef { category: crate::spawning::Category::WaterCreature, place: crate::spawning::Place::InWater, rule: crate::spawning::Rule::Nautilus, peaceful: true, liquid: true, ..crate::spawning::SpawnDef::MONSTER }),
     name: "minecraft:nautilus",
@@ -32,6 +42,7 @@ pub static DEF: Def = Def {
         Entry::new(&charge_attack::MODULE, 3, &charge_attack::Params { speed: 0.6, ..charge_attack::Params::DEFAULT }),
         Entry::new(&fish_swim::MODULE, 4, &fish_swim::Params { speed: 1.0, interval: 1 }),
         Entry::new(&nearest_target::MODULE, 5, &nearest_target::Params { tag: Some("minecraft:nautilus_hostiles"), candidate_when: Some(in_water), attack_cooldown: Some((2400, 3600)), may_search: Some(may_search), anger_memory: true, ..nearest_target::Params::DEFAULT }),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(120), choose: Some(nautilus_ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     caps: Some(CAPS),
     locomotion: LOCOMOTION,

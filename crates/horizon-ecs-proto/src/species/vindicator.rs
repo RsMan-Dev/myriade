@@ -3,7 +3,7 @@
 //! at players within 3 blocks (every ask) and at creatures within 8; the targets of the pillager with the villagers seen.
 //! Johnny (a vindicator named Johnny, latched by `custom_name`) hunts every living creature that is not an illager.
 use super::{evoker::RAIDERS, Def};
-use crate::behaviours::{avoid_entity, float, hurt_by, look_at_player, melee, nearest_target, pathfind_to_raid, stroll, Entry, break_door, hold_ground_attack, raider_open_door};
+use crate::behaviours::{avoid_entity, float, hurt_by, look_at_player, melee, nearest_target, pathfind_to_raid, stroll, Entry, break_door, hold_ground_attack, raider_open_door, ambient_sound};
 use bevy_ecs::prelude::{Entity, World};
 
 const TRADERS: &[&str] = &["minecraft:villager", "minecraft:wandering_trader"];
@@ -36,6 +36,7 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 8, &stroll::Params { speed: 0.6, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 3.0, period: 1, ..look_at_player::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 8.0, species: look_at_player::Params::ALL, ..look_at_player::Params::DEFAULT }),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.vindicator.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT }),
     ],
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::VINDICATOR)],
     not_in_peaceful: true,

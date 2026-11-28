@@ -3,7 +3,7 @@
 //! socle or for a module: `HoldGroundAttack` (priority 2: the raid), the avoidance of the creaking, `look_at_player` of the mobs (priority 10), the raiders
 //! the hurt-by ignores, the crossbow in hand (supposed).
 use super::Def;
-use crate::behaviours::{avoid_entity, float, hurt_by, look_at_player, nearest_target, ranged_crossbow, stroll, Entry, hold_ground_attack, pathfind_to_raid};
+use crate::behaviours::{avoid_entity, float, hurt_by, look_at_player, nearest_target, ranged_crossbow, stroll, Entry, hold_ground_attack, pathfind_to_raid, ambient_sound};
 
 use super::evoker::RAIDERS;
 const TRADERS: &[&str] = &["minecraft:villager", "minecraft:wandering_trader"];
@@ -29,6 +29,7 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 8, &stroll::Params { speed: 0.6, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 15.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 15.0, species: &["*"], ..look_at_player::Params::DEFAULT }),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.pillager.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT }),
     ],
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::PILLAGER)],
     not_in_peaceful: true,

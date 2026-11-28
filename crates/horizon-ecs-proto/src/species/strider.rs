@@ -3,10 +3,14 @@
 //! The look at the other striders: a second `look_at_player` with `species` (priority 9, `LookAtPlayer::species([Strider], 8)`).
 //! The stroll is `RandomStrollGoal` (bytecode: `new RandomStrollGoal(this, 1.0, 60)`): `DefaultRandomPos`, no water avoidance (`water_avoiding` 1.0).
 use super::Def;
-use crate::behaviours::{breed, follow_parent, look_at_player, panic, random_look, stroll, strider_go_to_lava, tempt, Cap, Entry};
+use crate::behaviours::{breed, follow_parent, look_at_player, panic, random_look, stroll, strider_go_to_lava, tempt, Cap, Entry, ambient_sound};
 use crate::locomotion::{lava, walk, Medium};
 use crate::mount::{RideParams, RIDE};
 use crate::rules::RuleEntry;
+
+fn strider_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if w.get::<crate::behaviours::panic::Panicking>(e).is_some() || crate::behaviours::tempt::tempted(w, e) { "" } else { "entity.strider.ambient" }
+}
 
 pub static DEF: Def = Def {
     spawn: Some(crate::spawning::SpawnDef { place: crate::spawning::Place::InLava, rule: crate::spawning::Rule::Strider, liquid: true, ..crate::spawning::SpawnDef::ANIMAL }),
@@ -22,6 +26,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 8, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 8.0, species: &["minecraft:strider"], ..look_at_player::Params::DEFAULT }),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(120), choose: Some(strider_ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion, Cap::Rideable, Cap::FireImmune]),
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), RuleEntry::new(&RIDE, &RideParams::STRIDER), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::SADDLE)],

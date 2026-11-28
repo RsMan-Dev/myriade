@@ -1,7 +1,11 @@
 //! `Enderman` (`mobs/enderman.rs:19-45`): its targets and goals. Its endermite target has no `reach`: the `Mob` sets `must_reach` and never reads it. Not ported: the teleport (`randomTeleport`: service absent), the water damage and
 //! the day departure that call it, the persistent anger, the water malus of the paths (`NavParams`).
-use crate::behaviours::{ender_teleport, float, freeze_when_looked_at, hurt_by, leave_block, look_at_player, look_for_player, melee, nearest_target, random_look, stroll, take_block, Entry};
+use crate::behaviours::{ambient_sound, ender_teleport, float, freeze_when_looked_at, hurt_by, leave_block, look_at_player, look_for_player, melee, nearest_target, random_look, stroll, take_block, Entry};
 use crate::species::Def;
+
+fn enderman_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if w.get::<look_for_player::Gaze>(e).is_some_and(|g| g.creepy) { "entity.enderman.scream" } else { "entity.enderman.ambient" }
+}
 
 pub static DEF: Def = Def {
     load_attrs: &[crate::attr_mod::LoadAttr { name: "movement_speed", base: None, when: crate::attr_mod::LoadWhen::Always }],
@@ -21,6 +25,7 @@ pub static DEF: Def = Def {
         Entry::new(&leave_block::MODULE, 10, &leave_block::Params::DEFAULT),
         Entry::new(&take_block::MODULE, 11, &take_block::Params::DEFAULT),
         Entry::new(&ender_teleport::MODULE, 255, &ender_teleport::Params::ENDERMAN),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(80), choose: Some(enderman_ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), crate::rules::RuleEntry::new(&crate::hostile::SUN_FLEE, &())],
     spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),

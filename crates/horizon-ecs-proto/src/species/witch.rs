@@ -2,7 +2,7 @@
 //! hurt-by and nearest-player targets. Drinking its own potions: `drink_potion`. Healing the raiders: `heal_raiders`. Left out:
 //! the raider friendly fire, the stroll that avoids water, the gate of the nearest-player goal.
 use super::Def;
-use crate::behaviours::{float, hurt_by, look_at_player, nearest_target, random_look, ranged_attack, stroll, drink_potion, Entry};
+use crate::behaviours::{float, hurt_by, look_at_player, nearest_target, random_look, ranged_attack, stroll, drink_potion, Entry, ambient_sound};
 
 const RAIDERS: &[&str] = &["minecraft:pillager", "minecraft:vindicator", "minecraft:evoker", "minecraft:illusioner", "minecraft:ravager"];
 
@@ -25,6 +25,7 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 2, &stroll::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 3, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 3, &random_look::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.witch.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT }),
     ],
     spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }), crate::rules::RuleEntry::new(&crate::raids::NO_RAID_WHEN_NATURAL, &())],

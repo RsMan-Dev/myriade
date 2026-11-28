@@ -6,7 +6,7 @@
 //! les adultes quand un ourson est frappé (`alert_if_baby`, `goals.rs:2067`) ; la portée de chemin (`.reach()`) des
 //! trois cibles n'existe pas dans `nearest_target` ; l'entrée de l'ourson est lue au démarrage seulement (`Entry::when`).
 use super::Def;
-use crate::behaviours::{neutral_anger, float, follow_parent, hurt_by, look_at_player, melee, nearest_target, panic, random_look, stroll, Cond, Entry};
+use crate::behaviours::{neutral_anger, float, follow_parent, hurt_by, look_at_player, melee, nearest_target, panic, random_look, stroll, Cond, Entry, ambient_sound};
 
 /// `PolarBearHurtByTargetGoal.alertOther`: adults only.
 fn is_adult(w: &bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> bool {
@@ -16,6 +16,10 @@ static BABY: Cond = Cond::Is("horizon:is_baby");
 static NOT_BABY: Cond = Cond::Not(&Cond::Is("horizon:is_baby"));
 static ADULT_CUB_NEAR: Cond = Cond::All(&[Cond::Not(&Cond::Is("horizon:is_baby")), Cond::Is("polar_bear:cub_nearby")]);
 static ANGRY: Cond = Cond::Is("neutral:angry");
+
+fn polar_bear_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if crate::behaviours::panda_state::is_baby(w, e) { "entity.polar_bear.ambient_baby" } else { "entity.polar_bear.ambient" }
+}
 
 pub static DEF: Def = Def {
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 })],
@@ -38,6 +42,7 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 5, &stroll::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params::DEFAULT),
         Entry::new(&random_look::MODULE, 7, &random_look::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(120), choose: Some(polar_bear_ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     ..Def::EMPTY
 };

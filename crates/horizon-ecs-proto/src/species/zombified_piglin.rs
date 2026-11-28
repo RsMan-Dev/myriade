@@ -1,9 +1,13 @@
 //! `ZombifiedPiglin` (`mobs/undead.rs:36-90`): its own targets (no villager, golem or turtle), the melee at 2, the turtle egg at 4,
 //! the stroll and the look, the nearest player WHEN it is angry (`neutral:angry`, the `neutral_anger` module that keeps the anger).
-use crate::behaviours::{attack_turtle_egg, break_door, hurt_by, look_at_player, melee, nearest_target, neutral_anger, random_look, spear_use, stroll, Cond, Entry};
+use crate::behaviours::{attack_turtle_egg, break_door, hurt_by, look_at_player, melee, nearest_target, neutral_anger, random_look, spear_use, stroll, Cond, Entry, ambient_sound};
 use crate::species::Def;
 
 static ANGRY: Cond = Cond::Is("neutral:angry");
+
+fn zombified_piglin_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if w.get::<crate::behaviours::neutral_anger::Angry>(e).is_some() { "entity.zombified_piglin.angry" } else { "entity.zombified_piglin.ambient" }
+}
 
 pub static DEF: Def = Def {
     spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::NotOn { block: "minecraft:nether_wart_block" }, ..crate::spawning::SpawnDef::MONSTER }),
@@ -23,6 +27,7 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 7, &stroll::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 8, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(80), choose: Some(zombified_piglin_ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     rules: &[
         // `ZombifiedPiglin extends Zombie`: it inherits `Zombie.doHurtTarget` (the jar has none of its own).

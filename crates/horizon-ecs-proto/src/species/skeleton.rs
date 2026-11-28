@@ -3,13 +3,14 @@
 //! targets of the iron golem and of the baby turtle (3, seen, every 10 ticks). Left out: `RestrictSun` (2: `Nav.avoid_sun`, absent).
 //! The stray, bogged, parched and wither skeletons stay out of this lot (their files do not exist).
 use super::{templates::monster, Change, Def, Section};
-use crate::behaviours::{avoid_entity, convert_in_water, flee_sun, nearest_target, ranged_bow, restrict_sun, Entry};
+use crate::behaviours::{avoid_entity, convert_in_water, flee_sun, nearest_target, ranged_bow, restrict_sun, Entry, ambient_sound};
 use crate::rules::RuleEntry;
 
 pub static DEF: Def = Def {
     name: "minecraft:skeleton",
     reference: Some(&monster::DEF),
     changes: &[
+        Change::Add(Section::Goals, Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.skeleton.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT })),
         Change::Add(Section::Goals, Entry::new(&restrict_sun::MODULE, 2, &restrict_sun::Params)),
         Change::Add(Section::Goals, Entry::new(&ranged_bow::MODULE, 4, &ranged_bow::Params { interval: 40, ..ranged_bow::Params::DEFAULT })),
         Change::Add(Section::Goals, Entry::new(&crate::behaviours::pick_up_gear::MODULE, 255, &crate::behaviours::pick_up_gear::Params { refuses: &["#minecraft:spears"], preferred_weapons: Some("minecraft:skeleton_preferred_weapons"), ..crate::behaviours::pick_up_gear::Params::DEFAULT })),

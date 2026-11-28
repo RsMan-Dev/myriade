@@ -3,7 +3,7 @@
 //! `sun_burn` cannot be removed by a change. Left out: the weakness its arrows carry (`undead.rs:952`): `attend : effet de flèche`.
 //! It flees the sun and avoids the wolf as the skeleton does.
 use super::{templates::monster, Change, Def, Section};
-use crate::behaviours::{avoid_entity, flee_sun, nearest_target, ranged_bow, restrict_sun, Entry};
+use crate::behaviours::{avoid_entity, flee_sun, nearest_target, ranged_bow, restrict_sun, Entry, ambient_sound};
 use crate::effects::Kind;
 
 pub static DEF: Def = Def {
@@ -12,6 +12,7 @@ pub static DEF: Def = Def {
     caps: Some(super::WEAKNESS_IMMUNE_CAPS),
     reference: Some(&monster::DEF),
     changes: &[
+        Change::Add(Section::Goals, Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.parched.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT })),
         Change::Add(Section::Targets, Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:iron_golem"], ..nearest_target::Params::DEFAULT })),
         Change::Add(Section::Targets, Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:turtle"], predicate: Some("baby"), interval: 10, ..nearest_target::Params::DEFAULT })),
         Change::Add(Section::Goals, Entry::new(&restrict_sun::MODULE, 2, &restrict_sun::Params)),

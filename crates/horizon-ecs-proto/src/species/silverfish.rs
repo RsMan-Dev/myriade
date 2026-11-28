@@ -1,6 +1,6 @@
 //! `Silverfish` (`mobs/hostile.rs:61-70`): its targets and goals; it has no stroll (the stone merge replaces it). Not ported:
 //! `R:hostile` (damage, storm).
-use crate::behaviours::{climb_on_powder_snow, float, hurt_by, melee, nearest_target, silverfish_merge, silverfish_wake_up_friends, Entry};
+use crate::behaviours::{climb_on_powder_snow, float, hurt_by, melee, nearest_target, silverfish_merge, silverfish_wake_up_friends, Entry, ambient_sound};
 use crate::species::Def;
 
 pub static DEF: Def = Def {
@@ -17,6 +17,7 @@ pub static DEF: Def = Def {
         Entry::new(&silverfish_wake_up_friends::MODULE, 3, &silverfish_wake_up_friends::Params::DEFAULT),
         Entry::new(&melee::MODULE, 4, &melee::Params::DEFAULT),
         Entry::new(&silverfish_merge::MODULE, 5, &silverfish_merge::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.silverfish.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT }),
     ],
     not_in_peaceful: true,
     sound_source: super::SoundCategory::Hostile,

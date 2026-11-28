@@ -1,7 +1,11 @@
 //! `Elder Guardian`: the guardian with a 60-tick beam that goes on at any distance, +2 magic damage, a stroll every 400 ticks.
 use super::Def;
-use crate::behaviours::{guardian_beam, guardian_thorns, elder_curse, look_at_player, move_towards_restriction, random_look, stroll, Cap, Entry};
+use crate::behaviours::{guardian_beam, guardian_thorns, elder_curse, look_at_player, move_towards_restriction, random_look, stroll, Cap, Entry, ambient_sound};
 use crate::locomotion::{swim, Medium};
+
+fn elder_guardian_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.in_water) { "entity.elder_guardian.ambient" } else { "entity.elder_guardian.ambient_land" }
+}
 
 pub static DEF: Def = Def {
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 10, max: 10 })],
@@ -18,6 +22,7 @@ pub static DEF: Def = Def {
         Entry::new(&guardian_thorns::MODULE, 10, &()),
         Entry::new(&elder_curse::MODULE, 10, &elder_curse::Params::ELDER),
         Entry::new(&random_look::MODULE, 9, &random_look::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(160), choose: Some(elder_guardian_ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
     locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: true, control: swim::Control::Guardian, push: swim::Push::Fixed(0.1), ..swim::Params::DEFAULT }))],

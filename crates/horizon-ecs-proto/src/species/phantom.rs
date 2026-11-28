@@ -3,7 +3,7 @@
 use super::Def;
 use crate::behaviours::spawn_draw::{Draw, Draws, Kind, Store, When};
 use crate::rules::spawn_draw::Roll;
-use crate::behaviours::{flier_goals as g, Cap, Entry};
+use crate::behaviours::{flier_goals as g, Cap, Entry, ambient_sound};
 use crate::locomotion::{fly, Medium};
 
 pub static DEF: Def = Def {
@@ -15,6 +15,7 @@ pub static DEF: Def = Def {
         Entry::new(&g::PHANTOM_ATTACK_STRATEGY, 1, &g::Params::DEFAULT),
         Entry::new(&g::PHANTOM_SWEEP_ATTACK, 2, &g::Params::DEFAULT),
         Entry::new(&g::PHANTOM_CIRCLE_AROUND_ANCHOR, 3, &g::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.phantom.ambient"], interval: Some(80), ..ambient_sound::Params::DEFAULT }),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Targets, Cap::Locomotion]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Bank, free: true, ..fly::Params::DEFAULT }))],

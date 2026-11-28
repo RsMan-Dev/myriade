@@ -3,7 +3,7 @@
 //! axolotls beyond 3 blocks. `GuardianMoveControl` is `swim::Control::Guardian`; the spikes (`guardian_thorns`) return the blows a still guardian
 //! takes. Left out, in `suivi/ecs-ecarts.md`: the spikes' and the tail's animation.
 use super::Def;
-use crate::behaviours::{guardian_beam, guardian_thorns, look_at_player, move_towards_restriction, nearest_target, random_look, stroll, Cap, Entry};
+use crate::behaviours::{guardian_beam, guardian_thorns, look_at_player, move_towards_restriction, nearest_target, random_look, stroll, Cap, Entry, ambient_sound};
 use crate::locomotion::{swim, Medium};
 
 pub const TARGETS: &[Entry] = &[Entry::new(
@@ -11,6 +11,10 @@ pub const TARGETS: &[Entry] = &[Entry::new(
     1,
     &nearest_target::Params { players: true, types: &["minecraft:squid", "minecraft:glow_squid", "minecraft:axolotl"], beyond_sqr: Some(9.0), ..nearest_target::Params::DEFAULT },
 )];
+fn guardian_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.in_water) { "entity.guardian.ambient" } else { "entity.guardian.ambient_land" }
+}
+
 pub static DEF: Def = Def {
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 10, max: 10 })],
     name: "minecraft:guardian",
@@ -25,6 +29,7 @@ pub static DEF: Def = Def {
         // The spikes: a still guardian returns the blows it takes.
         Entry::new(&guardian_thorns::MODULE, 10, &()),
         Entry::new(&random_look::MODULE, 9, &random_look::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(160), choose: Some(guardian_ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
     locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: true, control: swim::Control::Guardian, push: swim::Push::Fixed(0.1), ..swim::Params::DEFAULT }))],

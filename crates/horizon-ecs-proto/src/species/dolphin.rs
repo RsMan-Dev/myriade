@@ -2,11 +2,15 @@
 //! Goals of `aquatic.rs:166-210`; the target is the hurt-by of priority 1 with an alert (the `Mob` ignores the guardians' hits: `suivi/ecs-ecarts.md`).
 use super::Def;
 use crate::behaviours::avoid_entity::{self, Avoid};
-use crate::behaviours::{follow_player_vehicle, hurt_by, melee, item_pickup, move_to_item, play_with_items, swim_to_treasure, water_jump, breath_air, fish_swim, look_at_player, random_look, swim_with_player, try_find_water, Cap, Entry};
+use crate::behaviours::{follow_player_vehicle, hurt_by, melee, item_pickup, move_to_item, play_with_items, swim_to_treasure, water_jump, breath_air, fish_swim, look_at_player, random_look, swim_with_player, try_find_water, Cap, Entry, ambient_sound};
 use crate::locomotion::{swim, Medium};
 
 /// `ItemTags.FISHES` (`tags/item/fishes.json`).
 const FISHES: &[&str] = &["minecraft:cod", "minecraft:cooked_cod", "minecraft:salmon", "minecraft:cooked_salmon", "minecraft:pufferfish", "minecraft:tropical_fish"];
+
+fn dolphin_ambient(w: &mut bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> &'static str {
+    if w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.in_water) { "entity.dolphin.ambient_water" } else { "entity.dolphin.ambient" }
+}
 
 pub static DEF: Def = Def {
     name: "minecraft:dolphin",
@@ -27,6 +31,7 @@ pub static DEF: Def = Def {
         Entry::new(&avoid_entity::MODULE, 9, &avoid_entity::Params { what: Avoid::Named(&["minecraft:guardian", "minecraft:elder_guardian"]), max_dist: 8.0, walk: 1.0, sprint: 1.0, ..avoid_entity::Params::DEFAULT }),
         Entry::new(&follow_player_vehicle::MODULE, 8, &follow_player_vehicle::Params::BOAT),
         Entry::new(&follow_player_vehicle::MODULE, 8, &follow_player_vehicle::Params::NAUTILUS),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(120), choose: Some(dolphin_ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), crate::rules::RuleEntry::new(&crate::rules::bite_sound::BITE, &"entity.dolphin.attack"), crate::rules::RuleEntry::new(&crate::cow::OWN_AIR, &crate::cow::OwnAirParams { max: 4800, full_refill: true, nautilus: false, dry: false }), crate::rules::RuleEntry::new(&crate::moisture::MOISTURE, &())],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),

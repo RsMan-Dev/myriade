@@ -3,7 +3,7 @@
 //! such parameter), (the snow trail is in, at 255: no flag).
 use super::Def;
 use crate::behaviours::shear::ShearDef;
-use crate::behaviours::{look_at_player, nearest_target, random_look, ranged_attack, snow_trail, stroll, Entry};
+use crate::behaviours::{look_at_player, nearest_target, random_look, ranged_attack, snow_trail, stroll, Entry, ambient_sound};
 use bevy_ecs::prelude::*;
 
 /// `SnowGolem.hasPumpkin`: present on every snow golem, true by default (the NBT byte `Pumpkin`).
@@ -39,6 +39,7 @@ pub static DEF: Def = Def {
         Entry::new(&snow_trail::MODULE, 255, &snow_trail::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 3, &look_at_player::Params { range: 6.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 4, &random_look::Params::DEFAULT),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { sounds: &["entity.snow_golem.ambient"], interval: Some(120), ..ambient_sound::Params::DEFAULT }),
     ],
     caps: Some(super::FREEZE_IMMUNE_CAPS),
     rules: &[crate::rules::RuleEntry::new(&crate::behaviours::shear::SHEAR, &SHEARING)],
