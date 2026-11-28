@@ -620,6 +620,8 @@ pub(crate) fn apply_damage<const LATE: bool>(
         let cooldown = now < hurt.at + 10 && hurt.at != 0 && !immune.is_some_and(|i| i.has(NO_HURT_COOLDOWN));
         let mut applied = if cooldown {
             if hit.amount <= hurt.last {
+                let who = hit.by;
+                commands.queue(move |w: &mut World| crate::behaviours::ender_teleport::refused(w, e, who));
                 continue;
             }
             hit.amount - hurt.last

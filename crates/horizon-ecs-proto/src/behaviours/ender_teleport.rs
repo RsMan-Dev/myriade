@@ -48,8 +48,17 @@ fn never(_: &mut World, _: Entity, _: Inst) -> bool {
 }
 /// `Enderman.hurtServer`: a hurt with no creature behind it teleports unless one chance in ten.
 fn damaged(w: &mut World, e: Entity, _: Inst, d: &Damaged) {
-    if !matches!(d.who, Some(crate::targeting::Who::Entity(_))) && crate::goals::with_rng(w, e, |r| r.next_int(10)) != 0 {
+    hurt(w, e, d.who);
+}
+fn hurt(w: &mut World, e: Entity, who: Option<crate::targeting::Who>) {
+    if !matches!(who, Some(crate::targeting::Who::Entity(_))) && crate::goals::with_rng(w, e, |r| r.next_int(10)) != 0 {
         random(w, e);
+    }
+}
+/// The same after a hurt the cooldown refused: `Enderman.hurtServer` teleports whatever `super.hurtServer` answered.
+pub fn refused(w: &mut World, e: Entity, who: Option<crate::targeting::Who>) {
+    if w.get::<Teleporter>(e).is_some() {
+        hurt(w, e, who);
     }
 }
 
