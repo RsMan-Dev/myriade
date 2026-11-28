@@ -77,6 +77,10 @@ impl Game<'_> {
     /// `Entity.getDisplayName` of the ECS mob `id` by its type: `entity.<type>`. The CustomName, the team's format and the hover
     /// of the host's mob are not read here (the ECS holds no name yet).
     pub(in crate::game) fn ecs_mob_name(&self, id: u32) -> Text {
+        // `Entity.getDisplayName`: the CustomName component first, else the type name.
+        if let Some(c) = self.ecs_mob_tree(id).and_then(|t| t.get(&"CustomName".into()).cloned()) {
+            return myriade_engine::scoreboard::comp_text(&myriade_engine::scoreboard::tag_to_json(&c));
+        }
         let ty = self.ecs.kind(id).unwrap_or_default();
         // `Villager.getTypeName`: the profession's name, `entity.minecraft.villager.<profession>`.
         if ty == "minecraft:villager" {

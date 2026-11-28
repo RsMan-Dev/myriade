@@ -71,7 +71,7 @@ pub static DEF: Def = Def {
         Entry::new(&crate::behaviours::shake_off_water::MODULE, 12, &crate::behaviours::shake_off_water::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 10, &random_look::Params::DEFAULT),
-        Entry::new(&ambient_sound::MODULE, 11, &ambient_sound::Params { interval: Some(80), choose: Some(ambient), ..ambient_sound::Params::DEFAULT }),
+        Entry::new(&ambient_sound::MODULE, 11, &ambient_sound::Params { interval: Some(120), choose: Some(ambient), ..ambient_sound::Params::DEFAULT }),
     ],
     changes: &[],
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), RuleEntry::new(&crate::dye::DYE,&crate::dye::DyeParams::WOLF), RuleEntry::new(&crate::body_armor::WEAR, &crate::body_armor::WearParams::WOLF), RuleEntry::new(&TAME, &TameParams::WOLF),RuleEntry::new(&crate::credit::CREDITS_OWNER, &())],

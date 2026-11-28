@@ -1367,9 +1367,14 @@ pub struct AiPaused;
 pub(crate) fn try_start(w: &mut World, e: Entity, slot: u8) {
     start_goal(w, e, slot);
 }
+fn is_ambient(w: &World, e: Entity, slot: u8) -> bool {
+    w.get::<GoalSet>(e).is_some_and(|g| (slot as usize) < g.len() && std::ptr::eq(g.module(slot), &crate::behaviours::ambient_sound::MODULE))
+}
 fn start_goal(w: &mut World, e: Entity, slot: u8) {
     // `Mob.serverAiStep` is not run without effective AI (`Mob.isNoAi`): the selectors tick nothing, so no goal starts.
-    if w.get::<crate::dragon::flight::NoAi>(e).is_some() || w.get::<AiPaused>(e).is_some() {
+    // Except the ambient sound: `Mob.baseTick` counts it with or without AI.
+    let ambient = is_ambient(w, e, slot);
+    if (w.get::<crate::dragon::flight::NoAi>(e).is_some() && !ambient) || w.get::<AiPaused>(e).is_some() {
         return;
     }
     // One lookup of the selector: the module, whether it runs, whether its flags are free.
@@ -1466,7 +1471,7 @@ pub(crate) fn stop_all_goals(mut world: bevy_ecs::world::DeferredWorld, ctx: bev
             return;
         }
         for slot in 0..MAX_ENTRIES as u8 {
-            if w.get::<GoalSet>(e).is_some_and(|g| g.slot_running(slot)) {
+            if w.get::<GoalSet>(e).is_some_and(|g| g.slot_running(slot)) && !is_ambient(w, e, slot) {
                 end_goal(w, e, slot);
             }
         }

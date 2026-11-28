@@ -110,7 +110,7 @@ pub static DEF: Def = Def {
         Entry::new(&lookout::MODULE, 13, &lookout::Params { chance: 0.02, blocked: SLEEPING | POUNCING | CROUCHING, sit: SITTING, alarm: Some(fox_sleep::alarmed) }),
         Entry::new(&fox_pick_up_loot::MODULE, 0, &fox_pick_up_loot::Params { foods: FOOD, ..fox_pick_up_loot::Params::DEFAULT }),
         Entry::new(&eat_held::MODULE, 0, &eat_held::Params { foods: FOOD, ..eat_held::Params::DEFAULT }),
-        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(80), choose: Some(ambient), loud: &["entity.fox.screech"], ..ambient_sound::Params::DEFAULT }),
+        Entry::new(&ambient_sound::MODULE, 14, &ambient_sound::Params { interval: Some(120), choose: Some(ambient), loud: &["entity.fox.screech"], ..ambient_sound::Params::DEFAULT }),
     ],
     changes: &[],
     rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 }), crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::FOX)],

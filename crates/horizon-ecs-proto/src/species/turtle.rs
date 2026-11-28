@@ -32,7 +32,7 @@ pub static DEF: Def = Def {
     name: "minecraft:turtle",
     reference: None,
     goals: &[
-        Entry::new(&crate::behaviours::ambient_sound::MODULE, 14, &crate::behaviours::ambient_sound::Params { interval: Some(80), choose: Some(turtle_ambient), ..crate::behaviours::ambient_sound::Params::DEFAULT }),
+        Entry::new(&crate::behaviours::ambient_sound::MODULE, 14, &crate::behaviours::ambient_sound::Params { interval: Some(200), choose: Some(turtle_ambient), ..crate::behaviours::ambient_sound::Params::DEFAULT }),
         Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { step_gap: 0.15, ..crate::behaviours::move_emission::Params::DEFAULT }),
         Entry::new(&panic::MODULE, 0, &panic::Params { speed: 1.2, water: Some(7), ..panic::Params::DEFAULT }),
         Entry::new(&breed::MODULE, 1, &breed::Params { speed: 1.0, foods: &["minecraft:seagrass"], carries: true, xp: true, ..breed::Params::DEFAULT }).when(&NOT_CARRYING),
